@@ -9,6 +9,8 @@
 
 #include <string>
 
+namespace PaletteCodecTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pixelart;
 
@@ -226,3 +228,5 @@ TEST(PaletteLibrary, SetAndVersions) {
     EXPECT_EQ(PaletteLibrary::get("tests/does-not-exist.palette", &diagnostics), nullptr);
     EXPECT_NE(findKind(diagnostics, "not_found"), nullptr);
 }
+
+}  // namespace PaletteCodecTest_cpp

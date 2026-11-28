@@ -24,6 +24,8 @@
 #include <cmath>
 #include <string>
 
+namespace CameraShakePixelTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::camera;
 
@@ -244,3 +246,5 @@ TEST(CameraShaker, TickRate){
     }
     EXPECT_GT(consecutive, 25);
 }
+
+}  // namespace CameraShakePixelTest_cpp

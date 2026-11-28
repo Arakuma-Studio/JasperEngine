@@ -22,6 +22,8 @@
 #include <cstdio>
 #include <fstream>
 
+namespace SoundEventBenchTest_cpp {
+
 using namespace jasperengine;
 namespace fs = std::filesystem;
 
@@ -108,3 +110,5 @@ TEST_F(SoundEventBench, StartEventAboveStartVoice) {
         EXPECT_LE(above, 15.0 * slack);
     }
 }
+
+}  // namespace SoundEventBenchTest_cpp

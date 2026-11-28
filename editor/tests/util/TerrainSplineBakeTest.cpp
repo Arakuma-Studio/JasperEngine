@@ -32,6 +32,8 @@
 #include <memory>
 #include <vector>
 
+namespace TerrainSplineBakeTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -473,3 +475,5 @@ TEST(TerrainSplineBakeTests, ClearTreesRemovesFootprint){
     EXPECT_LT(removed.size(), records.size());
     EXPECT_TRUE(TerrainSplineBake::treesInFootprint(store, SIZE, {Vector2(240.0f, -100.0f), Vector2(240.0f, 100.0f)}, 1.0f).empty());
 }
+
+}  // namespace TerrainSplineBakeTest_cpp

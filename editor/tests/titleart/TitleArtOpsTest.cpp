@@ -13,6 +13,8 @@
 #include "titleart/TitleArtSchema.h"
 #include "titleart/TitleEffectRegistry.h"
 
+namespace TitleArtOpsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using TitleArtOpsJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
@@ -490,3 +492,5 @@ TEST_F(TitleArtOpsTest, ARegisteredMemberIsSuggested) {
     EXPECT_EQ(ok.doc.layers()[0]["glint_rate"], 10);
     EXPECT_TRUE(titleart::TitleArtSchema::get().removeMember("layer.text", "glint_rate"));
 }
+
+}  // namespace TitleArtOpsTest_cpp

@@ -37,6 +37,8 @@
 #include <random>
 #include <vector>
 
+namespace CullingSystemTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -811,3 +813,5 @@ TEST_F(SimulationCullingTest, DistanceScaleEndsWithThePlay){
     Engine::resetApplicationState();
     EXPECT_FLOAT_EQ(SimulationCulling::getDistanceScale(), 1.0f);
 }
+
+}  // namespace CullingSystemTest_cpp

@@ -21,6 +21,8 @@
 #include <fstream>
 #include <iterator>
 
+namespace GltfLoadDiagnosticsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -155,3 +157,5 @@ TEST(GltfLoadDiagnostics, AFileWithoutTheExtensionsIsLeftAsItWas){
     EXPECT_TRUE(result.handledExtensions.empty());
     EXPECT_TRUE(model == original);
 }
+
+}  // namespace GltfLoadDiagnosticsTest_cpp

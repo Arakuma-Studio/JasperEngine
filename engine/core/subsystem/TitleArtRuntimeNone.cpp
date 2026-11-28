@@ -18,7 +18,8 @@
 #include <cstdlib>
 
 using namespace jasperengine;
-using namespace jasperengine::titleart;
+
+namespace jasperengine::titleart {
 
 namespace {
 
@@ -235,3 +236,5 @@ bool TitleArtRuntime::readExposed(const std::string& titlePath, std::vector<Titl
     }
     return true;
 }
+
+}  // namespace jasperengine::titleart

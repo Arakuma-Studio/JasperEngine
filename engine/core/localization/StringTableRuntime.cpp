@@ -11,7 +11,7 @@
 #include <cstring>
 #include <numeric>
 
-using namespace jasperengine::l10n;
+namespace jasperengine::l10n {
 
 namespace {
 
@@ -189,3 +189,5 @@ bool StringTable::find(std::string_view key, std::string_view& text, bool* needs
     if (plain) *plain = (lengthAndFlags & FLAG_PLAIN) != 0;
     return true;
 }
+
+}  // namespace jasperengine::l10n

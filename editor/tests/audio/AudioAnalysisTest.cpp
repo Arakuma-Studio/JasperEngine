@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <string>
 
+namespace AudioAnalysisTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -127,3 +129,5 @@ TEST(AudioAnalysis, ForcedMonoPlaysTheMeanOfTheChannels) {
     ASSERT_EQ(played.frames, file.frames);
     for (size_t i = 0; i < played.frames; i++) { ASSERT_FLOAT_EQ(played.samples[i], 0.125f) << i; }
 }
+
+}  // namespace AudioAnalysisTest_cpp

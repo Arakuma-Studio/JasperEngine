@@ -11,6 +11,8 @@
 
 #include <string>
 
+namespace ShaderVariantCollectionTest_cpp {
+
 using namespace jasperengine;
 
 TEST(ShaderKey, PacksTypePropertiesAndCustomId){
@@ -165,3 +167,5 @@ TEST(ShaderVariantCollection, NothingIsWarmedUpWithoutWarmUp){
     EXPECT_EQ(collection.getWarmedUpVariantCount(), 0u);
     EXPECT_FALSE(collection.isWarmedUp());
 }
+
+}  // namespace ShaderVariantCollectionTest_cpp

@@ -67,6 +67,8 @@
 #include <string>
 #include <vector>
 
+namespace VatBakerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::vat;
@@ -2637,3 +2639,5 @@ TEST_F(VatBaker_, AGameObjectBakesAgainAfterBakesPlacementsAndADeleteUndone) {
     // a file source never waits
     EXPECT_FALSE(vatSourceLoading(vatBakerProject(), vatBakerModelSpec("hero.gltf").source));
 }
+
+}  // namespace VatBakerTest_cpp

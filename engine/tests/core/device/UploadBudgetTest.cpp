@@ -12,6 +12,8 @@
 
 #include <vector>
 
+namespace UploadBudgetTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -185,3 +187,5 @@ TEST(UploadBudget, EmptyBacklogCostsNothing){
     EXPECT_EQ(SokolCmdQueue::select_commands(backlog, 8 * kUploadMB, run), 0u);
     EXPECT_TRUE(run.empty());
 }
+
+}  // namespace UploadBudgetTest_cpp

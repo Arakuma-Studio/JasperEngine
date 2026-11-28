@@ -22,6 +22,8 @@
 #include <string>
 #include <thread>
 
+namespace SaveGameLuaTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::test::TestTempDir;
 namespace fs = std::filesystem;
@@ -234,3 +236,5 @@ TEST_F(SaveGameLua, SlotNameErrorSuggests){
     )";
     ASSERT_EQ(runSaveLua(lua), "");
 }
+
+}  // namespace SaveGameLuaTest_cpp

@@ -16,7 +16,6 @@
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
-using namespace jasperengine::vat;
 using jasperengine::editor::FileUtils;
 using Json = nlohmann::json;
 
@@ -169,12 +168,12 @@ VatImportResult importVat(const VatImportSpec& spec){
     if (!result.ok()) return result;
 
     // the recipe: every file read, hashed, so Rebake can tell when the export changed
-    VatData& data = result.data;
+    jasperengine::vat::VatData& data = result.data;
     data.guid = newGuid();
-    VatRecipeSource source;
+    jasperengine::vat::VatRecipeSource source;
     source.kind = importKindName(detection.kind);
     source.path = recipePath(spec.path, spec.projectRoot);
-    for (const VatClip& clip : data.clips) source.clips.push_back(clip.name);
+    for (const jasperengine::vat::VatClip& clip : data.clips) source.clips.push_back(clip.name);
     std::vector<std::string> files = result.filesRead;
     std::sort(files.begin(), files.end());
     files.erase(std::unique(files.begin(), files.end()), files.end());
@@ -183,7 +182,7 @@ VatImportResult importVat(const VatImportSpec& spec){
         if (!hash.empty()) source.hashes.push_back({recipePath(file, spec.projectRoot), hash});
     }
     std::sort(source.hashes.begin(), source.hashes.end());
-    data.recipe = VatRecipe();
+    data.recipe = jasperengine::vat::VatRecipe();
     data.recipe.sources.push_back(source);
     data.recipe.mode = spec.mode;
     data.recipe.fps = result.report.fps > 0.0f ? result.report.fps : (data.clips.empty() ? 30.0f : data.clips.front().fps);
@@ -195,7 +194,7 @@ VatImportResult importVat(const VatImportSpec& spec){
     return result;
 }
 
-bool importSpecFromRecipe(const VatRecipe& recipe, const std::string& projectRoot, VatImportSpec& spec, std::string& error){
+bool importSpecFromRecipe(const jasperengine::vat::VatRecipe& recipe, const std::string& projectRoot, VatImportSpec& spec, std::string& error){
     if (recipe.sources.empty() || (recipe.sources[0].kind != "houdini_vat3" && recipe.sources[0].kind != "openvat")){
         error = "the recipe is not an import's (houdini_vat3 or openvat)";
         return false;

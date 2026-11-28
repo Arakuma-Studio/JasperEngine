@@ -44,6 +44,8 @@
 #include <utility>
 #include <vector>
 
+namespace ParticlesPixelGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 using namespace jasperengine::particles;
@@ -633,3 +635,5 @@ TEST_F(ParticlesPixelGpu, PresetSubEmittersDraw){
     EXPECT_GT(withSmoke, flames + 10) << "the smoke draws: " << withSmoke << " pixels against the flames' " << flames;
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace ParticlesPixelGpuTest_cpp

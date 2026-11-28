@@ -28,7 +28,6 @@
 #include <mutex>
 
 using namespace jasperengine;
-using namespace jasperengine::diag;
 
 namespace je_user_report {
 
@@ -42,9 +41,9 @@ namespace je_user_report {
 
     struct UserReportState {
         Phase phase = Phase::Idle;
-        userreport::Callback callback;
-        int maxWidth = userreport::kDefaultMaxWidth;
-        size_t maxBytes = userreport::kDefaultMaxBytes;
+        diag::userreport::Callback callback;
+        int maxWidth = diag::userreport::kDefaultMaxWidth;
+        size_t maxBytes = diag::userreport::kDefaultMaxBytes;
         int framesTried = 0;
         bool idleAtFrameStart = true;
         // a new capture, a cancel or a reset makes an encode still running stale
@@ -144,7 +143,7 @@ namespace je_user_report {
         s.error = std::move(error);
     }
 
-    void applyEncoded(UserReportState& s, userreport::Encoded&& encoded) {
+    void applyEncoded(UserReportState& s, diag::userreport::Encoded&& encoded) {
         if (encoded.jpeg.empty()) {
             finish(s, {}, encoded.error.empty() ? std::string("screenshot_too_large") : encoded.error);
             return;
@@ -161,15 +160,15 @@ namespace je_user_report {
     }
 
     // The content of a report: what needs the main thread (the draft, the device) gathered now
-    crash::UserReportContent contentOf(const userreport::Options& options) {
+    diag::crash::UserReportContent contentOf(const diag::userreport::Options& options) {
         UserReportState& s = userReportState();
-        crash::UserReportContent content;
+        diag::crash::UserReportContent content;
         content.note = options.note;
         content.category = options.category.empty() ? std::string("other") : options.category;
         content.fields = options.fields;
-        content.deviceJson = userreport::deviceJson();
-        content.journal = journal::text();
-        if (options.logTail.value_or(crash::detail::state().includeLogTail)) content.logTail = crash::ringContents();
+        content.deviceJson = diag::userreport::deviceJson();
+        content.journal = diag::journal::text();
+        if (options.logTail.value_or(diag::crash::detail::state().includeLogTail)) content.logTail = diag::crash::ringContents();
         if (options.screenshot && s.draft) content.screenshotJpeg = s.jpeg;
         // the report ends the draft (and a capture still running for it)
         s.generation++;
@@ -182,9 +181,9 @@ namespace je_user_report {
         return content;
     }
 
-    void noteCreated(const crash::ReportInfo& report) {
-        const journal::Field fields[] = {{"id", std::string_view(report.id)}};
-        journal::logEngine("engine.user_report", fields);
+    void noteCreated(const diag::crash::ReportInfo& report) {
+        const diag::journal::Field fields[] = {{"id", std::string_view(report.id)}};
+        diag::journal::logEngine("engine.user_report", fields);
         Logger::write(LogLevel::Info, logCategoryEngine(), "User report: " + report.id + " (" + report.reason + ")");
     }
 
@@ -193,16 +192,15 @@ namespace je_user_report {
 namespace jasperengine::diag::userreport {
 
     // inside this namespace only: a unity build's next source must not see je_user_report's names
-    using namespace je_user_report;
 
     void begin(Callback fn, int maxWidth, size_t maxBytes) {
-        UserReportState& s = userReportState();
-        if (s.phase == Phase::Capturing || s.phase == Phase::EncodePending || s.phase == Phase::Encoding) {
+        je_user_report::UserReportState& s = je_user_report::userReportState();
+        if (s.phase == je_user_report::Phase::Capturing || s.phase == je_user_report::Phase::EncodePending || s.phase == je_user_report::Phase::Encoding) {
             s.callback = std::move(fn);
             return;
         }
         s.generation++;
-        s.phase = Phase::Capturing;
+        s.phase = je_user_report::Phase::Capturing;
         s.callback = std::move(fn);
         s.maxWidth = maxWidth > 0 ? maxWidth : kDefaultMaxWidth;
         s.maxBytes = maxBytes > 0 ? maxBytes : kDefaultMaxBytes;
@@ -214,9 +212,9 @@ namespace jasperengine::diag::userreport {
     }
 
     void cancel() {
-        UserReportState& s = userReportState();
+        je_user_report::UserReportState& s = je_user_report::userReportState();
         s.generation++;
-        s.phase = Phase::Idle;
+        s.phase = je_user_report::Phase::Idle;
         s.callback = nullptr;
         s.draft = false;
         s.jpeg.clear();
@@ -226,23 +224,23 @@ namespace jasperengine::diag::userreport {
 
     void reset() {
         cancel();
-        createEpoch.fetch_add(1, std::memory_order_relaxed);
+        je_user_report::createEpoch.fetch_add(1, std::memory_order_relaxed);
     }
 
     bool wantsCapture() {
-        return userReportState().phase == Phase::Capturing;
+        return je_user_report::userReportState().phase == je_user_report::Phase::Capturing;
     }
 
     void beforeCaptureFrame() {
-        userReportState().idleAtFrameStart = creationIdle();
+        je_user_report::userReportState().idleAtFrameStart = je_user_report::creationIdle();
     }
 
     void frameDrawn(FrameReader reader) {
-        UserReportState& s = userReportState();
-        if (s.phase != Phase::Capturing) return;
+        je_user_report::UserReportState& s = je_user_report::userReportState();
+        if (s.phase != je_user_report::Phase::Capturing) return;
         // a stand-in or a skipped draw would be in the image: the next frame is read instead
-        if (!s.idleAtFrameStart || !creationIdle()) {
-            if (++s.framesTried >= kMaxCaptureFrames) finish(s, {}, "screenshot_unavailable: shaders still building");
+        if (!s.idleAtFrameStart || !je_user_report::creationIdle()) {
+            if (++s.framesTried >= kMaxCaptureFrames) je_user_report::finish(s, {}, "screenshot_unavailable: shaders still building");
             return;
         }
         std::vector<uint8_t> rgba;
@@ -252,60 +250,60 @@ namespace jasperengine::diag::userreport {
         const bool read = reader && reader(rgba, width, height, error);
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
         if (!read || width <= 0 || height <= 0 || rgba.size() != static_cast<size_t>(width) * height * 4) {
-            finish(s, {}, "screenshot_unavailable: " + (error.empty() ? std::string("the frame could not be read") : error));
+            je_user_report::finish(s, {}, "screenshot_unavailable: " + (error.empty() ? std::string("the frame could not be read") : error));
             return;
         }
         Logger::writef(LogLevel::Info, logCategoryEngine(), nullptr, "User report: captured %dx%d in %.1f ms", width, height, ms);
         if (!jobs::hasSystem() || jobs::system().isSingleThreaded()) {
             // no worker (the web): the frame after the read encodes it on the main thread
-            s.phase = Phase::EncodePending;
+            s.phase = je_user_report::Phase::EncodePending;
             s.pendingRgba = std::move(rgba);
             s.pendingWidth = width;
             s.pendingHeight = height;
             return;
         }
-        s.phase = Phase::Encoding;
+        s.phase = je_user_report::Phase::Encoding;
         const uint64_t generation = s.generation;
         const int maxWidth = s.maxWidth;
         const size_t maxBytes = s.maxBytes;
         jobs::enqueueDetached([pixels = std::move(rgba), width, height, maxWidth, maxBytes, generation]() mutable {
             Encoded encoded = encode(std::move(pixels), width, height, maxWidth, maxBytes);
             jobs::postToMain([encoded = std::move(encoded), generation]() mutable {
-                UserReportState& current = userReportState();
-                if (current.generation != generation || current.phase != Phase::Encoding) return;
-                applyEncoded(current, std::move(encoded));
+                je_user_report::UserReportState& current = je_user_report::userReportState();
+                if (current.generation != generation || current.phase != je_user_report::Phase::Encoding) return;
+                je_user_report::applyEncoded(current, std::move(encoded));
             });
         }, jobs::Lane::Normal, "user-report-encode");
     }
 
     void update() {
-        UserReportState& s = userReportState();
-        if (s.phase == Phase::EncodePending) {
+        je_user_report::UserReportState& s = je_user_report::userReportState();
+        if (s.phase == je_user_report::Phase::EncodePending) {
             Encoded encoded = encode(std::move(s.pendingRgba), s.pendingWidth, s.pendingHeight, s.maxWidth, s.maxBytes);
             s.pendingRgba.clear();
-            applyEncoded(s, std::move(encoded));
+            je_user_report::applyEncoded(s, std::move(encoded));
             // the callback waits for the next frame, as it does after a job
             return;
         }
-        if (s.phase != Phase::Finished) return;
-        s.phase = Phase::Idle;
+        if (s.phase != je_user_report::Phase::Finished) return;
+        s.phase = je_user_report::Phase::Idle;
         Callback callback = std::move(s.callback);
         s.callback = nullptr;
         if (callback) callback(!s.jpeg.empty(), s.error);
     }
 
     bool hasDraft() {
-        return userReportState().draft;
+        return je_user_report::userReportState().draft;
     }
 
     bool draftHasScreenshot() {
-        return userReportState().draft && !userReportState().jpeg.empty();
+        return je_user_report::userReportState().draft && !je_user_report::userReportState().jpeg.empty();
     }
 
     std::string validate(const Options& options) {
         if (options.note.empty()) return "invalid_note: the note is empty";
         if (options.note.size() > kMaxNoteBytes) return "invalid_note: the note is over 4000 bytes";
-        if (!validCategory(options.category)) return "invalid_category: \"" + options.category + "\" is not [a-z0-9_]{1,32}";
+        if (!je_user_report::validCategory(options.category)) return "invalid_category: \"" + options.category + "\" is not [a-z0-9_]{1,32}";
         if (options.fields.size() > kMaxFields) return "invalid_fields: at most 16 fields";
         return {};
     }
@@ -313,8 +311,8 @@ namespace jasperengine::diag::userreport {
     std::optional<crash::ReportInfo> create(const Options& options, std::string& error) {
         error = validate(options);
         if (!error.empty()) return std::nullopt;
-        std::optional<crash::ReportInfo> report = crash::writeUserReport(contentOf(options), error);
-        if (report) noteCreated(*report);
+        std::optional<crash::ReportInfo> report = crash::writeUserReport(je_user_report::contentOf(options), error);
+        if (report) je_user_report::noteCreated(*report);
         return report;
     }
 
@@ -324,14 +322,14 @@ namespace jasperengine::diag::userreport {
             jobs::postToMain([done = std::move(done), error]() { if (done) done(std::nullopt, error); });
             return;
         }
-        const uint64_t epoch = createEpoch.load(std::memory_order_relaxed);
-        jobs::system().ioWriteChannel().submit([content = contentOf(options), done = std::move(done), epoch]() mutable {
+        const uint64_t epoch = je_user_report::createEpoch.load(std::memory_order_relaxed);
+        jobs::system().ioWriteChannel().submit([content = je_user_report::contentOf(options), done = std::move(done), epoch]() mutable {
             std::string writeError;
             std::optional<crash::ReportInfo> report = crash::writeUserReport(content, writeError);
             jobs::postToMain([report = std::move(report), writeError, done = std::move(done), epoch]() {
-                if (report) noteCreated(*report);
+                if (report) je_user_report::noteCreated(*report);
                 // the Lua state behind done is gone after a reset (Play stop)
-                if (createEpoch.load(std::memory_order_relaxed) != epoch || !done) return;
+                if (je_user_report::createEpoch.load(std::memory_order_relaxed) != epoch || !done) return;
                 done(report, writeError);
             });
         });
@@ -375,11 +373,11 @@ namespace jasperengine::diag::userreport {
             return out;
         }
         int w = 0, h = 0;
-        std::vector<uint8_t> rgb = downscale(rgba, width, height, maxWidth, w, h);
+        std::vector<uint8_t> rgb = je_user_report::downscale(rgba, width, height, maxWidth, w, h);
         // the full-size frame is not kept while encoding
         std::vector<uint8_t>().swap(rgba);
         for (int quality : {80, 70, 60, 50, 40}) {
-            std::string jpeg = jpegOf(rgb, w, h, quality);
+            std::string jpeg = je_user_report::jpegOf(rgb, w, h, quality);
             if (!jpeg.empty() && jpeg.size() <= maxBytes) {
                 out.jpeg = std::move(jpeg);
                 out.width = w;
@@ -397,8 +395,8 @@ namespace jasperengine::diag::userreport {
             rgba2[i * 4 + 2] = rgb[i * 3 + 2];
             rgba2[i * 4 + 3] = 255;
         }
-        const std::vector<uint8_t> half = downscale(rgba2, w, h, std::max(1, w / 2), halfWidth, halfHeight);
-        std::string jpeg = jpegOf(half, halfWidth, halfHeight, 40);
+        const std::vector<uint8_t> half = je_user_report::downscale(rgba2, w, h, std::max(1, w / 2), halfWidth, halfHeight);
+        std::string jpeg = je_user_report::jpegOf(half, halfWidth, halfHeight, 40);
         if (!jpeg.empty() && jpeg.size() <= maxBytes) {
             out.jpeg = std::move(jpeg);
             out.width = halfWidth;
@@ -411,7 +409,7 @@ namespace jasperengine::diag::userreport {
     }
 
     void setCreationIdleProbeForTesting(bool (*probe)()) {
-        creationIdleProbe = probe;
+        je_user_report::creationIdleProbe = probe;
     }
 
 }

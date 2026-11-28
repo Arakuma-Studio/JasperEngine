@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+namespace WriteFilesCmdTest_cpp {
+
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
@@ -139,3 +141,5 @@ TEST(WriteFilesCmd, AFailedWriteRestoresWhatTheCommandWrote){
     EXPECT_EQ(notified, 0);
     EXPECT_FALSE(history.canUndo());
 }
+
+}  // namespace WriteFilesCmdTest_cpp

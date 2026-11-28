@@ -12,6 +12,8 @@
 #include <set>
 #include <vector>
 
+namespace PipelineStateTest_cpp {
+
 using namespace jasperengine;
 
 TEST(PipelineState, Defaults){
@@ -97,3 +99,5 @@ TEST(PipelineState, TargetFormatForThePipelineTypes){
     EXPECT_EQ(post.color, ColorFormat::SRGB8A8);
     EXPECT_EQ(post.depth, DepthStencilFormat::NONE);
 }
+
+}  // namespace PipelineStateTest_cpp

@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+namespace ShaderDataSerializerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -215,3 +217,5 @@ TEST(ShaderDataSerializer, HlslBytecodeRoundTrips){
         EXPECT_EQ(std::memcmp(stage.bytecode.data, "DXBC", 4), 0);
     }
 }
+
+}  // namespace ShaderDataSerializerTest_cpp

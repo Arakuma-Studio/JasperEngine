@@ -8,6 +8,8 @@
 #include <set>
 #include <string>
 
+namespace AssetTypeTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -51,3 +53,5 @@ TEST_F(AssetTypeTest, NamesRoundTripEveryValue) {
     EXPECT_EQ(assetTypeFromName("fog_profile"), AssetType::FogProfile);
     EXPECT_EQ(assetTypeFromName("nothing"), AssetType::Unknown);
 }
+
+}  // namespace AssetTypeTest_cpp

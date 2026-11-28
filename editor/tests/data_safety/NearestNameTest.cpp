@@ -7,6 +7,8 @@
 
 #include <vector>
 
+namespace NearestNameTest_cpp {
+
 using namespace jasperengine;
 
 TEST(NearestName, SuggestsWithinTwoEdits){
@@ -34,3 +36,5 @@ TEST(NearestName, IdentifierFoldsCaseAndUnderscores){
     EXPECT_EQ(NearestIdentifierSuffix("includeDocs", keys), " (did you mean 'include_docs'?)");
     EXPECT_EQ(NearestIdentifierSuffix("zzz", keys), "");
 }
+
+}  // namespace NearestNameTest_cpp

@@ -9,6 +9,8 @@
 
 #include <string>
 
+namespace StoreLimitsTest_cpp {
+
 using namespace jasperengine::editor::publish;
 
 namespace {
@@ -105,3 +107,5 @@ TEST(StoreLimits, CountsCodePointsNotBytes) {
     for (int i = 0; i < 12; i++) input.label += "\xE3\x83\xBC";
     EXPECT_FALSE(has(checkStoreLimits(input), "W-LABEL-TRUNCATED"));
 }
+
+}  // namespace StoreLimitsTest_cpp

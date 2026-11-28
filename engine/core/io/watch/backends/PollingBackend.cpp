@@ -24,7 +24,8 @@
 #include <unordered_map>
 
 using namespace jasperengine;
-using namespace jasperengine::watch;
+
+namespace jasperengine::watch {
 
 namespace fs = std::filesystem;
 
@@ -71,11 +72,13 @@ namespace {
 
 }
 
-void jasperengine::watch::setPollingScanHookForTesting(std::function<void()> hook) {
+void setPollingScanHookForTesting(std::function<void()> hook) {
     std::lock_guard<std::mutex> lock(pollingScanHookMutex);
     pollingScanHooked = static_cast<bool>(hook);
     pollingScanHook = std::move(hook);
 }
+
+}  // namespace jasperengine::watch
 
 namespace jasperengine::watch {
 
@@ -128,6 +131,8 @@ namespace jasperengine::watch {
     };
 
 }
+
+namespace jasperengine::watch {
 
 bool PollingBackend::start(const fs::path& rootIn, WatchSink& sinkIn, std::string& error) {
     stop();
@@ -464,6 +469,8 @@ void PollingBackend::injectOverflowForTesting() {
     sink->onRawEvents(std::move(events));
 }
 
-std::unique_ptr<FileWatcher> jasperengine::watch::createPollingBackend(std::chrono::milliseconds interval, std::optional<ProjectFileIndex> baseline) {
+std::unique_ptr<FileWatcher> createPollingBackend(std::chrono::milliseconds interval, std::optional<ProjectFileIndex> baseline) {
     return std::make_unique<PollingBackend>(interval, std::move(baseline));
 }
+
+}  // namespace jasperengine::watch

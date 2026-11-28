@@ -21,6 +21,8 @@
 #include <utility>
 #include <vector>
 
+namespace SpriteRotateTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
 
@@ -332,3 +334,5 @@ TEST(SpriteRotate, ScalersHonourTheEqualityTheyAreGiven) {
     EXPECT_EQ(strict[static_cast<size_t>(2 * 4 + 2)], 3);
     EXPECT_NE(tolerant[static_cast<size_t>(2 * 4 + 2)], 3);
 }
+
+}  // namespace SpriteRotateTest_cpp

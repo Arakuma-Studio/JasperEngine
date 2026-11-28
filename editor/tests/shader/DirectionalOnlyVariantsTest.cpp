@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+namespace DirectionalOnlyVariantsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -244,3 +246,5 @@ TEST_F(DirectionalOnlyVariantKeys, AreaLightsAndIesProfilesShipTheirVariants){
         EXPECT_EQ(areaLightsVariantsWith(scene, "USE_IES"), 0u);
     }
 }
+
+}  // namespace DirectionalOnlyVariantsTest_cpp

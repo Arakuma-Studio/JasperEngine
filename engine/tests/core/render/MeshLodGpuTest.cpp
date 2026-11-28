@@ -32,6 +32,8 @@
 #include <cstring>
 #include <fstream>
 
+namespace MeshLodGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -628,3 +630,5 @@ TEST_F(LodFadeGpu, ALevelChangeSnapsUntilItsFadeVariantIsBuilt){
     EXPECT_EQ(render().getLodStats().fadeDraws, 2u);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace MeshLodGpuTest_cpp

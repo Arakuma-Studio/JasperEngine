@@ -17,6 +17,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace CrashGroupsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::test;
@@ -103,3 +105,5 @@ TEST(CrashGroups, MatchesTheSharedFixtures) {
         EXPECT_EQ(crashgroups::shortName(pair[0].get<std::string>()), pair[1].get<std::string>()) << pair[0];
     }
 }
+
+}  // namespace CrashGroupsTest_cpp

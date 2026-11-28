@@ -13,6 +13,8 @@
 #include <cfloat>
 #include <cmath>
 
+namespace SurfacePlacementTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -81,3 +83,5 @@ TEST(SurfacePlacement, NoBoundsLandsTheOrigin){
     sceneview::restOnSurface(Vector3(1, 2, 3), Vector3(0, 1, 0), AABB(), Vector3(1, 1, 1), Quaternion(), false, position, rotation);
     EXPECT_NEAR((position - Vector3(1, 2, 3)).length(), 0.0f, 1e-6f);
 }
+
+}  // namespace SurfacePlacementTest_cpp

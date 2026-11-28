@@ -31,6 +31,8 @@
 #include <cstring>
 #include <memory>
 
+namespace AnimatorSystemTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::anim;
 using namespace animatortest;
@@ -758,3 +760,5 @@ TEST_F(AnimatorSystemTest, PreviewPicksUpAnEditedController){
     EXPECT_EQ(instance().controller->layers.size(), 2u) << "the edited controller";
     EXPECT_EQ(instance().layers.size(), 2u);
 }
+
+}  // namespace AnimatorSystemTest_cpp

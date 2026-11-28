@@ -9,6 +9,8 @@
 
 #include <cmath>
 
+namespace QuaternionTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -189,3 +191,5 @@ TEST(Quaternion, LookRotationWithForwardAlongUpStillLooksForward){
     const Quaternion q = Quaternion::lookRotation(Vector3::UNIT_Y, Vector3::UNIT_Y);
     EXPECT_VEC_NEAR(q * Vector3::UNIT_Z, Vector3::UNIT_Y, quatTolerance);
 }
+
+}  // namespace QuaternionTest_cpp

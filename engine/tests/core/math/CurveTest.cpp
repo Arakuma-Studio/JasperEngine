@@ -18,6 +18,8 @@
 #include <cmath>
 #include <cstdio>
 
+namespace CurveTest_cpp {
+
 using namespace jasperengine;
 using particles::CurveMode;
 using particles::GradientValueMode;
@@ -425,3 +427,5 @@ TEST(MinMaxGradient, FourModes) {
         EXPECT_NEAR(at0.y, r, 1e-6f);
     }
 }
+
+}  // namespace CurveTest_cpp

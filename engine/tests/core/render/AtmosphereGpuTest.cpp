@@ -41,6 +41,8 @@
 #include <memory>
 #include <vector>
 
+namespace AtmosphereGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -1094,3 +1096,5 @@ TEST_F(AtmosphereFogLightGpu, PointLightShadowedInTheFog){
     ASSERT_NO_FATAL_FAILURE(checkRoom(room, "fog_point_shadowed"));
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace AtmosphereGpuTest_cpp

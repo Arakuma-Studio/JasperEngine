@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+namespace CurveFieldPerfTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -106,3 +108,5 @@ TEST(CurveFieldPerf, AChangedCurveRedraws) {
     gui.frame(curves);
     EXPECT_EQ(gui.frame(curves), straight);
 }
+
+}  // namespace CurveFieldPerfTest_cpp

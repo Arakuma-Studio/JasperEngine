@@ -6,9 +6,10 @@
 #include "player/ContentManifest.h"
 
 using namespace jasperengine;
-using namespace jasperengine::player;
 
-std::optional<DevelopmentContent> player::readDevelopmentContent(const std::string& folder, bool contentGiven, const std::string& runningPlayerId,
+namespace jasperengine::player {
+
+std::optional<DevelopmentContent> readDevelopmentContent(const std::string& folder, bool contentGiven, const std::string& runningPlayerId,
                                                                  const std::function<std::string()>& packagedPlayerSha256,
                                                                  const DevelopmentContentAccess& access) {
     if (contentGiven || folder.empty()) return std::nullopt;
@@ -26,3 +27,5 @@ std::optional<DevelopmentContent> player::readDevelopmentContent(const std::stri
     if (manifest.playerSha256 != packagedPlayerSha256()) return another();
     return DevelopmentContent{folder, manifest.patch};
 }
+
+}  // namespace jasperengine::player

@@ -18,6 +18,8 @@
 #include <filesystem>
 #include <memory>
 
+namespace SetAssetMetaCmdTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -103,3 +105,5 @@ TEST(SetAssetMetaCmd, TextureAndModelAppliesBothRecook){
     models.attach(nullptr);
     closeProject(*project);
 }
+
+}  // namespace SetAssetMetaCmdTest_cpp

@@ -17,13 +17,14 @@
 #include <fstream>
 #include <sstream>
 
+namespace reflect_locators_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
 // (a named namespace, tests included: a unity build merges the test sources)
-namespace reflect_locators_test {
 
     struct Visit {
         std::string locator;

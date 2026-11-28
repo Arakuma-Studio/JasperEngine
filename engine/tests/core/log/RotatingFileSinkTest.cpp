@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <string>
 
+namespace RotatingFileSinkTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -86,3 +88,5 @@ TEST(FileSinkTest, RotationFailureKeepsAppending) {
         EXPECT_NE(text.find("] line " + std::to_string(i) + "\n"), std::string::npos) << "line " << i << " lost";
     }
 }
+
+}  // namespace RotatingFileSinkTest_cpp

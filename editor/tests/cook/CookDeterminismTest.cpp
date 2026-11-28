@@ -29,6 +29,8 @@
 #include <string>
 #include <vector>
 
+namespace CookDeterminismTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -142,3 +144,5 @@ TEST(CookDeterminism, ATextShipsNoFontAtlas) {
     ASSERT_TRUE(CookedSceneLoader::loadScene(&loaded, std::span<const uint8_t>(bytes.data(), bytes.size()), &error)) << error;
     EXPECT_EQ(loaded.getComponent<UIComponent>(text).texture.getMinFilter(), TextureFilter::NEAREST);
 }
+
+}  // namespace CookDeterminismTest_cpp

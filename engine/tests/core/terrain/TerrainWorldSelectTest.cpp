@@ -13,6 +13,8 @@
 #include <map>
 #include <random>
 
+namespace TerrainWorldSelectTest_cpp {
+
 using namespace terrainworldtest;
 
 namespace {
@@ -260,3 +262,5 @@ TEST(TerrainWorldSelect, OccupancyCountsAndBounds) {
     EXPECT_EQ(occupancy.minMax(9, -256, -256).max, 20);
     EXPECT_EQ(occupancy.presentTiles().size(), 2u);
 }
+
+}  // namespace TerrainWorldSelectTest_cpp

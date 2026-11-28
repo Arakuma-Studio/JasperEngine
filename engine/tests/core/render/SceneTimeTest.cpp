@@ -14,6 +14,8 @@
 
 #include <limits>
 
+namespace SceneTimeTest_cpp {
+
 using namespace jasperengine;
 
 TEST(SceneTime, AdvancesByTheDelta){
@@ -59,3 +61,5 @@ TEST(SceneTime, PinnedShaderTimeOverrides){
     scene.setSceneTime(10.0);
     EXPECT_DOUBLE_EQ(scene.getSceneTime(), 10.0);
 }
+
+}  // namespace SceneTimeTest_cpp

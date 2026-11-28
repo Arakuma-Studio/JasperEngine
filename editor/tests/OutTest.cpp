@@ -7,6 +7,8 @@
 
 #include <thread>
 
+namespace OutTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -61,3 +63,5 @@ TEST(Out, ClearKeepsCursors) {
     ASSERT_EQ(logs.size(), 1u);
     EXPECT_GT(logs[0].id, cursor);
 }
+
+}  // namespace OutTest_cpp

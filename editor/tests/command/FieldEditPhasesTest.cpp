@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+namespace FieldEditPhasesTest_cpp {
+
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
@@ -88,3 +90,5 @@ TEST(FieldEditPhases, RetargetCommitsThePreviousSession) {
     EXPECT_EQ(handled, &history);
     ui::setBeginEditHandler(nullptr);
 }
+
+}  // namespace FieldEditPhasesTest_cpp

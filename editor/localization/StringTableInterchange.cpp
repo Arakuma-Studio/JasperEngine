@@ -11,10 +11,12 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::l10n;
+
+namespace jasperengine::editor::l10n {
+
 namespace fs = std::filesystem;
 
-std::vector<StringsNote> editor::l10n::importStrings(StringTableSet& set, const StringsFile& file, bool addLanguages, int& changed) {
+std::vector<StringsNote> importStrings(StringTableSet& set, const StringsFile& file, bool addLanguages, int& changed) {
     std::vector<StringsNote> notes;
     notes.insert(notes.end(), file.notes.begin(), file.notes.end());
     for (const StringRow& row : file.rows) {
@@ -63,7 +65,7 @@ std::vector<StringsNote> editor::l10n::importStrings(StringTableSet& set, const 
     return notes;
 }
 
-StringsExportDoc editor::l10n::exportDocOf(const StringTableSet& set, const std::vector<std::string>& languages) {
+StringsExportDoc exportDocOf(const StringTableSet& set, const std::vector<std::string>& languages) {
     StringsExportDoc doc;
     doc.file = set.ownerRelative;
     doc.sourceLanguage = set.table.sourceLanguage;
@@ -106,7 +108,7 @@ namespace {
 
 }
 
-bool editor::l10n::extractText(StringTableSet& set, std::string& html, const std::string& text, std::string& key, std::string& error) {
+bool extractText(StringTableSet& set, std::string& html, const std::string& text, std::string& key, std::string& error) {
     std::string needle = text;
     while (!needle.empty() && std::isspace(static_cast<unsigned char>(needle.back()))) needle.pop_back();
     while (!needle.empty() && std::isspace(static_cast<unsigned char>(needle.front()))) needle.erase(0, 1);
@@ -142,3 +144,5 @@ bool editor::l10n::extractText(StringTableSet& set, std::string& html, const std
     html.insert(insertAt, " data-l10n-id=\"" + key + "\"");
     return true;
 }
+
+}  // namespace jasperengine::editor::l10n

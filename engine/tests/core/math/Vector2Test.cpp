@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+namespace Vector2Test_cpp {
+
 using namespace jasperengine;
 
 TEST(Vector2, DefaultsToZero){
@@ -114,3 +116,5 @@ TEST(Vector2, MoveTowardsAndLerp){
     EXPECT_EQ(from.lerp(to, -1.0f), from);
     EXPECT_EQ(from.lerpUnclamped(to, 2.0f), Vector2(6, 8));
 }
+
+}  // namespace Vector2Test_cpp

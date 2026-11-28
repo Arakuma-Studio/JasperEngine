@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+namespace TilemapBrushTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -670,3 +672,5 @@ TEST_F(TilemapBrushProjectTest, HundredThousandCellFloodPatchIsCounted) {
         EXPECT_LT(ms, 20.0 * slack);
     }
 }
+
+}  // namespace TilemapBrushTest_cpp

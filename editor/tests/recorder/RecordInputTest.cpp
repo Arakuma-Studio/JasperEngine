@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+namespace RecordInputTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::recordinput;
@@ -169,3 +171,5 @@ TEST(InputRecordingWrite, FailedWriteKeepsTheBuffer) {
     EXPECT_EQ(script.header.kind, input::ScriptKind::Recording);
     EXPECT_EQ(script.events, 2u);
 }
+
+}  // namespace RecordInputTest_cpp

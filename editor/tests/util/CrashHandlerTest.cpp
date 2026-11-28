@@ -22,6 +22,8 @@
     extern char** environ;
 #endif
 
+namespace CrashHandlerTest_cpp {
+
 using namespace jasperengine::test;
 
 namespace {
@@ -79,3 +81,5 @@ TEST(LoggerCrashFlushTest, CrashInsideASinkReportsTheTailLost) {
     EXPECT_NE(text.find("log tail incomplete: "), std::string::npos) << text.substr(text.size() > 2000 ? text.size() - 2000 : 0);
     EXPECT_NE(text.find("FATAL: "), std::string::npos);
 }
+
+}  // namespace CrashHandlerTest_cpp

@@ -7,6 +7,8 @@
 
 #include <cstdio>
 
+namespace PixelFxKeyTest_cpp {
+
 using namespace jasperengine::pixelart;
 
 // Pinned against an independent 32-bit PCG2D: the shader (includes/pixel_fx.glsl) uses the same
@@ -118,3 +120,5 @@ TEST(PixelFxKey, DissolveEnds){
     EXPECT_GT(pfxDissolveTexel(3, 3, 16, 24, dissolve, 0.0f), 0.0f);
     EXPECT_LT(pfxDissolveTexel(3, 3, 16, 24, dissolve, 1.0f), 0.0f);
 }
+
+}  // namespace PixelFxKeyTest_cpp

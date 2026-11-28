@@ -24,6 +24,8 @@
 #include <iterator>
 #include "support/PosixCompat.h"
 
+namespace PsdWriterTest_cpp {
+
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::psd;
 namespace fs = std::filesystem;
@@ -385,3 +387,5 @@ TEST(PsdWriter, PsdReadAccepts) {
     }
     fs::remove_all(dir);
 }
+
+}  // namespace PsdWriterTest_cpp

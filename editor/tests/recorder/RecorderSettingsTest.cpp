@@ -12,6 +12,8 @@
 
 #include <algorithm>
 
+namespace RecorderSettingsTest_cpp {
+
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::recorder;
 using jasperengine::test::TestTempDir;
@@ -251,3 +253,5 @@ TEST(RecorderSettings, Persist) {
     ASSERT_TRUE(load(dir.path() / "none.yaml", defaults, error));
     EXPECT_TRUE(defaults == Settings());
 }
+
+}  // namespace RecorderSettingsTest_cpp

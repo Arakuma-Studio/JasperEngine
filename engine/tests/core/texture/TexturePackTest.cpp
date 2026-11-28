@@ -16,6 +16,8 @@
 #include <cstdio>
 #include <vector>
 
+namespace TexturePackTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -125,3 +127,5 @@ TEST(TexturePackBench, TwoMaps2048OnOneWorker){
         EXPECT_LE(best, 40.0 * slack);
     }
 }
+
+}  // namespace TexturePackTest_cpp

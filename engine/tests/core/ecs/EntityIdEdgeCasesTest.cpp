@@ -18,6 +18,8 @@
 #include <utility>
 #include <vector>
 
+namespace EntityIdEdgeCasesTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -275,3 +277,5 @@ TEST(EntityIdEdgeCases, RandomizedAgainstAReferenceMap){
     static_assert(!std::is_copy_constructible_v<EntityManager>, "EntityManager is not copyable");
     static_assert(!std::is_move_constructible_v<EntityManager>, "nor movable (it owns its pages)");
 }
+
+}  // namespace EntityIdEdgeCasesTest_cpp

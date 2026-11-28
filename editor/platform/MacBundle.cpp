@@ -17,10 +17,12 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::platform;
+
+namespace jasperengine::editor::platform {
+
 namespace fs = std::filesystem;
 
-std::string platform::infoPlist(const MacBundleSettings& s) {
+std::string infoPlist(const MacBundleSettings& s) {
     auto entry = [](const std::string& key, const std::string& value) {
         return "\t<key>" + key + "</key>\n\t<string>" + Exporter::escapeXml(value) + "</string>\n";
     };
@@ -45,7 +47,7 @@ std::string platform::infoPlist(const MacBundleSettings& s) {
     return plist;
 }
 
-bool platform::writeIcns(const fs::path& png, std::vector<uint8_t>& icns, std::string& error) {
+bool writeIcns(const fs::path& png, std::vector<uint8_t>& icns, std::string& error) {
     int width = 0, height = 0, channels = 0;
     unsigned char* pixels = stbi_load(png.string().c_str(), &width, &height, &channels, 4);
     if (!pixels) {
@@ -78,7 +80,7 @@ bool platform::writeIcns(const fs::path& png, std::vector<uint8_t>& icns, std::s
     return true;
 }
 
-bool platform::finishMacBundle(const fs::path& bundle, const MacBundleSettings& settings, std::vector<BuildWarning>& warnings,
+bool finishMacBundle(const fs::path& bundle, const MacBundleSettings& settings, std::vector<BuildWarning>& warnings,
                                std::string& error) {
     std::error_code ec;
     const fs::path macos = bundle / "Contents" / "MacOS";
@@ -148,3 +150,5 @@ bool platform::finishMacBundle(const fs::path& bundle, const MacBundleSettings& 
                                           "install rcodesign"});
     return true;
 }
+
+}  // namespace jasperengine::editor::platform

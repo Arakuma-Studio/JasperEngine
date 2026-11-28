@@ -55,6 +55,8 @@
 #include <sstream>
 #include <thread>
 
+namespace asset_AssetIdentityTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -1321,3 +1323,5 @@ TEST(AssetIdentityLinks, NoLinksChangeNothing) {
     // (what a real copy does is in OneFileIsNeverACopy; the cache keeps the format it had)
     EXPECT_TRUE(fs::is_regular_file(p.project / ".jasperengine" / "assetdb" / "index.json"));
 }
+
+}  // namespace asset_AssetIdentityTest_cpp

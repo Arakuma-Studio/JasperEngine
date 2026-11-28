@@ -37,7 +37,7 @@ namespace {
         return value.substr(start, end - start);
     }
 
-    std::string lower(std::string value){
+    std::string inputFormatLower(std::string value){
         for (char& c : value) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         return value;
     }
@@ -171,7 +171,7 @@ namespace {
     bool readGamepad(const Json& j, int& out, const std::string& where, std::string& error){
         if (!j.contains("gamepad")) return true;
         const Json& value = j["gamepad"];
-        if (value.is_string() && lower(value.get<std::string>()) == "any"){
+        if (value.is_string() && inputFormatLower(value.get<std::string>()) == "any"){
             out = -1;
             return true;
         }
@@ -233,7 +233,7 @@ namespace {
             error = where + ": kind must be buttons, gamepad_axis, mouse_delta or binding";
             return false;
         }
-        const std::string kind = lower(j["kind"].get<std::string>());
+        const std::string kind = inputFormatLower(j["kind"].get<std::string>());
         if (kind == "buttons" || kind == "button" || kind == "key") out = InputManagerFormat::makeBinding(InputManagerBindingKind::Buttons);
         else if (kind == "gamepad_axis" || kind == "joystick_axis") out = InputManagerFormat::makeBinding(InputManagerBindingKind::GamepadAxis);
         else if (kind == "mouse_delta" || kind == "mouse_movement") out = InputManagerFormat::makeBinding(InputManagerBindingKind::MouseDelta);
@@ -280,7 +280,7 @@ namespace {
             if (!readGamepad(j, out.gamepad, where, error)) return false;
         }else{
             if (!checkKeys(j, {"kind", "axis", "sensitivity", "invert", "gravity", "dead", "snap"}, where, error)) return false;
-            const std::string axis = j.contains("axis") && j["axis"].is_string() ? lower(j["axis"].get<std::string>()) : "";
+            const std::string axis = j.contains("axis") && j["axis"].is_string() ? inputFormatLower(j["axis"].get<std::string>()) : "";
             if (axis == "x") out.mouseAxis = MouseDeltaAxis::X;
             else if (axis == "y") out.mouseAxis = MouseDeltaAxis::Y;
             else if (axis == "wheel" || axis == "scroll" || axis == "scroll_wheel") out.mouseAxis = MouseDeltaAxis::Wheel;
@@ -310,7 +310,7 @@ namespace {
         const std::string where = "action \"" + out.name + "\"";
         if (!checkKeys(j, {"name", "type", "description", "press_point", "hold_time", "deadzone", "bindings"}, where, error)) return false;
         if (j.contains("type")){
-            const std::string type = j["type"].is_string() ? lower(j["type"].get<std::string>()) : "";
+            const std::string type = j["type"].is_string() ? inputFormatLower(j["type"].get<std::string>()) : "";
             if (type == "axis") out.type = InputManagerActionType::Axis;
             else if (type == "button") out.type = InputManagerActionType::Button;
             else if (type == "vector2") out.type = InputManagerActionType::Vector2;

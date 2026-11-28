@@ -28,6 +28,8 @@
 #include <memory>
 #include <vector>
 
+namespace PhysicsQueries2DTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -253,5 +255,7 @@ TEST_P(PhysicsQueries2DTest, TriggersAndIgnore){
 }
 
 INSTANTIATE_TEST_SUITE_P(PointsPerMeter, PhysicsQueries2DTest, ::testing::Values(64.0f, 1.0f));
+
+}  // namespace PhysicsQueries2DTest_cpp
 
 #endif // JASPERENGINE_PHYSICS_2D

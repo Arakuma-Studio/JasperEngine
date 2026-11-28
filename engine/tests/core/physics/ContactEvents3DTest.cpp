@@ -28,6 +28,8 @@
 #include <tuple>
 #include <vector>
 
+namespace ContactEvents3DTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -189,3 +191,5 @@ TEST_F(ContactEvents3DTest, SettingChangedOnADeliveredContactAppliesFromTheNextS
     EXPECT_GE(touched, 1);
     EXPECT_LT(Rigidbody(scene.get(), faller).getPosition().y, -2.0f) << "the box went through the floor once the contact was a sensor";
 }
+
+}  // namespace ContactEvents3DTest_cpp

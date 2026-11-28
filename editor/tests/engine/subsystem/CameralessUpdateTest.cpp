@@ -20,6 +20,8 @@
 #include "object/Tilemap.h"
 #include "object/ui/Polygon.h"
 
+namespace CameralessUpdateTest_cpp {
+
 using namespace jasperengine;
 
 TEST(CameralessUpdate, TilemapWaitsForACamera) {
@@ -70,3 +72,5 @@ TEST(CameralessUpdate, UIPolygonWaitsForACamera) {
     EXPECT_TRUE(polygon.createPolygon());
     EXPECT_FALSE(polygon.getComponent<PolygonComponent>().needUpdatePolygon);
 }
+
+}  // namespace CameralessUpdateTest_cpp

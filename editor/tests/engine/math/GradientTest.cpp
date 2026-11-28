@@ -21,6 +21,8 @@
 #include <cmath>
 #include <limits>
 
+namespace GradientTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -198,3 +200,5 @@ TEST(GradientTest, CurveYamlRoundTrip){
     EXPECT_TRUE(std::isinf(steps.keys[0].outTangent));
     EXPECT_FLOAT_EQ(steps.evaluate(0.5f), 1.0f);
 }
+
+}  // namespace GradientTest_cpp

@@ -30,6 +30,8 @@
 #include <memory>
 #include <vector>
 
+namespace TilemapColliderSceneTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -332,3 +334,5 @@ TEST_F(TilemapColliderScene, BuildBudgets) {
         EXPECT_LT(firstBuildMs, 120.0 * slack);
     }
 }
+
+}  // namespace TilemapColliderSceneTest_cpp

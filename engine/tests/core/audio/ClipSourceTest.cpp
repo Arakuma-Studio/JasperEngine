@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+namespace ClipSourceTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -364,3 +366,5 @@ TEST(AudioImportTable, ImportTableForceMono){
     EXPECT_NE(SoundPool::key("b.wav", AudioLoadType::DecompressOnLoad).find("#i"), std::string::npos);
     AudioImportTable::clear();
 }
+
+}  // namespace ClipSourceTest_cpp

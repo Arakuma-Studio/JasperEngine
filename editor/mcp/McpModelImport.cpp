@@ -7,7 +7,8 @@
 #include "Project.h"
 
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::mcp;
+
+namespace jasperengine::editor::mcp {
 
 namespace {
     JobPtr trackedImportJob;
@@ -18,7 +19,7 @@ namespace {
     }
 }
 
-JobPtr mcp::syncModelImportJob(McpContext& ctx, bool ensure) {
+JobPtr syncModelImportJob(McpContext& ctx, bool ensure) {
     Project* project = ctx.project();
     if (!project) return nullptr;
     const Project::ModelImportProgress progress = project->getModelImportProgress();
@@ -41,3 +42,5 @@ JobPtr mcp::syncModelImportJob(McpContext& ctx, bool ensure) {
                            std::to_string(progress.done) + "/" + std::to_string(progress.total) + " models imported");
     return trackedImportJob;
 }
+
+}  // namespace jasperengine::editor::mcp

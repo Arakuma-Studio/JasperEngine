@@ -12,6 +12,8 @@
 
 #include <cmath>
 
+namespace CurveEditorOpsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::curveops;
@@ -269,3 +271,5 @@ TEST(CurveEditorOps, SmoothJoinsAKeyAlongItsNeighboursAndSharpenMakesACorner) {
     EXPECT_FLOAT_EQ(middle.inTangent, 0.0f);
     EXPECT_FLOAT_EQ(middle.outTangent, 0.0f);
 }
+
+}  // namespace CurveEditorOpsTest_cpp

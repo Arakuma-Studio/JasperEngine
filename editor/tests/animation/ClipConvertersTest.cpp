@@ -71,6 +71,8 @@
 #include <string>
 #include <vector>
 
+namespace ClipConvertersTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -2045,3 +2047,5 @@ TEST_F(ClipConverters_, ConvertKeepsLegacyRootKeysWithANonUniformScale) {
     EXPECT_NEAR(std::fabs(last.dot(turned)), 1.0f, 1e-4f) << "not rewritten";
     ASSERT_TRUE(history(sceneId)->undo());
 }
+
+}  // namespace ClipConvertersTest_cpp

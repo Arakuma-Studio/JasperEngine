@@ -9,6 +9,8 @@
 #include "ScriptTestHarness.h"
 #include "EngineTestAccess.h"
 
+namespace EngineCanvasTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::scripttest;
 
@@ -92,3 +94,5 @@ TEST_F(EngineCanvasTest, WithoutAScreenInitSeesThePreferredSizeAndTheChangeComes
     SystemTestAccess::swap(previous);
     EXPECT_EQ(takeLog(), "canvas2400x1080 update");
 }
+
+}  // namespace EngineCanvasTest_cpp

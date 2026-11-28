@@ -9,7 +9,8 @@
 #include <ctime>
 
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::hub;
+
+namespace jasperengine::editor::hub {
 
 namespace fs = std::filesystem;
 
@@ -176,3 +177,5 @@ std::string recent::openedAgo(const std::string& lastOpened, std::chrono::system
     if (seconds < 86400 * 365) return plural(seconds / (86400 * 30), "month");
     return plural(seconds / (86400 * 365), "year");
 }
+
+}  // namespace jasperengine::editor::hub

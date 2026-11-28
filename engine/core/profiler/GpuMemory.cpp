@@ -9,7 +9,8 @@
 #include <unordered_map>
 
 using namespace jasperengine;
-using namespace jasperengine::gpumem;
+
+namespace jasperengine::gpumem {
 
 namespace {
 
@@ -24,17 +25,17 @@ namespace {
 
 }
 
-const char* gpumem::categoryName(Category category){
+const char* categoryName(Category category){
     const size_t index = (size_t)category;
     return index < CATEGORY_COUNT ? CATEGORY_NAMES[index] : "Other";
 }
 
-const char* gpumem::categoryKey(Category category){
+const char* categoryKey(Category category){
     const size_t index = (size_t)category;
     return index < CATEGORY_COUNT ? CATEGORY_KEYS[index] : "other";
 }
 
-bool gpumem::categoryFromKey(std::string_view key, Category& out){
+bool categoryFromKey(std::string_view key, Category& out){
     for (size_t i = 0; i < CATEGORY_COUNT; i++){
         if (key == CATEGORY_KEYS[i] || key == CATEGORY_NAMES[i]){
             out = (Category)i;
@@ -44,7 +45,7 @@ bool gpumem::categoryFromKey(std::string_view key, Category& out){
     return false;
 }
 
-const char* gpumem::kindName(Kind kind){
+const char* kindName(Kind kind){
     switch (kind){
         case Kind::Texture: return "Texture";
         case Kind::RenderTarget: return "RenderTarget";
@@ -54,7 +55,11 @@ const char* gpumem::kindName(Kind kind){
     return "Texture";
 }
 
+}  // namespace jasperengine::gpumem
+
 #if JASPERENGINE_PROFILER
+
+namespace jasperengine::gpumem {
 
 namespace {
 
@@ -82,7 +87,7 @@ namespace {
 
 }
 
-uint32_t gpumem::internOwner(std::string_view owner){
+uint32_t internOwner(std::string_view owner){
     if (owner.empty())
         return 0;
     Tracker& t = tracker();
@@ -96,13 +101,13 @@ uint32_t gpumem::internOwner(std::string_view owner){
     return id;
 }
 
-std::string gpumem::ownerName(uint32_t owner){
+std::string ownerName(uint32_t owner){
     Tracker& t = tracker();
     std::lock_guard<std::mutex> lock(t.mutex);
     return owner < t.owners.size() ? t.owners[owner] : std::string();
 }
 
-ScopeState gpumem::currentScope(){
+ScopeState currentScope(){
     if (!pendingOwner.empty()){
         threadScope.owner = internOwner(pendingOwner);
         pendingOwner = std::string_view();
@@ -135,7 +140,7 @@ Scope::~Scope(){
     pendingOwner = savedOwner;
 }
 
-void gpumem::track(const Entry& entry, bool image){
+void track(const Entry& entry, bool image){
     Tracker& t = tracker();
     std::lock_guard<std::mutex> lock(t.mutex);
     auto& table = image ? t.images : t.buffers;
@@ -148,7 +153,7 @@ void gpumem::track(const Entry& entry, bool image){
     t.generation++;
 }
 
-void gpumem::untrack(uint32_t id, bool image){
+void untrack(uint32_t id, bool image){
     Tracker& t = tracker();
     std::lock_guard<std::mutex> lock(t.mutex);
     auto& table = image ? t.images : t.buffers;
@@ -160,7 +165,7 @@ void gpumem::untrack(uint32_t id, bool image){
     t.generation++;
 }
 
-const char* gpumem::label(uint32_t id, bool image){
+const char* label(uint32_t id, bool image){
     Tracker& t = tracker();
     std::lock_guard<std::mutex> lock(t.mutex);
     auto& table = image ? t.images : t.buffers;
@@ -169,7 +174,7 @@ const char* gpumem::label(uint32_t id, bool image){
     return it != table.end() ? it->second.label : "";
 }
 
-void gpumem::clearAll(){
+void clearAll(){
     Tracker& t = tracker();
     std::lock_guard<std::mutex> lock(t.mutex);
     t.images.clear();
@@ -179,25 +184,25 @@ void gpumem::clearAll(){
     t.generation++;
 }
 
-void gpumem::resetPeak(){
+void resetPeak(){
     Tracker& t = tracker();
     std::lock_guard<std::mutex> lock(t.mutex);
     t.peakBytes = t.totalBytes;
 }
 
-uint64_t gpumem::generation(){
+uint64_t generation(){
     Tracker& t = tracker();
     std::lock_guard<std::mutex> lock(t.mutex);
     return t.generation;
 }
 
-void gpumem::setDriverQuery(DriverQuery query){
+void setDriverQuery(DriverQuery query){
     Tracker& t = tracker();
     std::lock_guard<std::mutex> lock(t.mutex);
     t.driver = query;
 }
 
-Report gpumem::report(bool withAllocations, bool withDriver){
+Report report(bool withAllocations, bool withDriver){
     Report out;
     DriverQuery driver = nullptr;
     {
@@ -248,7 +253,7 @@ Report gpumem::report(bool withAllocations, bool withDriver){
     return out;
 }
 
-std::vector<Group> gpumem::groupByOwner(const Report& report){
+std::vector<Group> groupByOwner(const Report& report){
     std::unordered_map<std::string, Group> groups;
     for (const Allocation& allocation : report.allocations){
         Group& group = groups[allocation.owner];
@@ -265,5 +270,7 @@ std::vector<Group> gpumem::groupByOwner(const Report& report){
     });
     return out;
 }
+
+}  // namespace jasperengine::gpumem
 
 #endif

@@ -31,6 +31,8 @@
 #include "lua.hpp"
 #include "LuaBridge.h"
 
+namespace AnimatorRetargetTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::anim;
 using namespace animatortest;
@@ -549,4 +551,4 @@ TEST_F(AnimatorFootIK, FootLockNoSlide){
     EXPECT_GT(scene.getComponent<Transform>(ankles[1]).worldPosition.z - end.z, 0.01f);
 }
 
-
+}  // namespace AnimatorRetargetTest_cpp

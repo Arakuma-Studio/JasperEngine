@@ -14,6 +14,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PoseViewportLogicTest_cpp {
+
 using namespace posetest;
 using namespace jasperengine::editor;
 using H = HumanBone;
@@ -435,3 +437,5 @@ TEST(PoseViewportLogic, OnionGhostsAndPreviewKey){
     EXPECT_EQ(poseview::keyLeaving(timeline, 0.85), 2);
     EXPECT_EQ(poseview::keyLeaving(PoseTimeline(), 0.5), -1);
 }
+
+}  // namespace PoseViewportLogicTest_cpp

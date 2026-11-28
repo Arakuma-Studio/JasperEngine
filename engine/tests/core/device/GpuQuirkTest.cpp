@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace GpuQuirkTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -234,3 +236,5 @@ TEST(GpuQuirks, LegacyEnvironmentAliases){
     EXPECT_EQ(log.count(D_LOG_WARN, "deprecated"), 2u);
     EXPECT_EQ(log.count(D_LOG_WARN, "unknown quirk \"nope\" (known: gl_no_worker_context"), 1u);
 }
+
+}  // namespace GpuQuirkTest_cpp

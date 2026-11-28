@@ -23,6 +23,8 @@
 #include <memory>
 #include <sstream>
 
+namespace ModelExportTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -129,3 +131,5 @@ TEST(ModelExport, ADracoModelShipsItsCookWithoutDraco){
     EXPECT_TRUE(result.cookedSources.count("models/draco.glb")) << "the Draco source stays out of the build";
     closeProject(*project);
 }
+
+}  // namespace ModelExportTest_cpp

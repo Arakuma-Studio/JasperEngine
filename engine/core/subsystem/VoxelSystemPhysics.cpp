@@ -34,7 +34,6 @@
 #include <tuple>
 
 using namespace jasperengine;
-using namespace jasperengine::voxel;
 
 namespace {
     using BlockTuple = std::tuple<int, int, int>;
@@ -45,19 +44,19 @@ namespace {
 namespace {
 
     // Runs on a job or inline; touches only what the job owns
-    void buildCollisionShape(const ReadView& view, const BlockKey& key, const Coverage* coverage, float voxelSize, JPH::ShapeRefC& shape, bool& empty) {
-        MeshRequest request;
+    void buildCollisionShape(const voxel::ReadView& view, const voxel::BlockKey& key, const voxel::Coverage* coverage, float voxelSize, JPH::ShapeRefC& shape, bool& empty) {
+        voxel::MeshRequest request;
         request.key = key;
-        request.mode = MeshMode::CollisionOnly;
+        request.mode = voxel::MeshMode::CollisionOnly;
         request.coverage = coverage;
-        MeshOut mesh;
-        meshBlock(view, request, mesh);
+        voxel::MeshOut mesh;
+        voxel::meshBlock(view, request, mesh);
         empty = mesh.empty();
         if (empty) return;
         std::vector<Vector3> vertices;
         vertices.reserve(mesh.vertices.size());
-        for (const MeshVertex& vertex : mesh.vertices) {
-            vertices.emplace_back(fixedToLocal(vertex.position[0], voxelSize), fixedToLocal(vertex.position[1], voxelSize), fixedToLocal(vertex.position[2], voxelSize));
+        for (const voxel::MeshVertex& vertex : mesh.vertices) {
+            vertices.emplace_back(voxel::fixedToLocal(vertex.position[0], voxelSize), voxel::fixedToLocal(vertex.position[1], voxelSize), voxel::fixedToLocal(vertex.position[2], voxelSize));
         }
         std::vector<uint32_t> indices(mesh.indices.begin(), mesh.indices.end());
         std::string error;
@@ -67,8 +66,8 @@ namespace {
 
 }
 
-void VoxelSystem::startCollisionJob(VolumeState& state, const Int3& key, bool partOfSwap){
-    if (!queue) queue = std::make_unique<WorkQueue>();
+void VoxelSystem::startCollisionJob(VolumeState& state, const voxel::Int3& key, bool partOfSwap){
+    if (!queue) queue = std::make_unique<voxel::WorkQueue>();
     VoxelCollisionBlock& block = state.collision[BlockTuple(key.x, key.y, key.z)];
     block.building = true;
     block.built = false;
@@ -80,17 +79,17 @@ void VoxelSystem::startCollisionJob(VolumeState& state, const Int3& key, bool pa
     job->collisionKey = key;
     job->partOfSwap = partOfSwap;
     job->collisionVersion = block.wantedVersion;
-    job->view = state.store->readView(BlockKey{0, key.x, key.y, key.z}, 0);
+    job->view = state.store->readView(voxel::BlockKey{0, key.x, key.y, key.z}, 0);
     job->coverage = state.coverage;
     Job* raw = job.get();
     jobs[jobId] = std::move(job);
     const float voxelSize = state.store->desc().voxelSize;
-    const double span = BLOCK_SIZE;
-    const Vec3d focus = worldVoxels(state, focusPositionWorld(*scene->findComponent<VoxelVolumeComponent>(state.owner)));
+    const double span = voxel::BLOCK_SIZE;
+    const voxel::Vec3d focus = worldVoxels(state, focusPositionWorld(*scene->findComponent<VoxelVolumeComponent>(state.owner)));
     const double cx = (key.x + 0.5) * span - focus.x, cy = (key.y + 0.5) * span - focus.y, cz = (key.z + 0.5) * span - focus.z;
-    queue->push(jobId, partOfSwap ? WorkPriority::Edit : WorkPriority::Near, std::sqrt(cx * cx + cy * cy + cz * cz), [raw, voxelSize]{
+    queue->push(jobId, partOfSwap ? voxel::WorkPriority::Edit : voxel::WorkPriority::Near, std::sqrt(cx * cx + cy * cy + cz * cz), [raw, voxelSize]{
         raw->builtOnMainThread = jobs::isMainThread();
-        const BlockKey blockKey{0, raw->collisionKey.x, raw->collisionKey.y, raw->collisionKey.z};
+        const voxel::BlockKey blockKey{0, raw->collisionKey.x, raw->collisionKey.y, raw->collisionKey.z};
         buildCollisionShape(*raw->view, blockKey, raw->coverage.get(), voxelSize, raw->shape, raw->empty);
     });
 }
@@ -115,12 +114,12 @@ void VoxelSystem::onCollisionJobDone(VolumeState& state, Job& job){
     if (!job.partOfSwap && !block.inWorld && !job.empty) state.readyBodies.push_back(key);
 }
 
-void VoxelSystem::onCollisionEdited(VolumeState& state, const IntBox& changed, uint64_t setId){
+void VoxelSystem::onCollisionEdited(VolumeState& state, const voxel::IntBox& changed, uint64_t setId){
     VoxelVolumeComponent* component = scene->findComponent<VoxelVolumeComponent>(state.owner);
     if (!component || !component->collision) return;
     // The window of a collision block: samples 0..16 of level 0
-    const int x0 = std::max(0, (changed.min.x - 1) >> BLOCK_SHIFT), y0 = std::max(0, (changed.min.y - 1) >> BLOCK_SHIFT), z0 = std::max(0, (changed.min.z - 1) >> BLOCK_SHIFT);
-    const int x1 = changed.max.x >> BLOCK_SHIFT, y1 = changed.max.y >> BLOCK_SHIFT, z1 = changed.max.z >> BLOCK_SHIFT;
+    const int x0 = std::max(0, (changed.min.x - 1) >> voxel::BLOCK_SHIFT), y0 = std::max(0, (changed.min.y - 1) >> voxel::BLOCK_SHIFT), z0 = std::max(0, (changed.min.z - 1) >> voxel::BLOCK_SHIFT);
+    const int x1 = changed.max.x >> voxel::BLOCK_SHIFT, y1 = changed.max.y >> voxel::BLOCK_SHIFT, z1 = changed.max.z >> voxel::BLOCK_SHIFT;
     VoxelCollisionSwap swap;
     swap.renderSet = setId;
     swap.changed = changed;
@@ -130,8 +129,8 @@ void VoxelSystem::onCollisionEdited(VolumeState& state, const IntBox& changed, u
         const int x = std::get<0>(item.first), y = std::get<1>(item.first), z = std::get<2>(item.first);
         if (x < x0 || x > x1 || y < y0 || y > y1 || z < z0 || z > z1) continue;
         item.second.wantedVersion = state.collisionEdits;
-        swap.blocks.push_back(Int3{x, y, z});
-        if (!item.second.building) startCollisionJob(state, Int3{x, y, z}, true);
+        swap.blocks.push_back(voxel::Int3{x, y, z});
+        if (!item.second.building) startCollisionJob(state, voxel::Int3{x, y, z}, true);
     }
     // A dig next to the bubble where no block was built yet still lands in one tick when it is built
     if (!swap.blocks.empty()) state.swaps.push_back(std::move(swap));
@@ -147,14 +146,14 @@ void VoxelSystem::applyCollisionSwaps(VolumeState& state){
         // R23: the first tick at or after the render activation, all of the set at once
         if (state.scheduler.lastActivatedSet() < swap.renderSet) break;
         bool ready = true;
-        for (const Int3& key : swap.blocks){
+        for (const voxel::Int3& key : swap.blocks){
             const auto found = state.collision.find(BlockTuple(key.x, key.y, key.z));
             if (found != state.collision.end() && (!found->second.built || found->second.adding || found->second.version != found->second.wantedVersion)) ready = false;
         }
         if (!ready) break;
 
         std::vector<JPH::BodyID> added;
-        for (const Int3& key : swap.blocks){
+        for (const voxel::Int3& key : swap.blocks){
             const auto found = state.collision.find(BlockTuple(key.x, key.y, key.z));
             if (found == state.collision.end()) continue;
             VoxelCollisionBlock& block = found->second;
@@ -325,7 +324,7 @@ void VoxelSystem::evictBodies(VolumeState& state){
 void VoxelSystem::updateCollisionWanted(VolumeState& state, VoxelVolumeComponent& component){
     const VoxelTierSettings settings = voxelTierSettings(state.tier);
     const int radius = component.collisionRadius > 0 ? component.collisionRadius : settings.collisionRadius;
-    const Int3 count = state.store->blockCount(0);
+    const voxel::Int3 count = state.store->blockCount(0);
     const auto want = [&](int x, int y, int z){
         if (x < 0 || y < 0 || z < 0 || x >= count.x || y >= count.y || z >= count.z) return;
         const BlockTuple key(x, y, z);
@@ -334,14 +333,14 @@ void VoxelSystem::updateCollisionWanted(VolumeState& state, VoxelVolumeComponent
             VoxelCollisionBlock& block = state.collision[key];
             block.wantedVersion = state.collisionEdits;
             block.version = state.collisionEdits;
-            startCollisionJob(state, Int3{x, y, z}, false);
+            startCollisionJob(state, voxel::Int3{x, y, z}, false);
         }else{
             found->second.lastNeededTick = fixedTick;
         }
     };
     const auto around = [&](const Vector3& world, int blocks){
-        const Vec3d p = worldVoxels(state, world);
-        const int cx = static_cast<int>(std::floor(p.x)) >> BLOCK_SHIFT, cy = static_cast<int>(std::floor(p.y)) >> BLOCK_SHIFT, cz = static_cast<int>(std::floor(p.z)) >> BLOCK_SHIFT;
+        const voxel::Vec3d p = worldVoxels(state, world);
+        const int cx = static_cast<int>(std::floor(p.x)) >> voxel::BLOCK_SHIFT, cy = static_cast<int>(std::floor(p.y)) >> voxel::BLOCK_SHIFT, cz = static_cast<int>(std::floor(p.z)) >> voxel::BLOCK_SHIFT;
         for (int z = cz - blocks; z <= cz + blocks; z++){
             for (int y = cy - blocks; y <= cy + blocks; y++){
                 for (int x = cx - blocks; x <= cx + blocks; x++) want(x, y, z);
@@ -349,10 +348,10 @@ void VoxelSystem::updateCollisionWanted(VolumeState& state, VoxelVolumeComponent
         }
     };
     around(focusPositionWorld(component), radius);
-    const Vec3d dim{static_cast<double>(state.store->desc().dimensions.x), static_cast<double>(state.store->desc().dimensions.y), static_cast<double>(state.store->desc().dimensions.z)};
+    const voxel::Vec3d dim{static_cast<double>(state.store->desc().dimensions.x), static_cast<double>(state.store->desc().dimensions.y), static_cast<double>(state.store->desc().dimensions.z)};
     const auto inside = [&](const Vector3& world){
-        const Vec3d p = worldVoxels(state, world);
-        const double margin = BLOCK_SIZE;
+        const voxel::Vec3d p = worldVoxels(state, world);
+        const double margin = voxel::BLOCK_SIZE;
         return p.x >= -margin && p.y >= -margin && p.z >= -margin && p.x <= dim.x + margin && p.y <= dim.y + margin && p.z <= dim.z + margin;
     };
     auto controllers = scene->getComponentArray<CharacterControllerComponent>();
@@ -385,10 +384,10 @@ void VoxelSystem::rescueBodies(VolumeState& state, VoxelVolumeComponent& compone
     const VoxelTierSettings settings = voxelTierSettings(state.tier);
     const double voxelSize = state.store->desc().voxelSize;
     auto rigidbodies = scene->getComponentArray<RigidbodyComponent>();
-    Store& store = *state.store;
-    const Int3 dim = store.desc().dimensions;
+    voxel::Store& store = *state.store;
+    const voxel::Int3 dim = store.desc().dimensions;
 
-    const auto inVolume = [&](const Vec3d& p){
+    const auto inVolume = [&](const voxel::Vec3d& p){
         return p.x >= 0.0 && p.y >= 0.0 && p.z >= 0.0 && p.x <= dim.x * voxelSize && p.y <= dim.y * voxelSize && p.z <= dim.z * voxelSize;
     };
 
@@ -435,10 +434,10 @@ void VoxelSystem::rescueBodies(VolumeState& state, VoxelVolumeComponent& compone
         Transform* transform = scene->findComponent<Transform>(candidate.entity);
         if (!transform) continue;
         const Vector3 localCentre = state.inverseModel * transform->worldPosition;
-        const Vec3d centre = toVec3d(localCentre);
+        const voxel::Vec3d centre = toVec3d(localCentre);
         if (!inVolume(centre)) continue;
         VolumeState::BodyWatch& watch = state.watches[candidate.entity];
-        const double value = valueAt(store, centre);
+        const double value = voxel::valueAt(store, centre);
         if (value > 0.0){
             watch.lastFree = localCentre;
             watch.hasFree = true;
@@ -462,9 +461,9 @@ void VoxelSystem::rescueBodies(VolumeState& state, VoxelVolumeComponent& compone
         int iy = std::max(static_cast<int>(std::floor(centre.y / voxelSize)), 0);
         bool found = false;
         while (iy < dim.y){
-            const BlockContent content = store.content(BlockKey{0, ix >> BLOCK_SHIFT, iy >> BLOCK_SHIFT, std::min(iz >> BLOCK_SHIFT, store.blockCount(0).z - 1)});
+            const voxel::BlockContent content = store.content(voxel::BlockKey{0, ix >> voxel::BLOCK_SHIFT, iy >> voxel::BLOCK_SHIFT, std::min(iz >> voxel::BLOCK_SHIFT, store.blockCount(0).z - 1)});
             if (content.sdfIsUniform() && content.sdfValueIfUniform() < 0){
-                iy = ((iy >> BLOCK_SHIFT) + 1) << BLOCK_SHIFT;
+                iy = ((iy >> voxel::BLOCK_SHIFT) + 1) << voxel::BLOCK_SHIFT;
                 continue;
             }
             if (store.sdfAt(0, ix, iy, iz) >= 0){
@@ -500,16 +499,16 @@ void VoxelSystem::rescueBodies(VolumeState& state, VoxelVolumeComponent& compone
     }
 }
 
-void VoxelSystem::buildCollisionBlocking(VolumeState& state, const VoxelVolumeComponent&, const IntBox& blocks){
+void VoxelSystem::buildCollisionBlocking(VolumeState& state, const VoxelVolumeComponent&, const voxel::IntBox& blocks){
     auto physics = scene->findSystem<PhysicsSystem>();
     if (!physics) return;
     struct Item{
-        Int3 key;
-        std::shared_ptr<const ReadView> view;
+        voxel::Int3 key;
+        std::shared_ptr<const voxel::ReadView> view;
         JPH::ShapeRefC shape;
         bool empty = false;
     };
-    const Int3 count = state.store->blockCount(0);
+    const voxel::Int3 count = state.store->blockCount(0);
     std::vector<Item> items;
     for (int z = std::max(blocks.min.z, 0); z <= std::min(blocks.max.z, count.z - 1); z++){
         for (int y = std::max(blocks.min.y, 0); y <= std::min(blocks.max.y, count.y - 1); y++){
@@ -518,18 +517,18 @@ void VoxelSystem::buildCollisionBlocking(VolumeState& state, const VoxelVolumeCo
                 if (found != state.collision.end() && found->second.inWorld && !found->second.building) continue;
                 if (found != state.collision.end() && found->second.built && found->second.pendingEmpty) continue;
                 Item item;
-                item.key = Int3{x, y, z};
-                item.view = state.store->readView(BlockKey{0, x, y, z}, 0);
+                item.key = voxel::Int3{x, y, z};
+                item.view = state.store->readView(voxel::BlockKey{0, x, y, z}, 0);
                 items.push_back(std::move(item));
             }
         }
     }
     if (items.empty()) return;
     const float voxelSize = state.store->desc().voxelSize;
-    const Coverage* coverage = state.coverage.get();
+    const voxel::Coverage* coverage = state.coverage.get();
     jobs::parallelFor(items.size(), [&items, voxelSize, coverage](size_t index){
         Item& item = items[index];
-        buildCollisionShape(*item.view, BlockKey{0, item.key.x, item.key.y, item.key.z}, coverage, voxelSize, item.shape, item.empty);
+        buildCollisionShape(*item.view, voxel::BlockKey{0, item.key.x, item.key.y, item.key.z}, coverage, voxelSize, item.shape, item.empty);
     });
     std::vector<JPH::BodyID> added;
     for (Item& item : items){
@@ -573,9 +572,9 @@ void VoxelSystem::ensureCollision(Entity owner, const AABB& worldBounds){
     if (!state || !component || !state->store || !component->collision) return;
     const float voxelSize = state->store->desc().voxelSize;
     const AABB local = state->inverseModel * worldBounds;
-    IntBox blocks;
-    blocks.min = Int3{static_cast<int>(std::floor(local.getMinimum().x / voxelSize)) >> BLOCK_SHIFT, static_cast<int>(std::floor(local.getMinimum().y / voxelSize)) >> BLOCK_SHIFT, static_cast<int>(std::floor(local.getMinimum().z / voxelSize)) >> BLOCK_SHIFT};
-    blocks.max = Int3{static_cast<int>(std::floor(local.getMaximum().x / voxelSize)) >> BLOCK_SHIFT, static_cast<int>(std::floor(local.getMaximum().y / voxelSize)) >> BLOCK_SHIFT, static_cast<int>(std::floor(local.getMaximum().z / voxelSize)) >> BLOCK_SHIFT};
+    voxel::IntBox blocks;
+    blocks.min = voxel::Int3{static_cast<int>(std::floor(local.getMinimum().x / voxelSize)) >> voxel::BLOCK_SHIFT, static_cast<int>(std::floor(local.getMinimum().y / voxelSize)) >> voxel::BLOCK_SHIFT, static_cast<int>(std::floor(local.getMinimum().z / voxelSize)) >> voxel::BLOCK_SHIFT};
+    blocks.max = voxel::Int3{static_cast<int>(std::floor(local.getMaximum().x / voxelSize)) >> voxel::BLOCK_SHIFT, static_cast<int>(std::floor(local.getMaximum().y / voxelSize)) >> voxel::BLOCK_SHIFT, static_cast<int>(std::floor(local.getMaximum().z / voxelSize)) >> voxel::BLOCK_SHIFT};
     buildCollisionBlocking(*state, *component, blocks);
 }
 
@@ -584,10 +583,10 @@ bool VoxelSystem::isCollisionReady(Entity owner, const AABB& worldBounds) const{
     if (!state || !state->store) return false;
     const float voxelSize = state->store->desc().voxelSize;
     const AABB local = state->inverseModel * worldBounds;
-    const Int3 count = state->store->blockCount(0);
-    const int x0 = std::max(0, static_cast<int>(std::floor(local.getMinimum().x / voxelSize)) >> BLOCK_SHIFT), x1 = std::min(count.x - 1, static_cast<int>(std::floor(local.getMaximum().x / voxelSize)) >> BLOCK_SHIFT);
-    const int y0 = std::max(0, static_cast<int>(std::floor(local.getMinimum().y / voxelSize)) >> BLOCK_SHIFT), y1 = std::min(count.y - 1, static_cast<int>(std::floor(local.getMaximum().y / voxelSize)) >> BLOCK_SHIFT);
-    const int z0 = std::max(0, static_cast<int>(std::floor(local.getMinimum().z / voxelSize)) >> BLOCK_SHIFT), z1 = std::min(count.z - 1, static_cast<int>(std::floor(local.getMaximum().z / voxelSize)) >> BLOCK_SHIFT);
+    const voxel::Int3 count = state->store->blockCount(0);
+    const int x0 = std::max(0, static_cast<int>(std::floor(local.getMinimum().x / voxelSize)) >> voxel::BLOCK_SHIFT), x1 = std::min(count.x - 1, static_cast<int>(std::floor(local.getMaximum().x / voxelSize)) >> voxel::BLOCK_SHIFT);
+    const int y0 = std::max(0, static_cast<int>(std::floor(local.getMinimum().y / voxelSize)) >> voxel::BLOCK_SHIFT), y1 = std::min(count.y - 1, static_cast<int>(std::floor(local.getMaximum().y / voxelSize)) >> voxel::BLOCK_SHIFT);
+    const int z0 = std::max(0, static_cast<int>(std::floor(local.getMinimum().z / voxelSize)) >> voxel::BLOCK_SHIFT), z1 = std::min(count.z - 1, static_cast<int>(std::floor(local.getMaximum().z / voxelSize)) >> voxel::BLOCK_SHIFT);
     for (int z = z0; z <= z1; z++){
         for (int y = y0; y <= y1; y++){
             for (int x = x0; x <= x1; x++){
@@ -651,11 +650,11 @@ void VoxelSystem::fixedUpdate(double dt){
             state.collisionStarted = true;
             const VoxelTierSettings settings = voxelTierSettings(resolveTier(*component));
             const int radius = component->collisionRadius > 0 ? component->collisionRadius : settings.collisionRadius;
-            const Vec3d p = worldVoxels(state, focusPositionWorld(*component));
-            const Int3 centre{static_cast<int>(std::floor(p.x)) >> BLOCK_SHIFT, static_cast<int>(std::floor(p.y)) >> BLOCK_SHIFT, static_cast<int>(std::floor(p.z)) >> BLOCK_SHIFT};
-            IntBox blocks;
-            blocks.min = Int3{centre.x - radius, centre.y - radius, centre.z - radius};
-            blocks.max = Int3{centre.x + radius, centre.y + radius, centre.z + radius};
+            const voxel::Vec3d p = worldVoxels(state, focusPositionWorld(*component));
+            const voxel::Int3 centre{static_cast<int>(std::floor(p.x)) >> voxel::BLOCK_SHIFT, static_cast<int>(std::floor(p.y)) >> voxel::BLOCK_SHIFT, static_cast<int>(std::floor(p.z)) >> voxel::BLOCK_SHIFT};
+            voxel::IntBox blocks;
+            blocks.min = voxel::Int3{centre.x - radius, centre.y - radius, centre.z - radius};
+            blocks.max = voxel::Int3{centre.x + radius, centre.y + radius, centre.z + radius};
             buildCollisionBlocking(state, *component, blocks);
             // and so do the bodies that start in the bounds
             auto rigidbodies = scene->getComponentArray<RigidbodyComponent>();
@@ -664,11 +663,11 @@ void VoxelSystem::fixedUpdate(double dt){
                 if (body.type != BodyType::DYNAMIC) continue;
                 const Transform* transform = scene->findComponent<Transform>(rigidbodies->getEntity(i));
                 if (!transform) continue;
-                const Vec3d q = worldVoxels(state, transform->worldPosition);
-                const Int3 c{static_cast<int>(std::floor(q.x)) >> BLOCK_SHIFT, static_cast<int>(std::floor(q.y)) >> BLOCK_SHIFT, static_cast<int>(std::floor(q.z)) >> BLOCK_SHIFT};
-                IntBox around;
-                around.min = Int3{c.x - 1, c.y - 1, c.z - 1};
-                around.max = Int3{c.x + 1, c.y + 1, c.z + 1};
+                const voxel::Vec3d q = worldVoxels(state, transform->worldPosition);
+                const voxel::Int3 c{static_cast<int>(std::floor(q.x)) >> voxel::BLOCK_SHIFT, static_cast<int>(std::floor(q.y)) >> voxel::BLOCK_SHIFT, static_cast<int>(std::floor(q.z)) >> voxel::BLOCK_SHIFT};
+                voxel::IntBox around;
+                around.min = voxel::Int3{c.x - 1, c.y - 1, c.z - 1};
+                around.max = voxel::Int3{c.x + 1, c.y + 1, c.z + 1};
                 buildCollisionBlocking(state, *component, around);
             }
         }
@@ -682,15 +681,15 @@ void VoxelSystem::fixedUpdate(double dt){
 #else
 
 void VoxelSystem::fixedUpdate(double){}
-void VoxelSystem::startCollisionJob(VolumeState&, const Int3&, bool){}
+void VoxelSystem::startCollisionJob(VolumeState&, const voxel::Int3&, bool){}
 void VoxelSystem::onCollisionJobDone(VolumeState&, Job&){}
-void VoxelSystem::onCollisionEdited(VolumeState&, const IntBox&, uint64_t){}
+void VoxelSystem::onCollisionEdited(VolumeState&, const voxel::IntBox&, uint64_t){}
 void VoxelSystem::applyCollisionSwaps(VolumeState&){}
 void VoxelSystem::addNewBodies(VolumeState&){}
 void VoxelSystem::evictBodies(VolumeState&){}
 void VoxelSystem::updateCollisionWanted(VolumeState&, VoxelVolumeComponent&){}
 void VoxelSystem::rescueBodies(VolumeState&, VoxelVolumeComponent&, double){}
-void VoxelSystem::buildCollisionBlocking(VolumeState&, const VoxelVolumeComponent&, const IntBox&){}
+void VoxelSystem::buildCollisionBlocking(VolumeState&, const VoxelVolumeComponent&, const voxel::IntBox&){}
 void VoxelSystem::ensureCollision(Entity, const AABB&){}
 bool VoxelSystem::isCollisionReady(Entity, const AABB&) const{ return false; }
 void VoxelSystem::destroyCollision(VolumeState&){}

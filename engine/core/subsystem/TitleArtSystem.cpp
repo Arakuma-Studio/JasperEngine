@@ -37,7 +37,6 @@
 #include <variant>
 
 using namespace jasperengine;
-using namespace jasperengine::titleart;
 
 namespace {
 
@@ -158,8 +157,8 @@ namespace {
         return out.empty() ? std::string("none") : out;
     }
 
-    const TitleArtExposedParam* findExposed(const TitleArtInstance& instance, const std::string& name){
-        for (const TitleArtExposedParam& p : instance.exposed)
+    const titleart::TitleArtExposedParam* findExposed(const titleart::TitleArtInstance& instance, const std::string& name){
+        for (const titleart::TitleArtExposedParam& p : instance.exposed)
             if (p.name == name) return &p;
         return nullptr;
     }
@@ -171,8 +170,8 @@ namespace {
     }
 
     // an override whose name and type the document exposes (R4: the others are kept, ignored)
-    bool overrideApplies(const TitleArtInstance& instance, const TitleArtOverride& o){
-        const TitleArtExposedParam* p = findExposed(instance, o.name);
+    bool overrideApplies(const titleart::TitleArtInstance& instance, const TitleArtOverride& o){
+        const titleart::TitleArtExposedParam* p = findExposed(instance, o.name);
         return p && p->type == o.type;
     }
 
@@ -306,8 +305,8 @@ void TitleArtSystem::destroy(){
     }
 }
 
-TitleArtInstance& TitleArtSystem::instanceOf(TitleArtRendererComponent& title){
-    if (!title.runtime) title.runtime = std::make_shared<TitleArtInstance>();
+titleart::TitleArtInstance& TitleArtSystem::instanceOf(TitleArtRendererComponent& title){
+    if (!title.runtime) title.runtime = std::make_shared<titleart::TitleArtInstance>();
     return *title.runtime;
 }
 
@@ -327,10 +326,10 @@ void TitleArtSystem::removeSubscriptionsByTag(const std::string& substring){
     }
 }
 
-TitleArtSpace TitleArtSystem::spaceOf(EntityRegistry* registry, Entity entity){
-    if (registry->findComponent<UIComponent>(entity) && registry->findComponent<ImageComponent>(entity)) return TitleArtSpace::UI;
-    if (registry->findComponent<MeshComponent>(entity) && registry->findComponent<SpriteComponent>(entity)) return TitleArtSpace::World;
-    return TitleArtSpace::None;
+titleart::TitleArtSpace TitleArtSystem::spaceOf(EntityRegistry* registry, Entity entity){
+    if (registry->findComponent<UIComponent>(entity) && registry->findComponent<ImageComponent>(entity)) return titleart::TitleArtSpace::UI;
+    if (registry->findComponent<MeshComponent>(entity) && registry->findComponent<SpriteComponent>(entity)) return titleart::TitleArtSpace::World;
+    return titleart::TitleArtSpace::None;
 }
 
 bool TitleArtSystem::hasBothCompanions(EntityRegistry* registry, Entity entity){
@@ -373,8 +372,8 @@ TitleArtCompanionScope::~TitleArtCompanionScope(){
 void TitleArtCompanionScope::swap(){
     TitleArtRendererComponent* title = registry->findComponent<TitleArtRendererComponent>(entity);
     if (!title || !title->runtime) return;
-    TitleArtCompanionSaved& saved = title->runtime->saved;
-    if (title->runtime->space == TitleArtSpace::UI){
+    titleart::TitleArtCompanionSaved& saved = title->runtime->saved;
+    if (title->runtime->space == titleart::TitleArtSpace::UI){
         if (UIComponent* ui = registry->findComponent<UIComponent>(entity)){
             std::swap(ui->customShader, saved.customShader);
             std::swap(ui->shaderUniforms, saved.shaderUniforms);
@@ -391,7 +390,7 @@ void TitleArtCompanionScope::swap(){
     }
 }
 
-const TitleArtCompanionSaved* TitleArtSystem::getSavedCompanion(const EntityRegistry* registry, Entity entity){
+const titleart::TitleArtCompanionSaved* TitleArtSystem::getSavedCompanion(const EntityRegistry* registry, Entity entity){
     EntityRegistry* mutableRegistry = const_cast<EntityRegistry*>(registry);
     if (!mutableRegistry || entity == NULL_ENTITY || !mutableRegistry->isComponentRegistered<TitleArtRendererComponent>() ||
         !mutableRegistry->isEntityCreated(entity)) return nullptr;
@@ -400,7 +399,7 @@ const TitleArtCompanionSaved* TitleArtSystem::getSavedCompanion(const EntityRegi
     return &title->runtime->saved;
 }
 
-void TitleArtSystem::applyLending(Entity entity, TitleArtInstance& instance, bool lending, bool realtime){
+void TitleArtSystem::applyLending(Entity entity, titleart::TitleArtInstance& instance, bool lending, bool realtime){
     if (instance.lending == lending && instance.lendingRealtime == realtime) return;
     const bool changed = instance.lending != lending;
     instance.lending = lending;
@@ -419,15 +418,15 @@ void TitleArtSystem::applyLending(Entity entity, TitleArtInstance& instance, boo
     }
 }
 
-void TitleArtSystem::restoreCompanion(Entity entity, TitleArtInstance& instance){
+void TitleArtSystem::restoreCompanion(Entity entity, titleart::TitleArtInstance& instance){
     if (!instance.saved.active) return;
-    if (UIComponent* ui = scene->findComponent<UIComponent>(entity); ui && instance.space == TitleArtSpace::UI){
+    if (UIComponent* ui = scene->findComponent<UIComponent>(entity); ui && instance.space == titleart::TitleArtSpace::UI){
         ui->customShader = instance.saved.customShader;
         ui->shaderUniforms = instance.saved.shaderUniforms;
         ui->shaderTextures = instance.saved.shaderTextures;
         ui->shaderFeatures = instance.saved.shaderFeatures;
         ui->needReload = true;
-    }else if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity); mesh && instance.space == TitleArtSpace::World){
+    }else if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity); mesh && instance.space == titleart::TitleArtSpace::World){
         mesh->customShader = instance.saved.customShader;
         mesh->shaderUniforms = instance.saved.shaderUniforms;
         if (mesh->numSubmeshes > 0){
@@ -436,7 +435,7 @@ void TitleArtSystem::restoreCompanion(Entity entity, TitleArtInstance& instance)
         }
         mesh->needReload = true;
     }
-    instance.saved = TitleArtCompanionSaved();
+    instance.saved = titleart::TitleArtCompanionSaved();
     instance.liveFeatures = 0;
     instance.liveFeatureNames.clear();
 }
@@ -445,10 +444,10 @@ TextureRender* TitleArtSystem::getDisplayTexture(Entity entity, bool* transparen
     if (!state->lending) return nullptr;
     TitleArtRendererComponent* title = scene->findComponent<TitleArtRendererComponent>(entity);
     if (!title || !title->runtime || !title->runtime->lending) return nullptr;
-    TitleArtInstance& instance = *title->runtime;
+    titleart::TitleArtInstance& instance = *title->runtime;
     if (transparent) *transparent = true;
     if (instance.lendingRealtime && instance.live){
-        if (TextureRender* texture = TitleArtRuntime::display(*instance.live)) return texture;
+        if (TextureRender* texture = titleart::TitleArtRuntime::display(*instance.live)) return texture;
     }
     // S85 R16: a Baked flipbook's frame shows by texture rect on its page
     if (instance.animationPage){
@@ -475,8 +474,8 @@ void TitleArtSystem::runRuntimeFrame(bool editorEditMode){
     const uint64_t frame = diag::heartbeats() + SystemRender::getFrameCount();
     if (frame == lastFrame) return;
     lastFrame = frame;
-    if (!TitleArtRuntime::isBuilt()) return;
-    TitleArtRuntime::runFrame(Engine::getUnscaledDeltatime(), editorEditMode);
+    if (!titleart::TitleArtRuntime::isBuilt()) return;
+    titleart::TitleArtRuntime::runFrame(Engine::getUnscaledDeltatime(), editorEditMode);
 }
 
 // ==================================================================== update
@@ -499,8 +498,8 @@ void TitleArtSystem::update(double dt){
     for (size_t i = 0; i < titles->size(); i++){
         const Entity entity = titles->getEntity(i);
         TitleArtRendererComponent& title = titles->getComponentFromIndex(i);
-        TitleArtInstance& instance = instanceOf(title);
-        if (contextChanged && instance.live) TitleArtRuntime::invalidate(*instance.live);
+        titleart::TitleArtInstance& instance = instanceOf(title);
+        if (contextChanged && instance.live) titleart::TitleArtRuntime::invalidate(*instance.live);
         updateTitle(entity, title, dt);
         // a component added or decoded during the loop moves the array
         titles = scene->getComponentArray<TitleArtRendererComponent>();
@@ -522,7 +521,7 @@ void TitleArtSystem::notifyTitleChanged(const std::string& titlePath){
     else titleRevisions()[titlePath]++;
 }
 
-void TitleArtSystem::resolve(Entity entity, TitleArtRendererComponent& title, TitleArtInstance& instance){
+void TitleArtSystem::resolve(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance){
     instance.resolved = true;
     instance.resolvedRevision = revisionOf(title.title.path);
     instance.prebakeChecked = false;
@@ -539,7 +538,7 @@ void TitleArtSystem::resolve(Entity entity, TitleArtRendererComponent& title, Ti
     instance.documentError.clear();
     instance.moduleMissing = false;
     instance.live.reset();
-    instance.liveStatus = TitleArtLiveStatus();
+    instance.liveStatus = titleart::TitleArtLiveStatus();
     instance.anchors.clear();
     instance.readyHash = 0;
     instance.failedHash = 0;
@@ -596,16 +595,16 @@ void TitleArtSystem::resolve(Entity entity, TitleArtRendererComponent& title, Ti
         instance.languages = instance.bake.languages.available();
     }else if (title.renderMode != TitleArtRenderMode::BAKED){
         std::vector<std::string> codes;
-        if (TitleArtRuntime::readLanguages(title.title.path, codes, nullptr) && codes.size() > 1 && !codes.front().empty()) instance.languages = codes;
+        if (titleart::TitleArtRuntime::readLanguages(title.title.path, codes, nullptr) && codes.size() > 1 && !codes.front().empty()) instance.languages = codes;
     }
     instance.shownLanguage = instance.languages.empty() ? std::string() : instance.languages.front();
 
     std::string exposedError;
-    instance.exposedKnown = TitleArtRuntime::readExposed(title.title.path, instance.exposed, &exposedError);
+    instance.exposedKnown = titleart::TitleArtRuntime::readExposed(title.title.path, instance.exposed, &exposedError);
     if (!instance.exposedKnown) instance.documentError = exposedError;
 
     if (title.renderMode != TitleArtRenderMode::BAKED){
-        if (!TitleArtRuntime::isBuilt()){
+        if (!titleart::TitleArtRuntime::isBuilt()){
             instance.moduleMissing = true;
             if (instance.sayOnce("module|" + title.title.path)){
                 // R51
@@ -615,7 +614,7 @@ void TitleArtSystem::resolve(Entity entity, TitleArtRendererComponent& title, Ti
             }
         }else{
             std::string liveError;
-            instance.live = TitleArtRuntime::create(title.title.path, title.renderMode, &liveError);
+            instance.live = titleart::TitleArtRuntime::create(title.title.path, title.renderMode, &liveError);
             if (!instance.live){
                 instance.failed = true;
                 instance.error = "Title Art '" + name + "': " + liveError;
@@ -626,7 +625,7 @@ void TitleArtSystem::resolve(Entity entity, TitleArtRendererComponent& title, Ti
 }
 
 void TitleArtSystem::updateTitle(Entity entity, TitleArtRendererComponent& title, double dt){
-    TitleArtInstance& instance = *title.runtime;
+    titleart::TitleArtInstance& instance = *title.runtime;
     if (title.needUpdate || !instance.resolved || instance.resolvedTitle != title.title.path || instance.resolvedMode != title.renderMode ||
             instance.resolvedRevision != revisionOf(title.title.path)){
         const bool reload = !instance.resolved || instance.resolvedTitle != title.title.path || instance.resolvedMode != title.renderMode ||
@@ -637,7 +636,7 @@ void TitleArtSystem::updateTitle(Entity entity, TitleArtRendererComponent& title
 
     const bool active = title.enabled && scene->isEntityActiveInHierarchy(entity);
     instance.space = spaceOf(scene, entity);
-    if (!active || instance.space == TitleArtSpace::None || title.title.path.empty()){
+    if (!active || instance.space == titleart::TitleArtSpace::None || title.title.path.empty()){
         applyLending(entity, instance, false, false);
         restoreCompanion(entity, instance);
         instance.wasEnabled = false;
@@ -675,7 +674,7 @@ void TitleArtSystem::updateTitle(Entity entity, TitleArtRendererComponent& title
 
 // ---- languages (S87) ----
 
-void TitleArtSystem::updateLanguage(Entity entity, TitleArtRendererComponent& title, TitleArtInstance& instance){
+void TitleArtSystem::updateLanguage(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance){
     if (instance.languages.empty()) return;
     // R14, R48: nothing to do until the global language, the device's or the component's changes
     if (instance.languageGeneration == TitleArtLanguage::generation() && instance.languageAsked == title.language) return;
@@ -730,7 +729,7 @@ void TitleArtSystem::updateLanguage(Entity entity, TitleArtRendererComponent& ti
     }
 }
 
-void TitleArtSystem::finishLanguageSwitch(Entity entity, TitleArtRendererComponent& title, TitleArtInstance& instance){
+void TitleArtSystem::finishLanguageSwitch(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance){
     if (!instance.switching) return;
     if (title.renderMode == TitleArtRenderMode::BAKED || instance.moduleMissing){
         // the texture pool loads the new set; the old one draws meanwhile
@@ -748,7 +747,7 @@ void TitleArtSystem::finishLanguageSwitch(Entity entity, TitleArtRendererCompone
         // a natively sized companion follows the language's frame, about the same anchor
         float width = 0.0f, height = 0.0f, pivotX = 0.5f, pivotY = 0.5f;
         if (before.frame.width > 0 && before.frame.height > 0 && instance.bake.frame.width > 0){
-            if (RectTransformComponent* rect = scene->findComponent<RectTransformComponent>(entity); rect && instance.space == TitleArtSpace::UI){
+            if (RectTransformComponent* rect = scene->findComponent<RectTransformComponent>(entity); rect && instance.space == titleart::TitleArtSpace::UI){
                 rect->width = (unsigned int)std::max(1.0f, std::round(rect->width * (float)instance.bake.frame.width / (float)before.frame.width));
                 rect->height = (unsigned int)std::max(1.0f, std::round(rect->height * (float)instance.bake.frame.height / (float)before.frame.height));
                 if (title.pivotFromTitle) rect->pivot = Vector2(instance.bake.pivotX(), instance.bake.pivotY());
@@ -780,9 +779,9 @@ void TitleArtSystem::finishLanguageSwitch(Entity entity, TitleArtRendererCompone
 
 // ---- Realtime and Glyph Atlas ----
 
-bool TitleArtSystem::isVisible(Entity entity, const TitleArtRendererComponent& title, const TitleArtInstance& instance) const{
+bool TitleArtSystem::isVisible(Entity entity, const TitleArtRendererComponent& title, const titleart::TitleArtInstance& instance) const{
     (void)title;
-    if (instance.space == TitleArtSpace::UI){
+    if (instance.space == titleart::TitleArtSpace::UI){
         const UIComponent* ui = scene->findComponent<UIComponent>(entity);
         if (!ui || !ui->enabled) return false;
         const Transform* transform = scene->findComponent<Transform>(entity);
@@ -827,20 +826,20 @@ float TitleArtSystem::resolutionFor(const TitleArtBakeInfo& bake, bool ui, unsig
     return (float)std::min(4.0, std::max(0.125, resolution));
 }
 
-float TitleArtSystem::displayResolution(Entity entity, const TitleArtRendererComponent& title, const TitleArtInstance& instance) const{
+float TitleArtSystem::displayResolution(Entity entity, const TitleArtRendererComponent& title, const titleart::TitleArtInstance& instance) const{
     // R9: display scale x resolutionScale, rounded to 1/8
-    const RectTransformComponent* rect = instance.space == TitleArtSpace::UI ? scene->findComponent<RectTransformComponent>(entity) : nullptr;
-    return resolutionFor(instance.bake, instance.space == TitleArtSpace::UI, rect ? rect->width : 0u, title.uiScale, title.resolutionScale,
-                         TitleArtRuntime::referenceScale());
+    const RectTransformComponent* rect = instance.space == titleart::TitleArtSpace::UI ? scene->findComponent<RectTransformComponent>(entity) : nullptr;
+    return resolutionFor(instance.bake, instance.space == titleart::TitleArtSpace::UI, rect ? rect->width : 0u, title.uiScale, title.resolutionScale,
+                         titleart::TitleArtRuntime::referenceScale());
 }
 
-void TitleArtSystem::updateLive(Entity entity, TitleArtRendererComponent& title, TitleArtInstance& instance){
+void TitleArtSystem::updateLive(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance){
     if (title.renderMode == TitleArtRenderMode::BAKED || !instance.live){
         // Baked (or Realtime without the module: R51): the bake, as any PNG
         applyLending(entity, instance, instance.hasBake, false);
         return;
     }
-    TitleArtLiveState liveState;
+    titleart::TitleArtLiveState liveState;
     for (const TitleArtOverride& o : title.overrides){
         if (!overrideApplies(instance, o)) continue;
         TitleArtOverride value = o;
@@ -860,25 +859,25 @@ void TitleArtSystem::updateLive(Entity entity, TitleArtRendererComponent& title,
     liveState.atlasPageSize = title.atlasPageSize == 512 || title.atlasPageSize == 2048 ? title.atlasPageSize : 1024;
     liveState.atlasMaxPages = std::max(1, std::min(8, title.atlasMaxPages));
     liveState.qualityTier = title.qualityTier;
-    liveState.tier = TitleArtRuntime::tierFor(*instance.live, title.qualityTier);
+    liveState.tier = titleart::TitleArtRuntime::tierFor(*instance.live, title.qualityTier);
     liveState.label = "TitleArt/" + scene->getEntityName(entity);
     liveState.testFlags = instance.testFlags;
     liveState.glowOutput = title.glowEnabled;
     auto simulated = simulatedCharacters().find(title.title.path);
     if (simulated != simulatedCharacters().end() && !paused) liveState.characters = simulated->second + title.additionalCharacters;
     // S85 R14-R18: the animation's re-render values join the state (rate-limited)
-    TitleArtRuntime::setAnimation(*instance.live, instance.animation, animatingTitles);
-    TitleArtRuntime::setState(*instance.live, liveState);
+    titleart::TitleArtRuntime::setAnimation(*instance.live, instance.animation, animatingTitles);
+    titleart::TitleArtRuntime::setState(*instance.live, liveState);
     if (!instance.prebakeChecked){
         // R11: a build ships the initial state's image; the first frame shows it at once
         instance.prebakeChecked = true;
         if (title.prebakeInitialState){
-            const uint64_t hash = TitleArtRuntime::stateHashOf(*instance.live, liveState);
-            const std::string prebaked = titleArtPrebakePath(title.title.path, TitleArtRuntime::prebakeKeyOf(*instance.live, liveState));
-            if (fileExists(prebaked)) TitleArtRuntime::setPrebaked(*instance.live, prebaked, hash);
+            const uint64_t hash = titleart::TitleArtRuntime::stateHashOf(*instance.live, liveState);
+            const std::string prebaked = titleArtPrebakePath(title.title.path, titleart::TitleArtRuntime::prebakeKeyOf(*instance.live, liveState));
+            if (fileExists(prebaked)) titleart::TitleArtRuntime::setPrebaked(*instance.live, prebaked, hash);
         }
     }
-    instance.liveStatus = TitleArtRuntime::status(*instance.live);
+    instance.liveStatus = titleart::TitleArtRuntime::status(*instance.live);
     if (instance.liveStatus.anchorsChanged) instance.anchors = instance.liveStatus.frame.anchors;
     // R30, R31: what Glyph Atlas cannot do with this document, said once per title
     if (!instance.liveStatus.glyphFallback.empty() && instance.sayOnce("glyph_fallback|" + instance.liveStatus.glyphFallback)){
@@ -904,11 +903,11 @@ void TitleArtSystem::updateLive(Entity entity, TitleArtRendererComponent& title,
 
 // ---- live layers ----
 
-void TitleArtSystem::updateLiveEffects(Entity entity, TitleArtRendererComponent& title, TitleArtInstance& instance){
+void TitleArtSystem::updateLiveEffects(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance){
     float crossfade = 1.0f;
     Framebuffer* previous = nullptr;
     if (instance.lendingRealtime && instance.live && title.transition == TitleArtTransition::CROSSFADE)
-        previous = TitleArtRuntime::previousFramebuffer(*instance.live, &crossfade);
+        previous = titleart::TitleArtRuntime::previousFramebuffer(*instance.live, &crossfade);
 
     // S85 R13: a playing animation's Live Effect values are runtime values (never written to the
     // component, so never saved); a live.* track turns its effect on with the instance's settings
@@ -937,7 +936,7 @@ void TitleArtSystem::updateLiveEffects(Entity entity, TitleArtRendererComponent&
     uint64_t features = 0;
     if (sweepOn) features |= LIVE_SWEEP;
     // R35: Glow Pulse needs a glow output (the bake's, or the render's)
-    Framebuffer* liveGlow = instance.lendingRealtime && instance.live ? TitleArtRuntime::glowFramebuffer(*instance.live) : nullptr;
+    Framebuffer* liveGlow = instance.lendingRealtime && instance.live ? titleart::TitleArtRuntime::glowFramebuffer(*instance.live) : nullptr;
     const bool glowAvailable = instance.lendingRealtime ? liveGlow != nullptr : !instance.glowPath.empty();
     if (glowOn && glowAvailable && !flipbookFrame) features |= LIVE_GLOW;
     if (tintOn) features |= LIVE_TINT;
@@ -945,8 +944,8 @@ void TitleArtSystem::updateLiveEffects(Entity entity, TitleArtRendererComponent&
     if (previous) features |= LIVE_CROSSFADE;
     if (instance.animationDrawn) features |= LIVE_ANIM;
 
-    UIComponent* ui = instance.space == TitleArtSpace::UI ? scene->findComponent<UIComponent>(entity) : nullptr;
-    MeshComponent* mesh = instance.space == TitleArtSpace::World ? scene->findComponent<MeshComponent>(entity) : nullptr;
+    UIComponent* ui = instance.space == titleart::TitleArtSpace::UI ? scene->findComponent<UIComponent>(entity) : nullptr;
+    MeshComponent* mesh = instance.space == titleart::TitleArtSpace::World ? scene->findComponent<MeshComponent>(entity) : nullptr;
     if (mesh && mesh->numSubmeshes == 0) mesh = nullptr;
     if (features == 0 || (!ui && !mesh)){
         // R33: no Live Effect, the built-in shader (and nothing of title_fx collected)
@@ -1069,7 +1068,7 @@ void TitleArtSystem::updateLiveEffects(Entity entity, TitleArtRendererComponent&
 
 // ---- readiness and failure (R18, R19, R55) ----
 
-void TitleArtSystem::updateStatus(Entity entity, TitleArtRendererComponent& title, TitleArtInstance& instance){
+void TitleArtSystem::updateStatus(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance){
     const std::string name = scene->getEntityName(entity);
     if (title.renderMode == TitleArtRenderMode::BAKED){
         instance.ready = instance.hasBake;
@@ -1090,7 +1089,7 @@ void TitleArtSystem::updateStatus(Entity entity, TitleArtRendererComponent& titl
         return;
     }
     if (!instance.live) return;
-    const TitleArtLiveStatus& s = instance.liveStatus;
+    const titleart::TitleArtLiveStatus& s = instance.liveStatus;
     instance.ready = s.ready;
     instance.pending = s.pending;
     instance.pixelPath = s.pixelPath;
@@ -1183,8 +1182,8 @@ void TitleArtSystem::handleEvent(Entity player, const AnimationEvent& event, con
     }else if (fn == "titleArtSetColorScheme"){
         std::string scheme;
         for (const std::string& n : parameterNames(scene, target)){
-            const TitleArtInstance& instance = instanceOf(*title);
-            if (const TitleArtExposedParam* p = findExposed(instance, n); p && p->type == "color_scheme"){ scheme = n; break; }
+            const titleart::TitleArtInstance& instance = instanceOf(*title);
+            if (const titleart::TitleArtExposedParam* p = findExposed(instance, n); p && p->type == "color_scheme"){ scheme = n; break; }
         }
         if (scheme.empty()) error = "the title exposes no color scheme parameter";
         else ok = setParameter(scene, target, scheme, TitleArtValue::fromString(eventArgString(event, first)), error);
@@ -1202,23 +1201,23 @@ std::string TitleArtSystem::displayName(EntityRegistry* scene, Entity entity){
 
 void TitleArtSystem::setFrameBudget(double ms){
     frameBudgetMs = ms <= 0.0 ? 0.0 : std::min(16.0, std::max(0.25, ms));
-    TitleArtRuntime::setFrameBudget(frameBudgetMs);
+    titleart::TitleArtRuntime::setFrameBudget(frameBudgetMs);
 }
 
 double TitleArtSystem::getFrameBudget(){
-    return frameBudgetMs > 0.0 ? frameBudgetMs : TitleArtRuntime::getFrameBudget(false);
+    return frameBudgetMs > 0.0 ? frameBudgetMs : titleart::TitleArtRuntime::getFrameBudget(false);
 }
 
 void TitleArtSystem::setDisabledFeaturesForTesting(EntityRegistry* scene, Entity entity, uint32_t flags){
     if (TitleArtRendererComponent* title = titleOf(scene, entity)){
         instanceOf(*title).testFlags = flags;
-        if (title->runtime->live) TitleArtRuntime::invalidate(*title->runtime->live);
+        if (title->runtime->live) titleart::TitleArtRuntime::invalidate(*title->runtime->live);
     }
 }
 
 void TitleArtSystem::refresh(EntityRegistry* scene, Entity entity){
     TitleArtRendererComponent* title = titleOf(scene, entity);
-    if (title && title->runtime && title->runtime->live) TitleArtRuntime::invalidate(*title->runtime->live);
+    if (title && title->runtime && title->runtime->live) titleart::TitleArtRuntime::invalidate(*title->runtime->live);
 }
 
 bool TitleArtSystem::areTitlesReady(std::string* waiting) const{
@@ -1227,7 +1226,7 @@ bool TitleArtSystem::areTitlesReady(std::string* waiting) const{
     for (size_t i = 0; i < titles->size(); i++){
         const TitleArtRendererComponent& title = titles->getComponentFromIndex(i);
         if (!title.enabled || title.renderMode == TitleArtRenderMode::BAKED || !title.runtime) continue;
-        const TitleArtInstance& instance = *title.runtime;
+        const titleart::TitleArtInstance& instance = *title.runtime;
         if (!instance.live || !instance.liveRuns || instance.ready || instance.failed) continue;
         if (waiting) *waiting = "Title Art '" + scene->getEntityName(titles->getEntity(i)) + "' " + (instance.pending.empty() ? "queued" : instance.pending);
         return false;
@@ -1235,7 +1234,7 @@ bool TitleArtSystem::areTitlesReady(std::string* waiting) const{
     return true;
 }
 
-bool TitleArtSystem::meshStats(EntityRegistry* scene, Entity entity, const std::string& layerPath, TitleArtMeshStats& out, bool& found,
+bool TitleArtSystem::meshStats(EntityRegistry* scene, Entity entity, const std::string& layerPath, titleart::TitleArtMeshStats& out, bool& found,
                                std::string& error){
     found = false;
     TitleArtRendererComponent* title = titleOf(scene, entity);
@@ -1257,7 +1256,7 @@ bool TitleArtSystem::meshStats(EntityRegistry* scene, Entity entity, const std::
         return true;
     }
     std::string why;
-    if (!TitleArtRuntime::meshStats(*title->runtime->live, layerPath, out, found, &why)){
+    if (!titleart::TitleArtRuntime::meshStats(*title->runtime->live, layerPath, out, found, &why)){
         error = "TitleArt '" + name + "': getMeshStats: " + why + ".";
         return false;
     }
@@ -1268,12 +1267,12 @@ std::vector<std::string> TitleArtSystem::parameterNames(EntityRegistry* scene, E
     std::vector<std::string> out;
     TitleArtRendererComponent* title = titleOf(scene, entity);
     if (!title) return out;
-    TitleArtInstance& instance = instanceOf(*title);
+    titleart::TitleArtInstance& instance = instanceOf(*title);
     if (!instance.resolved || instance.resolvedTitle != title->title.path){
         instance.exposed.clear();
-        instance.exposedKnown = TitleArtRuntime::readExposed(title->title.path, instance.exposed, &instance.documentError);
+        instance.exposedKnown = titleart::TitleArtRuntime::readExposed(title->title.path, instance.exposed, &instance.documentError);
     }
-    for (const TitleArtExposedParam& p : instance.exposed) out.push_back(p.name);
+    for (const titleart::TitleArtExposedParam& p : instance.exposed) out.push_back(p.name);
     return out;
 }
 
@@ -1281,7 +1280,7 @@ std::vector<std::string> TitleArtSystem::colorSchemes(EntityRegistry* scene, Ent
     TitleArtRendererComponent* title = titleOf(scene, entity);
     if (!title) return {};
     parameterNames(scene, entity);
-    for (const TitleArtExposedParam& p : instanceOf(*title).exposed)
+    for (const titleart::TitleArtExposedParam& p : instanceOf(*title).exposed)
         if (p.type == "color_scheme") return p.options;
     return {};
 }
@@ -1301,8 +1300,8 @@ bool TitleArtSystem::setParameter(EntityRegistry* scene, Entity entity, const st
         return false;
     }
     const std::vector<std::string> names = parameterNames(scene, entity);
-    TitleArtInstance& instance = instanceOf(*title);
-    const TitleArtExposedParam* param = findExposed(instance, name);
+    titleart::TitleArtInstance& instance = instanceOf(*title);
+    const titleart::TitleArtExposedParam* param = findExposed(instance, name);
     if (title->renderMode == TitleArtRenderMode::BAKED){
         // R65: the Baked sentence names what the script tried to change
         const std::string type = param ? param->type : (name == "text" ? "text" : "");
@@ -1402,8 +1401,8 @@ bool TitleArtSystem::getParameter(EntityRegistry* scene, Entity entity, const st
         return false;
     }
     const std::vector<std::string> names = parameterNames(scene, entity);
-    TitleArtInstance& instance = instanceOf(*title);
-    const TitleArtExposedParam* param = findExposed(instance, name);
+    titleart::TitleArtInstance& instance = instanceOf(*title);
+    const titleart::TitleArtExposedParam* param = findExposed(instance, name);
     if (!param){
         const std::string near = nearest(name, names);
         error = "TitleArt '" + scene->getEntityName(entity) + "': no exposed parameter '" + name + "'" +
@@ -1445,7 +1444,7 @@ bool TitleArtSystem::resetParameter(EntityRegistry* scene, Entity entity, const 
 bool TitleArtSystem::nativeSize(EntityRegistry* scene, Entity entity, float& width, float& height, float& pivotX, float& pivotY){
     TitleArtRendererComponent* title = titleOf(scene, entity);
     if (!title) return false;
-    TitleArtInstance& instance = instanceOf(*title);
+    titleart::TitleArtInstance& instance = instanceOf(*title);
     TitleArtBakeInfo info;
     if (instance.resolved && instance.resolvedTitle == title->title.path && instance.bake.frame.width > 0){
         info = instance.bake;
@@ -1454,8 +1453,8 @@ bool TitleArtSystem::nativeSize(EntityRegistry* scene, Entity entity, float& wid
         if (!TitleArtBakeInfo::load(titleArtSidecarPath(title->title.path), info, error)) return false;
     }
     if (info.frame.width <= 0 || info.frame.height <= 0) return false;
-    const TitleArtSpace space = spaceOf(scene, entity);
-    if (space == TitleArtSpace::World){
+    const titleart::TitleArtSpace space = spaceOf(scene, entity);
+    if (space == titleart::TitleArtSpace::World){
         // R3: frame px / Pixels Per Unit. Sprites are sized in whole units and a 2D scene's
         // unit is a pixel, so 0 (the default) means 1 pixel per unit (spec Deviations)
         const float ppu = title->pixelsPerUnit > 0.0f ? title->pixelsPerUnit : 1.0f;
@@ -1483,7 +1482,7 @@ bool TitleArtSystem::setNativeSize(EntityRegistry* scene, Entity entity, std::st
                 ". Bake it in the Title Designer (Bake) or with export_title.";
         return false;
     }
-    if (RectTransformComponent* rect = scene->findComponent<RectTransformComponent>(entity); rect && spaceOf(scene, entity) == TitleArtSpace::UI){
+    if (RectTransformComponent* rect = scene->findComponent<RectTransformComponent>(entity); rect && spaceOf(scene, entity) == titleart::TitleArtSpace::UI){
         rect->width = (unsigned int)std::max(1.0f, std::round(width));
         rect->height = (unsigned int)std::max(1.0f, std::round(height));
         if (title->pivotFromTitle) rect->pivot = Vector2(pivotX, pivotY);

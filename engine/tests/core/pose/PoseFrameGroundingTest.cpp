@@ -14,6 +14,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PoseFrameGroundingTest_cpp {
+
 using namespace posetest;
 
 namespace {
@@ -257,3 +259,5 @@ TEST(PoseFrameGrounding, FollowThroughFollowsTheCorrectedHips){
     }
     EXPECT_GT(compared, 100);
 }
+
+}  // namespace PoseFrameGroundingTest_cpp

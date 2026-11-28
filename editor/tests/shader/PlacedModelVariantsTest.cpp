@@ -36,6 +36,8 @@
 #include <string>
 #include <vector>
 
+namespace PlacedModelVariantsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -236,3 +238,5 @@ TEST_F(PlacedModel, FoliageShipsTheVariantTheChunkAsksFor){
     }
     EXPECT_EQ(shipped, std::set<uint64_t>{asked}) << "the instanced variants shipped:" << names;
 }
+
+}  // namespace PlacedModelVariantsTest_cpp

@@ -42,6 +42,8 @@
 #include <string>
 #include <vector>
 
+namespace DrawMaterialsGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -445,3 +447,5 @@ TEST_F(TextureReadyGpu, ReadyAfterLoad){
     texture.destroy();
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace DrawMaterialsGpuTest_cpp

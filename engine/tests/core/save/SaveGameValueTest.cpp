@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+namespace SaveGameValueTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -203,3 +205,5 @@ TEST(SaveGameValue, JsonViewIsABijection){
     ASSERT_TRUE(savegame::toJson(luaPayload, view, error)) << error.message;
     EXPECT_EQ(view.dump(), R"({"#1":"a","#5":"b","s":{"$bytes":"/w=="}})");
 }
+
+}  // namespace SaveGameValueTest_cpp

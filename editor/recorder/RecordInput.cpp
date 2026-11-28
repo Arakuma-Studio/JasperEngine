@@ -30,7 +30,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::recordinput;
+
+namespace jasperengine::editor::recordinput {
 
 namespace {
 
@@ -95,11 +96,11 @@ namespace {
 
 // ================================================================== settings and files
 
-fs::path recordinput::settingsFile(const fs::path& projectPath) {
+fs::path settingsFile(const fs::path& projectPath) {
     return projectPath / ".jasperengine" / "user" / "record-input.yaml";
 }
 
-bool recordinput::loadSettings(const fs::path& file, Settings& settings, std::string& error) {
+bool loadSettings(const fs::path& file, Settings& settings, std::string& error) {
     bool ok = false;
     const std::string text = readInputFile(file, ok);
     if (!ok) return true;   // the defaults
@@ -123,7 +124,7 @@ bool recordinput::loadSettings(const fs::path& file, Settings& settings, std::st
     return true;
 }
 
-bool recordinput::saveSettings(const fs::path& file, const Settings& settings, std::string& error) {
+bool saveSettings(const fs::path& file, const Settings& settings, std::string& error) {
     YAML::Emitter out;
     out << YAML::BeginMap;
     out << YAML::Key << "frame_rate" << YAML::Value << settings.frameRate;
@@ -140,12 +141,12 @@ bool recordinput::saveSettings(const fs::path& file, const Settings& settings, s
     return true;
 }
 
-fs::path recordinput::recordingsFolder(const fs::path& projectPath) {
+fs::path recordingsFolder(const fs::path& projectPath) {
     const fs::path root = gametests::findRoot(projectPath);
     return root.empty() ? projectPath / "Recordings" / "Input" : root / "Input";
 }
 
-std::string recordinput::recordingFileName(const std::string& scene, const std::tm& when) {
+std::string recordingFileName(const std::string& scene, const std::tm& when) {
     std::string name = scene.empty() ? std::string("Scene") : scene;
     for (char& c : name) {
         if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|') c = '_';
@@ -155,7 +156,7 @@ std::string recordinput::recordingFileName(const std::string& scene, const std::
     return name + "-" + stamp + ".input.json";
 }
 
-std::string recordinput::fileStem(const fs::path& file) {
+std::string fileStem(const fs::path& file) {
     std::string stem = FileUtils::pathToUtf8(file.filename());
     for (const char* suffix : {".json", ".input"}) {
         const size_t n = std::char_traits<char>::length(suffix);
@@ -164,7 +165,7 @@ std::string recordinput::fileStem(const fs::path& file) {
     return stem;
 }
 
-FileSummary recordinput::summarize(std::string_view text) {
+FileSummary summarize(std::string_view text) {
     FileSummary out;
     input::ParsedScript script;
     if (!input::parseScript(text, script, out.error)) return out;
@@ -188,7 +189,7 @@ FileSummary recordinput::summarize(std::string_view text) {
     return out;
 }
 
-bool recordinput::parseResolution(const std::string& text, int& width, int& height, std::string& error) {
+bool parseResolution(const std::string& text, int& width, int& height, std::string& error) {
     GameResolution resolution;
     if (!findGameResolution(text, {}, resolution, error)) {
         error = "\"" + text + "\" is not a size: give \"WxH\" (\"1290x2796\") or a Game view resolution's name";
@@ -199,7 +200,7 @@ bool recordinput::parseResolution(const std::string& text, int& width, int& heig
     return true;
 }
 
-bool recordinput::writePending(PendingWrite& pending, const Writer& writer) {
+bool writePending(PendingWrite& pending, const Writer& writer) {
     std::string why;
     bool ok = false;
     if (writer) {
@@ -708,3 +709,5 @@ void RecordInput::tick() {
     if (recordThisSession && !input::InputRecorder::isRecording()) stopRecording();
     pollShot();
 }
+
+}  // namespace jasperengine::editor::recordinput

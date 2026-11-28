@@ -17,7 +17,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::fogprofiles;
 
 namespace fs = std::filesystem;
 
@@ -53,9 +52,8 @@ namespace {
 }
 }
 
-using namespace jasperengine::editor::fogprofiles::assets;
 
-std::vector<ProjectFogProfile> jasperengine::editor::fogprofiles::listProjectProfiles(const Project& project) {
+std::vector<fogprofiles::ProjectFogProfile> jasperengine::editor::fogprofiles::listProjectProfiles(const Project& project) {
     std::vector<ProjectFogProfile> profiles;
     const fs::path assets = project.getAssetsPath();
     std::error_code error;
@@ -70,9 +68,9 @@ std::vector<ProjectFogProfile> jasperengine::editor::fogprofiles::listProjectPro
         }
         if (!it->is_regular_file(error) || !FogProfileIO::isProfilePath(file.filename().string())) continue;
         ProjectFogProfile entry;
-        if (!readProfile(file, entry.data)) continue;
-        entry.path = relativeTo(file, project.getProjectPath());
-        entry.assetPath = relativeTo(file, assets);
+        if (!fogprofiles::assets::readProfile(file, entry.data)) continue;
+        entry.path = fogprofiles::assets::relativeTo(file, project.getProjectPath());
+        entry.assetPath = fogprofiles::assets::relativeTo(file, assets);
         profiles.push_back(std::move(entry));
     }
     std::sort(profiles.begin(), profiles.end(), [](const ProjectFogProfile& a, const ProjectFogProfile& b) { return a.path < b.path; });
@@ -80,7 +78,7 @@ std::vector<ProjectFogProfile> jasperengine::editor::fogprofiles::listProjectPro
 }
 
 std::string jasperengine::editor::fogprofiles::builtinCopyPath(const Project& project, const std::string& id) {
-    return relativeTo(project.getAssetsPath() / FileUtils::pathFromUtf8(FogProfiles::builtinCopyPath(id)), project.getProjectPath());
+    return fogprofiles::assets::relativeTo(project.getAssetsPath() / FileUtils::pathFromUtf8(FogProfiles::builtinCopyPath(id)), project.getProjectPath());
 }
 
 std::string jasperengine::editor::fogprofiles::findBuiltinCopy(const Project& project, const std::string& id) {
@@ -89,17 +87,17 @@ std::string jasperengine::editor::fogprofiles::findBuiltinCopy(const Project& pr
     return fs::is_regular_file(project.getProjectPath() / FileUtils::pathFromUtf8(path), error) ? path : std::string();
 }
 
-ResolvedFogProfile jasperengine::editor::fogprofiles::resolveProfileName(const Project& project, const std::string& name) {
+fogprofiles::ResolvedFogProfile jasperengine::editor::fogprofiles::resolveProfileName(const Project& project, const std::string& name) {
     ResolvedFogProfile result;
     if (name.empty()) {
-        result.error = "no fog profile named: give a .fogprofile path or builtin:<id> (" + builtinIds() + ")";
+        result.error = "no fog profile named: give a .fogprofile path or builtin:<id> (" + fogprofiles::assets::builtinIds() + ")";
         return result;
     }
 
     // a built-in: through the project's copy of it
     const FogProfileBuiltin* builtin = FogProfiles::findBuiltin(name);
     if (FogProfiles::isBuiltinKey(name) && !builtin) {
-        result.error = "no built-in fog profile '" + name + "': use one of builtin:" + builtinIds();
+        result.error = "no built-in fog profile '" + name + "': use one of builtin:" + fogprofiles::assets::builtinIds();
         return result;
     }
     if (builtin) {
@@ -113,44 +111,44 @@ ResolvedFogProfile jasperengine::editor::fogprofiles::resolveProfileName(const P
             result.data = builtin->data;
         } else {
             std::string error;
-            if (!readProfile(project.getProjectPath() / FileUtils::pathFromUtf8(result.path), result.data, &error)) {
+            if (!fogprofiles::assets::readProfile(project.getProjectPath() / FileUtils::pathFromUtf8(result.path), result.data, &error)) {
                 result.error = "the project's copy of builtin:" + std::string(builtin->id) + " (" + result.path + ") does not read (" + error +
                                "): fix it, or delete it (a new copy is made on the next use)";
                 return result;
             }
         }
-        result.assetPath = relativeTo(project.getProjectPath() / FileUtils::pathFromUtf8(result.path), project.getAssetsPath());
+        result.assetPath = fogprofiles::assets::relativeTo(project.getProjectPath() / FileUtils::pathFromUtf8(result.path), project.getAssetsPath());
         result.ok = true;
         return result;
     }
 
     // a path: project-relative first, else relative to the assets directory
     if (!FogProfileIO::isProfilePath(name)) {
-        result.error = "'" + name + "' is not a .fogprofile path or a built-in (" + builtinIds() + ")";
+        result.error = "'" + name + "' is not a .fogprofile path or a built-in (" + fogprofiles::assets::builtinIds() + ")";
         return result;
     }
     fs::path file = project.getProjectPath() / FileUtils::pathFromUtf8(name);
     std::error_code ec;
     if (!fs::is_regular_file(file, ec)) file = project.getAssetsPath() / FileUtils::pathFromUtf8(name);
     if (!fs::is_regular_file(file, ec)) {
-        result.error = "no fog profile at '" + name + "': give a project .fogprofile path or builtin:<id> (" + builtinIds() + ")";
+        result.error = "no fog profile at '" + name + "': give a project .fogprofile path or builtin:<id> (" + fogprofiles::assets::builtinIds() + ")";
         return result;
     }
     std::string error;
-    if (!readProfile(file, result.data, &error)) {
+    if (!fogprofiles::assets::readProfile(file, result.data, &error)) {
         result.error = "'" + name + "' does not read as a fog profile (" + error + "): fix the file or pick another";
         return result;
     }
-    result.path = relativeTo(file, project.getProjectPath());
-    result.assetPath = relativeTo(file, project.getAssetsPath());
+    result.path = fogprofiles::assets::relativeTo(file, project.getProjectPath());
+    result.assetPath = fogprofiles::assets::relativeTo(file, project.getAssetsPath());
     result.ok = true;
     return result;
 }
 
-std::vector<FogProfileUser> jasperengine::editor::fogprofiles::usersInOpenScenes(Project& project, const std::string& assetPath) {
+std::vector<fogprofiles::FogProfileUser> jasperengine::editor::fogprofiles::usersInOpenScenes(Project& project, const std::string& assetPath) {
     std::vector<FogProfileUser> users;
     const std::string normal = FogProfileLibrary::normalizeKey(assetPath);
-    const std::string projectRelative = relativeTo(project.getAssetsPath() / FileUtils::pathFromUtf8(normal), project.getProjectPath());
+    const std::string projectRelative = fogprofiles::assets::relativeTo(project.getAssetsPath() / FileUtils::pathFromUtf8(normal), project.getProjectPath());
     const AssetDatabase::Resolution resolution = project.getAssetDatabase().lookupPath(projectRelative);
     const Guid guid = resolution.found() ? resolution.guid : Guid();
     for (SceneProject* sceneProject : project.getScenesAndPrefabStages()) {
@@ -158,13 +156,13 @@ std::vector<FogProfileUser> jasperengine::editor::fogprofiles::usersInOpenScenes
         if (!scene) continue;
         auto fogs = scene->getComponentArray<FogComponent>();
         for (size_t i = 0; i < fogs->size(); i++) {
-            if (sameReference(fogs->getComponentFromIndex(i).profile, guid, normal))
+            if (fogprofiles::assets::sameReference(fogs->getComponentFromIndex(i).profile, guid, normal))
                 users.push_back({sceneProject->id, sceneProject->name, fogs->getEntity(i), false});
         }
         if (!scene->isComponentRegistered<FogZoneComponent>()) continue;
         auto zones = scene->getComponentArray<FogZoneComponent>();
         for (size_t i = 0; i < zones->size(); i++) {
-            if (sameReference(zones->getComponentFromIndex(i).profile, guid, normal))
+            if (fogprofiles::assets::sameReference(zones->getComponentFromIndex(i).profile, guid, normal))
                 users.push_back({sceneProject->id, sceneProject->name, zones->getEntity(i), true});
         }
     }
@@ -173,7 +171,7 @@ std::vector<FogProfileUser> jasperengine::editor::fogprofiles::usersInOpenScenes
 
 std::vector<std::string> jasperengine::editor::fogprofiles::referencingFiles(const Project& project, const std::string& assetPath) {
     const std::string normal = FogProfileLibrary::normalizeKey(assetPath);
-    const std::string projectRelative = relativeTo(project.getAssetsPath() / FileUtils::pathFromUtf8(normal), project.getProjectPath());
+    const std::string projectRelative = fogprofiles::assets::relativeTo(project.getAssetsPath() / FileUtils::pathFromUtf8(normal), project.getProjectPath());
     const AssetDatabase::Resolution resolution = project.getAssetDatabase().lookupPath(projectRelative);
     std::set<std::string> files;
     for (const DepEdge& edge : project.getAssetIndex().referencesTo(resolution.found() ? resolution.guid : Guid(), projectRelative, false, 4096)) {
@@ -195,7 +193,7 @@ void jasperengine::editor::fogprofiles::profileChanged(Project& project, const s
         if (sceneProject->scene) sceneProject->needUpdateRender = true;
 }
 
-FogProfileUsers jasperengine::editor::fogprofiles::profileUsers(Project& project, const std::string& assetPath) {
+fogprofiles::FogProfileUsers jasperengine::editor::fogprofiles::profileUsers(Project& project, const std::string& assetPath) {
     FogProfileUsers users;
     users.open = usersInOpenScenes(project, assetPath);
     // an open scene's or prefab's file holds what it held when saved: its live GameObjects count instead
@@ -215,5 +213,5 @@ FogProfileUsers jasperengine::editor::fogprofiles::profileUsers(Project& project
 
 std::string jasperengine::editor::fogprofiles::projectPathOfKey(const Project& project, const std::string& key) {
     if (key.empty() || FogProfiles::isBuiltinKey(key) || FogProfileLibrary::isRuntimeKey(key) || !FogProfileIO::isProfilePath(key)) return key;
-    return relativeTo(project.getAssetsPath() / FileUtils::pathFromUtf8(FogProfileLibrary::normalizeKey(key)), project.getProjectPath());
+    return fogprofiles::assets::relativeTo(project.getAssetsPath() / FileUtils::pathFromUtf8(FogProfileLibrary::normalizeKey(key)), project.getProjectPath());
 }

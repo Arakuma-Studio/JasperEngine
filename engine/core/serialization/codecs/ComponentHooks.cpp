@@ -18,7 +18,6 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::cook;
 
 namespace {
 
@@ -27,7 +26,7 @@ namespace {
     // Factory::createMeshComponent: the geometry of a mesh whose model, heightmapped terrain or
     // .mesh asset (meshAsset, a field of the table) rebuilds it at load is not shipped; nor are the
     // bones of a generated mesh
-    void writeMesh(Writer& w, const void* component, const WriteContext& ctx) {
+    void writeMesh(cook::Writer& w, const void* component, const cook::WriteContext& ctx) {
         const MeshComponent& mesh = *static_cast<const MeshComponent*>(component);
         const bool meshAsset = !mesh.meshAsset.empty();
         const bool runtimeGeometry = ctx.modelBackedMesh || ctx.terrainHeightmap || meshAsset;
@@ -84,7 +83,7 @@ namespace {
         write(w, posed);
     }
 
-    void readMesh(Reader& r, void* component, const LoadContext&) {
+    void readMesh(cook::Reader& r, void* component, const cook::LoadContext&) {
         MeshComponent& mesh = *static_cast<MeshComponent*>(component);
         mesh.vertexCount = static_cast<unsigned int>(r.varint());
         mesh.shadowsBillboard = r.boolean();
@@ -133,7 +132,7 @@ namespace {
     // ---------------------------------------------------------------- Audio Source
 
     // a build starts every source stopped; a playing one through its start trigger
-    void afterAudioSource(void* component, const LoadContext&) {
+    void afterAudioSource(void* component, const cook::LoadContext&) {
         AudioSourceComponent& audio = *static_cast<AudioSourceComponent*>(component);
         audio.needUpdate = true;
         if (audio.state == AudioSourceState::Playing) audio.startTrigger = true;
@@ -143,7 +142,7 @@ namespace {
     // ---------------------------------------------------------------- Action
 
     // an exported action starts as it was saved: running or paused ones through their triggers
-    void afterAction(void* component, const LoadContext&) {
+    void afterAction(void* component, const cook::LoadContext&) {
         ActionComponent& action = *static_cast<ActionComponent*>(component);
         if (action.state == ActionState::Running) {
             action.state = ActionComponent().state;
@@ -157,7 +156,7 @@ namespace {
 
     // ---------------------------------------------------------------- Terrain
 
-    void afterTerrain(void* component, const LoadContext&) {
+    void afterTerrain(void* component, const cook::LoadContext&) {
         TerrainComponent& terrain = *static_cast<TerrainComponent*>(component);
         terrain.needUpdateTerrain = true;
         terrain.needUpdateTexture = true;
@@ -171,7 +170,7 @@ namespace {
     // their invariants and bump the version, as the scene load does (SplinesReflect's postDecode).
     // The editor cooks a decoded curve, already unit: an up axis within float error of unit
     // length stays as it was written, so the cooked value reads back unchanged.
-    void afterSpline(void* component, const LoadContext&) {
+    void afterSpline(void* component, const cook::LoadContext&) {
         spline::SplineData& data = static_cast<SplineComponent*>(component)->spline;
         for (spline::SplineKnot& knot : data.editableKnots()) {
             knot.radius = std::isfinite(knot.radius) ? std::max(0.0f, knot.radius) : 0.0f;
@@ -190,7 +189,7 @@ namespace {
 
     // T6 R78: the slots and values come through the generated tables, the blocks from the baked
     // asset (VoxelSystem loads it by path on its first update, so nothing else is set up here)
-    void afterVoxelVolume(void* component, const LoadContext&) {
+    void afterVoxelVolume(void* component, const cook::LoadContext&) {
         sanitizeVoxelVolume(*static_cast<VoxelVolumeComponent*>(component));
     }
 
@@ -198,14 +197,14 @@ namespace {
 
     // the exported code carries the editor's body flags over
     template<typename Body>
-    void writeBodyFlags(Writer& w, const void* component, const WriteContext&) {
+    void writeBodyFlags(cook::Writer& w, const void* component, const cook::WriteContext&) {
         const Body& body = *static_cast<const Body*>(component);
         w.boolean(body.needReloadBody);
         w.boolean(body.needUpdateColliders);
     }
 
     template<typename Body>
-    void readBodyFlags(Reader& r, void* component, const LoadContext&) {
+    void readBodyFlags(cook::Reader& r, void* component, const cook::LoadContext&) {
         Body& body = *static_cast<Body*>(component);
         body.needReloadBody = r.boolean();
         body.needUpdateColliders = r.boolean();
@@ -214,7 +213,7 @@ namespace {
 #ifdef JASPERENGINE_PHYSICS_2D
     // the collider members the field tables leave to the scene codec (Stream::encodeRigidbody2DComponent):
     // the collision filter (the points are a list of the field table since upstream's physics-2d)
-    void writeBody2D(Writer& w, const void* component, const WriteContext& ctx) {
+    void writeBody2D(cook::Writer& w, const void* component, const cook::WriteContext& ctx) {
         writeBodyFlags<Rigidbody2DComponent>(w, component, ctx);
         const Rigidbody2DComponent& body = *static_cast<const Rigidbody2DComponent*>(component);
         const size_t count = body.colliders.size();
@@ -227,7 +226,7 @@ namespace {
         }
     }
 
-    void readBody2D(Reader& r, void* component, const LoadContext& ctx) {
+    void readBody2D(cook::Reader& r, void* component, const cook::LoadContext& ctx) {
         readBodyFlags<Rigidbody2DComponent>(r, component, ctx);
         Rigidbody2DComponent& body = *static_cast<Rigidbody2DComponent*>(component);
         const uint64_t count = r.varint();
@@ -244,7 +243,7 @@ namespace {
 #ifdef JASPERENGINE_PHYSICS_3D
     // the members the field tables leave to the scene codec (Stream::encodeRigidbodyComponent): the
     // allowed degrees of freedom and each collider's mesh indices
-    void writeBody3D(Writer& w, const void* component, const WriteContext& ctx) {
+    void writeBody3D(cook::Writer& w, const void* component, const cook::WriteContext& ctx) {
         writeBodyFlags<RigidbodyComponent>(w, component, ctx);
         const RigidbodyComponent& body = *static_cast<const RigidbodyComponent*>(component);
         write(w, body.allowedDOFs);
@@ -253,7 +252,7 @@ namespace {
         for (size_t i = 0; i < count; i++) write(w, body.colliders[i].indices);
     }
 
-    void readBody3D(Reader& r, void* component, const LoadContext& ctx) {
+    void readBody3D(cook::Reader& r, void* component, const cook::LoadContext& ctx) {
         readBodyFlags<RigidbodyComponent>(r, component, ctx);
         RigidbodyComponent& body = *static_cast<RigidbodyComponent*>(component);
         read(r, body.allowedDOFs);
@@ -266,7 +265,7 @@ namespace {
     }
 #endif
 
-    const ComponentHooks kHooks[] = {
+    const cook::ComponentHooks kHooks[] = {
         {fnv1a32("mesh"), &writeMesh, &readMesh, nullptr},
         {fnv1a32("audiosource"), nullptr, nullptr, &afterAudioSource},
         {fnv1a32("action"), nullptr, nullptr, &afterAction},
@@ -283,7 +282,7 @@ namespace {
 
 }
 
-const ComponentHooks* cook::componentHooks(uint32_t keyHash) {
+const cook::ComponentHooks* cook::componentHooks(uint32_t keyHash) {
     for (const ComponentHooks& hooks : kHooks)
         if (hooks.keyHash == keyHash) return &hooks;
     return nullptr;

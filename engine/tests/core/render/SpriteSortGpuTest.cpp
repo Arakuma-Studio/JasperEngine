@@ -30,6 +30,8 @@
 #include <string>
 #include <vector>
 
+namespace SpriteSortGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -274,3 +276,5 @@ TEST_F(SpriteSortGpu, TheTransparentQueueComparesTheLayerFirst){
     EXPECT_GT(unbatched[0], unbatched[1]) << "the same with batching off";
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace SpriteSortGpuTest_cpp

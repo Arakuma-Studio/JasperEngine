@@ -32,6 +32,8 @@ namespace jasperengine {
     };
 }
 
+namespace InputRecorderTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::input;
 
@@ -569,3 +571,5 @@ TEST_F(InputRecorderTest, SendInputParityEventsGiveTheSameSystemCalls){
     EXPECT_GT(live.size(), 1000u);
     EXPECT_EQ(live, file);
 }
+
+}  // namespace InputRecorderTest_cpp

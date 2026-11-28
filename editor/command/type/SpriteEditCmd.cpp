@@ -15,9 +15,8 @@ namespace fs = std::filesystem;
 
 namespace jasperengine::editor {
 
-    using namespace pixelart::draw;
 
-    SpriteEditCmd::SpriteEditCmd(Project* p, fs::path file, std::shared_ptr<const SpritePatchSet> set, std::shared_ptr<const std::vector<uint8_t>> bytes, SpriteDoc written)
+    SpriteEditCmd::SpriteEditCmd(Project* p, fs::path file, std::shared_ptr<const jasperengine::editor::pixelart::draw::SpritePatchSet> set, std::shared_ptr<const std::vector<uint8_t>> bytes, jasperengine::editor::pixelart::draw::SpriteDoc written)
         : project(p), absolute(std::move(file)), fileName(absolute.filename().generic_string()), patch(std::move(set)), firstBytes(std::move(bytes)), firstDoc(std::move(written)) {
         mergeable = false;
     }
@@ -28,7 +27,7 @@ namespace jasperengine::editor {
 
     std::string SpriteEditCmd::fileConflict(const std::string& want, const char* verb) const {
         pixelart::PixelProblem problem;
-        std::shared_ptr<SpriteSession> session = SpriteDocCache::get().openAbsolute(project, absolute, problem);
+        std::shared_ptr<jasperengine::editor::pixelart::draw::SpriteSession> session = jasperengine::editor::pixelart::draw::SpriteDocCache::get().openAbsolute(project, absolute, problem);
         if (!session) return fileName + " can no longer be read; " + verb + " would overwrite it";
         if (session->revision != want) return fileName + " changed outside the editor after this step; " + verb + " would overwrite that change";
         return std::string();
@@ -49,7 +48,7 @@ namespace jasperengine::editor {
     }
 
     std::string SpriteEditCmd::cachedRefusal(bool undo) const {
-        std::shared_ptr<SpriteSession> session = SpriteDocCache::get().find(absolute);
+        std::shared_ptr<jasperengine::editor::pixelart::draw::SpriteSession> session = jasperengine::editor::pixelart::draw::SpriteDocCache::get().find(absolute);
         if (!session) return std::string();
         if (session->revision != (undo ? patch->revisionAfter : patch->revisionBefore)) {
             return fileName + " changed outside the editor after this step; " + (undo ? "undoing" : "redoing") + " would overwrite that change";
@@ -78,53 +77,53 @@ namespace jasperengine::editor {
 
     void SpriteEditCmd::afterWrite(const char* origin, bool announce) {
         // no openAbsolute here: this is the editor's own write, the session already holds it
-        std::shared_ptr<SpriteSession> session = SpriteDocCache::get().find(absolute);
+        std::shared_ptr<jasperengine::editor::pixelart::draw::SpriteSession> session = jasperengine::editor::pixelart::draw::SpriteDocCache::get().find(absolute);
         // the first execute: the tool announces it, with the history entry the step becomes (R41)
         if (session && announce) {
-            SpriteEdited event;
+            jasperengine::editor::pixelart::draw::SpriteEdited event;
             event.path = session->path;
             event.revision = session->revision;
             event.rects = patch->rects;
             event.origin = origin;
             event.by = patch->by;
             event.summary = patch->summary;
-            SpriteEditEvents::edited(event);
+            pixelart::draw::SpriteEditEvents::edited(event);
         }
         // S05's self-write suppression hides these writes from the watcher (R41)
-        if (!isPngPath(absolute) && session) pixelart::aseprite::AsepriteImporter::get().reimport(session->assetPath);
+        if (!jasperengine::editor::pixelart::draw::isPngPath(absolute) && session) pixelart::aseprite::AsepriteImporter::get().reimport(session->assetPath);
         ProjectFileWrites::filesWritten(project, {absolute});
     }
 
     bool SpriteEditCmd::apply(bool forward, std::string& why) {
         pixelart::PixelProblem problem;
-        std::shared_ptr<SpriteSession> session = SpriteDocCache::get().openAbsolute(project, absolute, problem);
+        std::shared_ptr<jasperengine::editor::pixelart::draw::SpriteSession> session = jasperengine::editor::pixelart::draw::SpriteDocCache::get().openAbsolute(project, absolute, problem);
         if (!session) {
             why = problem.message;
             return false;
         }
         std::shared_ptr<const std::vector<uint8_t>> bytes;
-        SpriteDoc sprite;
+        jasperengine::editor::pixelart::draw::SpriteDoc sprite;
         if (!forward && patch->beforeFile) {
             bytes = patch->beforeFile;
         } else {
             sprite = session->sprite;
             applyPatch(sprite, *patch, forward);
             auto encoded = std::make_shared<std::vector<uint8_t>>();
-            if (!encodeSprite(sprite, *encoded, problem)) {
+            if (!jasperengine::editor::pixelart::draw::encodeSprite(sprite, *encoded, problem)) {
                 why = problem.message;
                 return false;
             }
             bytes = encoded;
         }
         if (!writeFile(*bytes, why)) return false;
-        const std::string revision = SpriteDocCache::revisionOf(*bytes);
-        SpriteDoc fresh;
-        if (!decodeSprite(absolute, *bytes, fresh, problem)) {
+        const std::string revision = jasperengine::editor::pixelart::draw::SpriteDocCache::revisionOf(*bytes);
+        jasperengine::editor::pixelart::draw::SpriteDoc fresh;
+        if (!jasperengine::editor::pixelart::draw::decodeSprite(absolute, *bytes, fresh, problem)) {
             why = problem.message;
             return false;
         }
         const std::string previous = session->revision;
-        SpriteDocCache::get().adoptWrite(*session, std::move(fresh), bytes, revision);
+        jasperengine::editor::pixelart::draw::SpriteDocCache::get().adoptWrite(*session, std::move(fresh), bytes, revision);
         // an undo moves the file for everyone who was looking at it: not a change behind their back (R34)
         for (auto& [client, seen] : session->lastSeen) {
             if (seen == previous) seen = revision;
@@ -141,13 +140,13 @@ namespace jasperengine::editor {
                 if (failureSink) *failureSink = why;
                 return false;
             }
-            std::shared_ptr<SpriteSession> session = SpriteDocCache::get().find(absolute);
+            std::shared_ptr<jasperengine::editor::pixelart::draw::SpriteSession> session = jasperengine::editor::pixelart::draw::SpriteDocCache::get().find(absolute);
             if (session) {
-                SpriteDocCache::get().adoptWrite(*session, std::move(firstDoc), firstBytes, patch->revisionAfter);
-                SpriteDocCache::get().addPatch(*session, patch);
+                jasperengine::editor::pixelart::draw::SpriteDocCache::get().adoptWrite(*session, std::move(firstDoc), firstBytes, patch->revisionAfter);
+                jasperengine::editor::pixelart::draw::SpriteDocCache::get().addPatch(*session, patch);
             }
             firstBytes.reset();
-            firstDoc = SpriteDoc();
+            firstDoc = jasperengine::editor::pixelart::draw::SpriteDoc();
             afterWrite("agent", false);
             return true;
         }

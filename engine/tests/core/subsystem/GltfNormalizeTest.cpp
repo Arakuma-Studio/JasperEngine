@@ -27,6 +27,8 @@
 #include <random>
 #include <sstream>
 
+namespace GltfNormalizeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -329,3 +331,5 @@ TEST(GltfNormalizeTest, MalformedFuzz){
     // most damage is caught (a flip in an unused tail can decode to other values)
     EXPECT_GT(refused, 50);
 }
+
+}  // namespace GltfNormalizeTest_cpp

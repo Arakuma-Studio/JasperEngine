@@ -24,6 +24,8 @@
 #include <filesystem>
 #include <fstream>
 
+namespace TitleLocalisationBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using TitleLocalisationBenchJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
@@ -147,3 +149,5 @@ TEST(TitleLocalisationBench, PngEncoder) {
         }
     }
 }
+
+}  // namespace TitleLocalisationBenchTest_cpp

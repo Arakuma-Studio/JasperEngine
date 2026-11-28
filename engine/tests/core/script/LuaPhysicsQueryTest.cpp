@@ -18,6 +18,8 @@
 
 #include <string>
 
+namespace LuaPhysicsQueryTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -183,3 +185,5 @@ TEST(LuaPhysicsQuery, NonAlloc2DFillsAndClears){
     lua_setglobal(L, "queryScene");
 }
 #endif
+
+}  // namespace LuaPhysicsQueryTest_cpp

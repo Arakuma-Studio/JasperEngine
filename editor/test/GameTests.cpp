@@ -25,7 +25,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::gametests;
+
+namespace jasperengine::editor::gametests {
 
 namespace {
 
@@ -47,7 +48,7 @@ namespace {
 
 }
 
-fs::path gametests::findRoot(const fs::path& projectDir) {
+fs::path findRoot(const fs::path& projectDir) {
     std::error_code ec;
     for (const char* name : ROOT_NAMES) {
         const fs::path dir = projectDir / name;
@@ -56,14 +57,14 @@ fs::path gametests::findRoot(const fs::path& projectDir) {
     return {};
 }
 
-bool gametests::isTestRoot(const fs::path& projectDir, const fs::path& dir) {
+bool isTestRoot(const fs::path& projectDir, const fs::path& dir) {
     const fs::path root = findRoot(projectDir);
     if (root.empty()) return false;
     std::error_code ec;
     return fs::equivalent(root, dir, ec);
 }
 
-bool gametests::loadSettings(const fs::path& root, gametest::Settings& out, std::string& error) {
+bool loadSettings(const fs::path& root, gametest::Settings& out, std::string& error) {
     out = gametest::Settings();
     std::string text;
     if (!gameTestsReadText(root / MARKER, text)) return true;
@@ -87,11 +88,11 @@ bool gametests::loadSettings(const fs::path& root, gametest::Settings& out, std:
     return true;
 }
 
-std::vector<gametest::ScannedFile> gametests::scan(const fs::path& root, const gametest::Settings& settings) {
+std::vector<gametest::ScannedFile> scan(const fs::path& root, const gametest::Settings& settings) {
     return gametest::TestScan::scan(root, settings);
 }
 
-std::string gametests::folderToCreate(const fs::path& projectDir, std::vector<std::string>& blocking) {
+std::string folderToCreate(const fs::path& projectDir, std::vector<std::string>& blocking) {
     blocking.clear();
     const fs::path tests = projectDir / "Tests";
     std::error_code ec;
@@ -105,7 +106,7 @@ std::string gametests::folderToCreate(const fs::path& projectDir, std::vector<st
     return blocking.empty() ? "Tests" : "GameTests";
 }
 
-std::string gametests::defaultTestsYaml() {
+std::string defaultTestsYaml() {
     return "# The project's tests (docs/game-tests.md). Every key is optional.\n"
            "version: 1\n"
            "targets: [editor]        # editor, windows, linux, macos, android, ios, web\n"
@@ -120,7 +121,7 @@ std::string gametests::defaultTestsYaml() {
            "divergence: fail         # fail | warn\n";
 }
 
-std::string gametests::testScriptTemplate(const std::string& startScene) {
+std::string testScriptTemplate(const std::string& startScene) {
     const std::string scene = startScene.empty() ? std::string() : "    scene = \"" + startScene + "\",\n";
     return "-- A test file: every Test.case is one scenario (docs/game-tests.md).\n"
            "-- Play Mode cases run in a fresh Play session at a fixed frame rate on clean data;\n"
@@ -147,7 +148,7 @@ std::string gametests::testScriptTemplate(const std::string& startScene) {
            "end)\n";
 }
 
-fs::path gametests::findGolden(const fs::path& root, const std::string& caseId, const std::string& name, const std::string& platform,
+fs::path findGolden(const fs::path& root, const std::string& caseId, const std::string& name, const std::string& platform,
                                const std::string& backend) {
     const fs::path dir = root / "Golden" / caseDir(caseId);
     std::error_code ec;
@@ -157,7 +158,7 @@ fs::path gametests::findGolden(const fs::path& root, const std::string& caseId, 
     return {};
 }
 
-fs::path gametests::acceptPath(const fs::path& root, const std::string& caseId, const std::string& name, const std::string& platform,
+fs::path acceptPath(const fs::path& root, const std::string& caseId, const std::string& name, const std::string& platform,
                                const std::string& backend, bool forTarget) {
     const fs::path dir = root / "Golden" / caseDir(caseId);
     if (forTarget) return dir / (name + "." + platform + "-" + backend + ".png");
@@ -165,7 +166,7 @@ fs::path gametests::acceptPath(const fs::path& root, const std::string& caseId, 
     return existing.empty() ? dir / (name + ".png") : existing;
 }
 
-fs::path gametests::resultsDir(const fs::path& projectDir) {
+fs::path resultsDir(const fs::path& projectDir) {
     return projectDir / ".jasperengine" / "test-results";
 }
 
@@ -189,7 +190,7 @@ namespace {
 
 }
 
-auto gametests::compareCapture(const fs::path& projectDir, const fs::path& root, const std::string& caseId, const std::string& name,
+auto compareCapture(const fs::path& projectDir, const fs::path& root, const std::string& caseId, const std::string& name,
                                const texsynth::Image& actual, const std::string& platform, const std::string& backend,
                                const gametest::ImageTolerance& tolerance, const Json& options) -> Json {
     Json capture = {{"name", name}};
@@ -252,11 +253,11 @@ auto gametests::compareCapture(const fs::path& projectDir, const fs::path& root,
     return capture;
 }
 
-fs::path gametests::captureActualPath(const fs::path& projectDir, const std::string& caseId, const std::string& name) {
+fs::path captureActualPath(const fs::path& projectDir, const std::string& caseId, const std::string& name) {
     return resultsDir(projectDir) / "captures" / caseDir(caseId) / (name + ".png");
 }
 
-std::vector<std::string> gametests::listSnapshots(const fs::path& projectDir) {
+std::vector<std::string> listSnapshots(const fs::path& projectDir) {
     std::vector<std::string> out;
     const fs::path root = findRoot(projectDir);
     if (root.empty()) return out;
@@ -270,7 +271,7 @@ std::vector<std::string> gametests::listSnapshots(const fs::path& projectDir) {
     return out;
 }
 
-bool gametests::copyTree(const fs::path& from, const fs::path& to, std::string& error, uint64_t* bytes) {
+bool copyTree(const fs::path& from, const fs::path& to, std::string& error, uint64_t* bytes) {
     std::error_code ec;
     fs::create_directories(to, ec);
     if (ec) {
@@ -302,7 +303,7 @@ bool gametests::copyTree(const fs::path& from, const fs::path& to, std::string& 
     return true;
 }
 
-uint64_t gametests::treeBytes(const fs::path& dir) {
+uint64_t treeBytes(const fs::path& dir) {
     uint64_t total = 0;
     std::error_code ec;
     for (fs::recursive_directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec), end; it != end; it.increment(ec)) {
@@ -316,15 +317,15 @@ namespace {
     bool includeTestsForcedFlag = false;
 }
 
-void gametests::setIncludeTestsForced(bool forced) {
+void setIncludeTestsForced(bool forced) {
     includeTestsForcedFlag = forced;
 }
 
-bool gametests::includeTestsForced() {
+bool includeTestsForced() {
     return includeTestsForcedFlag;
 }
 
-bool gametests::exportTests(const fs::path& projectDir, bool development, bool includeTests, const fs::path& contentRoot, std::string& warning,
+bool exportTests(const fs::path& projectDir, bool development, bool includeTests, const fs::path& contentRoot, std::string& warning,
                             std::string& error) {
     warning.clear();
     if (!includeTests) return true;
@@ -382,7 +383,7 @@ bool gametests::exportTests(const fs::path& projectDir, bool development, bool i
     return true;
 }
 
-auto gametests::revisionOf(Project* project, const fs::path& root, const std::string& file) -> Json {
+auto revisionOf(Project* project, const fs::path& root, const std::string& file) -> Json {
     if (project) {
         const vcs::VcsService& vcs = project->getVcs();
         if (vcs.active() && vcs.snapshot() && !vcs.snapshot()->branch.headOid.empty()) {
@@ -396,11 +397,11 @@ auto gametests::revisionOf(Project* project, const fs::path& root, const std::st
     return Json{{"vcs", "none"}, {"id", hash}, {"dirty", false}};
 }
 
-std::string gametests::targetName(const gametest::Target& target) {
+std::string targetName(const gametest::Target& target) {
     return target.editor ? "editor" : target.platform;
 }
 
-bool gametests::readLedger(const fs::path& projectDir, Ledger& out, std::string& note) {
+bool readLedger(const fs::path& projectDir, Ledger& out, std::string& note) {
     out = Ledger();
     const fs::path file = resultsDir(projectDir) / "ledger.json";
     std::string text;
@@ -424,7 +425,7 @@ bool gametests::readLedger(const fs::path& projectDir, Ledger& out, std::string&
     return true;
 }
 
-bool gametests::writeLedger(const fs::path& projectDir, const Ledger& ledger, std::string& error) {
+bool writeLedger(const fs::path& projectDir, const Ledger& ledger, std::string& error) {
     const Json json = {{"format", LEDGER_FORMAT}, {"version", Ledger::VERSION}, {"cases", ledger.cases}};
     io::AtomicWriteOptions options;
     options.durability = io::Durability::Cache;
@@ -437,7 +438,7 @@ bool gametests::writeLedger(const fs::path& projectDir, const Ledger& ledger, st
     return true;
 }
 
-void gametests::recordRun(Ledger& ledger, const gametest::RunResult& run, Project* project, const fs::path& root) {
+void recordRun(Ledger& ledger, const gametest::RunResult& run, Project* project, const fs::path& root) {
     const std::string target = targetName(run.run.target);
     const std::string now = gametest::isoTimeUtc();
     std::map<std::string, Json> revisions;
@@ -457,7 +458,7 @@ void gametests::recordRun(Ledger& ledger, const gametest::RunResult& run, Projec
     }
 }
 
-std::vector<std::string> gametests::unverifiedTargets(const Ledger& ledger, const std::string& caseId, const std::vector<std::string>& targets,
+std::vector<std::string> unverifiedTargets(const Ledger& ledger, const std::string& caseId, const std::vector<std::string>& targets,
                                                       const Json& currentRevision) {
     std::vector<std::string> out;
     const Json* entries = ledger.cases.contains(caseId) ? &ledger.cases[caseId] : nullptr;
@@ -474,7 +475,7 @@ std::vector<std::string> gametests::unverifiedTargets(const Ledger& ledger, cons
     return out;
 }
 
-bool gametests::writeRunDocument(const fs::path& projectDir, const gametest::RunResult& run, fs::path& written, std::string& error) {
+bool writeRunDocument(const fs::path& projectDir, const gametest::RunResult& run, fs::path& written, std::string& error) {
     const fs::path runs = resultsDir(projectDir) / "runs";
     written = runs / (run.run.id + ".json");
     io::AtomicWriteOptions options;
@@ -499,7 +500,7 @@ bool gametests::writeRunDocument(const fs::path& projectDir, const gametest::Run
     return true;
 }
 
-bool gametests::readLastRun(const fs::path& projectDir, gametest::RunResult& out) {
+bool readLastRun(const fs::path& projectDir, gametest::RunResult& out) {
     std::string id;
     if (!gameTestsReadText(resultsDir(projectDir) / "last-run.txt", id)) return false;
     while (!id.empty() && (id.back() == '\n' || id.back() == '\r' || id.back() == ' ')) id.pop_back();
@@ -509,3 +510,5 @@ bool gametests::readLastRun(const fs::path& projectDir, gametest::RunResult& out
     std::string error;
     return gametest::resultsFromJson(json, out, error);
 }
+
+}  // namespace jasperengine::editor::gametests

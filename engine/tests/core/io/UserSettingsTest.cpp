@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+namespace io_UserSettingsTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using jasperengine::test::TestTempDir;
@@ -77,3 +79,5 @@ TEST_F(UserSettingsTest, AtomicOnCrash){
     UserSettings::removeKey("player");
     EXPECT_EQ(UserSettings::getStringForKey("player", "none"), "none");
 }
+
+}  // namespace io_UserSettingsTest_cpp

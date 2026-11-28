@@ -16,7 +16,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vertexcolor;
+
+namespace jasperengine::editor::vertexcolor {
+
 namespace vcd = jasperengine::editor::vertexcolor::detail;
 using vcd::VertexColorEditCmd;
 
@@ -243,3 +245,5 @@ size_t VertexColorEditCmd::chunkCount() const {
     for (const TargetDelta& delta : targets) count += delta.chunks.size();
     return count;
 }
+
+}  // namespace jasperengine::editor::vertexcolor

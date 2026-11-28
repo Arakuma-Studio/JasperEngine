@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+namespace LdtkImporterTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::tilemapimport;
 using namespace jasperengine::editor::tilemapimport::testing;
@@ -144,3 +146,5 @@ TEST(LdtkImporterTest, CorruptProjectsNeverCrash) {
     }
     EXPECT_GT(runs, 300);
 }
+
+}  // namespace LdtkImporterTest_cpp

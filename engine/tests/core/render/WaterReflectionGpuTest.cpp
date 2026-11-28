@@ -43,6 +43,8 @@
 #include <utility>
 #include <vector>
 
+namespace WaterReflectionGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -463,3 +465,5 @@ TEST_F(WaterReflectionGpu, TargetSizeIsThePassSize){
     EXPECT_GT(scaled.r, 2 * std::max(scaled.g, scaled.b) + 10) << "no reflection of the cube at the render scale";
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace WaterReflectionGpuTest_cpp

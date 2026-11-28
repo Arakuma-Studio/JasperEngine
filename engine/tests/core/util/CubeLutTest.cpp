@@ -29,6 +29,8 @@
 #include <utility>
 #include <vector>
 
+namespace CubeLutTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -636,3 +638,5 @@ TEST(CubeLutBench, LoadJlut){
     EXPECT_EQ(lut.size3D, JLUT_MAX_3D_SIZE);
     reportBench("CubeLutBench.LoadJlut", ms, 5.0);
 }
+
+}  // namespace CubeLutTest_cpp

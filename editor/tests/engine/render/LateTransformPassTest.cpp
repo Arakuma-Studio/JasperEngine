@@ -16,6 +16,8 @@
 #include "component/ModelComponent.h"
 #include "subsystem/RenderSystem.h"
 
+namespace LateTransformPassTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::scripttest;
 
@@ -251,3 +253,5 @@ TEST_F(LateTransformPassTest, NothingMovedLateIsAPassThrough) {
     const Vector3 eye = matrixOrigin(scene->getComponent<CameraComponent>(camera).viewMatrix.inverse());
     EXPECT_NEAR(eye.z, 0.0f, 1e-4f) << "the camera never moved";
 }
+
+}  // namespace LateTransformPassTest_cpp

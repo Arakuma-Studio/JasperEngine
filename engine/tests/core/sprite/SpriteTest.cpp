@@ -26,6 +26,8 @@
 #include <string>
 #include <vector>
 
+namespace SpriteTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -207,3 +209,5 @@ TEST(SpriteTest, FlipXMirrorsAboutThePivot){
     ASSERT_EQ(columns.size(), 4u);
     EXPECT_NEAR(columns[1] - columns[0], 0.25f, 1e-5f);
 }
+
+}  // namespace SpriteTest_cpp

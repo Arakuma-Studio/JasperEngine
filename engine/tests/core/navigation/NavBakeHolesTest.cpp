@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace NavBakeHolesTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -136,3 +138,5 @@ TEST_F(NavBake, HoleChangesTileHash) {
     texels[0] = terraincore::SOLID_VALUE;
     EXPECT_EQ(nav->countDirtyTiles(surface), 0);
 }
+
+}  // namespace NavBakeHolesTest_cpp

@@ -13,6 +13,8 @@
 
 #include <cmath>
 
+namespace ParticleTrailsTest_cpp {
+
 using namespace particletest;
 
 TEST(ParticleTrails, SpacingRuleMovesTheHead){
@@ -204,3 +206,5 @@ TEST(ParticleTrails, OneRibbonHoldsEveryLiveParticle){
     EXPECT_NEAR(pack.vertices[0].center[0], 5.9f, 0.1f);
     EXPECT_NEAR(pack.vertices[59 * 2].center[0], 0.0f, 0.1f);
 }
+
+}  // namespace ParticleTrailsTest_cpp

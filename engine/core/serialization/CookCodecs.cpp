@@ -9,7 +9,8 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::cook;
+
+namespace jasperengine::cook {
 
 namespace {
 
@@ -25,7 +26,7 @@ namespace {
 
 }
 
-void cook::writeStruct(Writer& w, const StructTable& table, const void* owner) {
+void writeStruct(Writer& w, const StructTable& table, const void* owner) {
     for (size_t i = 0; i < table.count; i++) {
         const FieldEntry& field = table.fields[i];
         w.u32(field.id);
@@ -37,7 +38,7 @@ void cook::writeStruct(Writer& w, const StructTable& table, const void* owner) {
     w.u32(0);
 }
 
-void cook::readStruct(Reader& r, const StructTable& table, void* owner) {
+void readStruct(Reader& r, const StructTable& table, void* owner) {
     size_t next = 0;
     while (!r.failed()) {
         const uint32_t id = r.u32();
@@ -74,7 +75,7 @@ void cook::readStruct(Reader& r, const StructTable& table, void* owner) {
     }
 }
 
-void cook::visitStructTextures(const StructTable& table, void* owner, const TextureVisitor& visit) {
+void visitStructTextures(const StructTable& table, void* owner, const TextureVisitor& visit) {
     for (size_t i = 0; i < table.count; i++)
         if (table.fields[i].textures) table.fields[i].textures(owner, visit);
 }
@@ -190,3 +191,5 @@ void Codec<Texture>::read(Reader& r, Texture& texture) {
     texture.setWrapV(wrapV);
     if (!r.boolean()) texture.setReleaseDataAfterLoad(false);
 }
+
+}  // namespace jasperengine::cook

@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+namespace HumanoidMapTest_cpp {
+
 using namespace posetest;
 using H = HumanBone;
 
@@ -405,3 +407,5 @@ TEST(PoseHumanoidMap, ValidationFailures){
     EXPECT_FALSE(validateHumanoid(good, bad, &error));
     EXPECT_NE(error.find("is not a descendant of"), std::string::npos) << error;
 }
+
+}  // namespace HumanoidMapTest_cpp

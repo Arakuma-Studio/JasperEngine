@@ -41,6 +41,8 @@
 #include <string>
 #include <vector>
 
+namespace particles_height_fog_test {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -764,7 +766,6 @@ TEST_F(ParticlesGpu, CustomBlockReadsTheSceneClock){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-namespace particles_height_fog_test {
 
     // a probe of the mist: a square at a fog distance, white (what the fog lets through plus what
     // it adds) or black (what it adds)
@@ -821,6 +822,8 @@ namespace particles_height_fog_test {
     }
 
 }
+
+namespace particles_height_fog_test {
 
 TEST_F(ParticlesGpu, HeightFogMatchesTheMeshFog){
     JASPER_REQUIRE_GPU();
@@ -894,3 +897,5 @@ TEST_F(ParticlesGpu, HeightFogMatchesTheMeshFog){
     }
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace particles_height_fog_test

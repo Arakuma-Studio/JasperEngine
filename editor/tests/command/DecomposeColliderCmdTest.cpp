@@ -27,6 +27,8 @@
 #include <thread>
 #include <vector>
 
+namespace DecomposeColliderCmdTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -209,3 +211,5 @@ TEST_F(DecomposeColliderSlow, DecompositionsStartedTogetherEachLandAsOneStep) {
     }
     EXPECT_EQ(history->appliedCount(), stepsBefore + RINGS) << "one undo step each";
 }
+
+}  // namespace DecomposeColliderCmdTest_cpp

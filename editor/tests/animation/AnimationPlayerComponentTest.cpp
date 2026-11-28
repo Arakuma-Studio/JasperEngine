@@ -30,6 +30,8 @@
 #include <string>
 #include <vector>
 
+namespace AnimationPlayerComponentTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -532,3 +534,5 @@ TEST(AnimationPlayerComponent, SavedMorphWeightsAreKeptByTheModelLoad) {
     unset.morphWeightsSet = false;
     EXPECT_FALSE(cooked(unset).morphWeightsSet);
 }
+
+}  // namespace AnimationPlayerComponentTest_cpp

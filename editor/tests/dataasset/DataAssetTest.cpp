@@ -18,6 +18,8 @@
 #include <fstream>
 #include <iterator>
 
+namespace DataAssetTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -263,3 +265,5 @@ TEST_F(DataAssetTest, NothingIsWrittenBackAfterPlay) {
     EXPECT_EQ(readFile("items/shield.dataasset"), text);
     EXPECT_EQ(lua("return DataAsset.load('items/shield.dataasset').damage"), "1");
 }
+
+}  // namespace DataAssetTest_cpp

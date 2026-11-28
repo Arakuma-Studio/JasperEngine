@@ -20,6 +20,8 @@
 #include <cstdio>
 #include <fstream>
 
+namespace TestScriptScanTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
@@ -122,3 +124,5 @@ TEST(PlayDataProfile, SnapshotSessionIsACopy) {
     for (SceneProject& scene : project.getScenes()) CommandHandle::remove(scene.id);
     project.releaseScenes();
 }
+
+}  // namespace TestScriptScanTest_cpp

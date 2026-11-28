@@ -27,7 +27,6 @@
 #include <unordered_set>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::prefabinternal;
 
 // ---- Levels ----
 

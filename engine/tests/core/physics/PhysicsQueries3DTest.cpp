@@ -34,6 +34,8 @@
 #include <string>
 #include <vector>
 
+namespace PhysicsQueries3DTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -449,5 +451,7 @@ TEST_F(PhysicsQueries3DTest, HitFields){
     EXPECT_TRUE(colliders[0].hasGameObject());
     EXPECT_FALSE(colliders[0].isValid());
 }
+
+}  // namespace PhysicsQueries3DTest_cpp
 
 #endif // JASPERENGINE_PHYSICS_3D

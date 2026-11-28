@@ -18,6 +18,8 @@
 #include <limits>
 #include <chrono>
 
+namespace TitleArtRuntimeGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -81,6 +83,7 @@ namespace {
             JASPER_REQUIRE_GPU();
             ensureTestEffects();
         }
+        void TearDown() override { removeTestEffects(); }
     };
 
 }
@@ -194,3 +197,5 @@ TEST_F(TitleArtRuntimeGpu, ForcedRgba8) {
     EXPECT_LE(d.max, 48.0);
     EXPECT_LE(d.overFraction, 0.005);
 }
+
+}  // namespace TitleArtRuntimeGpuTest_cpp

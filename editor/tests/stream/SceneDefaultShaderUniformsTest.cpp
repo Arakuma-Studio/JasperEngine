@@ -27,12 +27,13 @@
 #include <stdexcept>
 #include <string>
 
+namespace scene_default_uniforms_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 namespace fs = std::filesystem;
 
-namespace scene_default_uniforms_test {
 
     std::string sceneText(const std::string& settings) {
         return "formatVersion: " + std::to_string(StreamMigrations::currentVersion(DocumentKind::Scene)) +
@@ -74,6 +75,8 @@ namespace scene_default_uniforms_test {
     }
 
 }
+
+namespace scene_default_uniforms_test {
 
 using namespace scene_default_uniforms_test;
 
@@ -135,3 +138,5 @@ TEST(SceneDefaultShaderUniforms, UndoRedo) {
     EXPECT_EQ(scene->getDefaultShaderUniform(ShaderType::MESH, "tint"), Vector4(1, 0, 0, 1));
     EXPECT_TRUE(Catalog::getScenePropertyDefault<ShaderUniformValues>(property).empty());
 }
+
+}  // namespace scene_default_uniforms_test

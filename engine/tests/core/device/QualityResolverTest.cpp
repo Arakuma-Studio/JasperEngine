@@ -18,6 +18,8 @@
 #include <thread>
 #include <vector>
 
+namespace QualityResolverTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -402,3 +404,5 @@ TEST_F(QualityResolverTest, CavitySamplesCappedByTier){
     ASSERT_TRUE(DeviceSettings::fromJson(cleared.toJson(), back, error)) << error;
     EXPECT_EQ(back, cleared);
 }
+
+}  // namespace QualityResolverTest_cpp

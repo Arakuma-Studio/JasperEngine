@@ -48,6 +48,8 @@
 #include <map>
 #include <string>
 
+namespace AnimationLayersTest_cpp {
+
 using namespace jasperengine;
 using namespace animatortest;
 
@@ -1805,3 +1807,5 @@ TEST_F(Layers, PlayerMeshSpaceRotationInTheLayeredPreview){
     system->restorePlayerPreview(session);
     (void)object;
 }
+
+}  // namespace AnimationLayersTest_cpp

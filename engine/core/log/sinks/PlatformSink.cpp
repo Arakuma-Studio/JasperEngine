@@ -9,7 +9,6 @@
 using namespace jasperengine;
 
 namespace je_platform_sink {}
-using namespace je_platform_sink;
 
 namespace je_platform_sink {
 
@@ -44,5 +43,5 @@ void PlatformSink::write(const LogRecord& record) {
         scratch += "] ";
     }
     scratch.append(record.text.data(), record.text.size());
-    forward(system, platformLogType(record.level), "%s", scratch.c_str());
+    je_platform_sink::forward(system, je_platform_sink::platformLogType(record.level), "%s", scratch.c_str());
 }

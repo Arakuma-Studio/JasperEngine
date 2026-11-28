@@ -27,6 +27,8 @@
 #include <utility>
 #include <vector>
 
+namespace NormalMapTiltTest_cpp {
+
 using namespace jasperengine;
 using editor::NormalMapTilt;
 using editor::NormalMapTiltResult;
@@ -376,3 +378,5 @@ TEST(NormalMapTiltCache, ConcurrentLookupsAgree) {
     // each file measured once
     EXPECT_EQ(slow.calls(), (int)files.size());
 }
+
+}  // namespace NormalMapTiltTest_cpp

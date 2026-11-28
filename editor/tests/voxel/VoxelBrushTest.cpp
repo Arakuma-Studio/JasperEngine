@@ -10,6 +10,8 @@
 #include "shortcuts/ShortcutTestSupport.h"
 #include "voxel/VoxelBrushTool.h"
 
+namespace VoxelBrushTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::voxeltest;
@@ -326,3 +328,5 @@ TEST_F(VoxelBrush, ShortcutContextRebindable) {
     const std::vector<std::string> fired = dispatcher.process(FakeKeys::press(chordOf("]")), armed);
     EXPECT_EQ(fired, std::vector<std::string>{"voxel.brushLarger"});
 }
+
+}  // namespace VoxelBrushTest_cpp

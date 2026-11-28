@@ -25,9 +25,10 @@
 
 #include <string>
 
+namespace lua_fog_profile_test {
+
 using namespace jasperengine;
 
-namespace lua_fog_profile_test {
 
     // runs a chunk; "" on success, else the error message
     std::string fogProfileRunLua(lua_State* L, const std::string& code){
@@ -52,6 +53,8 @@ namespace lua_fog_profile_test {
     };
 
 }
+
+namespace lua_fog_profile_test {
 
 using namespace lua_fog_profile_test;
 
@@ -191,3 +194,5 @@ TEST(LuaFogProfileTest, FogBlendsAndScriptWritesShow){
     FogScene::resetRuntime(&scene);
     EXPECT_EQ(component.runtime.get(), nullptr);
 }
+
+}  // namespace lua_fog_profile_test

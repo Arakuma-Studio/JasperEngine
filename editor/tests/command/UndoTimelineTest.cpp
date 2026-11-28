@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+namespace UndoTimelineTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -208,3 +210,5 @@ TEST_F(UndoTimelineTests, ClosingASceneUnlinksTheProjectSteps) {
     EXPECT_EQ(project.top()->info.linkId, 0u);
     CommandHandle::get(SCENE_A);
 }
+
+}  // namespace UndoTimelineTest_cpp

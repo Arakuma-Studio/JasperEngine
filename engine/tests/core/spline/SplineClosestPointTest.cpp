@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <limits>
 
+namespace SplineClosestPointTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 using namespace jasperengine::test;
@@ -230,3 +232,5 @@ TEST(SplineClosestPointTests, BandDistanceIsARing){
         }
     }
 }
+
+}  // namespace SplineClosestPointTest_cpp

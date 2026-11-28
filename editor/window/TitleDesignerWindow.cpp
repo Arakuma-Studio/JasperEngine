@@ -46,7 +46,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::titledesigner;
 namespace ta = jasperengine::titleart;
 namespace fs = std::filesystem;
 
@@ -70,9 +69,9 @@ namespace {
 }
 
 TitleDesignerWindow::TitleDesignerWindow(Project* project) : project(project), doc(project) {
-    settings = TitleDesignerSettings::load();
+    settings = titledesigner::TitleDesignerSettings::load();
     // S81's, S83's and S86's rows, modes and gizmo target (§6.8)
-    registerTitleDesignerExtensions();
+    titledesigner::registerTitleDesignerExtensions();
     titledesigner::registerTitleAnimationPanel(&settings);
     // reopened as it was: its live parts are made by the first show() (R64, R65)
     windowOpen = settings.windowOpen;
@@ -90,25 +89,25 @@ double TitleDesignerWindow::now() const {
 
 void TitleDesignerWindow::createLive() {
     if (canvas) return;
-    canvas = std::make_unique<TitleCanvasView>(project);
-    thumbnails = std::make_unique<TitleLayerThumbnails>(project, OWNER);
-    libraryTiles = std::make_unique<TitleLayerThumbnails>(project, OWNER);
+    canvas = std::make_unique<titledesigner::TitleCanvasView>(project);
+    thumbnails = std::make_unique<titledesigner::TitleLayerThumbnails>(project, OWNER);
+    libraryTiles = std::make_unique<titledesigner::TitleLayerThumbnails>(project, OWNER);
     // the Library's live tiles (S84's provider): the item's ops on the user's layer, through the one preview queue
-    if (TitleLibraryProvider* provider = libraryProvider()) {
-        provider->attachTileSource([this](LibraryTab tab, const LibraryItem& item, float width, float height, bool visible) {
+    if (titledesigner::TitleLibraryProvider* provider = titledesigner::libraryProvider()) {
+        provider->attachTileSource([this](titledesigner::LibraryTab tab, const titledesigner::LibraryItem& item, float width, float height, bool visible) {
             return libraryTile(tab, item, width, height, visible);
         });
     }
-    textEdit = std::make_unique<TitleTextEdit>();
-    gizmo2d = std::make_unique<TitleGizmo2D>();
-    gizmo3d = std::make_unique<TitleGizmo3D>();
-    handles = std::make_unique<TitleHandles>();
+    textEdit = std::make_unique<titledesigner::TitleTextEdit>();
+    gizmo2d = std::make_unique<titledesigner::TitleGizmo2D>();
+    gizmo3d = std::make_unique<titledesigner::TitleGizmo3D>();
+    handles = std::make_unique<titledesigner::TitleHandles>();
     transient.setBase(TitleArtRenderHost::editor().resolver(project));
-    doc.setEditRouter(editRouter());
+    doc.setEditRouter(titledesigner::editRouter());
     // R70: a software renderer starts at Draft with an 8 ms budget, said once
     softwareRenderer = isSoftwareRenderer(SystemRender::getDeviceName());
     if (softwareRenderer) {
-        if (!settings.qualitySet) settings.quality = Quality::Draft;
+        if (!settings.qualitySet) settings.quality = titledesigner::Quality::Draft;
         if (!settings.budgetSet) settings.previewBudgetMs = 8.0f;
         if (!settings.softwareNoticeShown) {
             notice = "Software renderer: previews at Draft quality";
@@ -124,19 +123,19 @@ void TitleDesignerWindow::destroyLive() {
     if (doc.gestureActive()) doc.cancelGesture();
     doc.clearPreview();
     TitlePreviewQueue::editor().cancelAll(OWNER);
-    if (TitleLibraryProvider* provider = library()) provider->cancelAll();
+    if (titledesigner::TitleLibraryProvider* provider = library()) provider->cancelAll();
     if (gpuTimingHeld) {
         SystemRender::releaseGpuTiming();
         gpuTimingHeld = false;
     }
-    for (const PreviewModeDef& mode : previewModes()) {
+    for (const titledesigner::PreviewModeDef& mode : titledesigner::previewModes()) {
         if (mode.close) mode.close();
     }
     livePreviews.clear();
     liveStart = -1.0;
     canvas.reset();
     thumbnails.reset();
-    if (TitleLibraryProvider* provider = libraryProvider()) {
+    if (titledesigner::TitleLibraryProvider* provider = titledesigner::libraryProvider()) {
         provider->cancelAll();
         provider->attachTileSource(nullptr);
     }
@@ -171,7 +170,7 @@ void TitleDesignerWindow::setOpen(bool open) {
 }
 
 void TitleDesignerWindow::restoreFromSettings() {
-    settings = TitleDesignerSettings::load();
+    settings = titledesigner::TitleDesignerSettings::load();
     if (settings.windowOpen && !windowOpen) {
         windowOpen = true;
         focusRequested = true;
@@ -206,18 +205,18 @@ void TitleDesignerWindow::openFirstTime() {
     }
 }
 
-DocumentView& TitleDesignerWindow::view() {
-    static DocumentView fallback;
+titledesigner::DocumentView& TitleDesignerWindow::view() {
+    static titledesigner::DocumentView fallback;
     if (!doc.isOpen()) {
-        fallback = DocumentView();
+        fallback = titledesigner::DocumentView();
         return fallback;
     }
     return workspace.view(doc.committed().guid());
 }
 
-const DocumentView* TitleDesignerWindow::viewOrNull() const {
+const titledesigner::DocumentView* TitleDesignerWindow::viewOrNull() const {
     if (!doc.isOpen()) return nullptr;
-    return &const_cast<TitleDesignerWorkspace&>(workspace).view(doc.committed().guid());
+    return &const_cast<titledesigner::TitleDesignerWorkspace&>(workspace).view(doc.committed().guid());
 }
 
 void TitleDesignerWindow::saveView() {
@@ -229,15 +228,15 @@ void TitleDesignerWindow::saveView() {
 void TitleDesignerWindow::rememberSelection() {
     if (!doc.isOpen()) return;
     std::vector<std::string> paths;
-    for (const NodeRef& node : doc.selection()) paths.push_back(nodePath(doc.committed(), node));
+    for (const titledesigner::NodeRef& node : doc.selection()) paths.push_back(nodePath(doc.committed(), node));
     view().selection = paths;
 }
 
 void TitleDesignerWindow::restoreSelection() {
-    std::vector<NodeRef> nodes;
+    std::vector<titledesigner::NodeRef> nodes;
     for (const std::string& path : view().selection) {
-        NodeRef node;
-        if (nodeFromPath(doc.committed(), path, node, nullptr) && node.kind != NodeKind::Document) nodes.push_back(node);
+        titledesigner::NodeRef node;
+        if (titledesigner::nodeFromPath(doc.committed(), path, node, nullptr) && node.kind != titledesigner::NodeKind::Document) nodes.push_back(node);
     }
     doc.select(nodes);
 }
@@ -273,7 +272,7 @@ bool TitleDesignerWindow::open(const fs::path& file, std::string* error) {
 bool TitleDesignerWindow::openInContext(const TitleInContext& context, std::string* error) {
     if (!open(context.document, error)) return false;
     inContext = context;
-    BackdropChoice backdrop = view().backdrop;
+    titledesigner::BackdropChoice backdrop = view().backdrop;
     backdrop.kind = "in_context";
     view().backdrop = backdrop;
     return true;
@@ -297,15 +296,15 @@ bool TitleDesignerWindow::select(const std::vector<std::string>& paths, std::str
         if (error) *error = "No Title Art is open";
         return false;
     }
-    std::vector<NodeRef> nodes;
+    std::vector<titledesigner::NodeRef> nodes;
     for (const std::string& path : paths) {
-        NodeRef node;
+        titledesigner::NodeRef node;
         std::string why;
-        if (!nodeFromPath(doc.shown(), path, node, &why)) {
+        if (!titledesigner::nodeFromPath(doc.shown(), path, node, &why)) {
             if (error) *error = "select: " + why;
             return false;
         }
-        if (node.kind != NodeKind::Document) nodes.push_back(node);
+        if (node.kind != titledesigner::NodeKind::Document) nodes.push_back(node);
     }
     if (textEdit && textEdit->active()) endTextEdit(true);
     doc.select(nodes);
@@ -323,24 +322,24 @@ void TitleDesignerWindow::commitNamed(const ta::Json& ops, const std::string& na
 
 bool TitleDesignerWindow::needsFrames() const {
     if (!windowOpen || !canvas) return false;
-    const CanvasRenderInfo& info = canvas->info();
+    const titledesigner::CanvasRenderInfo& info = canvas->info();
     return info.busy || info.rebuilding || now() - lastViewChange < 0.5 || doc.gestureActive() || (thumbnails && thumbnails->pendingCount() > 0) ||
            (libraryTiles && libraryTiles->pendingCount() > 0) ||
-           textEditing() || drag != Drag::None || !livePreviews.empty() || engineFramesWanted();
+           textEditing() || drag != Drag::None || !livePreviews.empty() || titledesigner::engineFramesWanted();
 }
 
 bool TitleDesignerWindow::typing() const {
     return ImGui::GetIO().WantTextInput || textEditing();
 }
 
-void TitleDesignerWindow::setTool(Tool tool) {
+void TitleDesignerWindow::setTool(titledesigner::Tool tool) {
     currentTool = tool;
 }
 
-const PreviewModeDef* TitleDesignerWindow::activePreviewMode() const {
-    const DocumentView* v = viewOrNull();
+const titledesigner::PreviewModeDef* TitleDesignerWindow::activePreviewMode() const {
+    const titledesigner::DocumentView* v = viewOrNull();
     if (!v) return nullptr;
-    for (const PreviewModeDef& mode : previewModes()) {
+    for (const titledesigner::PreviewModeDef& mode : titledesigner::previewModes()) {
         if (mode.id == v->previewAs) return &mode;
     }
     return nullptr;
@@ -349,7 +348,7 @@ const PreviewModeDef* TitleDesignerWindow::activePreviewMode() const {
 bool TitleDesignerWindow::setPreviewAs(const std::string& mode, std::string* error) {
     // the mode left frees what it made (S81's Glyph Atlas title)
     auto leave = [&] {
-        const PreviewModeDef* previous = activePreviewMode();
+        const titledesigner::PreviewModeDef* previous = activePreviewMode();
         if (previous && previous->id != mode && previous->close) previous->close();
     };
     if (mode == "realtime" || mode == "baked") {
@@ -357,7 +356,7 @@ bool TitleDesignerWindow::setPreviewAs(const std::string& mode, std::string* err
         view().previewAs = mode;
         return true;
     }
-    for (const PreviewModeDef& def : previewModes()) {
+    for (const titledesigner::PreviewModeDef& def : titledesigner::previewModes()) {
         if (def.id == mode) {
             leave();
             view().previewAs = mode;
@@ -366,13 +365,13 @@ bool TitleDesignerWindow::setPreviewAs(const std::string& mode, std::string* err
     }
     if (error) {
         std::string valid = "realtime, baked";
-        for (const PreviewModeDef& def : previewModes()) valid += ", " + def.id;
+        for (const titledesigner::PreviewModeDef& def : titledesigner::previewModes()) valid += ", " + def.id;
         *error = "preview_as '" + mode + "' is not available (valid: " + valid + ")";
     }
     return false;
 }
 
-bool TitleDesignerWindow::setBackground(const BackdropChoice& backdrop, std::string* error) {
+bool TitleDesignerWindow::setBackground(const titledesigner::BackdropChoice& backdrop, std::string* error) {
     static const char* const kinds[] = {"checker", "black", "white", "gray", "color", "image", "game_scene", "in_context"};
     bool known = false;
     for (const char* k : kinds) known = known || backdrop.kind == k;
@@ -388,7 +387,7 @@ bool TitleDesignerWindow::setBackground(const BackdropChoice& backdrop, std::str
     return true;
 }
 
-bool TitleDesignerWindow::setDevice(const DeviceChoice& device, std::string* error) {
+bool TitleDesignerWindow::setDevice(const titledesigner::DeviceChoice& device, std::string* error) {
     if (!device.profile.empty() && device.profile.rfind("res:", 0) != 0 && !findDeviceProfile(device.profile)) {
         if (error) {
             std::string valid;
@@ -402,7 +401,7 @@ bool TitleDesignerWindow::setDevice(const DeviceChoice& device, std::string* err
 }
 
 void TitleDesignerWindow::setZoom(float zoom) {
-    DocumentView& v = view();
+    titledesigner::DocumentView& v = view();
     v.fit = false;
     v.zoom = std::clamp(zoom, 1.0f / 16.0f, 32.0f);
     lastViewChange = now();
@@ -441,8 +440,8 @@ bool TitleDesignerWindow::setPanel(const std::string& panel, std::string* error)
 
 bool TitleDesignerWindow::setLibrary(const std::string& tab, const std::string& family, const std::string& query, std::string* error) {
     if (!tab.empty()) {
-        LibraryTab parsed;
-        if (!libraryTabFromName(tab, parsed)) {
+        titledesigner::LibraryTab parsed;
+        if (!titledesigner::libraryTabFromName(tab, parsed)) {
             if (error) *error = "library tab '" + tab + "' is not one of looks, color_schemes, templates";
             return false;
         }
@@ -454,7 +453,7 @@ bool TitleDesignerWindow::setLibrary(const std::string& tab, const std::string& 
     return true;
 }
 
-bool TitleDesignerWindow::previewItem(const PreviewItem& item, std::string* error) {
+bool TitleDesignerWindow::previewItem(const titledesigner::PreviewItem& item, std::string* error) {
     return doc.setPreview(item, error);
 }
 
@@ -488,7 +487,7 @@ bool TitleDesignerWindow::snapshotScene(std::string* error) {
         return false;
     }
     // the Device's resolution, else the canvas size
-    const TitleRect stage = stageRect();
+    const titledesigner::TitleRect stage = stageRect();
     const int width = (int)std::round(stage.width), height = (int)std::round(stage.height);
     const std::string key = scenePath.empty() ? scene->filepath.generic_string() : scenePath;
     const fs::path cached = project->getProjectInternalPath() / "titleart" / "snapshots" / (std::to_string(std::hash<std::string>{}(key)) + ".png");
@@ -512,7 +511,7 @@ bool TitleDesignerWindow::snapshotScene(std::string* error) {
                                          io::writeFileAtomic(cached, std::string_view((const char*)png.data(), png.size()), options);
                                      }
                                  });
-    BackdropChoice b = view().backdrop;
+    titledesigner::BackdropChoice b = view().backdrop;
     b.kind = "game_scene";
     b.scene = key;
     view().backdrop = b;
@@ -528,15 +527,15 @@ ta::Json TitleDesignerWindow::state() const {
     }
     out["path"] = doc.document()->projectPath();
     ta::Json selection = ta::Json::array();
-    for (const NodeRef& node : doc.selection()) selection.push_back(nodePath(doc.shown(), node));
+    for (const titledesigner::NodeRef& node : doc.selection()) selection.push_back(nodePath(doc.shown(), node));
     out["selection"] = selection;
     out["panel"] = panelFocus.empty() ? sideTab : panelFocus;
-    const DocumentView* v = viewOrNull();
+    const titledesigner::DocumentView* v = viewOrNull();
     out["zoom"] = v && v->fit ? ta::Json("fit") : ta::Json(v ? v->zoom : 1.0f);
     out["zoom_value"] = xform.zoom;
     out["preview_as"] = v ? v->previewAs : std::string("realtime");
     ta::Json openPanels = ta::Json::object();
-    for (const PanelDef& panel : panels()) openPanels[panel.id] = panelOpen(panel);
+    for (const titledesigner::PanelDef& panel : titledesigner::panels()) openPanels[panel.id] = panelOpen(panel);
     out["panels"] = openPanels;
     out["animation_panel"] = titledesigner::titleAnimationPanelState();
     out["canvas_origin"] = ta::Json::array({xform.origin.x, xform.origin.y});
@@ -551,7 +550,7 @@ ta::Json TitleDesignerWindow::state() const {
     out["last_render_ms"] = canvas ? canvas->info().lastRenderMs : 0.0;
     if (canvas) {
         // what the canvas shows: an agent tells an empty render from a missing one
-        const CanvasRenderInfo& info = canvas->info();
+        const titledesigner::CanvasRenderInfo& info = canvas->info();
         ta::Json problems = ta::Json::array();
         for (const ta::TitleProblem& p : info.problems) problems.push_back(p.code);
         out["canvas"] = {{"has_image", info.hasImage}, {"title_drawn", info.titleDrawn}, {"draft", info.draft}, {"px_scale", info.shownPxScale},
@@ -567,16 +566,16 @@ ta::Json TitleDesignerWindow::state() const {
     out["timings"] = {{"frame_ms", frameMs}, {"frame_ms_avg", frameSamples.empty() ? 0.0 : frameMsSum / (double)frameSamples.size()},
                       {"frame_ms_max", frameMsMax}, {"frames", frameSamples.size()}, {"index_ms", indexMs}, {"query_ms", queryMs},
                       {"index_entries", index.size()}, {"document_passes", documentPasses},
-                      {"index_rows_ms", lastCollectTimes().rows}, {"index_lookup_ms", lastCollectTimes().lookup},
-                      {"index_values_ms", lastCollectTimes().values}, {"index_add_ms", lastCollectTimes().index},
-                      {"index_rows", lastCollectTimes().rowCount}, {"index_building", indexBuild.active},
+                      {"index_rows_ms", titledesigner::lastCollectTimes().rows}, {"index_lookup_ms", titledesigner::lastCollectTimes().lookup},
+                      {"index_values_ms", titledesigner::lastCollectTimes().values}, {"index_add_ms", titledesigner::lastCollectTimes().index},
+                      {"index_rows", titledesigner::lastCollectTimes().rowCount}, {"index_building", indexBuild.active},
                       {"index_frames", indexFrames}, {"index_frame_ms_max", indexFrameMsMax}, {"index_unit_ms_max", indexUnitMsMax},
                       {"index_units", [&] {
                           ta::Json units = ta::Json::array();
                           for (const auto& [name, ms] : indexUnitCosts) units.push_back(ta::Json::array({name, ms}));
                           return units;
                       }()}, {"index_units_frame", indexUnitsLastFrame}};
-    out["library"] = {{"provider", libraryProvider() ? "registered" : "none"}, {"shown", libraryShown}};
+    out["library"] = {{"provider", titledesigner::libraryProvider() ? "registered" : "none"}, {"shown", libraryShown}};
     if (addOpen) {
         // the Add palette as drawn last: its rail with counts and the listed entries
         ta::Json rail = ta::Json::array();
@@ -592,10 +591,10 @@ ta::Json TitleDesignerWindow::state() const {
     if (gizmo3d && gizmo3d->visible()) {
         // S82 R35's schematic where it is drawn (window coords, as `rect`): its centre and the
         // free-rotate ring's radius
-        out["gizmo_3d"] = {{"centre", ta::Json::array({gizmo3d->centre().x, gizmo3d->centre().y})}, {"ring", rotation3d::RING_PX}};
+        out["gizmo_3d"] = {{"centre", ta::Json::array({gizmo3d->centre().x, gizmo3d->centre().y})}, {"ring", titledesigner::rotation3d::RING_PX}};
     }
     ta::Json live = ta::Json::array();
-    for (const auto& [layer, effect] : livePreviews) live.push_back(nodePath(doc.shown(), {NodeKind::Effect, layer, {}, effect}));
+    for (const auto& [layer, effect] : livePreviews) live.push_back(titledesigner::nodePath(doc.shown(), {titledesigner::NodeKind::Effect, layer, {}, effect}));
     out["live_previews"] = live;
     ta::Json notices = ta::Json::array();
     if (cjkNoticeShown) notices.push_back("cjk_font_missing");
@@ -642,7 +641,7 @@ void TitleDesignerWindow::closeAddPalette() {
     addCloseRequested = addOpen;
 }
 
-void TitleDesignerWindow::exposeField(const FieldRef& target, const std::string& label) {
+void TitleDesignerWindow::exposeField(const titledesigner::FieldRef& target, const std::string& label) {
     exposeTarget = target;
     exposeLabel = label;
     exposeName.clear();
@@ -654,7 +653,7 @@ void TitleDesignerWindow::exposeField(const FieldRef& target, const std::string&
     exposeOpen = true;
 }
 
-void TitleDesignerWindow::selectNode(const NodeRef& node) {
+void TitleDesignerWindow::selectNode(const titledesigner::NodeRef& node) {
     if (textEdit && textEdit->active()) endTextEdit(true);
     doc.selectOne(node);
 }
@@ -702,7 +701,7 @@ bool TitleDesignerWindow::addLayer(const std::string& type, const ta::Json& valu
     }
     const std::string newId = doc.newId(0, "layer");
     if (!newId.empty()) {
-        doc.selectOne({NodeKind::Layer, newId, {}, {}});
+        doc.selectOne({titledesigner::NodeKind::Layer, newId, {}, {}});
         // a new text starts editing with its placeholder selected (R36)
         if (type == "text") beginTextEdit(newId, true);
     }
@@ -710,26 +709,26 @@ bool TitleDesignerWindow::addLayer(const std::string& type, const ta::Json& valu
 }
 
 bool TitleDesignerWindow::deleteSelection() {
-    const std::vector<NodeRef> selection = doc.selection();
+    const std::vector<titledesigner::NodeRef> selection = doc.selection();
     if (selection.empty() || !doc.editable()) return false;
     ta::Json ops = ta::Json::array();
     size_t layers = 0;
     std::string name;
-    for (const NodeRef& node : selection) {
-        const ta::Json* layer = layerById(doc.committed(), node.layer);
+    for (const titledesigner::NodeRef& node : selection) {
+        const ta::Json* layer = titledesigner::layerById(doc.committed(), node.layer);
         if (!layer) continue;
-        if (node.kind == NodeKind::Layer) {
+        if (node.kind == titledesigner::NodeKind::Layer) {
             ops.push_back({{"op", "remove_layer"}, {"layer", "id:" + node.layer}});
             layers++;
-        } else if (node.kind == NodeKind::Effect) {
+        } else if (node.kind == titledesigner::NodeKind::Effect) {
             const std::string path = nodePath(doc.committed(), node);
             const size_t slash = path.rfind('/');
             const std::string effect = path.substr(slash + 1);
-            ta::Json op = {{"op", "remove_effect"}, {"layer", "id:" + node.layer}, {"effect", node.part.empty() ? effect : nodePath(doc.committed(), node).substr(layerPathOf(doc.committed(), node.layer).size() + 1)}};
+            ta::Json op = {{"op", "remove_effect"}, {"layer", "id:" + node.layer}, {"effect", node.part.empty() ? effect : nodePath(doc.committed(), node).substr(titledesigner::layerPathOf(doc.committed(), node.layer).size() + 1)}};
             ops.push_back(op);
             name = "Remove Effect";
-        } else if (node.kind == NodeKind::Mask) {
-            ops.push_back({{"op", "remove_mask"}, {"layer", "id:" + node.layer}, {"mask", "mask#" + std::to_string(maskIndexOf(*layer, node.item))}});
+        } else if (node.kind == titledesigner::NodeKind::Mask) {
+            ops.push_back({{"op", "remove_mask"}, {"layer", "id:" + node.layer}, {"mask", "mask#" + std::to_string(titledesigner::maskIndexOf(*layer, node.item))}});
             name = "Remove Mask";
         }
         // parts are never deleted from the keyboard (Pachislop's rule): rims go from their row's menu
@@ -755,8 +754,8 @@ bool TitleDesignerWindow::duplicateSelection() {
         reportError(error);
         return false;
     }
-    std::vector<NodeRef> made;
-    for (const std::string& id : doc.newIds("layer")) made.push_back({NodeKind::Layer, id, {}, {}});
+    std::vector<titledesigner::NodeRef> made;
+    for (const std::string& id : doc.newIds("layer")) made.push_back({titledesigner::NodeKind::Layer, id, {}, {}});
     if (!made.empty()) doc.select(made);
     return true;
 }
@@ -772,14 +771,14 @@ bool TitleDesignerWindow::groupSelection() {
         return false;
     }
     const std::string group = doc.newId(0, "layer");
-    if (!group.empty()) doc.selectOne({NodeKind::Layer, group, {}, {}});
+    if (!group.empty()) doc.selectOne({titledesigner::NodeKind::Layer, group, {}, {}});
     return true;
 }
 
 bool TitleDesignerWindow::ungroupSelection() {
     ta::Json ops = ta::Json::array();
     for (const std::string& id : doc.selectedLayers()) {
-        const ta::Json* layer = layerById(doc.committed(), id);
+        const ta::Json* layer = titledesigner::layerById(doc.committed(), id);
         if (layer && ta::layerTypeOf(*layer) == ta::LayerType::Group) ops.push_back({{"op", "ungroup"}, {"layer", "id:" + id}});
     }
     if (ops.empty() || !doc.editable()) return false;
@@ -795,12 +794,12 @@ bool TitleDesignerWindow::ungroupSelection() {
 bool TitleDesignerWindow::toggleClip() {
     const std::vector<std::string> layers = doc.selectedLayers();
     if (layers.empty() || !doc.editable()) return false;
-    const ta::Json* first = layerById(doc.committed(), layers[0]);
+    const ta::Json* first = titledesigner::layerById(doc.committed(), layers[0]);
     const bool clip = !(first && first->value("clip", false));
-    std::vector<FieldEdit> edits;
+    std::vector<titledesigner::FieldEdit> edits;
     for (const std::string& id : layers) edits.push_back({id, "clip", clip});
     std::string error;
-    if (!doc.commit(editsToOps(edits), clip ? "Create Clipping Mask" : "Release Clipping Mask", &error)) {
+    if (!doc.commit(titledesigner::editsToOps(edits), clip ? "Create Clipping Mask" : "Release Clipping Mask", &error)) {
         reportError(error);
         return false;
     }
@@ -813,8 +812,8 @@ bool TitleDesignerWindow::arrange(const std::string& how) {
     ta::Json ops = ta::Json::array();
     const ta::TitleArtDoc& current = doc.committed();
     for (const std::string& id : layers) {
-        const std::string parent = parentLayerOf(current, id);
-        const ta::Json& siblings = parent.empty() ? current.layers() : ta::layerChildren(*layerById(current, parent));
+        const std::string parent = titledesigner::parentLayerOf(current, id);
+        const ta::Json& siblings = parent.empty() ? current.layers() : ta::layerChildren(*titledesigner::layerById(current, parent));
         size_t index = 0;
         for (size_t i = 0; i < siblings.size(); i++) {
             if (str(siblings[i], "id") == id) index = i;
@@ -853,10 +852,10 @@ bool TitleDesignerWindow::arrange(const std::string& how) {
 bool TitleDesignerWindow::toggleFlag(const char* member) {
     const std::vector<std::string> layers = doc.selectedLayers();
     if (layers.empty() || !doc.editable()) return false;
-    const ta::Json* first = layerById(doc.committed(), layers[0]);
+    const ta::Json* first = titledesigner::layerById(doc.committed(), layers[0]);
     const bool defaultValue = std::string(member) == "visible";
     const bool value = !(first && first->value(member, defaultValue));
-    std::vector<FieldEdit> edits;
+    std::vector<titledesigner::FieldEdit> edits;
     for (const std::string& id : layers) edits.push_back({id, member, value});
     std::string name;
     const std::string m = member;
@@ -865,7 +864,7 @@ bool TitleDesignerWindow::toggleFlag(const char* member) {
     else if (m == "locked") name = (value ? "Lock " : "Unlock ") + count;
     else name = (value ? "Make Guide " : "Unmake Guide ") + count;
     std::string error;
-    if (!doc.commit(editsToOps(edits), name, &error)) {
+    if (!doc.commit(titledesigner::editsToOps(edits), name, &error)) {
         reportError(error);
         return false;
     }
@@ -880,13 +879,13 @@ bool TitleDesignerWindow::moveLayers(const std::vector<std::string>& layers, con
         std::string walk = target;
         while (!walk.empty()) {
             if (walk == id && (where == "into" || walk != target)) return false;
-            walk = parentLayerOf(current, walk);
+            walk = titledesigner::parentLayerOf(current, walk);
         }
         if (id == target) return false;
     }
     ta::Json ops = ta::Json::array();
     bool clipChange = false;
-    const ta::Json* targetLayer = target.empty() ? nullptr : layerById(current, target);
+    const ta::Json* targetLayer = target.empty() ? nullptr : titledesigner::layerById(current, target);
     for (const std::string& id : layers) {
         ta::Json op = {{"op", "move_layer"}, {"layer", "id:" + id}};
         if (where == "into") op["parent"] = "id:" + target;
@@ -894,7 +893,7 @@ bool TitleDesignerWindow::moveLayers(const std::vector<std::string>& layers, con
         else if (where == "below") op["before"] = "id:" + target;
         ops.push_back(op);
         // between clipped rows a layer clips; dragged out it is released (R14)
-        const ta::Json* layer = layerById(current, id);
+        const ta::Json* layer = titledesigner::layerById(current, id);
         const bool clipped = layer && layer->value("clip", false);
         const bool intoClip = targetLayer && where == "above" && targetLayer->value("clip", false);
         if (intoClip != clipped && where != "into") {
@@ -917,7 +916,7 @@ bool TitleDesignerWindow::copySelection(bool cut) {
     if (layers.empty()) return false;
     ta::Json clip = ta::Json::array();
     for (const std::string& id : layers) {
-        const ta::Json* layer = layerById(doc.committed(), id);
+        const ta::Json* layer = titledesigner::layerById(doc.committed(), id);
         if (layer) clip.push_back(*layer);
     }
     const std::string text = ta::Json{{"jasperengine.titleart.layers", clip}}.dump();
@@ -959,29 +958,29 @@ void TitleDesignerWindow::nudge(double dx, double dy) {
     nudgeKey = key;
     static uint64_t burst = 0;
     if (!continuing) burst++;
-    std::vector<FieldEdit> edits;
+    std::vector<titledesigner::FieldEdit> edits;
     const ta::TitleArtDoc& current = doc.committed();
     for (const std::string& id : layers) {
-        const ta::Json* layer = layerById(current, id);
+        const ta::Json* layer = titledesigner::layerById(current, id);
         if (!layer || layer->value("locked", false)) continue;
         // the nudge is in document space: into the parent's space
-        Affine2 parentToDoc;
-        std::string parent = parentLayerOf(current, id);
+        titledesigner::Affine2 parentToDoc;
+        std::string parent = titledesigner::parentLayerOf(current, id);
         std::vector<std::string> chain;
         while (!parent.empty()) {
             chain.push_back(parent);
-            parent = parentLayerOf(current, parent);
+            parent = titledesigner::parentLayerOf(current, parent);
         }
         for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
-            parentToDoc = parentToDoc * layerTransformAffine(ta::decodeTransform(layerById(current, *it)->value("transform", ta::Json::object())));
+            parentToDoc = parentToDoc * titledesigner::layerTransformAffine(ta::decodeTransform(titledesigner::layerById(current, *it)->value("transform", ta::Json::object())));
         }
-        const TitleVec2 local = parentToDoc.inverse().applyLinear({dx, dy});
+        const titledesigner::TitleVec2 local = parentToDoc.inverse().applyLinear({dx, dy});
         const ta::TitleTransform t0 = ta::decodeTransform(layer->value("transform", ta::Json::object()));
         edits.push_back({id, "transform.position", ta::Json::array({t0.position.x + local.x, t0.position.y + local.y})});
     }
     if (edits.empty()) return;
     std::string error;
-    if (!doc.commit(editsToOps(edits), "Nudge", &error, "titleart:" + current.guid() + ":nudge:" + key + ":" + std::to_string(burst))) reportError(error);
+    if (!doc.commit(titledesigner::editsToOps(edits), "Nudge", &error, "titleart:" + current.guid() + ":nudge:" + key + ":" + std::to_string(burst))) reportError(error);
 }
 
 // ---- commands (§6.5) ----
@@ -989,11 +988,11 @@ void TitleDesignerWindow::nudge(double dx, double dy) {
 bool TitleDesignerWindow::runCommand(const std::string& id) {
     if (!doc.isOpen() && id != "titleDesigner.fitCanvas") return false;
     const std::string c = id.rfind("titleDesigner.", 0) == 0 ? id.substr(14) : id;
-    if (c == "toolHand") setTool(Tool::Hand);
-    else if (c == "toolMove") setTool(Tool::Move);
-    else if (c == "toolRotate") setTool(Tool::Rotate);
-    else if (c == "toolScale") setTool(Tool::Scale);
-    else if (c == "toolRect") setTool(Tool::Rect);
+    if (c == "toolHand") setTool(titledesigner::Tool::Hand);
+    else if (c == "toolMove") setTool(titledesigner::Tool::Move);
+    else if (c == "toolRotate") setTool(titledesigner::Tool::Rotate);
+    else if (c == "toolScale") setTool(titledesigner::Tool::Scale);
+    else if (c == "toolRect") setTool(titledesigner::Tool::Rect);
     else if (c == "togglePivot") pivotMode = !pivotMode;
     else if (c == "frameSelected") frameSelection();
     else if (c == "fitCanvas") fit();
@@ -1001,8 +1000,8 @@ bool TitleDesignerWindow::runCommand(const std::string& id) {
     else if (c == "zoomIn") zoomAbout(1.25f, ImVec2((canvasMin.x + canvasMax.x) * 0.5f, (canvasMin.y + canvasMax.y) * 0.5f));
     else if (c == "zoomOut") zoomAbout(0.8f, ImVec2((canvasMin.x + canvasMax.x) * 0.5f, (canvasMin.y + canvasMax.y) * 0.5f));
     else if (c == "editText") {
-        const NodeRef primary = doc.primary();
-        const ta::Json* layer = layerById(doc.committed(), primary.layer);
+        const titledesigner::NodeRef primary = doc.primary();
+        const ta::Json* layer = titledesigner::layerById(doc.committed(), primary.layer);
         if (!layer || ta::layerTypeOf(*layer) != ta::LayerType::Text) {
             if (contentEmpty()) return addLayer("text", ta::Json::object());
             return false;
@@ -1016,13 +1015,13 @@ bool TitleDesignerWindow::runCommand(const std::string& id) {
         const std::vector<std::string> layers = doc.selectedLayers();
         if (layers.empty()) return false;
         renaming = layers.back();
-        const ta::Json* layer = layerById(doc.committed(), renaming);
+        const ta::Json* layer = titledesigner::layerById(doc.committed(), renaming);
         renameBuffer = layer ? str(*layer, "name") : std::string();
         renameFocus = true;
     } else if (c == "selectAll") {
-        std::vector<NodeRef> all;
+        std::vector<titledesigner::NodeRef> all;
         ta::forEachLayer(doc.shown().root, [&](const ta::Json& l, const ta::Json* parent, int) {
-            if (!parent) all.push_back({NodeKind::Layer, str(l, "id"), {}, {}});
+            if (!parent) all.push_back({titledesigner::NodeKind::Layer, str(l, "id"), {}, {}});
             return true;
         });
         doc.select(all);
@@ -1058,7 +1057,7 @@ bool TitleDesignerWindow::runCommand(const std::string& id) {
 // ---- per frame ----
 
 void TitleDesignerWindow::handleExternalChange() {
-    std::optional<ExternalChange> change = doc.takeExternalChange();
+    std::optional<titledesigner::ExternalChange> change = doc.takeExternalChange();
     if (!change) return;
     if (change->cancelledGesture) {
         notice = "The title changed on disk: your drag was cancelled";
@@ -1196,8 +1195,8 @@ void TitleDesignerWindow::showContents() {
     // one its header
     const float panelHeader = ImGui::GetFrameHeightWithSpacing();
     float panelsHeight = 0.0f;
-    for (const PanelDef& panel : panels()) {
-        if (panel.region != PanelDef::Region::Bottom) continue;
+    for (const titledesigner::PanelDef& panel : titledesigner::panels()) {
+        if (panel.region != titledesigner::PanelDef::Region::Bottom) continue;
         panelsHeight += panelOpen(panel) ? std::max(180.0f * scale, avail.y * 0.45f) : panelHeader;
     }
     if (panelsHeight > 0.0f) panelsHeight = std::min(panelsHeight, avail.y * 0.55f) + ImGui::GetStyle().ItemSpacing.y;
@@ -1308,7 +1307,7 @@ void TitleDesignerWindow::showContents() {
     firstShow = false;
 }
 
-bool TitleDesignerWindow::panelOpen(const PanelDef& panel) const {
+bool TitleDesignerWindow::panelOpen(const titledesigner::PanelDef& panel) const {
     const auto found = panelOpenStates.find(panel.id);
     if (found != panelOpenStates.end()) return found->second;
     return panel.visibleByDefault ? panel.visibleByDefault(doc) : true;
@@ -1318,8 +1317,8 @@ void TitleDesignerWindow::drawPanels(float height) {
     JE_PROFILE_SCOPE("TD drawPanels");
     if (height <= 0.0f) return;
     ImGui::BeginChild("##titledesignerpanels", ImVec2(0.0f, height), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    for (const PanelDef& panel : panels()) {
-        if (panel.region != PanelDef::Region::Bottom || !panel.draw) continue;
+    for (const titledesigner::PanelDef& panel : titledesigner::panels()) {
+        if (panel.region != titledesigner::PanelDef::Region::Bottom || !panel.draw) continue;
         const bool wasOpen = panelOpen(panel);
         ImGui::SetNextItemOpen(wasOpen, ImGuiCond_Always);
         const bool open = ImGui::CollapsingHeader((panel.title + "###panel_" + panel.id).c_str());
@@ -1501,10 +1500,10 @@ void TitleDesignerWindow::frameSelection() {
         fit();
         return;
     }
-    TitleRect box;
+    titledesigner::TitleRect box;
     bool any = false;
     for (const std::string& id : layers) {
-        const TitleRect b = layerBounds(id);
+        const titledesigner::TitleRect b = layerBounds(id);
         if (b.empty()) continue;
         if (!any) box = b;
         else {
@@ -1515,7 +1514,7 @@ void TitleDesignerWindow::frameSelection() {
         any = true;
     }
     if (!any) return;
-    DocumentView& v = view();
+    titledesigner::DocumentView& v = view();
     const float w = std::max(1.0f, canvasMax.x - canvasMin.x), h = std::max(1.0f, canvasMax.y - canvasMin.y);
     const double zoom = std::min(w / (box.width * 1.25), h / (box.height * 1.25));
     v.fit = false;
@@ -1552,7 +1551,7 @@ bool TitleDesignerWindow::contentEmpty() const {
 std::vector<std::string> TitleDesignerWindow::fontTextOfSelection() const {
     std::vector<std::string> out;
     for (const std::string& id : doc.selectedLayers()) {
-        const ta::Json* layer = layerById(doc.shown(), id);
+        const ta::Json* layer = titledesigner::layerById(doc.shown(), id);
         if (layer && ta::layerTypeOf(*layer) == ta::LayerType::Text) out.push_back(str(*layer, "text"));
     }
     return out;
@@ -1590,7 +1589,7 @@ bool TitleDesignerWindow::dropFiles(const std::vector<std::string>& files, const
             std::string target = underLayer;
             if (target.empty()) {
                 for (const std::string& id : doc.selectedLayers()) {
-                    const ta::Json* layer = layerById(doc.committed(), id);
+                    const ta::Json* layer = titledesigner::layerById(doc.committed(), id);
                     if (layer && ta::layerTypeOf(*layer) == ta::LayerType::Text) target = id;
                 }
             }

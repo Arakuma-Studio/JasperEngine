@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+namespace TiledMapStoreTest_cpp {
+
 using namespace terrainworldtest;
 using jasperengine::Vector2;
 
@@ -366,3 +368,5 @@ TEST(TiledMapStore, PaintAcrossBorderSharesBlendSamples) {
     EXPECT_EQ(back[0], 0);
     EXPECT_EQ(back[3], 255);
 }
+
+}  // namespace TiledMapStoreTest_cpp

@@ -16,6 +16,8 @@
 #include "profiler/Profile.h"
 #include "subsystem/ActionSystem.h"
 
+namespace ProfilerAnimationTest_cpp {
+
 using namespace animatortest;
 
 namespace {
@@ -167,3 +169,5 @@ TEST_F(ProfilerAnimationTest, TheMonitorsReadTheStats){
     ASSERT_TRUE(profiler::monitorInfo("Animators", info));
     EXPECT_EQ(info.latest, 0.0);
 }
+
+}  // namespace ProfilerAnimationTest_cpp

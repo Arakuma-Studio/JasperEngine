@@ -33,6 +33,8 @@
 #include <string>
 #include <vector>
 
+namespace SoundEventRuntimeTest_cpp {
+
 using namespace jasperengine;
 namespace fs = std::filesystem;
 
@@ -1042,3 +1044,5 @@ TEST_F(SoundEventRuntimeTest, SceneTeardownEndsItsFreeVoices) {
     EXPECT_FALSE(handle.isValid());
     EXPECT_EQ(AudioSystem::getVoiceCount(), 0u);
 }
+
+}  // namespace SoundEventRuntimeTest_cpp

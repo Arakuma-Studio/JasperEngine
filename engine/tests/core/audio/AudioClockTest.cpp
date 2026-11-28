@@ -8,6 +8,8 @@
 #include <cmath>
 #include <cstdint>
 
+namespace AudioClockTest_cpp {
+
 using namespace jasperengine;
 
 TEST(AudioClockTest, SixtyFpsAt48kMixes800AFrame) {
@@ -50,3 +52,5 @@ TEST(AudioClockTest, ResetStartsOverAtTheNewRate) {
     EXPECT_EQ(clock.seconds(), 0.0);
     EXPECT_EQ(clock.advance(1.0), 44100u);
 }
+
+}  // namespace AudioClockTest_cpp

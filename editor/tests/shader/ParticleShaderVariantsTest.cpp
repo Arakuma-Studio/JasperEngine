@@ -21,6 +21,8 @@
 
 #include <string>
 
+namespace ParticleShaderVariantsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -106,3 +108,5 @@ TEST(ParticleShaderVariants, ShaderCacheVersionCoversTheHeightFog){
     ASSERT_EQ(name.rfind('v', 0), 0u) << name;
     EXPECT_GE(std::stoi(name.substr(1)), 75) << name;
 }
+
+}  // namespace ParticleShaderVariantsTest_cpp

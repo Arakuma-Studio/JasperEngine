@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+namespace AtomicFileBenchTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using jasperengine::test::TestTempDir;
@@ -95,3 +97,5 @@ TEST(AtomicFileBench, DocumentWriteOverhead) {
     const std::string written((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     EXPECT_TRUE(written == bytes) << written.size() << " bytes read back of " << bytes.size();
 }
+
+}  // namespace AtomicFileBenchTest_cpp

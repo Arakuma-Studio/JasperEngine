@@ -13,6 +13,8 @@
 #include <cstdio>
 #include <set>
 
+namespace PaletteQuantizeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pixelart;
 
@@ -154,3 +156,5 @@ TEST(PaletteQuantize, BakeTimes) {
         EXPECT_EQ(job.result().cells, lut.cells);
     }
 }
+
+}  // namespace PaletteQuantizeTest_cpp

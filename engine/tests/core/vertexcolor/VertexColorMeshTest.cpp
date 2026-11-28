@@ -8,6 +8,8 @@
 
 #include <algorithm>
 
+namespace VertexColorMeshTest_cpp {
+
 using namespace jasperengine;
 
 // (a named namespace, tests included: a unity build merges the test sources)
@@ -159,3 +161,5 @@ TEST(VertexColorMesh, ValueAtInterpolatesTheCornerValues) {
 }
 
 } // namespace vertex_color_mesh_test
+
+}  // namespace VertexColorMeshTest_cpp

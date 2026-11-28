@@ -32,11 +32,12 @@
 #include <utility>
 #include <vector>
 
+namespace changed_update_flags_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
 // (a named namespace, tests included: a unity build merges the test sources)
-namespace changed_update_flags_test {
 
     uint64_t oracle(ComponentType compType, void* oldComp, void* newComp) {
         uint64_t flags = 0;
@@ -284,6 +285,8 @@ namespace changed_update_flags_test {
 
 }
 
+namespace changed_update_flags_test {
+
 using namespace changed_update_flags_test;
 
 TEST(ChangedUpdateFlags, EveryPropertyOfADefaultComponent) {
@@ -489,3 +492,5 @@ TEST(ChangedUpdateFlagsBench, EveryComponentStaysUnderTheBudget) {
         (void)sink;
     }
 }
+
+}  // namespace changed_update_flags_test

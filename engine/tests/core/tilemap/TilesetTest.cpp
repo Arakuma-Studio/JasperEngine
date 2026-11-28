@@ -23,6 +23,8 @@
 #include <set>
 #include <sstream>
 
+namespace TilesetTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -901,3 +903,5 @@ TEST(TilesetPool, SourceResolvesByGuidBeforeItsPath){
     ASSERT_TRUE(byPath);
     EXPECT_TRUE(byPath->tile(1));
 }
+
+}  // namespace TilesetTest_cpp

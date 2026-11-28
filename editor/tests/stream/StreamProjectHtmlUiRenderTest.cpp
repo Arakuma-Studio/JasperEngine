@@ -19,6 +19,8 @@
 
 #include <gtest/gtest.h>
 
+namespace StreamProjectHtmlUiRenderTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -179,3 +181,5 @@ TEST(StreamProjectHtmlUiRender, SceneSettingsAreUndoable) {
     EXPECT_EQ(Catalog::getScenePropertyDefault<int>("html_ui_msaa_samples"), 0);
     EXPECT_EQ(Catalog::getScenePropertyDefault<UIRenderMode>("html_ui_render_mode"), UIRenderMode::OVERLAY);
 }
+
+}  // namespace StreamProjectHtmlUiRenderTest_cpp

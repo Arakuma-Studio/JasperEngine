@@ -15,6 +15,8 @@
 #include "navigation/NavMesh.h"
 #include "object/navigation/NavMeshAgent.h"
 
+namespace NavStubTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 
@@ -97,5 +99,7 @@ TEST_F(NavStubTest, LogsOnce){
     }
     EXPECT_LE(log.count(D_LOG_ERROR, "JASPERENGINE_NAVIGATION is off"), 1u);
 }
+
+}  // namespace NavStubTest_cpp
 
 #endif

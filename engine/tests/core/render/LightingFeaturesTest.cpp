@@ -17,6 +17,8 @@
 #include <algorithm>
 #include <cmath>
 
+namespace LightingFeaturesTest_cpp {
+
 using namespace jasperengine;
 
 TEST(LightingTiers, AutomaticIsTiledFromMediumAndPerObjectOnLow){
@@ -173,3 +175,5 @@ TEST(AmbientGradient, ProjectionMatchesANumericIntegral){
         EXPECT_FLOAT_EQ(sh[c].z, 0.0f);
     }
 }
+
+}  // namespace LightingFeaturesTest_cpp

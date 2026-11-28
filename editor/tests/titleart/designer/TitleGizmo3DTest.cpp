@@ -14,6 +14,8 @@
 #include <utility>
 #include <vector>
 
+namespace TitleGizmo3DTest_cpp {
+
 using namespace jasperengine::editor::titledesigner;
 namespace r3d = jasperengine::editor::titledesigner::rotation3d;
 
@@ -345,3 +347,5 @@ TEST(TitleGizmo3DTest, RingAndArcDrags) {
     EXPECT_NEAR(titleGizmo3DFind(edits, "transform.rotation_x")->value.get<double>(), 0.0, 1e-6);
     EXPECT_NEAR(titleGizmo3DFind(edits, "transform.rotation_y")->value.get<double>(), 0.0, 1e-6);
 }
+
+}  // namespace TitleGizmo3DTest_cpp

@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+namespace LaunchOptionsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::player;
 
@@ -277,3 +279,5 @@ TEST(InputScriptRun, WebFetchesUrlsNotContentPaths) {
     EXPECT_FALSE(isFetchedUrl("asset://demo/attract.input.json"));
     EXPECT_FALSE(isFetchedUrl("data://input/menu.input.json"));
 }
+
+}  // namespace LaunchOptionsTest_cpp

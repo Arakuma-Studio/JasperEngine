@@ -21,6 +21,8 @@
 
 #include <random>
 
+namespace TitleAnimIOTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -491,3 +493,5 @@ TEST(TitleAnimIOTest, RefWalkerVisitsMarkerSounds) {
     EXPECT_EQ(fields[0], "animation.animations[0].markers[0].sound");
     EXPECT_EQ(root["animation"]["animations"][0]["markers"][0]["sound"]["path"], "sfx/moved.wav");
 }
+
+}  // namespace TitleAnimIOTest_cpp

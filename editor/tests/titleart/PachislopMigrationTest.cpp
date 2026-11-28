@@ -14,6 +14,8 @@
 #include <cmath>
 #include <regex>
 
+namespace PachislopMigrationTest_cpp {
+
 using namespace jasperengine;
 // its own name: Title Art's, Pachislop's and the editor's Json aliases may all be in sight in a unity unit
 using PachislopMigrationJson = jasperengine::titleart::Json;
@@ -997,3 +999,5 @@ TEST(PachislopMigrationTest, TurnsAParticlesLayerAlphaEmitterIntoFollowing) {
     EXPECT_EQ(out["follow"], "L1");
     EXPECT_EQ(out["edgeWidth"], 6);
 }
+
+}  // namespace PachislopMigrationTest_cpp

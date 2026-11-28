@@ -31,6 +31,8 @@
     #define JASPER_MSAA_FB_TEST_GL 1
 #endif
 
+namespace SokolGlMsaaFramebuffersGpuTest_cpp {
+
 using namespace jasperengine;
 
 #if defined(JASPER_MSAA_FB_TEST_GL)
@@ -143,3 +145,5 @@ TEST(SokolGlMsaaFramebuffersGpu, EachSampleCountKeepsAFramebufferOfItsOwn){
     single.destroy();
 }
 #endif
+
+}  // namespace SokolGlMsaaFramebuffersGpuTest_cpp

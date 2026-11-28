@@ -13,6 +13,8 @@
 
 #include <filesystem>
 
+namespace SceneMergeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::vcs::scene;
@@ -194,3 +196,5 @@ TEST(SceneMerge, ConflictsFile) {
     EXPECT_EQ(file["conflicts"][0]["ours"].Scalar(), "[1, 0, 0]");
     EXPECT_EQ(file["conflicts"][0]["theirs"].Scalar(), "[2, 0, 0]");
 }
+
+}  // namespace SceneMergeTest_cpp

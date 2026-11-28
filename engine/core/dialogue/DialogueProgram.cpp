@@ -14,7 +14,8 @@
 #include <map>
 
 using namespace jasperengine;
-using namespace jasperengine::dialogue;
+
+namespace jasperengine::dialogue {
 
 namespace {
 
@@ -665,7 +666,7 @@ std::shared_ptr<const Program> Program::fromCooked(std::string_view bytes, const
 
 // ------------------------------------------------------------------ keys
 
-std::vector<SourceEntry> jasperengine::dialogue::sourceEntries(const graph::Graph& graph) {
+std::vector<SourceEntry> sourceEntries(const graph::Graph& graph) {
     std::vector<SourceEntry> out;
     for (const graph::Node& node : graph.nodes) {
         if (node.type != "line") continue;
@@ -683,7 +684,7 @@ std::vector<SourceEntry> jasperengine::dialogue::sourceEntries(const graph::Grap
     return out;
 }
 
-std::string jasperengine::dialogue::namespaceFromStem(std::string_view stem) {
+std::string namespaceFromStem(std::string_view stem) {
     std::string out;
     for (char c : stem) {
         const unsigned char u = static_cast<unsigned char>(c);
@@ -695,7 +696,7 @@ std::string jasperengine::dialogue::namespaceFromStem(std::string_view stem) {
     return out.empty() ? "dialogue" : out;
 }
 
-std::string jasperengine::dialogue::namespaceOf(const graph::Graph& graph, std::string_view path) {
+std::string namespaceOf(const graph::Graph& graph, std::string_view path) {
     if (auto ns = graph.metadata.find("namespace"); ns != graph.metadata.end() && ns->is_string() && !ns->get<std::string>().empty()) {
         return ns->get<std::string>();
     }
@@ -773,3 +774,5 @@ void Programs::removeListener(int id) {
 void Programs::clear() {
     cache().entries.clear();
 }
+
+}  // namespace jasperengine::dialogue

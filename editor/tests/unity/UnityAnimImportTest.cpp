@@ -26,6 +26,8 @@
 #include <cmath>
 #include <random>
 
+namespace UnityAnimImportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::unity;
 namespace fs = std::filesystem;
@@ -367,3 +369,5 @@ TEST(UnityMaskImportTest, BodyPartsAndPaths) {
     for (const UnityAnimJson& note : result.report["notes"]) noted = noted || note["code"] == "transforms-and-body-parts";
     EXPECT_TRUE(noted) << result.report.dump(2);
 }
+
+}  // namespace UnityAnimImportTest_cpp

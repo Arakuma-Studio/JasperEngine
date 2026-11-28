@@ -22,7 +22,8 @@
 #include <mutex>
 
 using namespace jasperengine;
-using namespace jasperengine::gametest;
+
+namespace jasperengine::gametest {
 
 namespace {
 
@@ -276,6 +277,8 @@ namespace {
     }
 
 }
+
+}  // namespace jasperengine::gametest
 
 namespace jasperengine::gametest {
 
@@ -685,6 +688,8 @@ namespace jasperengine::gametest {
 }
 
 // ================================================================== TestChunk
+
+namespace jasperengine::gametest {
 
 TestChunk::TestChunk(lua_State* state, Mode m, const Settings& s, const Target& t,
                      std::function<bool(const std::string&, std::string&)> reader)
@@ -1436,3 +1441,5 @@ void TestRunner::endRun() {
     running = false;
     phase = Phase::Done;
 }
+
+}  // namespace jasperengine::gametest

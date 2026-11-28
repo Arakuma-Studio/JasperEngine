@@ -24,6 +24,8 @@
 #include <thread>
 #include <vector>
 
+namespace AssetIOServiceTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::jobs;
 namespace fs = std::filesystem;
@@ -415,3 +417,5 @@ TEST_F(AssetIOReaders, DecodeHoldsAGateSlot){
     EXPECT_LE(maximum.load(), 2);
     EXPECT_EQ(system->getGate().taken(), 0) << "every slot came back";
 }
+
+}  // namespace AssetIOServiceTest_cpp

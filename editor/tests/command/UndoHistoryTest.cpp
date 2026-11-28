@@ -17,6 +17,8 @@
 #include <memory>
 #include <type_traits>
 
+namespace UndoHistoryTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -459,3 +461,5 @@ TEST_F(CommandHistoryTests, AgentStepsCarryTheClientName) {
     }
     EXPECT_EQ(history.entries().size(), 3u);
 }
+
+}  // namespace UndoHistoryTest_cpp

@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+namespace Sha256Test_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -101,3 +103,5 @@ TEST(Sha256, ThroughputBudget) {
         EXPECT_GE(mbPerSecond * slack, 200.0);
     }
 }
+
+}  // namespace Sha256Test_cpp

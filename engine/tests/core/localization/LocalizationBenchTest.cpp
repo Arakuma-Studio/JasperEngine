@@ -22,6 +22,8 @@
 #include <string>
 #include <vector>
 
+namespace LocalizationBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::l10n;
 
@@ -129,3 +131,5 @@ TEST_F(LocalizationBench, Switch) {
         EXPECT_LE(perSwitch, 6.0 * testsupport::perfSlack());
     }
 }
+
+}  // namespace LocalizationBenchTest_cpp

@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PoseTweenTest_cpp {
+
 using namespace posetest;
 
 namespace {
@@ -118,3 +120,5 @@ TEST(PoseTween, FeelPresets){
     EXPECT_FALSE(feelPresetMatches(*findFeelPreset("Heavy"), settings));
     EXPECT_EQ(matchingFeelPreset(settings), nullptr);
 }
+
+}  // namespace PoseTweenTest_cpp

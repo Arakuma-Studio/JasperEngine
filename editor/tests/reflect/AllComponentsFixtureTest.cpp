@@ -22,13 +22,14 @@
 #include <random>
 #include <set>
 
+namespace all_components_fixture_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
 // (a named namespace, tests included: a unity build merges the test sources)
-namespace all_components_fixture_test {
 
     fs::path fixturePath() {
         return fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / "reflection-parity" / "AllComponents.scene";

@@ -17,6 +17,8 @@
 #include <map>
 #include <sstream>
 
+namespace BitmapFontParsersTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pixelart;
 
@@ -390,3 +392,5 @@ TEST(BitmapFontParsers, TrueTypeSmoothFontReportsPixelSizeUnknown){
     EXPECT_EQ(errors[0].field, "source.pixel_size");
     EXPECT_NE(errors[0].message.find("closest"), std::string::npos);
 }
+
+}  // namespace BitmapFontParsersTest_cpp

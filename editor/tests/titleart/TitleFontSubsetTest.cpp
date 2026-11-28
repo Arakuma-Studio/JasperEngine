@@ -25,6 +25,8 @@
 #include <iterator>
 #include <set>
 
+namespace TitleFontSubsetTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -488,3 +490,5 @@ TEST(TitleFontSubset, CreditsText) {
     EXPECT_EQ(noOfl.find("SIL OPEN FONT LICENSE"), std::string::npos);
     EXPECT_STREQ(TITLE_FONT_CREDITS_FILE, "THIRD-PARTY-FONTS.txt");
 }
+
+}  // namespace TitleFontSubsetTest_cpp

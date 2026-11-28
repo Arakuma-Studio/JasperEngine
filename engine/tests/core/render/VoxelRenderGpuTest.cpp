@@ -27,6 +27,8 @@
 #include <cstring>
 #include <memory>
 
+namespace VoxelRenderGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 using namespace jasperengine::voxel;
@@ -238,3 +240,5 @@ TEST_F(VoxelRenderGpu, ShadowsNoLeak) {
     ASSERT_TRUE(settled(owner));
     expectGolden("voxel_shadows");
 }
+
+}  // namespace VoxelRenderGpuTest_cpp

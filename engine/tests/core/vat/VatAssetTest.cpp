@@ -15,6 +15,8 @@
 
 #include <cmath>
 
+namespace VatAssetTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::vat;
 
@@ -302,3 +304,5 @@ TEST(VatAsset, PayloadTexture){
     half.reset();
     EXPECT_EQ(TextureDataPool::get(id), nullptr);
 }
+
+}  // namespace VatAssetTest_cpp

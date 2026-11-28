@@ -13,6 +13,8 @@
 
 #include <vector>
 
+namespace AtmosphereRendererTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -121,3 +123,5 @@ TEST(AtmosphereRendererTest, FogLightFrustumCull){
     EXPECT_TRUE(selected.empty());
     EXPECT_TRUE(considered.empty());
 }
+
+}  // namespace AtmosphereRendererTest_cpp

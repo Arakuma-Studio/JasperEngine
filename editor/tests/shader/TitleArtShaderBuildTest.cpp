@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace TitleArtShaderBuildTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -120,3 +122,5 @@ TEST(TitleArtShaderBuild, EveryGeneratorProgramEveryBackend) {
     }
     EXPECT_GE(scanned, 5);
 }
+
+}  // namespace TitleArtShaderBuildTest_cpp

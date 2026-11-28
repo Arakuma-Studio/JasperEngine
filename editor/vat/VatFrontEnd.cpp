@@ -22,7 +22,6 @@
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
-using namespace jasperengine::vat;
 
 namespace jasperengine::editor::vat{
 
@@ -254,7 +253,7 @@ bool routeVatSource(Project* project, const std::vector<std::string>& files, con
     return false;
 }
 
-bool readVatAsset(Project* project, const std::string& vatPath, VatData& out, std::string* error){
+bool readVatAsset(Project* project, const std::string& vatPath, jasperengine::vat::VatData& out, std::string* error){
     const fs::path given = FileUtils::pathFromUtf8(vatPath);
     const fs::path absolute = given.is_absolute() ? given : project->getProjectPath() / given;
     std::string text;
@@ -262,7 +261,7 @@ bool readVatAsset(Project* project, const std::string& vatPath, VatData& out, st
         if (error) *error = "can't read '" + vatPath + "'";
         return false;
     }
-    VatParseResult parsed = parseVat(text);
+    jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(text);
     if (!parsed.ok()){
         if (error) *error = parsed.error;
         return false;
@@ -271,7 +270,7 @@ bool readVatAsset(Project* project, const std::string& vatPath, VatData& out, st
     return true;
 }
 
-bool isImportRecipe(const VatRecipe& recipe){
+bool isImportRecipe(const jasperengine::vat::VatRecipe& recipe){
     return !recipe.sources.empty() && (recipe.sources[0].kind == "houdini_vat3" || recipe.sources[0].kind == "openvat");
 }
 

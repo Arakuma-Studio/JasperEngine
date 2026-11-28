@@ -13,6 +13,8 @@
 #include "navigation/NavBakeCollector.h"
 #include "navigation/NavBakeInput.h"
 
+namespace NavBakeFoliageTest_cpp {
+
 using namespace foliagetest;
 
 namespace {
@@ -103,3 +105,5 @@ TEST(NavBakeFoliage, ModifierExcludesTrees) {
     EXPECT_EQ(stats.instances, 0) << "the Terrain's policy decides for its trees";
     EXPECT_GT(stats.excluded, 0);
 }
+
+}  // namespace NavBakeFoliageTest_cpp

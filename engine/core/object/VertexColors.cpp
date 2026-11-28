@@ -18,11 +18,10 @@
 #include <limits>
 
 using namespace jasperengine;
-using namespace jasperengine::vertexcolor;
 
 namespace {
 
-    nlohmann::json vertexColorsKeyJson(const TargetKey& key){
+    nlohmann::json vertexColorsKeyJson(const vertexcolor::TargetKey& key){
         if (key.submesh >= 0)
             return nlohmann::json{{"submesh", key.submesh}};
         return nlohmann::json{{"node", key.node}, {"primitive", key.primitive}};
@@ -103,7 +102,7 @@ void VertexColors::setEnabled(bool enabled){
 
 std::string VertexColors::getFormat() const{
     const VertexColorsComponent* colors = component();
-    return (colors && colors->format == Format::RGBA16F) ? "rgba16f" : "rgba8";
+    return (colors && colors->format == vertexcolor::Format::RGBA16F) ? "rgba16f" : "rgba8";
 }
 
 std::vector<std::string> VertexColors::getChannelNames() const{
@@ -113,18 +112,18 @@ std::vector<std::string> VertexColors::getChannelNames() const{
     return std::vector<std::string>(colors->channelNames.begin(), colors->channelNames.end());
 }
 
-std::vector<SceneTarget> VertexColors::getTargets() const{
-    return sceneTargets(scene, entity);
+std::vector<vertexcolor::SceneTarget> VertexColors::getTargets() const{
+    return vertexcolor::sceneTargets(scene, entity);
 }
 
 std::string VertexColors::describeTargets() const{
     std::string list;
-    for (const SceneTarget& target : getTargets())
+    for (const vertexcolor::SceneTarget& target : getTargets())
         list += (list.empty() ? "" : ", ") + target.key.describe();
     return list.empty() ? "none" : list;
 }
 
-bool VertexColors::target(const TargetKey& key, SceneTarget& out, std::string& error) const{
+bool VertexColors::target(const vertexcolor::TargetKey& key, vertexcolor::SceneTarget& out, std::string& error) const{
     if (!component()){
         error = "the GameObject has no Vertex Colors component (add one in the editor)";
         return false;
@@ -135,24 +134,24 @@ bool VertexColors::target(const TargetKey& key, SceneTarget& out, std::string& e
     return false;
 }
 
-bool VertexColors::applyOps(const nlohmann::json& list, const TargetKey* only, nlohmann::json& result, std::string& error){
+bool VertexColors::applyOps(const nlohmann::json& list, const vertexcolor::TargetKey* only, nlohmann::json& result, std::string& error){
     VertexColorsComponent* colors = component();
     if (!colors){
         error = "the GameObject has no Vertex Colors component (add one in the editor)";
         return false;
     }
-    OpJsonHooks hooks;
+    vertexcolor::OpJsonHooks hooks;
     hooks.firstIndex = 1;
     hooks.fieldsDoc = "jasper://docs/meshes";
-    OpJsonParser parser(hooks);
-    std::vector<Op> ops;
+    vertexcolor::OpJsonParser parser(hooks);
+    std::vector<vertexcolor::Op> ops;
     if (!parser.parseList(list, ops)){
         error = parser.error;
         return false;
     }
-    std::vector<SceneTarget> targets;
+    std::vector<vertexcolor::SceneTarget> targets;
     if (only){
-        SceneTarget one;
+        vertexcolor::SceneTarget one;
         if (!target(*only, one, error))
             return false;
         targets.push_back(one);
@@ -166,29 +165,29 @@ bool VertexColors::applyOps(const nlohmann::json& list, const TargetKey* only, n
 
     // all targets or none (R26): each runs on a copy, kept once every one is ok
     vertexcolor::detail::loadComponentData(scene, entity, *colors);
-    std::vector<std::pair<TargetData, OpsResult>> done;
-    for (const SceneTarget& t : targets){
-        std::shared_ptr<const MeshView> view = sceneMeshView(scene, entity, t.key);
+    std::vector<std::pair<vertexcolor::TargetData, vertexcolor::OpsResult>> done;
+    for (const vertexcolor::SceneTarget& t : targets){
+        std::shared_ptr<const vertexcolor::MeshView> view = sceneMeshView(scene, entity, t.key);
         if (!view){
             error = t.key.describe() + ": its geometry cannot be read";
             return false;
         }
-        const TargetData* existing = colors->loaded ? colors->loaded->find(t.key) : nullptr;
+        const vertexcolor::TargetData* existing = colors->loaded ? colors->loaded->find(t.key) : nullptr;
         if (existing && !existing->fingerprint.sameTopology(view->fingerprint())){
             error = t.key.describe() + " was painted on another version of the mesh: open the scene in the editor and save it to remap it";
             return false;
         }
-        TargetData copy = existing ? *existing : TargetData();
+        vertexcolor::TargetData copy = existing ? *existing : vertexcolor::TargetData();
         copy.key = t.key;
         copy.fingerprint = view->fingerprint();
-        ApplyOptions options;
+        vertexcolor::ApplyOptions options;
         options.model = sceneTargetModel(scene, entity, t.key);
         options.world = true;
         options.initial = colors->initialValue;
         options.customInitial = colors->customInitial;
         options.format = colors->format;
         options.firstIndex = 1;
-        OpsResult r = vertexcolor::applyOps(copy, *view, ops, options);
+        vertexcolor::OpsResult r = vertexcolor::applyOps(copy, *view, ops, options);
         if (!r.ok){
             error = (targets.size() > 1 ? t.key.describe() + ": " : std::string()) + r.error;
             return false;
@@ -199,20 +198,20 @@ bool VertexColors::applyOps(const nlohmann::json& list, const TargetKey* only, n
     vertexcolor::Data& data = vertexcolor::detail::writableData(scene, entity, *colors);
     result = nlohmann::json::array();
     for (auto& [copy, r] : done){
-        nlohmann::json entry = toJson(r);
+        nlohmann::json entry = vertexcolor::toJson(r);
         entry["target"] = vertexColorsKeyJson(copy.key);
         result.push_back(std::move(entry));
-        TargetData* stored = data.find(copy.key);
+        vertexcolor::TargetData* stored = data.find(copy.key);
         if (!stored)
             stored = &data.add(copy.key);
         *stored = std::move(copy);
     }
-    markVertexColorsChanged(scene, entity);
+    vertexcolor::markVertexColorsChanged(scene, entity);
     return true;
 }
 
-bool VertexColors::getValues(const TargetKey& key, uint32_t first, uint32_t count, std::vector<Vector4>& out, std::string& error){
-    SceneTarget t;
+bool VertexColors::getValues(const vertexcolor::TargetKey& key, uint32_t first, uint32_t count, std::vector<Vector4>& out, std::string& error){
+    vertexcolor::SceneTarget t;
     if (!target(key, t, error))
         return false;
     if (count > MAX_VALUES){
@@ -226,25 +225,25 @@ bool VertexColors::getValues(const TargetKey& key, uint32_t first, uint32_t coun
     }
     VertexColorsComponent& colors = *component();
     vertexcolor::detail::loadComponentData(scene, entity, colors);
-    const TargetData* data = colors.loaded ? colors.loaded->find(key) : nullptr;
+    const vertexcolor::TargetData* data = colors.loaded ? colors.loaded->find(key) : nullptr;
     out.resize(count);
     if (data && data->base.size() == t.vertexCount){
         std::copy(data->base.begin() + first, data->base.begin() + first + count, out.begin());
         return true;
     }
-    std::shared_ptr<const MeshView> view = sceneMeshView(scene, entity, key);
+    std::shared_ptr<const vertexcolor::MeshView> view = sceneMeshView(scene, entity, key);
     if (!view){
         error = key.describe() + ": its geometry cannot be read";
         return false;
     }
-    TargetData initial;
+    vertexcolor::TargetData initial;
     initializeTarget(initial, *view, colors.initialValue, colors.customInitial);
     std::copy(initial.base.begin() + first, initial.base.begin() + first + count, out.begin());
     return true;
 }
 
-bool VertexColors::setValues(const TargetKey& key, uint32_t first, std::span<const Vector4> values, std::string& error){
-    SceneTarget t;
+bool VertexColors::setValues(const vertexcolor::TargetKey& key, uint32_t first, std::span<const Vector4> values, std::string& error){
+    vertexcolor::SceneTarget t;
     if (!target(key, t, error))
         return false;
     if ((uint64_t)first + values.size() > t.vertexCount){
@@ -252,14 +251,14 @@ bool VertexColors::setValues(const TargetKey& key, uint32_t first, std::span<con
                 std::to_string(t.vertexCount) + " vertices (0-based)";
         return false;
     }
-    std::shared_ptr<const MeshView> view = sceneMeshView(scene, entity, key);
+    std::shared_ptr<const vertexcolor::MeshView> view = sceneMeshView(scene, entity, key);
     if (!view){
         error = key.describe() + ": its geometry cannot be read";
         return false;
     }
     VertexColorsComponent& colors = *component();
     vertexcolor::Data& data = vertexcolor::detail::writableData(scene, entity, colors);
-    TargetData* stored = data.find(key);
+    vertexcolor::TargetData* stored = data.find(key);
     if (stored && !stored->fingerprint.sameTopology(view->fingerprint())){
         error = key.describe() + " was painted on another version of the mesh: open the scene in the editor and save it to remap it";
         return false;
@@ -274,32 +273,32 @@ bool VertexColors::setValues(const TargetKey& key, uint32_t first, std::span<con
     for (uint32_t v = first; v < end; v++)
         stored->base[v] = quantize(values[v - first], colors.format);
     // R4: a vertex set whole has no corner of another value
-    stored->corners.erase(std::remove_if(stored->corners.begin(), stored->corners.end(), [&](const CornerValue& corner){
+    stored->corners.erase(std::remove_if(stored->corners.begin(), stored->corners.end(), [&](const vertexcolor::CornerValue& corner){
         const uint32_t v = corner.corner < view->indices.size() ? view->indices[corner.corner] : UINT32_MAX;
         return v >= first && v < end;
     }), stored->corners.end());
-    markVertexColorsChanged(scene, entity);
+    vertexcolor::markVertexColorsChanged(scene, entity);
     return true;
 }
 
-bool VertexColors::getStats(const TargetKey& key, nlohmann::json& out, std::string& error){
-    SceneTarget t;
+bool VertexColors::getStats(const vertexcolor::TargetKey& key, nlohmann::json& out, std::string& error){
+    vertexcolor::SceneTarget t;
     if (!target(key, t, error))
         return false;
-    std::shared_ptr<const MeshView> view = sceneMeshView(scene, entity, key);
+    std::shared_ptr<const vertexcolor::MeshView> view = sceneMeshView(scene, entity, key);
     if (!view){
         error = key.describe() + ": its geometry cannot be read";
         return false;
     }
     VertexColorsComponent& colors = *component();
     vertexcolor::detail::loadComponentData(scene, entity, colors);
-    const TargetData* data = colors.loaded ? colors.loaded->find(key) : nullptr;
-    TargetData initial;
+    const vertexcolor::TargetData* data = colors.loaded ? colors.loaded->find(key) : nullptr;
+    vertexcolor::TargetData initial;
     if (!data || data->base.size() != view->vertexCount()){
         initializeTarget(initial, *view, colors.initialValue, colors.customInitial);
         data = &initial;
     }
-    out = toJson(computeStats(*data, *view));
+    out = vertexcolor::toJson(vertexcolor::computeStats(*data, *view));
     return true;
 }
 
@@ -307,8 +306,8 @@ namespace {
 
     // the value drawn at a triangle point: corner values (authored, or initial), the runtime
     // layer over each corner's vertex, blended by the barycentric weights
-    Vector4 vertexColorsValueAt(const TargetData* data, const std::vector<Vector4>& initial, const RuntimeLayer* layer,
-                                const MeshView& view, uint32_t triangle, const Vector3& bary){
+    Vector4 vertexColorsValueAt(const vertexcolor::TargetData* data, const std::vector<Vector4>& initial, const vertexcolor::RuntimeLayer* layer,
+                                const vertexcolor::MeshView& view, uint32_t triangle, const Vector3& bary){
         Vector4 out(0.0f, 0.0f, 0.0f, 0.0f);
         const float w[3] = {bary.x, bary.y, bary.z};
         for (int k = 0; k < 3; k++){
@@ -333,8 +332,8 @@ bool VertexColors::sampleAt(const Vector3& worldPoint, Vector4& out, std::string
     vertexcolor::detail::loadComponentData(scene, entity, *colors);
     float best = std::numeric_limits<float>::infinity();
     bool found = false;
-    for (const SceneTarget& t : getTargets()){
-        std::shared_ptr<const MeshView> view = sceneMeshView(scene, entity, t.key);
+    for (const vertexcolor::SceneTarget& t : getTargets()){
+        std::shared_ptr<const vertexcolor::MeshView> view = sceneMeshView(scene, entity, t.key);
         if (!view || view->triangleCount() == 0)
             continue;
         const Matrix4 model = sceneTargetModel(scene, entity, t.key);
@@ -359,10 +358,10 @@ bool VertexColors::sampleAt(const Vector3& worldPoint, Vector4& out, std::string
             continue;
         best = targetBest;
         found = true;
-        const TargetData* data = colors->loaded ? colors->loaded->find(t.key) : nullptr;
+        const vertexcolor::TargetData* data = colors->loaded ? colors->loaded->find(t.key) : nullptr;
         if (data && data->base.size() != view->vertexCount())
             data = nullptr;
-        TargetData initial;
+        vertexcolor::TargetData initial;
         if (!data)
             initializeTarget(initial, *view, colors->initialValue, colors->customInitial);
         auto layer = colors->runtimeLayers.find(t.key);
@@ -374,7 +373,7 @@ bool VertexColors::sampleAt(const Vector3& worldPoint, Vector4& out, std::string
     return found;
 }
 
-bool VertexColors::hitPoint(const MeshRaycastHit& hit, Vector3& world, SceneTarget& target, std::string& error){
+bool VertexColors::hitPoint(const MeshRaycastHit& hit, Vector3& world, vertexcolor::SceneTarget& target, std::string& error){
     if (!component()){
         error = "the GameObject has no Vertex Colors component (add one in the editor)";
         return false;
@@ -383,10 +382,10 @@ bool VertexColors::hitPoint(const MeshRaycastHit& hit, Vector3& world, SceneTarg
         error = "the hit is empty (the ray hit nothing)";
         return false;
     }
-    for (const SceneTarget& t : getTargets()){
+    for (const vertexcolor::SceneTarget& t : getTargets()){
         if (t.meshEntity != hit.entity || t.submesh != hit.submesh)
             continue;
-        std::shared_ptr<const MeshView> view = sceneMeshView(scene, entity, t.key);
+        std::shared_ptr<const vertexcolor::MeshView> view = sceneMeshView(scene, entity, t.key);
         if (!view || hit.triangle >= view->triangleCount()){
             error = t.key.describe() + ": the hit's triangle is not on the mesh as loaded";
             return false;
@@ -405,16 +404,16 @@ bool VertexColors::hitPoint(const MeshRaycastHit& hit, Vector3& world, SceneTarg
 
 bool VertexColors::sampleAt(const MeshRaycastHit& hit, Vector4& out, std::string& error){
     Vector3 world;
-    SceneTarget t;
+    vertexcolor::SceneTarget t;
     if (!hitPoint(hit, world, t, error))
         return false;
     VertexColorsComponent& colors = *component();
     vertexcolor::detail::loadComponentData(scene, entity, colors);
-    std::shared_ptr<const MeshView> view = sceneMeshView(scene, entity, t.key);
-    const TargetData* data = colors.loaded ? colors.loaded->find(t.key) : nullptr;
+    std::shared_ptr<const vertexcolor::MeshView> view = vertexcolor::sceneMeshView(scene, entity, t.key);
+    const vertexcolor::TargetData* data = colors.loaded ? colors.loaded->find(t.key) : nullptr;
     if (data && data->base.size() != view->vertexCount())
         data = nullptr;
-    TargetData initial;
+    vertexcolor::TargetData initial;
     if (!data)
         initializeTarget(initial, *view, colors.initialValue, colors.customInitial);
     auto layer = colors.runtimeLayers.find(t.key);
@@ -423,7 +422,7 @@ bool VertexColors::sampleAt(const MeshRaycastHit& hit, Vector4& out, std::string
     return true;
 }
 
-uint32_t VertexColors::paint(const Vector3& worldPoint, const RuntimePaint& stroke, std::string& error){
+uint32_t VertexColors::paint(const Vector3& worldPoint, const vertexcolor::RuntimePaint& stroke, std::string& error){
     VertexColorsComponent* colors = component();
     if (!colors){
         error = "the GameObject has no Vertex Colors component (add one in the editor)";
@@ -435,13 +434,13 @@ uint32_t VertexColors::paint(const Vector3& worldPoint, const RuntimePaint& stro
     }
     const double now = Engine::getGameTime();
     uint32_t touched = 0;
-    for (const SceneTarget& t : getTargets()){
-        std::shared_ptr<const MeshView> view = sceneMeshView(scene, entity, t.key);
+    for (const vertexcolor::SceneTarget& t : getTargets()){
+        std::shared_ptr<const vertexcolor::MeshView> view = sceneMeshView(scene, entity, t.key);
         if (!view)
             continue;
         const Matrix4 model = sceneTargetModel(scene, entity, t.key);
         const Vector3 local = model.inverse() * worldPoint;
-        RuntimePaint scaled = stroke;
+        vertexcolor::RuntimePaint scaled = stroke;
         scaled.radius = stroke.radius / vertexColorsScale(model);
         // bounds first: a stamp away from a target costs no vertex loop
         AABB reach = view->bounds;
@@ -450,17 +449,17 @@ uint32_t VertexColors::paint(const Vector3& worldPoint, const RuntimePaint& stro
         const Vector3 lo = reach.getMinimum() - Vector3(scaled.radius), hi = reach.getMaximum() + Vector3(scaled.radius);
         if (local.x < lo.x || local.y < lo.y || local.z < lo.z || local.x > hi.x || local.y > hi.y || local.z > hi.z)
             continue;
-        std::shared_ptr<RuntimeLayer>& layer = colors->runtimeLayers[t.key];
+        std::shared_ptr<vertexcolor::RuntimeLayer>& layer = colors->runtimeLayers[t.key];
         if (!layer)
-            layer = std::make_shared<RuntimeLayer>();
+            layer = std::make_shared<vertexcolor::RuntimeLayer>();
         touched += layer->paint(*view, local, scaled, now);
     }
     return touched;
 }
 
-uint32_t VertexColors::paint(const MeshRaycastHit& hit, const RuntimePaint& stroke, std::string& error){
+uint32_t VertexColors::paint(const MeshRaycastHit& hit, const vertexcolor::RuntimePaint& stroke, std::string& error){
     Vector3 world;
-    SceneTarget t;
+    vertexcolor::SceneTarget t;
     if (!hitPoint(hit, world, t, error))
         return 0;
     return paint(world, stroke, error);
@@ -471,5 +470,5 @@ void VertexColors::clearRuntime(){
     if (!colors || colors->runtimeLayers.empty())
         return;
     colors->runtimeLayers.clear();
-    markVertexColorsChanged(scene, entity);
+    vertexcolor::markVertexColorsChanged(scene, entity);
 }

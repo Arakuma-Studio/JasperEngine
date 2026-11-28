@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ProcMatAssetTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::test;
@@ -88,3 +90,5 @@ TEST(ProcMatAsset, ProjectOpenGivesANewFileAGuid) {
     EXPECT_FALSE(read.isNull());
     EXPECT_EQ(database.typeOf(project.file("assets/wood.procmat")), AssetType::ProceduralMaterial);
 }
+
+}  // namespace ProcMatAssetTest_cpp

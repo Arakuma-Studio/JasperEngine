@@ -19,6 +19,8 @@
 
 #include <algorithm>
 
+namespace GlyphAtlasTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::analysis;
@@ -113,3 +115,5 @@ TEST(GlyphAtlas, Utf8) {
     // Pachislop's HUD row has one slot per character of its string
     EXPECT_EQ(utf8Codepoints("SYSTEM ONLINE // TARGET LOCK 0451-7F3A // ").size(), 42u);
 }
+
+}  // namespace GlyphAtlasTest_cpp

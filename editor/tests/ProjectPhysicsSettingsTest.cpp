@@ -19,6 +19,8 @@
 
 #include <string>
 
+namespace ProjectPhysicsSettingsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -133,3 +135,5 @@ TEST(ProjectPhysicsSettings, GameJsonCarriesQueriesHitTriggers) {
     EXPECT_FALSE(read.queriesHitTriggers3D);
     EXPECT_TRUE(read.queriesHitTriggers2D);
 }
+
+}  // namespace ProjectPhysicsSettingsTest_cpp

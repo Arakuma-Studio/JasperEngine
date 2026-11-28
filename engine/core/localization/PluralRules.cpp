@@ -8,7 +8,7 @@
 #include <cstring>
 #include <limits>
 
-using namespace jasperengine::l10n;
+namespace jasperengine::l10n {
 
 #include "PluralRules.gen.inc"
 
@@ -231,3 +231,5 @@ std::string PluralRules::formatInteger(int64_t value, std::string_view language)
     appendGrouped(out, std::to_string(magnitude), s);
     return out;
 }
+
+}  // namespace jasperengine::l10n

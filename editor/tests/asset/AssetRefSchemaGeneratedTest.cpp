@@ -47,13 +47,14 @@
 #include <string>
 #include <vector>
 
+namespace asset_ref_schema_generated_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
 // (a named namespace, tests included: a unity build merges the test sources)
-namespace asset_ref_schema_generated_test {
 
     const char* scopeName(AssetRefScope scope) {
         switch (scope) {

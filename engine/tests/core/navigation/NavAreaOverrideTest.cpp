@@ -21,6 +21,8 @@
 #include <sstream>
 #include <tuple>
 
+namespace NavAreaOverrideTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 
@@ -484,3 +486,5 @@ TEST_F(NavAreaOverrideTest, ZeroCostWithoutOverrides){
     EXPECT_EQ(nav->getNavMesh(fixture.surface)->getPolyStateTileCount(), 0u);
     EXPECT_FALSE(nav->syncAreaOverrides());
 }
+
+}  // namespace NavAreaOverrideTest_cpp

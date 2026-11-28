@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+namespace ConsoleWindowTest_cpp {
+
 using namespace jasperengine::editor;
 
 TEST(ConsoleWindow, SelectionFindsRetainedIdsAndSurvivesEviction) {
@@ -69,3 +71,5 @@ TEST(ConsoleWindow, SelectionHandlesGapsBetweenMonotonicIds) {
     EXPECT_EQ(state.selectedId, first);
     Out::clearConsole();
 }
+
+}  // namespace ConsoleWindowTest_cpp

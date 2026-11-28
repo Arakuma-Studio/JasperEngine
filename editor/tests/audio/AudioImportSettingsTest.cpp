@@ -15,6 +15,8 @@
 #include <cmath>
 #include <fstream>
 
+namespace audio_import_settings_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -351,7 +353,6 @@ TEST(AudioImportSettings, LoadTypeKeyRoundTripsAndApplies) {
     AudioImportTable::clear();
 }
 
-namespace audio_import_settings_test {
     class AudioImportSettingsLoadType : public scriptdata::ScriptDataTest {
     protected:
         void TearDown() override {
@@ -361,6 +362,8 @@ namespace audio_import_settings_test {
         }
     };
 }
+namespace audio_import_settings_test {
+
 using audio_import_settings_test::AudioImportSettingsLoadType;
 
 // AC16 (REQ-16, D9): the source's own load type, then the clip's, then Auto by size
@@ -398,3 +401,5 @@ TEST(AudioProvenance, RoundTripAndApply) {
     EXPECT_FALSE(provenance.apply({{"builtin", "x"}}, error));
     EXPECT_NE(error.find("object"), std::string::npos);
 }
+
+}  // namespace audio_import_settings_test

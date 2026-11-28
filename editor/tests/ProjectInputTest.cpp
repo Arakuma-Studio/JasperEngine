@@ -28,6 +28,8 @@
 #include <string>
 #include <vector>
 
+namespace ProjectInputTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -245,3 +247,5 @@ TEST_F(ProjectInputTest, TheConvertedAssetIsWrittenOnceAndFoundAgain) {
         EXPECT_TRUE(std::filesystem::exists(root / "assets" / "InputManager 2.inputactions"));
     }
 }
+
+}  // namespace ProjectInputTest_cpp

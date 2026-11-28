@@ -30,6 +30,8 @@
 #include <numeric>
 #include <vector>
 
+namespace BuoyancyTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -298,3 +300,5 @@ TEST_F(BuoyancyTest, SampleReportsExcluder){
     EXPECT_TRUE(wet.inWater);
     EXPECT_EQ(wet.excluder, NULL_ENTITY);
 }
+
+}  // namespace BuoyancyTest_cpp

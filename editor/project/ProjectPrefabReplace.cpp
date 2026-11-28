@@ -28,7 +28,6 @@
 #include <unordered_set>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::prefabinternal;
 
 namespace {
 
@@ -409,14 +408,14 @@ namespace {
                 kept.overrides.addedComponents = overrides.addedComponents;
                 std::set<editor::ComponentType> lost;
                 for (const auto& [type, properties] : overrides.properties) {
-                    if (hasComponent(newRegistry, target.second, type) || overrides.addedComponents.count(type)) {
+                    if (jasperengine::editor::prefabinternal::hasComponent(newRegistry, target.second, type) || overrides.addedComponents.count(type)) {
                         kept.overrides.properties[type] = properties;
                     } else {
                         lost.insert(type);
                     }
                 }
                 for (editor::ComponentType type : overrides.removedComponents) {
-                    if (hasComponent(newRegistry, target.second, type)) {
+                    if (jasperengine::editor::prefabinternal::hasComponent(newRegistry, target.second, type)) {
                         kept.overrides.removedComponents.insert(type);
                     } else {
                         lost.insert(type);
@@ -646,14 +645,14 @@ namespace {
             kept.overrides.addedComponents = overrides.addedComponents;
             std::set<editor::ComponentType> lost;
             for (const auto& [type, properties] : overrides.properties) {
-                if (hasComponent(newRegistry, target, type) || overrides.addedComponents.count(type)) {
+                if (jasperengine::editor::prefabinternal::hasComponent(newRegistry, target, type) || overrides.addedComponents.count(type)) {
                     kept.overrides.properties[type] = properties;
                 } else {
                     lost.insert(type);
                 }
             }
             for (editor::ComponentType type : overrides.removedComponents) {
-                if (hasComponent(newRegistry, target, type)) {
+                if (jasperengine::editor::prefabinternal::hasComponent(newRegistry, target, type)) {
                     kept.overrides.removedComponents.insert(type);
                 } else {
                     lost.insert(type);
@@ -854,7 +853,7 @@ bool editor::Project::buildReplacedPrefabNode(uint32_t sceneId, Entity root, con
         Out::error("Replace Prefab: cannot read prefab '%s'", newPath.string().c_str());
         return false;
     }
-    const std::string prefabKey = componentKey(ComponentType::PrefabComponent);
+    const std::string prefabKey = jasperengine::editor::prefabinternal::componentKey(ComponentType::PrefabComponent);
     const YAML::Node components = node["components"];
     if (!components || !components[prefabKey]) {
         return false;
@@ -921,7 +920,7 @@ bool editor::Project::rebuildPrefabInstance(uint32_t sceneId, Entity root, const
         return false;
     }
     Scene* scene = sceneProject->scene;
-    const std::string prefabKey = componentKey(ComponentType::PrefabComponent);
+    const std::string prefabKey = jasperengine::editor::prefabinternal::componentKey(ComponentType::PrefabComponent);
     const YAML::Node components = node["components"];
     if (!components || !components[prefabKey]) {
         return false;
@@ -957,7 +956,7 @@ bool editor::Project::rebuildPrefabInstance(uint32_t sceneId, Entity root, const
         if (type == ComponentType::PrefabComponent || type == ComponentType::Transform) {
             continue;
         }
-        if (!components[componentKey(type)]) {
+        if (!components[jasperengine::editor::prefabinternal::componentKey(type)]) {
             ProjectUtils::removeEntityComponent(scene, root, type, sceneProject->entities);
         }
     }
@@ -965,7 +964,7 @@ bool editor::Project::rebuildPrefabInstance(uint32_t sceneId, Entity root, const
         YAML::Node own = YAML::Clone(components);
         own.remove(prefabKey);
         if (own.size() > 0) {
-            Stream::decodeComponents(root, transformParent(scene, root), scene, own);
+            Stream::decodeComponents(root, jasperengine::editor::prefabinternal::transformParent(scene, root), scene, own);
         }
     }
     if (PrefabComponent* existing = scene->findComponent<PrefabComponent>(root)) {
@@ -1205,7 +1204,7 @@ std::map<std::string, editor::PrefabUsage> editor::Project::collectPrefabUsage()
             return;
         }
         const YAML::Node components = node["components"];
-        const std::string prefabKey = componentKey(ComponentType::PrefabComponent);
+        const std::string prefabKey = jasperengine::editor::prefabinternal::componentKey(ComponentType::PrefabComponent);
         if (components && components.IsMap() && components[prefabKey]) {
             const PrefabComponent component = Stream::decodePrefabComponent(components[prefabKey]);
             const std::filesystem::path path = resolvePrefabPath(component.guid, component.path);

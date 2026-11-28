@@ -12,29 +12,28 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::particles;
 
 namespace {
 
     // a burst list's times are capped: a burst repeating for ever lists its first loop's cycles
     constexpr size_t kMaxListedBursts = 64;
 
-    const char* timingTrigger(SubEmitterTrigger trigger) {
+    const char* timingTrigger(particles::SubEmitterTrigger trigger) {
         switch (trigger) {
-            case SubEmitterTrigger::Birth: return "birth";
-            case SubEmitterTrigger::Death: return "death";
-            case SubEmitterTrigger::Collision: return "collision";
-            case SubEmitterTrigger::Trigger: return "trigger";
+            case particles::SubEmitterTrigger::Birth: return "birth";
+            case particles::SubEmitterTrigger::Death: return "death";
+            case particles::SubEmitterTrigger::Collision: return "collision";
+            case particles::SubEmitterTrigger::Trigger: return "trigger";
         }
         return "death";
     }
 
-    bool emits(const ParticleEffectDocument& d) {
+    bool emits(const particles::ParticleEffectDocument& d) {
         if (!d.emission.present || !d.emission.enabled) return false;
         return !d.emission.rateOverTime.isZero() || !d.emission.rateOverDistance.isZero() || !d.emission.bursts.empty();
     }
 
-    void lifetimeOf(const ParticleEffectDocument& d, ParticleTimingRow& row) {
+    void lifetimeOf(const particles::ParticleEffectDocument& d, ParticleTimingRow& row) {
         float lo = 0.0f, hi = 0.0f;
         d.main.startLifetime.range(lo, hi);
         row.lifetimeMin = std::max(0.0f, std::min(lo, hi));
@@ -42,7 +41,7 @@ namespace {
     }
 
     // a system's own clock: its start delay, its emission over Duration (for ever when looping), its bursts
-    void systemTiming(const ParticleEffectDocument& d, ParticleTimingRow& row) {
+    void systemTiming(const particles::ParticleEffectDocument& d, ParticleTimingRow& row) {
         float delayLo = 0.0f, delayHi = 0.0f;
         d.startDelay.range(delayLo, delayHi);
         row.start = std::max(0.0f, std::min(delayLo, delayHi));
@@ -54,7 +53,7 @@ namespace {
         const float duration = std::max(0.0f, d.duration);
         float lastBurst = 0.0f;
         if (d.emission.present && d.emission.enabled) {
-            for (const Burst& burst : d.emission.bursts) {
+            for (const particles::Burst& burst : d.emission.bursts) {
                 if (burst.time > duration) continue;
                 const int cycles = burst.cycles > 0 ? burst.cycles : (int)kMaxListedBursts;
                 const float interval = std::max(burst.interval, 0.0001f);
@@ -91,10 +90,10 @@ namespace {
         const ParticleEffectTiming::Resolver& resolve;
         std::vector<ParticleTimingRow>& rows;
 
-        void children(const ParticleEffectDocument& d, int parentRow, int depth) {
-            if (depth >= kMaxSubEmitterDepth || !d.subEmittersModule.present || !d.subEmittersModule.enabled) return;
+        void children(const particles::ParticleEffectDocument& d, int parentRow, int depth) {
+            if (depth >= particles::kMaxSubEmitterDepth || !d.subEmittersModule.present || !d.subEmittersModule.enabled) return;
             for (size_t e = 0; e < d.subEmitters.size(); e++) {
-                const SubEmitterEntry& entry = d.subEmitters[e];
+                const particles::SubEmitterEntry& entry = d.subEmitters[e];
                 const ParticleTimingRow parent = rows[(size_t)parentRow];
                 ParticleTimingRow row;
                 row.name = std::filesystem::path(entry.effect).stem().string();
@@ -103,8 +102,8 @@ namespace {
                 row.parent = parentRow;
                 row.subEmitter = (int)e;
                 row.trigger = timingTrigger(entry.trigger);
-                row.eventDriven = parent.eventDriven || entry.trigger == SubEmitterTrigger::Collision || entry.trigger == SubEmitterTrigger::Trigger;
-                const ParticleEffectDocument* child = entry.effect.empty() ? nullptr : resolve(entry.effect);
+                row.eventDriven = parent.eventDriven || entry.trigger == particles::SubEmitterTrigger::Collision || entry.trigger == particles::SubEmitterTrigger::Trigger;
+                const particles::ParticleEffectDocument* child = entry.effect.empty() ? nullptr : resolve(entry.effect);
                 if (!child) {
                     row.missing = true;
                     row.start = row.startMax = row.emitEnd = row.end = parent.start;
@@ -119,16 +118,16 @@ namespace {
                 }
                 // a child emits on its parent's events, its own clock unused
                 switch (entry.trigger) {
-                    case SubEmitterTrigger::Birth:
+                    case particles::SubEmitterTrigger::Birth:
                         row.start = parent.start;
                         row.emitEnd = parent.emitEnd;
                         break;
-                    case SubEmitterTrigger::Death:
+                    case particles::SubEmitterTrigger::Death:
                         row.start = std::min(parent.start + parent.lifetimeMin, parent.end);
                         row.emitEnd = parent.end;
                         break;
-                    case SubEmitterTrigger::Collision:
-                    case SubEmitterTrigger::Trigger:
+                    case particles::SubEmitterTrigger::Collision:
+                    case particles::SubEmitterTrigger::Trigger:
                         row.start = parent.start;
                         row.emitEnd = parent.end;
                         break;
@@ -143,14 +142,14 @@ namespace {
     };
 
     nlohmann::ordered_json timingTime(float t) {
-        return std::isinf(t) ? nlohmann::ordered_json(nullptr) : nlohmann::ordered_json(ParticleEffectCodec::jsonFloat(t));
+        return std::isinf(t) ? nlohmann::ordered_json(nullptr) : nlohmann::ordered_json(particles::ParticleEffectCodec::jsonFloat(t));
     }
 
 }
 
 std::vector<ParticleTimingRow> ParticleEffectTiming::compute(const std::vector<ParticleTimingSystem>& systems, const Resolver& resolve) {
-    const Resolver library = [](const std::string& path) -> const ParticleEffectDocument* {
-        return ParticleEffectLibrary::get(path).document.get();
+    const Resolver library = [](const std::string& path) -> const particles::ParticleEffectDocument* {
+        return particles::ParticleEffectLibrary::get(path).document.get();
     };
     std::vector<ParticleTimingRow> rows;
     Walker walker{resolve ? resolve : library, rows};

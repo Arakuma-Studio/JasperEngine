@@ -46,6 +46,8 @@
 #include <set>
 #include <string>
 
+namespace AnimationLayersUiTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -567,3 +569,5 @@ TEST_F(AnimationLayersUi, PreviewOverComposesTheLayerOverABaseState) {
     EXPECT_NEAR(s.transform(s.leg).position.x, 0.0f, 1e-4f);
     EXPECT_NEAR(s.transform(s.arm).position.y, 0.0f, 1e-4f);
 }
+
+}  // namespace AnimationLayersUiTest_cpp

@@ -16,7 +16,6 @@
 #include <random>
 
 using namespace jasperengine;
-using namespace jasperengine::vat;
 
 namespace {
 
@@ -78,12 +77,12 @@ std::string vattest::writeAsset(const std::string& relativePath, const std::vect
     return writeAsset(relativePath, std::string(bytes.begin(), bytes.end()));
 }
 
-VatData vattest::sampleData(){
-    VatData data;
+vat::VatData vattest::sampleData(){
+    vat::VatData data;
     data.guid = "0123456789abcdef0123456789abcdef";
-    data.mode = VatMode::Vertices;
+    data.mode = vat::VatMode::Vertices;
     data.mesh = "hero.vat.glb";
-    data.layout.precision = VatPrecision::Float;
+    data.layout.precision = vat::VatPrecision::Float;
     data.layout.width = 8;
     data.layout.samples = 7;
     data.layout.vertices = 3;
@@ -92,7 +91,7 @@ VatData vattest::sampleData(){
     data.layout.colors = false;
     data.layout.height = 6;    // 7 x 3 x 2 = 42 texels in 8 x 6
 
-    VatClip walk;
+    vat::VatClip walk;
     walk.name = "Walk";
     walk.start = 0;
     walk.frames = 4;
@@ -107,7 +106,7 @@ VatData vattest::sampleData(){
     walk.events.push_back(step);
     data.clips.push_back(walk);
 
-    VatClip wave;
+    vat::VatClip wave;
     wave.name = "Wave";
     wave.start = 4;
     wave.frames = 3;
@@ -121,7 +120,7 @@ VatData vattest::sampleData(){
     data.sockets.push_back({"Hand", "Root/Hand"});
     data.sockets.push_back({"Head", "Root/Head"});
     data.recipe.sockets = {"Root/Hand", "Root/Head"};
-    VatRecipeSource source;
+    vat::VatRecipeSource source;
     source.kind = "model";
     source.path = "models/hero.gltf";
     source.clips = {"Walk", "Wave"};
@@ -130,18 +129,18 @@ VatData vattest::sampleData(){
     data.stats.bytes = 8 * 6 * 16;
     data.stats.maxErrorMm = 0.25f;
     data.stats.meanErrorMm = 0.125f;
-    data.layout.layoutHash = computeLayoutHash(data);
+    data.layout.layoutHash = vat::computeLayoutHash(data);
     return data;
 }
 
-VatPayload vattest::samplePayload(const VatData& data){
-    VatPayload payload;
+vat::VatPayload vattest::samplePayload(const vat::VatData& data){
+    vat::VatPayload payload;
     payload.precision = data.layout.precision;
     payload.width = data.layout.width;
     payload.height = data.layout.height;
     size_t texels = (size_t)payload.width * payload.height;
-    payload.bytes.assign(texels * (payload.precision == VatPrecision::Float ? 16 : 8), 0);
-    if (payload.precision == VatPrecision::Float){
+    payload.bytes.assign(texels * (payload.precision == vat::VatPrecision::Float ? 16 : 8), 0);
+    if (payload.precision == vat::VatPrecision::Float){
         for (size_t t = 0; t < texels; t++){
             float texel[4] = {(float)t, (float)t + 0.5f, -(float)t, 1.0f};
             std::memcpy(payload.bytes.data() + t * 16, texel, 16);
@@ -150,8 +149,8 @@ VatPayload vattest::samplePayload(const VatData& data){
     return payload;
 }
 
-VatSocketTracks vattest::sampleSockets(const VatData& data){
-    VatSocketTracks tracks;
+vat::VatSocketTracks vattest::sampleSockets(const vat::VatData& data){
+    vat::VatSocketTracks tracks;
     tracks.sockets = (int)data.recipe.sockets.size();
     tracks.frames = data.layout.samples;
     for (int f = 0; f < tracks.frames; f++){
@@ -186,14 +185,14 @@ std::vector<uint8_t> vattest::makeGlb(const std::string& json, const std::vector
     return out;
 }
 
-std::vector<uint8_t> vattest::makeVatGlb(const std::string& layoutHash, const VatPayload& payload, const VatSocketTracks& sockets){
+std::vector<uint8_t> vattest::makeVatGlb(const std::string& layoutHash, const vat::VatPayload& payload, const vat::VatSocketTracks& sockets){
     std::vector<uint8_t> bin = payload.bytes;
     nlohmann::json views = nlohmann::json::array();
     views.push_back({{"buffer", 0}, {"byteOffset", 0}, {"byteLength", payload.bytes.size()}});
     nlohmann::json extension = {
         {"version", 1},
         {"layoutHash", layoutHash},
-        {"payload", {{"bufferView", 0}, {"format", precisionName(payload.precision)}, {"width", payload.width},
+        {"payload", {{"bufferView", 0}, {"format", vat::precisionName(payload.precision)}, {"width", payload.width},
                      {"height", payload.height}}}
     };
     if (sockets.sockets > 0){
@@ -209,8 +208,8 @@ std::vector<uint8_t> vattest::makeVatGlb(const std::string& layoutHash, const Va
         {"asset", {{"version", "2.0"}}},
         {"buffers", nlohmann::json::array({{{"byteLength", bin.size()}}})},
         {"bufferViews", views},
-        {"extensionsUsed", nlohmann::json::array({VAT_GLTF_EXTENSION})},
-        {"extensions", {{VAT_GLTF_EXTENSION, extension}}}
+        {"extensionsUsed", nlohmann::json::array({vat::VAT_GLTF_EXTENSION})},
+        {"extensions", {{vat::VAT_GLTF_EXTENSION, extension}}}
     };
     return makeGlb(root.dump(), bin);
 }

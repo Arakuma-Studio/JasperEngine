@@ -12,6 +12,8 @@
 #include <limits>
 #include <random>
 
+namespace TerrainOpsTest_cpp {
+
 using namespace terraintest;
 
 TEST(TerrainOps, FailedListChangesNothing) {
@@ -617,3 +619,5 @@ TEST(TerrainOps, InPlaceKeepsTheCallersFloats) {
     ASSERT_TRUE(overlay.commit().ok);
     EXPECT_NE(mapHash(store, HEIGHT), before);
 }
+
+}  // namespace TerrainOpsTest_cpp

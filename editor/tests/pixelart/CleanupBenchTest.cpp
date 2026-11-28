@@ -20,8 +20,12 @@
 #include <thread>
 #include <vector>
 
+namespace CleanupBenchTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::cleanup;
+// the cleanup's own, not pixelart's namesakes: a batch that declares both would be ambiguous
+using jasperengine::editor::pixelart::cleanup::RgbaImage;
 // its own name: another RgbaImage is in sight in some unity units
 using CleanupBenchImage = jasperengine::editor::pixelart::cleanup::RgbaImage;
 
@@ -134,3 +138,5 @@ TEST(CleanupBench, InteractiveRerunAfterOneSlider) {
     EXPECT_EQ(outcome.art.width, 128);
     reportBudget("re-run of a 128x128 output after one slider", ms, 33.0);
 }
+
+}  // namespace CleanupBenchTest_cpp

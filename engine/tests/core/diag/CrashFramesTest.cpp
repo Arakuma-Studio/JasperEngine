@@ -3,6 +3,8 @@
 #include "diag/detail/CrashFrames.h"
 #include <gtest/gtest.h>
 
+namespace CrashFramesTest_cpp {
+
 using jasperengine::diag::crash::detail::crashCallerStart;
 namespace {
 void* address(uintptr_t value) { return reinterpret_cast<void*>(value); }
@@ -29,3 +31,5 @@ TEST(CrashFrames, MissingPcAlsoSkipsKnownDispatchWrapper) {
     void* frames[] = {address(10), address(20), address(25), address(40), address(50)};
     EXPECT_EQ(crashCallerStart(frames, 5, 30, 2, ~uintptr_t{0}, 25), 3u);
 }
+
+}  // namespace CrashFramesTest_cpp

@@ -26,6 +26,8 @@
 #include <filesystem>
 #include <fstream>
 
+namespace TitleCooked3DTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -285,3 +287,5 @@ TEST_F(TitleCooked3DGpu, TheJobNamesEveryProgramAnExportPrecompiles) {
     EXPECT_FALSE(has(high, ShaderType::TITLE_GLINT_SPRITE));
     EXPECT_TRUE(has(high, ShaderType::TITLE_GLINT)) << "High's is the full chain";
 }
+
+}  // namespace TitleCooked3DTest_cpp

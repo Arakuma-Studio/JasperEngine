@@ -29,6 +29,8 @@
 #include <string>
 #include <vector>
 
+namespace ParticleRenderGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -118,3 +120,5 @@ TEST(ParticleRenderGpu, AdditiveRgbAndGreyTexturesDraw){
     EXPECT_GOLDEN_OPTIONS("particles_additive_formats", additiveTolerance());
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace ParticleRenderGpuTest_cpp

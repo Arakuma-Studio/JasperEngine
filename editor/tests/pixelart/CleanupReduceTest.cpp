@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+namespace CleanupReduceTest_cpp {
+
 using namespace jasperengine::editor::pixelart::cleanup;
 
 namespace {
@@ -180,3 +182,5 @@ TEST(CleanupReduce, MergesBlocksOfAnyRatioTransparentOnesIncluded) {
     EXPECT_EQ(lettersOf(reduced, reduceKeys)[0][0], '.');
     EXPECT_EQ(reduce(picture, 6, 3, ReduceMode::Common), picture);
 }
+
+}  // namespace CleanupReduceTest_cpp

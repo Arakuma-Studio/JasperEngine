@@ -30,6 +30,8 @@
 #include <cstring>
 #include <string>
 
+namespace LuaHierarchyTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::test::makeTransformEntity;
 
@@ -426,3 +428,4 @@ TEST(LuaHierarchy, AFailingMainLuaKeepsTheState){
     LuaBinding::recreateLuaState();
 }
 
+}  // namespace LuaHierarchyTest_cpp

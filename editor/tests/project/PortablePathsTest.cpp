@@ -18,6 +18,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace PortablePathsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
@@ -149,3 +151,5 @@ TEST(PortablePaths, SubAssetKeysKeepTheirBackslashes) {
     EXPECT_EQ(Stream::decodeAssetRef(YAML::Load("mesh: models\\hero.glb#mesh:Body\\Skin\n"), "mesh").path,
               "models/hero.glb#mesh:Body\\Skin");
 }
+
+}  // namespace PortablePathsTest_cpp

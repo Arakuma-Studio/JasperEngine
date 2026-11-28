@@ -13,6 +13,8 @@
 #include <cstdint>
 #include <vector>
 
+namespace FlatPngTest_cpp {
+
 namespace {
 
     std::vector<uint8_t> flatPngOf(const std::vector<uint8_t>& rgb, int width, int height) {
@@ -70,3 +72,5 @@ TEST(FlatPng, TheToleranceIsTwoLevels) {
     rgb[3] += 1;
     EXPECT_FALSE(isFlatPng(flatPngOf(rgb, 16, 16), colour));
 }
+
+}  // namespace FlatPngTest_cpp

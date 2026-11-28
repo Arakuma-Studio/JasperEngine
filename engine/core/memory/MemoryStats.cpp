@@ -15,7 +15,6 @@
 #include <mutex>
 
 using namespace jasperengine;
-using namespace jasperengine::memory;
 
 namespace jasperengine { namespace memory { namespace detail {
 
@@ -38,6 +37,8 @@ namespace jasperengine { namespace memory { namespace detail {
     };
 
 }}}
+
+namespace jasperengine::memory {
 
 using memory::detail::StatsRecord;
 
@@ -84,7 +85,7 @@ namespace{
     }
 }
 
-const char* memory::residencyName(Residency residency){
+const char* residencyName(Residency residency){
     switch (residency){
         case Residency::Cpu: return "Cpu";
         case Residency::Gpu: return "Gpu";
@@ -93,7 +94,7 @@ const char* memory::residencyName(Residency residency){
     return "Cpu";
 }
 
-const char* memory::kindName(StatsKind kind){
+const char* kindName(StatsKind kind){
     switch (kind){
         case StatsKind::Arena: return "Arena";
         case StatsKind::Pool: return "Pool";
@@ -159,7 +160,7 @@ void memory::detail::publish(StatsRecord* record, uint64_t current, uint64_t pea
     endWrite(record);
 }
 
-std::vector<StatsEntry> memory::snapshot(){
+std::vector<StatsEntry> snapshot(){
     std::vector<StatsEntry> entries;
     StatsRecord* all = records();
     for (size_t index = 0; index < kMaxRecords; index++){
@@ -226,3 +227,5 @@ void TrackedBytes::setCapacity(uint64_t bytes){
 uint64_t TrackedBytes::current() const{
     return record->current.load(std::memory_order_relaxed);
 }
+
+}  // namespace jasperengine::memory

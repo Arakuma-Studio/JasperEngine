@@ -44,8 +44,8 @@
 #include <exception>
 
 using namespace jasperengine;
-using namespace jasperengine::jobs;
-using namespace jasperengine::jobs::detail;
+
+namespace jasperengine::jobs {
 
 namespace{
 
@@ -62,19 +62,19 @@ namespace{
         size_t claimCount = 0;
         size_t grain = 1;
         size_t count = 0;
-        ParallelForInvoke invoke = nullptr;
+        jobs::detail::ParallelForInvoke invoke = nullptr;
         void* body = nullptr;
         jobs::detail::Scheduler* scheduler = nullptr;
-        CancelState* cancel = nullptr;
+        jobs::detail::CancelState* cancel = nullptr;
         Lane lane = Lane::Normal;
         GateClass gate = GateClass::Default;
     };
-    static_assert(sizeof(RunBlock) <= kJobSlabBytes, "a parallelFor run block fits one job slab");
+    static_assert(sizeof(RunBlock) <= jobs::detail::kJobSlabBytes, "a parallelFor run block fits one job slab");
 
     void dropReference(RunBlock* block){
         if (block->references.fetch_sub(1, std::memory_order_acq_rel) == 1){
             block->~RunBlock();
-            releaseSlab(SlabClass::Job, block);
+            jobs::detail::releaseSlab(jobs::detail::SlabClass::Job, block);
         }
     }
 
@@ -109,8 +109,8 @@ namespace{
         if (block.inProgress.fetch_sub(1, std::memory_order_seq_cst) == 1
             && (block.claim.load(std::memory_order_seq_cst) & kClosed) != 0
             && block.parked.load(std::memory_order_seq_cst) > 0){
-            std::lock_guard<std::mutex> lock(bucketMutex(&block));
-            bucketCv(&block).notify_all();
+            std::lock_guard<std::mutex> lock(jobs::detail::bucketMutex(&block));
+            jobs::detail::bucketCv(&block).notify_all();
         }
     }
 
@@ -145,8 +145,8 @@ namespace{
                 return;
             }
             // (3) the caller's cancel token is visible to the units
-            BodyContext& body = currentBody();
-            CancelState* savedCancel = body.cancel;
+            jobs::detail::BodyContext& body = jobs::detail::currentBody();
+            jobs::detail::CancelState* savedCancel = body.cancel;
             body.cancel = run.cancel;
             for (;;){
                 const size_t claim = run.claim.fetch_add(1, std::memory_order_seq_cst);
@@ -184,21 +184,21 @@ namespace{
         if (block.inProgress.load(std::memory_order_seq_cst) == 0)
             return;
         WaitKind kind = WaitKind::ParallelFor;
-        const ProfilerHooks* h = hooks();
+        const ProfilerHooks* h = jobs::detail::hooks();
         if (h && h->onWaitBegin)
             h->onWaitBegin(kind);
         if (thread::canBlock()){
-            std::unique_lock<std::mutex> lock(bucketMutex(&block));
+            std::unique_lock<std::mutex> lock(jobs::detail::bucketMutex(&block));
             block.parked.fetch_add(1, std::memory_order_seq_cst);
             while (block.inProgress.load(std::memory_order_seq_cst) != 0)
-                timedWait(bucketCv(&block), lock, std::chrono::milliseconds(10));
+                jobs::detail::timedWait(jobs::detail::bucketCv(&block), lock, std::chrono::milliseconds(10));
             block.parked.fetch_sub(1, std::memory_order_seq_cst);
         }else{
             // the browser main thread: a unit in progress may need its proxied calls
             while (block.inProgress.load(std::memory_order_seq_cst) != 0)
-                spinWait();
+                jobs::detail::spinWait();
         }
-        h = hooks();
+        h = jobs::detail::hooks();
         if (h && h->onWaitEnd)
             h->onWaitEnd();
     }
@@ -253,7 +253,7 @@ namespace{
     };
 
     // A run with no helper: every claim on the caller. The first throw leaves at once.
-    bool runEveryClaimOnTheCaller(ParallelForInvoke invoke, void* body, size_t count, size_t grain,
+    bool runEveryClaimOnTheCaller(jobs::detail::ParallelForInvoke invoke, void* body, size_t count, size_t grain,
                                   const std::function<bool()>* stop){
         for (size_t begin = 0; begin < count; begin += grain){
             if (stop && *stop && (*stop)())
@@ -280,18 +280,18 @@ namespace{
     class CallerBody {
     public:
         CallerBody(){
-            BodyContext& body = currentBody();
+            jobs::detail::BodyContext& body = jobs::detail::currentBody();
             wasInBody = body.inBody;
             body.inBody = true;
         }
-        ~CallerBody(){ currentBody().inBody = wasInBody; }
+        ~CallerBody(){ jobs::detail::currentBody().inBody = wasInBody; }
 
     private:
         bool wasInBody;
     };
 }
 
-bool jobs::detail::runParallelFor(jobs::detail::Scheduler* scheduler, ParallelForInvoke invoke, void* body, size_t count,
+bool jobs::detail::runParallelFor(jobs::detail::Scheduler* scheduler, jobs::detail::ParallelForInvoke invoke, void* body, size_t count,
                             const ParallelForOptions& options){
     if (count == 0)
         return true;
@@ -356,3 +356,5 @@ bool jobs::detail::runParallelFor(jobs::detail::Scheduler* scheduler, ParallelFo
         std::rethrow_exception(block->exception);
     return !stopped;
 }
+
+}  // namespace jasperengine::jobs

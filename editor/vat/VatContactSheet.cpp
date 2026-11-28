@@ -14,7 +14,6 @@
 #include <limits>
 
 using namespace jasperengine;
-using namespace jasperengine::vat;
 
 namespace jasperengine::editor::vat{
 
@@ -52,8 +51,8 @@ namespace{
         return PoseColor::fromFloat(channel(material->baseColor[0]), channel(material->baseColor[1]), channel(material->baseColor[2]));
     }
 
-    void readTexel(const VatPayload& payload, uint64_t texel, float out[4]){
-        if (payload.precision == VatPrecision::Float){
+    void readTexel(const jasperengine::vat::VatPayload& payload, uint64_t texel, float out[4]){
+        if (payload.precision == jasperengine::vat::VatPrecision::Float){
             std::memcpy(out, payload.bytes.data() + texel * 16, 16);
         }else{
             uint16_t half[4];
@@ -79,17 +78,17 @@ std::vector<float> vatSheetTimes(float length, ClipWrapMode wrap){
     return times;
 }
 
-bool vatMeshAt(const VatData& data, const VatPayload& payload, const VatMeshData& mesh, int clip, float time, VatSheetMesh& out,
+bool vatMeshAt(const jasperengine::vat::VatData& data, const jasperengine::vat::VatPayload& payload, const VatMeshData& mesh, int clip, float time, VatSheetMesh& out,
                std::string* error){
     out = VatSheetMesh();
     if (clip < 0 || clip >= (int)data.clips.size()){
         if (error) *error = "no clip " + std::to_string(clip);
         return false;
     }
-    const VatClip& vatClip = data.clips[(size_t)clip];
-    const VatFrameSample sample = vatSample(vatClip, time);
+    const jasperengine::vat::VatClip& vatClip = data.clips[(size_t)clip];
+    const jasperengine::vat::VatFrameSample sample = vatSample(vatClip, time);
     const uint64_t texels = (uint64_t)payload.width * (uint64_t)payload.height;
-    const uint64_t texelBytes = payload.precision == VatPrecision::Float ? 16 : 8;
+    const uint64_t texelBytes = payload.precision == jasperengine::vat::VatPrecision::Float ? 16 : 8;
     if (payload.bytes.size() < texels * texelBytes){
         if (error) *error = "the payload is smaller than its size";
         return false;
@@ -99,14 +98,14 @@ bool vatMeshAt(const VatData& data, const VatPayload& payload, const VatMeshData
     const float a = sample.alpha;
     for (size_t v = 0; v < vertices; v++){
         const Vector3 rest(mesh.positions[v * 3], mesh.positions[v * 3 + 1], mesh.positions[v * 3 + 2]);
-        if (data.mode == VatMode::Vertices){
+        if (data.mode == jasperengine::vat::VatMode::Vertices){
             const int element = v < mesh.vatIndex.size() ? (int)mesh.vatIndex[v] : (int)v;
             if (element < 0 || element >= data.layout.vertices){
                 if (error) *error = "vertex " + std::to_string(v) + " has no payload row";
                 return false;
             }
-            const uint64_t t0 = vatTexelIndex(data.mode, data.layout, sample.frame0, element, 0);
-            const uint64_t t1 = vatTexelIndex(data.mode, data.layout, sample.frame1, element, 0);
+            const uint64_t t0 = jasperengine::vat::vatTexelIndex(data.mode, data.layout, sample.frame0, element, 0);
+            const uint64_t t1 = jasperengine::vat::vatTexelIndex(data.mode, data.layout, sample.frame1, element, 0);
             if (t0 >= texels || t1 >= texels){
                 if (error) *error = "frame past the payload";
                 return false;
@@ -129,8 +128,8 @@ bool vatMeshAt(const VatData& data, const VatPayload& payload, const VatMeshData
                     return false;
                 }
                 float q0[4], q1[4], p0[4], p1[4];
-                const uint64_t r0 = vatTexelIndex(data.mode, data.layout, sample.frame0, bone, 0);
-                const uint64_t r1 = vatTexelIndex(data.mode, data.layout, sample.frame1, bone, 0);
+                const uint64_t r0 = jasperengine::vat::vatTexelIndex(data.mode, data.layout, sample.frame0, bone, 0);
+                const uint64_t r1 = jasperengine::vat::vatTexelIndex(data.mode, data.layout, sample.frame1, bone, 0);
                 if (r0 + 1 >= texels || r1 + 1 >= texels){
                     if (error) *error = "frame past the payload";
                     return false;

@@ -32,6 +32,8 @@
 #include <thread>
 #include <vector>
 
+namespace FbxImportTest_cpp {
+
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
@@ -700,3 +702,5 @@ TEST(FbxImport, SkinnedGeometricTransform) {
     }
     EXPECT_LT(worst, 1e-4) << "the bind pose skins away from ufbx's evaluation";
 }
+
+}  // namespace FbxImportTest_cpp

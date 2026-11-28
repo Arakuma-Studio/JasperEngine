@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+namespace AssetStrippingTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -212,3 +214,5 @@ TEST_F(StreamProjectSettingsWithKeysTest, BuildKeysRoundTrip) {
     EXPECT_NE(yaml.find("assets/levels/**"), std::string::npos) << yaml;
     EXPECT_NE(yaml.find("assets/dev/**"), std::string::npos) << yaml;
 }
+
+}  // namespace AssetStrippingTest_cpp

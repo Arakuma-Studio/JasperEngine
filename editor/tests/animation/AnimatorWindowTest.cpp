@@ -51,6 +51,8 @@
 #include <memory>
 #include <string>
 
+namespace AnimatorWindowTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -1220,3 +1222,5 @@ TEST(AnimatorWindow, CompareShowsThePoseWithoutMeshSpaceRotationUntilPreviewStop
     EXPECT_EQ(animatorWindowReadAll(file), text) << "never saved";
     EXPECT_EQ(animatorWindowHistory()->position(), start) << "no undo step";
 }
+
+}  // namespace AnimatorWindowTest_cpp

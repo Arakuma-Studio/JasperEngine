@@ -21,6 +21,8 @@
 #include <set>
 #include <string>
 
+namespace ProjectShaderListTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -194,3 +196,5 @@ TEST_F(ProjectShaderList, ADeletedForkLeavesTheList) {
     EXPECT_EQ(saved, (std::set<ShaderKey>{builtIn}));
     EXPECT_EQ(deadForks, (std::set<std::string>{"shaders/gone"}));
 }
+
+}  // namespace ProjectShaderListTest_cpp

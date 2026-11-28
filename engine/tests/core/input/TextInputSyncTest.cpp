@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 
+namespace TextInputSyncTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -213,3 +215,5 @@ TEST(TextInputSyncBench, EditOfA4096CodePointField){
         EXPECT_LE(best, 50.0 * testsupport::perfSlack());
     }
 }
+
+}  // namespace TextInputSyncTest_cpp

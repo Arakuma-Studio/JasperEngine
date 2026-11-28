@@ -14,6 +14,8 @@
 
 #include <gtest/gtest.h>
 
+namespace VoxelNavTest_cpp {
+
 using namespace jasperengine;
 using namespace voxeltest;
 
@@ -84,3 +86,5 @@ TEST_F(VoxelNav, CollectsLevelZeroNotDrawn) {
         EXPECT_LE(d.length(), 1.8f);
     }
 }
+
+}  // namespace VoxelNavTest_cpp

@@ -17,9 +17,13 @@
 #include <cmath>
 #include <fstream>
 
+namespace CleanupWindowTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace cu = jasperengine::editor::pixelart::cleanup;
+
+}  // namespace CleanupWindowTest_cpp
 
 namespace jasperengine::editor {
     namespace lint = pixelart::lint;
@@ -36,7 +40,7 @@ namespace jasperengine::editor {
             w.lastFullRunMs = fullMs;
         }
         static void waitForJob(PixelArtCleanupWindow& w) { w.waitForRunningJob(); }
-        static void adopt(PixelArtCleanupWindow& w, cu::Prepared&& prepared, const std::string& name) {
+        static void adopt(PixelArtCleanupWindow& w, pixelart::cleanup::Prepared&& prepared, const std::string& name) {
             w.adopt(std::move(prepared), name, true);
         }
         static bool spotRect(const PixelArtCleanupWindow& w, const lint::LintSpot& spot, double& x0, double& y0, double& x1, double& y1) {
@@ -45,7 +49,7 @@ namespace jasperengine::editor {
         static bool cellInView(const PixelArtCleanupWindow& w, int frame, int ax, int ay, double& x0, double& y0, double& x1, double& y1) {
             return w.cellRectInView(frame, ax, ay, x0, y0, x1, y1);
         }
-        static const std::vector<cu::AtlasRect>& atlas(const PixelArtCleanupWindow& w) { return w.shown->atlasRects; }
+        static const std::vector<pixelart::cleanup::AtlasRect>& atlas(const PixelArtCleanupWindow& w) { return w.shown->atlasRects; }
         static void setFocused(PixelArtCleanupWindow& w, bool value) { w.focused = value; }
         static bool cacheHolds(const PixelArtCleanupWindow& w) { return w.cache && (w.cache->pipeline.hasGrid || w.cache->pipeline.hasSamples); }
         static double lastRunMs(const PixelArtCleanupWindow& w) { return w.lastRunMs; }
@@ -63,6 +67,8 @@ namespace jasperengine::editor {
         }
     };
 }
+
+namespace CleanupWindowTest_cpp {
 
 using CleanupAccess = jasperengine::editor::PixelArtCleanupWindowTestAccess;
 
@@ -421,3 +427,5 @@ TEST(CleanupWindow, TheEntryCacheReadsAPlainImageOnce) {
     EXPECT_FALSE(cleanupentry::outputStatus(scratch.path, image, check).isOutput);
     EXPECT_EQ(reads, 1);
 }
+
+}  // namespace CleanupWindowTest_cpp

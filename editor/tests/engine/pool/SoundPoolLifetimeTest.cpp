@@ -30,10 +30,11 @@
 #include <thread>
 #include <vector>
 
+namespace sound_pool_lifetime_test {
+
 using namespace jasperengine;
 
 // (a named namespace: a unity build merges the test sources)
-namespace sound_pool_lifetime_test {
 
     namespace fs = std::filesystem;
 
@@ -136,6 +137,8 @@ namespace sound_pool_lifetime_test {
     };
 
 }
+
+namespace sound_pool_lifetime_test {
 
 using namespace sound_pool_lifetime_test;
 
@@ -316,3 +319,5 @@ TEST_F(SoundPoolLifetime, FadeInStartsWithTheVoice) {
     EXPECT_LE(started.volume, 0.02 + 1e-6);
     EXPECT_LE(AudioSystem::getSoloud().getVolume(started.handle), 0.02f + 1e-6f);
 }
+
+}  // namespace sound_pool_lifetime_test

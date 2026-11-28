@@ -18,6 +18,8 @@
 #include <cmath>
 #include <vector>
 
+namespace LineRibbonBuilderTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -391,3 +393,5 @@ TEST(LineRibbonBuilderTest, SegmentVectorsAndJointCentres){
     EXPECT_FLOAT_EQ(LineRibbonBuilder::boundsGrowth(0), 4.0f);
     EXPECT_FLOAT_EQ(LineRibbonBuilder::boundsGrowth(3), 1.0f);
 }
+
+}  // namespace LineRibbonBuilderTest_cpp

@@ -24,7 +24,6 @@
 #endif
 
 using namespace jasperengine;
-using namespace jasperengine::diag;
 
 namespace je_journal {
 
@@ -40,7 +39,7 @@ namespace je_journal {
         std::atomic<uint64_t> written{0};
         std::atomic<bool> attached{false};
         std::atomic<bool> engineEvents{true};
-        std::atomic<journal::Listener> listener{nullptr};
+        std::atomic<diag::journal::Listener> listener{nullptr};
         std::atomic<bool> warnedKind{false};
         int64_t startNs = 0;
         std::time_t startedWall = 0;
@@ -161,7 +160,7 @@ namespace je_journal {
     }
 
     bool validKind(std::string_view kind) {
-        if (kind.empty() || kind.size() > journal::kMaxKindBytes) return false;
+        if (kind.empty() || kind.size() > diag::journal::kMaxKindBytes) return false;
         for (char c : kind) {
             if (!kindChar(c)) return false;
         }
@@ -259,7 +258,7 @@ namespace je_journal {
         return at;
     }
 
-    char* putValue(char* at, const char* end, const journal::Field& field) {
+    char* putValue(char* at, const char* end, const diag::journal::Field& field) {
         if (const auto* text = std::get_if<std::string_view>(&field.value)) {
             return field.verbatim ? putText(at, end, *text) : putString(at, end, *text);
         } else if (const auto* integer = std::get_if<int64_t>(&field.value)) {
@@ -319,7 +318,7 @@ namespace je_journal {
         const size_t capacity = s.capacity.load(std::memory_order_acquire);
         if (capacity == 0 || !s.ring) return out;
         const uint64_t cursor = s.cursor.load(std::memory_order_acquire);
-        const crash::detail::JournalSpan span = crash::detail::journalSpan(s.ring, capacity, cursor);
+        const diag::crash::detail::JournalSpan span = diag::crash::detail::journalSpan(s.ring, capacity, cursor);
         std::string line;
         for (uint64_t at = span.begin; at < span.end; at++) {
             const char c = s.ring[at % capacity];
@@ -351,10 +350,9 @@ namespace je_journal {
 namespace jasperengine::diag::journal {
 
     // inside this namespace only: a unity build's next source must not see je_journal's names
-    using namespace je_journal;
 
     void configure(size_t bytes) {
-        JournalState& s = journalState;
+        je_journal::JournalState& s = je_journal::journalState;
         if (s.attached.load(std::memory_order_acquire)) return;
         // a ring smaller than a few entries keeps none whole
         if (bytes > 0 && bytes < 4 * (kMaxEntryBytes + 1)) bytes = 4 * (kMaxEntryBytes + 1);
@@ -363,8 +361,8 @@ namespace jasperengine::diag::journal {
         s.ring = nullptr;
         s.cursor.store(0, std::memory_order_relaxed);
         s.written.store(0, std::memory_order_relaxed);
-        s.coarseClock = coarseClockFine();
-        s.startNs = journalNowNs(s);
+        s.coarseClock = je_journal::coarseClockFine();
+        s.startNs = je_journal::journalNowNs(s);
         s.startedWall = std::time(nullptr);
         if (bytes == 0) return;
         s.ring = new char[bytes];
@@ -374,20 +372,20 @@ namespace jasperengine::diag::journal {
     }
 
     bool enabled() {
-        return journalState.capacity.load(std::memory_order_relaxed) != 0;
+        return je_journal::journalState.capacity.load(std::memory_order_relaxed) != 0;
     }
 
     size_t capacity() {
-        return journalState.capacity.load(std::memory_order_relaxed);
+        return je_journal::journalState.capacity.load(std::memory_order_relaxed);
     }
 
     void log(std::string_view kind, std::span<const Field> fields) {
-        JournalState& s = journalState;
+        je_journal::JournalState& s = je_journal::journalState;
         const size_t capacity = s.capacity.load(std::memory_order_relaxed);
         if (capacity == 0) return;
 
         Field invalid;
-        const bool kindOk = validKind(kind);
+        const bool kindOk = je_journal::validKind(kind);
         if (!kindOk) {
             invalid.key = "kind";
             invalid.value = kind.substr(0, kMaxKindBytes);
@@ -403,7 +401,7 @@ namespace jasperengine::diag::journal {
         size_t count = 0;
         auto insert = [&](const Field* field, size_t limit) {
             size_t at = count;
-            while (at > 0 && keyLess(field->key, sorted[at - 1]->key)) at--;
+            while (at > 0 && je_journal::keyLess(field->key, sorted[at - 1]->key)) at--;
             if (at >= limit) return;
             const size_t last = count < limit ? count : limit - 1;
             for (size_t i = last; i > at; i--) sorted[i] = sorted[i - 1];
@@ -416,9 +414,9 @@ namespace jasperengine::diag::journal {
             if (!field.key.empty()) insert(&field, limit);
         }
 
-        char line[kMaxEntryBytes + kLineSlack];
+        char line[kMaxEntryBytes + je_journal::kLineSlack];
         const char* const end = line + kMaxEntryBytes + 1;
-        const int64_t ms = (journalNowNs(s) - s.startNs) / 1000000;
+        const int64_t ms = (je_journal::journalNowNs(s) - s.startNs) / 1000000;
         // the header fits the slack: two numbers of at most 20 digits and the kind (48 bytes)
         char* at = line;
         *at++ = '+';
@@ -426,19 +424,19 @@ namespace jasperengine::diag::journal {
         const int64_t fraction = ms % 1000;
         at[0] = '.';
         at[1] = static_cast<char>('0' + fraction / 100);
-        std::memcpy(at + 2, kDigitPairs + 2 * (fraction % 100), 2);
+        std::memcpy(at + 2, je_journal::kDigitPairs + 2 * (fraction % 100), 2);
         at[4] = ' ';
         at[5] = 'f';
         at = std::to_chars(at + 6, at + 26, FrameTimes::currentFrame()).ptr;
         *at++ = ' ';
         const std::string_view shown = kindOk ? kind : std::string_view("invalid");
-        copyShort(at, shown.data(), shown.size());
+        je_journal::copyShort(at, shown.data(), shown.size());
         at += shown.size();
         for (size_t i = 0; i < count; i++) {
-            at = putChar(at, end, ' ');
-            at = putKey(at, end, sorted[i]->key);
-            at = putChar(at, end, '=');
-            at = putValue(at, end, *sorted[i]);
+            at = je_journal::putChar(at, end, ' ');
+            at = je_journal::putKey(at, end, sorted[i]->key);
+            at = je_journal::putChar(at, end, '=');
+            at = je_journal::putValue(at, end, *sorted[i]);
         }
         size_t size = static_cast<size_t>(at - line);
         if (size > kMaxEntryBytes) {
@@ -449,7 +447,7 @@ namespace jasperengine::diag::journal {
             size = cut + 1;
         }
         line[size] = '\n';
-        ringWrite(s, line, size + 1, capacity);
+        je_journal::ringWrite(s, line, size + 1, capacity);
 
         if (Listener listener = s.listener.load(std::memory_order_acquire)) {
             const std::string_view entry(line, size);
@@ -459,9 +457,9 @@ namespace jasperengine::diag::journal {
     }
 
     std::string text() {
-        const JournalState& s = journalState;
+        const je_journal::JournalState& s = je_journal::journalState;
         if (s.capacity.load(std::memory_order_acquire) == 0) return {};
-        const std::vector<std::string> lines = wholeEntries(s);
+        const std::vector<std::string> lines = je_journal::wholeEntries(s);
         const uint64_t written = s.written.load(std::memory_order_acquire);
         std::string out = detail::headerPrefix();
         out += "dropped: " + std::to_string(written > lines.size() ? written - lines.size() : 0) + "\n---\n";
@@ -470,30 +468,30 @@ namespace jasperengine::diag::journal {
     }
 
     std::vector<std::string> entries(size_t newest) {
-        std::vector<std::string> lines = wholeEntries(journalState);
+        std::vector<std::string> lines = je_journal::wholeEntries(je_journal::journalState);
         if (lines.size() > newest) lines.erase(lines.begin(), lines.end() - static_cast<std::ptrdiff_t>(newest));
         return lines;
     }
 
     void clear() {
-        JournalState& s = journalState;
+        je_journal::JournalState& s = je_journal::journalState;
         s.cursor.store(0, std::memory_order_release);
         s.written.store(0, std::memory_order_release);
     }
 
     uint64_t dropped() {
-        const JournalState& s = journalState;
+        const je_journal::JournalState& s = je_journal::journalState;
         const uint64_t written = s.written.load(std::memory_order_acquire);
-        const size_t kept = wholeEntries(s).size();
+        const size_t kept = je_journal::wholeEntries(s).size();
         return written > kept ? written - kept : 0;
     }
 
     void setEngineEvents(bool on) {
-        journalState.engineEvents.store(on, std::memory_order_relaxed);
+        je_journal::journalState.engineEvents.store(on, std::memory_order_relaxed);
     }
 
     bool engineEvents() {
-        return journalState.engineEvents.load(std::memory_order_relaxed);
+        return je_journal::journalState.engineEvents.load(std::memory_order_relaxed);
     }
 
     void logEngine(std::string_view kind, std::span<const Field> fields) {
@@ -502,36 +500,36 @@ namespace jasperengine::diag::journal {
     }
 
     void setListener(Listener listener) {
-        journalState.listener.store(listener, std::memory_order_release);
+        je_journal::journalState.listener.store(listener, std::memory_order_release);
     }
 
     void setIdentity(std::string_view product, std::string_view version, std::string_view session) {
-        JournalState& s = journalState;
-        copyField(s.product, sizeof(s.product), product.empty() ? std::string_view("unknown") : product);
-        copyField(s.version, sizeof(s.version), version.empty() ? std::string_view("unknown") : version);
-        copyField(s.session, sizeof(s.session), session.empty() ? std::string_view("-") : session);
+        je_journal::JournalState& s = je_journal::journalState;
+        je_journal::copyField(s.product, sizeof(s.product), product.empty() ? std::string_view("unknown") : product);
+        je_journal::copyField(s.version, sizeof(s.version), version.empty() ? std::string_view("unknown") : version);
+        je_journal::copyField(s.session, sizeof(s.session), session.empty() ? std::string_view("-") : session);
     }
 
     std::string identityVersion() {
-        return journalState.version;
+        return je_journal::journalState.version;
     }
 
     namespace detail {
 
         char* ring() {
-            return journalState.ring;
+            return je_journal::journalState.ring;
         }
 
         std::atomic<uint64_t>* cursor() {
-            return &journalState.cursor;
+            return &je_journal::journalState.cursor;
         }
 
         std::atomic<uint64_t>* written() {
-            return &journalState.written;
+            return &je_journal::journalState.written;
         }
 
         std::string headerPrefix() {
-            const JournalState& s = journalState;
+            const je_journal::JournalState& s = je_journal::journalState;
             std::string out = "JasperEngine journal v1\n";
             out += std::string("product: ") + s.product + "\n";
             out += std::string("version: ") + s.version + "\n";
@@ -542,7 +540,7 @@ namespace jasperengine::diag::journal {
         }
 
         void markAttached() {
-            journalState.attached.store(true, std::memory_order_release);
+            je_journal::journalState.attached.store(true, std::memory_order_release);
         }
 
     }

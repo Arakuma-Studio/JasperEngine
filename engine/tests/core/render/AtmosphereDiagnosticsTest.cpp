@@ -29,6 +29,8 @@
 #include <string>
 #include <vector>
 
+namespace AtmosphereDiagnosticsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -517,3 +519,5 @@ TEST_F(AtmosphereDiagnosticsTest, QuietWithoutAtmosphereOrFrame){
     info = AtmosphereInfo();
     EXPECT_TRUE(run().diagnostics.empty());
 }
+
+}  // namespace AtmosphereDiagnosticsTest_cpp

@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+namespace TerrainWorldDataTest_cpp {
+
 using namespace terrainworldtest;
 
 TEST(TerrainWorldData, WorldBinRoundTrip) {
@@ -171,3 +173,5 @@ TEST(TerrainWorldData, PlatformBudgets) {
     EXPECT_EQ(web.overviewMaxSide, 2049);
     EXPECT_EQ(mobile.collisionRadius, 96.0f);
 }
+
+}  // namespace TerrainWorldDataTest_cpp

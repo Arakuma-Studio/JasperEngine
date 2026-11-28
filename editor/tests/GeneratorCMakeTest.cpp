@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace GeneratorCMakeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
@@ -124,3 +126,5 @@ TEST(GeneratorCMake, VisualStudioBuildsOneProjectAtATime) {
         EXPECT_EQ(Generator::buildStepParallelJobs(dir.path(), 12), 12u) << generator;
     }
 }
+
+}  // namespace GeneratorCMakeTest_cpp

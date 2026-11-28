@@ -50,11 +50,15 @@
 #include <string>
 #include <vector>
 
+namespace SpriteNormalsPaintWindowTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace sn = jasperengine::editor::spritenormals;
 namespace ts = jasperengine::editor::texsynth;
 namespace fs = std::filesystem;
+
+}  // namespace SpriteNormalsPaintWindowTest_cpp
 
 namespace jasperengine::editor {
 
@@ -70,17 +74,17 @@ namespace jasperengine::editor {
         static std::function<void()> lastConfirm(W& w) { return w.lastConfirm; }
         static size_t undoSteps(W& w) { return w.paintUndo.size(); }
         static void undoByteLimit(W& w, size_t bytes) { w.paintUndoByteLimit = bytes; }
-        static const sn::Image& displayed(W& w) { return w.displayNormal(); }
-        static sn::Image composed(W& w) { return w.composedNormal(); }
+        static const spritenormals::Image& displayed(W& w) { return w.displayNormal(); }
+        static spritenormals::Image composed(W& w) { return w.composedNormal(); }
         static void refreshWarningsNow(W& w) { w.refreshWarnings(true); }
         static void setPaintOpen(W& w, bool open) { w.paintOpen = open; }
         static bool setSourcePath(W& w, const std::string& path, std::string& error) { return w.setSourcePath(path, error); }
         static bool setSourceEntity(W& w, uint32_t sceneId, Entity entity, std::string& error) { return w.setSourceEntity(sceneId, entity, error); }
-        static sn::Image litFull(W& w) {
+        static spritenormals::Image litFull(W& w) {
             w.renderLit();
             return w.litRgba;
         }
-        static sn::Image litAfterStroke(W& w) {
+        static spritenormals::Image litAfterStroke(W& w) {
             w.renderLitRect();
             return w.litRgba;
         }
@@ -88,9 +92,9 @@ namespace jasperengine::editor {
             w.paintStampCheckedAt = -1.0;
             w.checkPaintTarget();
         }
-        static sn::PaintTopology topology(W& w) {
-            const sn::PaintTopology* t = w.topologyFor(true);
-            return t ? *t : sn::PaintTopology();
+        static spritenormals::PaintTopology topology(W& w) {
+            const spritenormals::PaintTopology* t = w.topologyFor(true);
+            return t ? *t : spritenormals::PaintTopology();
         }
         static void beginStroke(W& w) { w.beginStroke(); }
         static void strokeTo(W& w, int x, int y) { w.strokeTo(x, y); }
@@ -103,6 +107,8 @@ namespace jasperengine::editor {
     };
 
 }
+
+namespace SpriteNormalsPaintWindowTest_cpp {
 
 namespace {
 
@@ -918,6 +924,8 @@ TEST(SpriteNormalsPaintWindowDeathTest, PaintSaveNeedsNoServerAndStaysInsideTheA
         EXPECT_GT(sn::readPaint(map).value_or(sn::PaintOverlay()).paintedCount(), 0u);
     });
 }
+
+}  // namespace SpriteNormalsPaintWindowTest_cpp
 
 // not for the sources after this one in a unity build
 #undef IN_EDITOR

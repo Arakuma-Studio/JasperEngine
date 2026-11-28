@@ -20,7 +20,6 @@
 #include <limits>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
 
 namespace jasperengine::editor::pixelart::presetio {
 namespace {
@@ -59,7 +58,7 @@ namespace {
         }
     }
 
-    void scaleCurve(MinMaxCurve& c, float f){
+    void scaleCurve(particles::MinMaxCurve& c, float f){
         c.constant *= f;
         c.constantMax *= f;
         c.multiplier *= f;
@@ -76,20 +75,20 @@ namespace {
     }
 
     // every MinMaxGradient of the document's modules
-    void eachGradient(ParticleEffectDocument& document, const std::function<void(MinMaxGradient&)>& visit){
-        std::function<void(const StructDesc&, void*)> walk = [&](const StructDesc& desc, void* owner){
-            for (const FieldDesc& field : desc.fields){
-                if (field.type == FieldType::MinMaxGradient){
-                    visit(*static_cast<MinMaxGradient*>(field.field(owner)));
-                }else if (field.type == FieldType::Struct && field.element){
+    void eachGradient(particles::ParticleEffectDocument& document, const std::function<void(particles::MinMaxGradient&)>& visit){
+        std::function<void(const particles::StructDesc&, void*)> walk = [&](const particles::StructDesc& desc, void* owner){
+            for (const particles::FieldDesc& field : desc.fields){
+                if (field.type == particles::FieldType::MinMaxGradient){
+                    visit(*static_cast<particles::MinMaxGradient*>(field.field(owner)));
+                }else if (field.type == particles::FieldType::Struct && field.element){
                     walk(*field.element, field.field(owner));
-                }else if (field.type == FieldType::Array && field.element){
+                }else if (field.type == particles::FieldType::Array && field.element){
                     void* vector = field.field(owner);
                     for (size_t i = 0; i < field.array.size(vector); i++) walk(*field.element, field.array.at(vector, i));
                 }
             }
         };
-        for (const ModuleDesc& module : ParticleModules::all()) walk(module.fields, module.module(document));
+        for (const particles::ModuleDesc& module : particles::ParticleModules::all()) walk(module.fields, module.module(document));
     }
 
 }
@@ -136,7 +135,7 @@ std::vector<std::string> editor::pixelart::pixelParticlePresetChildren(const std
     return children;
 }
 
-bool editor::pixelart::buildPixelParticlePreset(const std::string& name, const PixelPresetBuild& build, ParticleEffectDocument& out,
+bool editor::pixelart::buildPixelParticlePreset(const std::string& name, const PixelPresetBuild& build, particles::ParticleEffectDocument& out,
                                                 std::string& error){
     const std::string_view text = pixelParticlePresetText(name);
     if (text.empty()){
@@ -152,9 +151,9 @@ bool editor::pixelart::buildPixelParticlePreset(const std::string& name, const P
     pio::rewrite(json, build, builtin ? &builtin->palette : nullptr, error);
     if (!error.empty())
         return false;
-    std::vector<Diagnostic> diagnostics;
-    if (!ParticleEffectCodec::fromJson(json, out, diagnostics)){
-        error = "the preset '" + name + "' does not read: " + ParticleEffectCodec::format(diagnostics);
+    std::vector<particles::Diagnostic> diagnostics;
+    if (!particles::ParticleEffectCodec::fromJson(json, out, diagnostics)){
+        error = "the preset '" + name + "' does not read: " + particles::ParticleEffectCodec::format(diagnostics);
         return false;
     }
     // base pixels per second into world units per second (S41 R6)
@@ -165,7 +164,7 @@ bool editor::pixelart::buildPixelParticlePreset(const std::string& name, const P
     return true;
 }
 
-void editor::pixelart::scaleParticleMotion(ParticleEffectDocument& d, float f){
+void editor::pixelart::scaleParticleMotion(particles::ParticleEffectDocument& d, float f){
     pio::scaleCurve(d.main.startSpeed, f);
     const bool pixelSizes = d.pixelArt.present && d.pixelArt.enabled && d.pixelArt.pixelSizes;
     if (!pixelSizes){
@@ -173,16 +172,16 @@ void editor::pixelart::scaleParticleMotion(ParticleEffectDocument& d, float f){
         pio::scaleCurve(d.main.startSizeY, f);
         pio::scaleCurve(d.main.startSizeZ, f);
     }
-    ShapeModule& s = d.shape;
+    particles::ShapeModule& s = d.shape;
     s.radius *= f;
     s.length *= f;
     s.donutRadius *= f;
     s.position = s.position * f;
     s.randomizePosition *= f;
     s.boxThickness = s.boxThickness * f;
-    if (s.shape == ShapeType::Box || s.shape == ShapeType::Rectangle)
+    if (s.shape == particles::ShapeType::Box || s.shape == particles::ShapeType::Rectangle)
         s.scale = s.scale * f;
-    for (MinMaxCurve* c : {&d.velocityOverLifetime.x, &d.velocityOverLifetime.y, &d.velocityOverLifetime.z, &d.velocityOverLifetime.radial,
+    for (particles::MinMaxCurve* c : {&d.velocityOverLifetime.x, &d.velocityOverLifetime.y, &d.velocityOverLifetime.z, &d.velocityOverLifetime.radial,
                            &d.velocityOverLifetime.offsetX, &d.velocityOverLifetime.offsetY, &d.velocityOverLifetime.offsetZ,
                            &d.forceOverLifetime.x, &d.forceOverLifetime.y, &d.forceOverLifetime.z, &d.limitVelocity.limit,
                            &d.limitVelocity.limitY, &d.limitVelocity.limitZ, &d.noise.strength, &d.noise.strengthY, &d.noise.strengthZ,
@@ -192,19 +191,19 @@ void editor::pixelart::scaleParticleMotion(ParticleEffectDocument& d, float f){
     d.startVelocity.max = d.startVelocity.max * f;
     d.orbit.center = d.orbit.center * f;
     if (f > 0.0f) d.limitVelocity.quadraticDrag /= f;
-    for (CollisionPlane& plane : d.collision.planes) plane.point = plane.point * f;
+    for (particles::CollisionPlane& plane : d.collision.planes) plane.point = plane.point * f;
     d.collision.settleSpeed *= f;
     d.collision.minKillSpeed *= f;
     if (d.collision.maxKillSpeed < 10000.0f) d.collision.maxKillSpeed *= f;
 }
 
-bool editor::pixelart::matchPaletteRamps(ParticleEffectDocument& document, const jasperengine::pixelart::Palette& palette){
+bool editor::pixelart::matchPaletteRamps(particles::ParticleEffectDocument& document, const jasperengine::pixelart::Palette& palette){
     if (palette.ramps.empty())
         return false;
     std::vector<std::vector<jasperengine::pixelart::Rgba8>> ramps;
     for (const jasperengine::pixelart::PaletteRamp& ramp : palette.ramps) ramps.push_back(palette.rampColors(ramp.name));
-    pio::eachGradient(document, [&](MinMaxGradient& g){
-        if (g.mode != GradientValueMode::Ramp)
+    pio::eachGradient(document, [&](particles::MinMaxGradient& g){
+        if (g.mode != particles::GradientValueMode::Ramp)
             return;
         const std::vector<jasperengine::pixelart::Rgba8> colors = g.resolveRamp();
         if (colors.empty())

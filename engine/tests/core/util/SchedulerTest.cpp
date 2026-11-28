@@ -17,6 +17,8 @@
 #include <thread>
 #include <vector>
 
+namespace util_SchedulerTest_cpp {
+
 using namespace jasperengine;
 
 TEST(SchedulerTest, OrderingFifoEqualDue) {
@@ -339,3 +341,5 @@ TEST(SchedulerBench, AfterAndIdleProcess) {
         EXPECT_LE(processNs, 30.0 * testsupport::perfSlack());
     }
 }
+
+}  // namespace util_SchedulerTest_cpp

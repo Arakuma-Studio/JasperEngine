@@ -10,7 +10,6 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::cook;
 
 namespace jasperengine::cook {
 
@@ -66,30 +65,32 @@ namespace jasperengine::cook {
 #include "serialization/RuntimeFields.gen.inc"
 #undef JE_RUNTIME_FIELDS_DEFINE
 
-std::span<const ComponentTable> cook::componentTables() {
+namespace jasperengine::cook {
+
+std::span<const ComponentTable> componentTables() {
     return std::span<const ComponentTable>(kComponentTables, std::size(kComponentTables) - 1);
 }
 
-const ComponentTable* cook::findComponentTable(uint32_t keyHash) {
+const ComponentTable* findComponentTable(uint32_t keyHash) {
     for (const ComponentTable& table : componentTables())
         if (table.keyHash == keyHash) return &table;
     return nullptr;
 }
 
-const ComponentTable* cook::findComponentTableByName(std::string_view cppName) {
+const ComponentTable* findComponentTableByName(std::string_view cppName) {
     for (const ComponentTable& table : componentTables())
         if (cppName == table.cppName) return &table;
     return nullptr;
 }
 
-void cook::writeComponent(Writer& w, const ComponentTable& table, const void* component, const WriteContext& ctx) {
+void writeComponent(Writer& w, const ComponentTable& table, const void* component, const WriteContext& ctx) {
     w.u32(table.keyHash);
     const size_t at = w.beginLength();
     table.write(w, table, component, ctx);
     w.endLength(at);
 }
 
-bool cook::readComponent(Reader& r, const LoadContext& ctx) {
+bool readComponent(Reader& r, const LoadContext& ctx) {
     const uint32_t keyHash = r.u32();
     Reader record = r.record();
     if (r.failed()) return false;
@@ -109,3 +110,5 @@ bool cook::readComponent(Reader& r, const LoadContext& ctx) {
     }
     return true;
 }
+
+}  // namespace jasperengine::cook
