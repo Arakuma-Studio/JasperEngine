@@ -4,8 +4,10 @@
 // S19's test project (docs/specs/S19-navigation.md AC20, AC27): a reduced bench_nav_city
 // (a 64 x 64 m floor with 24 buildings, render meshes) and nav_2d_topdown (a plane XY surface
 // over static Box2D polygons and circles) bake at runtime (NavMeshSurface:bakeAsync). In a
-// single-threaded web build the tiles are time-sliced on the main thread: no slice may exceed
-// the web bake budget (4 ms) + 2 ms. The navmesh files' hashes are logged: a threaded build gives
+// single-threaded web build the tiles are time-sliced on the main thread: the longest slice is
+// printed with the web bake budget (4 ms) + 2 ms every run, and over it is a warning, not a
+// failure (CI's browser renders in software, and a loaded host preempts the page; wall-clock
+// budgets are reported, never asserted: AGENTS.md). The navmesh files' hashes are logged: a threaded build gives
 // the same bytes (tools/web/gates/navigation.json holds them for both). Then an agent walks the
 // city and arrives (onDestinationReached), and a grid path is found. Last, S74's carving fixture
 // (NavObstacleTest's walled gap, docs/specs/S74-navigation-fixes.md AC21): a carving box closes
@@ -109,22 +111,18 @@ namespace {
             const Entity entity = empty(Vector3(centre.x, centre.y, 500.0f));
             Rigidbody2DComponent body;
             body.type = BodyType::STATIC;
+            body.colliders.resize(1);
             body.colliders[0].type = Collider2DType::POLYGON;
-            body.colliders[0].numVertices = 4;
-            body.colliders[0].vertices[0] = Vector2(-40, -20);
-            body.colliders[0].vertices[1] = Vector2(40, -20);
-            body.colliders[0].vertices[2] = Vector2(40, 20);
-            body.colliders[0].vertices[3] = Vector2(-40, 20);
-            body.numColliders = 1;
+            body.colliders[0].points = {Vector2(-40, -20), Vector2(40, -20), Vector2(40, 20), Vector2(-40, 20)};
             scene.addComponent<Rigidbody2DComponent>(entity, body);
         }
         for (const Vector3& circle : {Vector3(100, 350, 35), Vector3(525, 125, 45)}) {
             const Entity entity = empty(Vector3(circle.x, circle.y, 500.0f));
             Rigidbody2DComponent body;
             body.type = BodyType::STATIC;
+            body.colliders.resize(1);
             body.colliders[0].type = Collider2DType::CIRCLE;
             body.colliders[0].radius = circle.z;
-            body.numColliders = 1;
             scene.addComponent<Rigidbody2DComponent>(entity, body);
         }
     }
@@ -233,11 +231,13 @@ namespace {
         Log::print("[nav] longest step per stage (ms):%s", stages.c_str());
         const double slice = system->getMaxBakeSliceMs();
         const double budget = nav::getSettings().webBakeBudgetMs + 2.0;
+        Log::print("[gate] nav slice max %.2f ms (slowest stage %.2f ms: %s), web budget %.2f ms", slice,
+                   system->getSlowestBakeStepMs(), system->getSlowestBakeStep().c_str(), budget);
         if (slice <= budget)
             Log::print("[gate] nav slices within budget");
         else
-            Log::error("[gate] nav slice %.2f ms over %.2f ms (slowest stage %.2f ms: %s)", slice, budget,
-                       system->getSlowestBakeStepMs(), system->getSlowestBakeStep().c_str());
+            Log::warn("[gate] nav slice %.2f ms over the %.2f ms web budget (a release figure: this browser may render in "
+                      "software, or a loaded host preempted the page)", slice, budget);
         NavGrid cells(&scene, grid);
         cells.setCellArea(nav::GridCell{12, 0}, nav::AREA_NOT_WALKABLE);
         const nav::GridPath path = cells.findPath(nav::GridCell{0, 0}, nav::GridCell{23, 15}, nav::GridQuery());

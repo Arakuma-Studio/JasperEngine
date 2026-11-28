@@ -658,3 +658,9 @@ Where the implementation differs from the text above, and why.
   a line below it (added with the particle panel) had become the drop targets' last item, so
   nothing dropped onto the Scene view arrived, and it gave the canvas a scrollbar that narrowed
   the view and moved the view gizmo off the view's corner. `test_scene_view_ui.py` covers both.
+- **R28 in the browser is reported, not asserted.** `GATE=mesh-raycast` prints the rays' p50 and p99
+  with the 4 ms budget every run; rays that hit nothing fail it, a p99 over the budget is a warning
+  line. CI's browser renders in software (SwiftShader) and a loaded host preempts the page, so a hard
+  check measured the runner, not the engine; wall-clock budgets are reported, never asserted
+  (AGENTS.md), as core-utilities' AC17 gate did in #163; `je-bench-picking` (AC17) still gates R28 on
+  the reference machine.
