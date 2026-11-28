@@ -1813,7 +1813,9 @@ Gradle retries through `systemProp.org.gradle.internal.*` in
 `engine/workspaces/androidstudio/gradle.properties` (Gradle 9.6 ignores the keys without
 `systemProp.`), and the NDK is installed before Gradle with a retry; a workflow's download commands
 (`brew`, `choco`, `curl`, `gh release download`) run through `tools/ci/retry.sh`, and the Vulkan SDK
-action gets a second step when the first fails. Nothing else is retried: a flaky test gets `DISABLED_`
+action gets a second step when the first fails. Windows ccache comes from its release zip
+(`tools/ci/ccache_windows.sh`: pinned version and sha256, cached, `ccache --version` checked), not
+Chocolatey, which exited 0 with nothing installed during an outage. Nothing else is retried: a flaky test gets `DISABLED_`
 and an issue.
 
 ## Known gaps

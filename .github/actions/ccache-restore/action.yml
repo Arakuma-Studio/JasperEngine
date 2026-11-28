@@ -2,7 +2,8 @@ name: Restore ccache
 description: >
   Restores the newest ccache-<lane>-<toolchain>- entry of the Actions cache into build/.cache/ccache (the
   directory tools/build.sh and tools/smoke-test.sh mount at /ccache), installs ccache where the lane compiles
-  on the runner (Windows: choco, macOS: brew), and sets CCACHE_DIR, and CCACHE_MAXSIZE to 0 (tools/build.sh
+  on the runner (Windows: the pinned release zip of tools/ci/ccache_windows.sh, cached; macOS: brew), and
+  sets CCACHE_DIR, and CCACHE_MAXSIZE to 0 (tools/build.sh
   forwards it into the image): the build runs without a cap, which ccache-save applies to what it saves.
   An overflow runner on macOS or Windows uses its own capped cache in its tool cache instead of the entry.
   A Namespace runner with a cache volume (NSC_CACHE_PATH, the lane's: tools/ci/plan_lanes.py
@@ -26,13 +27,32 @@ inputs:
 runs:
   using: composite
   steps:
+    # Windows: the release zip, not Chocolatey, which exited 0 with nothing installed in its outage (run
+    # 46050080028); the zip (1.8 MB) is cached under the script's hash, which holds its pins
+    - name: Find ccache
+      id: find
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        if command -v ccache > /dev/null; then echo "found=1" >> "$GITHUB_OUTPUT"; fi
+        echo "dist=$(cygpath -m "$RUNNER_TEMP")/ccache-dist" >> "$GITHUB_OUTPUT"
+    - name: Cache the ccache zip
+      if: runner.os == 'Windows' && steps.find.outputs.found != '1'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.find.outputs.dist }}/*.zip
+        key: ccache-dist-windows-${{ hashFiles('tools/ci/ccache_windows.sh') }}
     - name: Install ccache
       if: runner.os != 'Linux'
       shell: bash
+      env:
+        DIST: ${{ steps.find.outputs.dist }}
       run: |
         if ! command -v ccache > /dev/null; then
             if [[ "$RUNNER_OS" == Windows ]]; then
-                tools/ci/retry.sh choco install ccache --no-progress -y
+                tools/ci/ccache_windows.sh "$DIST"
+                # (what it added to GITHUB_PATH, which applies from the next step on)
+                PATH="$(cygpath -u "$(tail -n 1 "$GITHUB_PATH")"):$PATH"
             else
                 tools/ci/retry.sh brew install ccache
             fi
