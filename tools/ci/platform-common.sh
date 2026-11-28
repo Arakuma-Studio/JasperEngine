@@ -79,7 +79,9 @@ ci_usage() {
 
 # cache_has <CMakeCache.txt> <exact line>: whatever line ends the file was written with
 cache_has() {
-    tr -d '\r' < "$1" | grep -qxF -- "$2"
+    # (grep reads to the end: -q stops at the match, and tr, still writing a cache larger than the pipe's
+    # buffer, dies of SIGPIPE, which pipefail makes the result: macOS's 16 KB buffer, release dry run 46114356440)
+    tr -d '\r' < "$1" | grep -xF -- "$2" > /dev/null
 }
 
 # MSVC_LINKER_ARGS: CMAKE_LINKER pinned to the link.exe beside cl. Under Git Bash /usr/bin/link (GNU
