@@ -665,6 +665,14 @@ RmlRenderer::LayerCacheEntry* RmlRenderer::storeLayerResult(const LayerCacheScop
     }
     const Rml::Vector2i size = take ? frame.Size() : copied.Size();
     const size_t bytes = (size_t)size.x * (size_t)size.y * 4u;
+    // a draw of this replay that waited for its pipeline (a GL worker context's warm draw, Vulkan's
+    // pipeline thread) or was refused, or an upload refused, may have left the result without it:
+    // kept for an equal scope of this replay only, as the frame is not kept (rememberDrawnFrame),
+    // and stored again by the next one. Kept for good, it drew without what was skipped until the
+    // element changed (a text shadow's glow never showed on NVIDIA GL)
+    const bool complete = skippedWork() == skippedBefore;
+    if (!complete && !scope.keep)
+        return nullptr;
     // no room: an equal scope later in the replay still draws it, the entry goes at its end
     const bool room = makeLayerCacheRoom(bytes);
     if (!room && !scope.keep)
@@ -715,7 +723,7 @@ RmlRenderer::LayerCacheEntry* RmlRenderer::storeLayerResult(const LayerCacheScop
     }
     entry.bytes = bytes;
     entry.lastUsed = layerCacheReplay;
-    entry.transient = !room;
+    entry.transient = !room || !complete;
     layerCacheBytes += bytes;
     LayerCacheEntry& stored = layerCache[key] = std::move(entry);
     return &stored;
