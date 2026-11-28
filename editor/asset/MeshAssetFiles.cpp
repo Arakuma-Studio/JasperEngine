@@ -12,7 +12,6 @@
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MeshChangeCmd.h"
 #include "command/type/PropertyCmd.h"
-#include "component/Transform.h"
 #include "component/MeshComponent.h"
 #include "io/watch/FileWatchService.h"
 #include "model/MeshAsset.h"

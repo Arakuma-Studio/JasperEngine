@@ -9,7 +9,6 @@
 #include "command/type/PropertyCmd.h"
 #include "command/type/TerrainWorldTilesCmd.h"
 #include "component/TerrainWorldComponent.h"
-#include "component/Transform.h"
 #include "external/IconsFontAwesome6.h"
 #include "subsystem/TerrainWorldRuntime.h"
 #include "subsystem/TerrainWorldSystem.h"
