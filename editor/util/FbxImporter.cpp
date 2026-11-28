@@ -46,9 +46,22 @@ constexpr const char* IMPORT_EXTRAS_KEY = "jasperengineFbxImport";
 
 constexpr size_t MAX_UFBX_WARNINGS = 10;
 
+// A file read within this long of its last write can be written again, at the same size, inside
+// the same tick of the clock that dates writes (15.6 ms on Windows, 2 s on FAT): its size and time
+// then match the new contents too, so what was read from it is not kept (git's racily clean
+// entries). Only a file written that recently is read again.
+constexpr std::chrono::seconds STAMP_SETTLE_TIME{2};
+
+// Whether what was read from a file at readAt (taken before its size and time) can be kept until
+// its size or time changes
+bool isStampTrusted(fs::file_time_type written, fs::file_time_type readAt) {
+    return written + STAMP_SETTLE_TIME < readAt;
+}
+
 struct FileStamp {
     uintmax_t size = 0;
     fs::file_time_type time;
+    bool trusted = false;
     std::string hash;
 };
 
@@ -77,12 +90,14 @@ struct ImportInfo {
 struct MaterialMode {
     uintmax_t size = 0;
     fs::file_time_type time;
+    bool trusted = false;
     std::optional<bool> materials;   // absent: the project's default
 };
 
 struct CachedInfo {
     uintmax_t size = 0;
     fs::file_time_type time;
+    bool trusted = false;
     ImportInfo info;
 };
 
@@ -99,6 +114,7 @@ std::atomic<bool> defaultUsedMaterialsOrder{false};
 // else the project's: a model without a sidecar costs one failed stat
 bool createsMaterials(const fs::path& fbxPath) {
     const fs::path meta = SetAssetMetaCmd::metaPathOf(fbxPath);
+    const fs::file_time_type readAt = fs::file_time_type::clock::now();
     std::error_code ec;
     const uintmax_t size = fs::file_size(meta, ec);
     if (ec) {
@@ -112,7 +128,7 @@ bool createsMaterials(const fs::path& fbxPath) {
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
         auto it = materialModes.find(key);
-        if (it != materialModes.end() && it->second.size == size && it->second.time == time) {
+        if (it != materialModes.end() && it->second.trusted && it->second.size == size && it->second.time == time) {
             return it->second.materials.value_or(defaultMaterials.load());
         }
     }
@@ -124,7 +140,7 @@ bool createsMaterials(const fs::path& fbxPath) {
         materials = *settings.materialCreationMode == MaterialCreationMode::Import;
     }
     std::lock_guard<std::mutex> lock(cacheMutex);
-    materialModes[key] = {size, time, materials};
+    materialModes[key] = {size, time, isStampTrusted(time, readAt), materials};
     return materials.value_or(defaultMaterials.load());
 }
 
@@ -151,6 +167,7 @@ std::string hashContents(const fs::path& path) {
 
 // Cached until the file's size or mtime changes
 std::string hashFile(const fs::path& path) {
+    const fs::file_time_type readAt = fs::file_time_type::clock::now();
     std::error_code ec;
     const uintmax_t size = fs::file_size(path, ec);
     if (ec) {
@@ -165,7 +182,7 @@ std::string hashFile(const fs::path& path) {
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
         auto it = fileStamps.find(key);
-        if (it != fileStamps.end() && it->second.size == size && it->second.time == time) {
+        if (it != fileStamps.end() && it->second.trusted && it->second.size == size && it->second.time == time) {
             return it->second.hash;
         }
     }
@@ -173,7 +190,7 @@ std::string hashFile(const fs::path& path) {
     std::string hash = hashContents(path);
     if (!hash.empty()) {
         std::lock_guard<std::mutex> lock(cacheMutex);
-        fileStamps[key] = {size, time, hash};
+        fileStamps[key] = {size, time, isStampTrusted(time, readAt), hash};
     }
     return hash;
 }
@@ -200,6 +217,7 @@ bool readGlbJson(const fs::path& path, Json& out) {
 }
 
 ImportInfo readImportInfo(const fs::path& glbPath) {
+    const fs::file_time_type readAt = fs::file_time_type::clock::now();
     std::error_code ec;
     const uintmax_t size = fs::file_size(glbPath, ec);
     if (ec) {
@@ -214,7 +232,7 @@ ImportInfo readImportInfo(const fs::path& glbPath) {
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
         auto it = importInfos.find(key);
-        if (it != importInfos.end() && it->second.size == size && it->second.time == time) {
+        if (it != importInfos.end() && it->second.trusted && it->second.size == size && it->second.time == time) {
             return it->second.info;
         }
     }
@@ -248,7 +266,7 @@ ImportInfo readImportInfo(const fs::path& glbPath) {
     }
 
     std::lock_guard<std::mutex> lock(cacheMutex);
-    importInfos[key] = {size, time, info};
+    importInfos[key] = {size, time, isStampTrusted(time, readAt), info};
     return info;
 }
 
