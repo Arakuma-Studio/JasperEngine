@@ -748,7 +748,7 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   logger's drain thread or the workers may); `perfSlack()` is the factor wall-clock budgets are
   enforced with: `JASPER_TEST_PERF_SLACK`, unset (0) by default and under a sanitizer, where the
   budgets are only printed. `*Bench` suites (`LoggerBench`, `SchedulerBench`, `SignalBench`, S10's
-  `ShadowBench`, S03's `AtomicFileBench` Document write), `SchedulerTest.Process10kUnder2ms` and S12's `AtmosphereNoise` bake budgets check
+  `ShadowBench`, S03's `AtomicFileBench` Document write), `SchedulerTest.Process10kUnder2ms`, `JobsPriority.BackgroundProgressGuarantee`'s latency and S12's `AtmosphereNoise` bake budgets check
   their budgets that way and print `[bench]` lines (S34's `LuaBindingBench` prints the cost of a call
   through the Lua bindings, with no budget: builds are compared with it on the benchmark server); the
   editor suite's `editor::test::perfSlack()` does the same for `CommandHistoryBench` (S24),
@@ -766,7 +766,7 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
 
   ```bash
   JASPER_TEST_PERF_SLACK=1 \
-      UNIT_TEST_ARGS='--gtest_filter=*Bench*:SchedulerTest.Process10kUnder2ms:AtmosphereNoise.*' tools/build.sh unit-tests
+      UNIT_TEST_ARGS='--gtest_filter=*Bench*:SchedulerTest.Process10kUnder2ms:JobsPriority.BackgroundProgressGuarantee:AtmosphereNoise.*' tools/build.sh unit-tests
   ```
 
 ### Golden images
