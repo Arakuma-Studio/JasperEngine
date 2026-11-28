@@ -934,6 +934,9 @@ and its filtered suites only (owner's rule, BRIEF "Testing rules").
   taken after the opaque queue and the sky in both orders. Besides a camera without depth test,
   the sky also stays first under a Video Player's far plane (drawn over it without depth). The
   pass-list check of AC17 is the draw order in `SkyGpu.DrawsAfterTheOpaqueQueue`.
+  An opaque-queue mesh with vertex alpha below 1 (the legacy pipelines blend) now composites over the
+  clear colour instead of the sky, and its depth hides the sky behind it: such a mesh belongs in the
+  transparent queue (the navigation and voxel overlays' fills were moved there).
 - **P3, F18.** Per-Vertex Mapping samples the panorama's base level (`textureLod` 0): no
   per-fragment LOD without derivatives or a transcendental. Documented: keep it off for a
   panorama minified on screen.

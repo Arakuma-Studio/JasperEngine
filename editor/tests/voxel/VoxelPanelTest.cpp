@@ -2,15 +2,20 @@
 // SPDX-License-Identifier: MIT
 
 // T6 R59, R61, R62, R64 (AC45): the create dialog's numbers and its one step, the error strip per code
-// with its log line once, a slot in use refusing to go, and the stats the panel lists.
+// with its log line once, a slot in use refusing to go, the stats the panel lists, and the overlays'
+// translucent tint drawing in the transparent queue.
 
 #include "VoxelTestScene.h"
 
 #include "Out.h"
+#include "component/MeshComponent.h"
 #include "render/SceneRender.h"
+#include "subsystem/RenderSystem.h"
 #include "voxel/VoxelCreate.h"
 #include "voxel/VoxelMaterials.h"
+#include "voxel/VoxelOverlay.h"
 #include "voxel/VoxelProblems.h"
+#include "voxel/VoxelSceneOverlay.h"
 #include "voxel/VoxelVolumeOps.h"
 
 #include <algorithm>
@@ -486,7 +491,7 @@ TEST_F(VoxelMaterials, RemoveRefusedInUse) {
 TEST_F(VoxelPanel, FramesTheWholeVolume) {
     addVolume();
     ASSERT_NE(sceneProject->sceneRender, nullptr);
-    SceneRender& render = *sceneProject->sceneRender;
+    editor::SceneRender& render = *sceneProject->sceneRender;
     // what Frame Selected frames
     const AABB box = render.getEntitiesAABB({owner});
     ASSERT_FALSE(box.isNull());
@@ -494,6 +499,42 @@ TEST_F(VoxelPanel, FramesTheWholeVolume) {
     EXPECT_NEAR(box.getMaximum().x, 64.0f, 1e-4f);
     EXPECT_NEAR(box.getMaximum().y, 64.0f, 1e-4f);
     EXPECT_NEAR(box.getMaximum().z, 64.0f, 1e-4f);
+}
+
+// R64: LOD Colours and Dominant Material tint the chunks through their vertex alpha, which a Mesh's
+// Auto Transparency does not see: in the opaque queue the tint blended over what was drawn before it
+// (the sky, or the clear colour once the sky drew after that queue) and its depth hid the chunk
+TEST_F(VoxelPanel, OverlayTintDrawsInTheTransparentQueue) {
+    addVolume();
+    for (int i = 0; i < 4; i++) {
+        system->finishPendingWork();
+        system->update(0.0);
+    }
+    Scene* scene = sceneProject->scene;
+    struct OverlayOff {
+        ~OverlayOff() { clearVoxelOverlays(); }
+    } off;
+    for (const VoxelOverlay overlay : {VoxelOverlay::LodColours, VoxelOverlay::DominantMaterial}) {
+        setVoxelOverlay(owner, overlay);
+        VoxelSceneOverlay::frame(*project);
+        ASSERT_GT(VoxelSceneOverlay::overlayTriangleCount(scene), 0u) << voxelOverlayName(overlay);
+
+        auto render = scene->getSystem<RenderSystem>();
+        auto meshes = scene->getComponentArray<MeshComponent>();
+        size_t fills = 0;
+        for (size_t i = 0; i < meshes->size(); i++) {
+            const Entity entity = meshes->getEntity(i);
+            if (!render->isEditorOverlay(entity)) continue;
+            MeshComponent& mesh = meshes->getComponentFromIndex(i);
+            if (mesh.buffer.getCount() == 0) continue;
+            fills++;
+            EXPECT_LT(mesh.buffer.getVector4(AttributeType::COLOR, 0).w, 1.0f) << voxelOverlayName(overlay) << ": the tint is translucent";
+            EXPECT_TRUE(mesh.isTransparent()) << voxelOverlayName(overlay) << ": overlay mesh " << entity;
+        }
+        EXPECT_GE(fills, 1u) << voxelOverlayName(overlay);
+        // the next frame redraws for the new mode at once
+        VoxelSceneOverlay::release(scene);
+    }
 }
 
 }  // namespace VoxelPanelTest_cpp
