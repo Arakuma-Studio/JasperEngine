@@ -18,6 +18,8 @@
 #include <sstream>
 #include <tuple>
 
+namespace PreservationTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -179,3 +181,5 @@ TEST(Preservation, NoReportStillPreserves) {
     EXPECT_EQ(encoded["glow"].Scalar(), "3");
     EXPECT_EQ(encoded["components"]["wobble"]["speed"].Scalar(), "1");
 }
+
+}  // namespace PreservationTest_cpp

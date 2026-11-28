@@ -49,6 +49,8 @@
 #include <set>
 #include <string>
 
+namespace ProceduralMaterialWindowTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -824,3 +826,5 @@ TEST_F(ProceduralMaterialWindowTest, AFixFoundBeforeAnEditIsRefused) {
     EXPECT_EQ(proceduralMaterialWindowHistory()->position(), start);
     EXPECT_DOUBLE_EQ(window.getDocument()->graph().findNode("n2")->params["amount"].get<double>(), 0.7);
 }
+
+}  // namespace ProceduralMaterialWindowTest_cpp

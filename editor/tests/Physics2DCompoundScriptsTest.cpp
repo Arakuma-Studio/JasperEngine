@@ -13,6 +13,8 @@
 
 #include <string>
 
+namespace Physics2DCompoundScriptsTest_cpp {
+
 using namespace jasperengine;
 
 // ---- callbacks ---------------------------------------------------------------------------------
@@ -81,3 +83,5 @@ TEST_F(Physics2DCompoundScripts, ContactOnChildReachesChildAndAncestor) {
     EXPECT_TRUE(hasEntry("CE2:Car:Floor:Wheel:Floor")) << log();
     EXPECT_TRUE(hasEntry("CE2:Floor:Wheel:Floor:Car")) << log();
 }
+
+}  // namespace Physics2DCompoundScriptsTest_cpp

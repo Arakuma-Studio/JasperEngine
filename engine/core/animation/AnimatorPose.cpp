@@ -13,7 +13,8 @@
 #include <utility>
 
 using namespace jasperengine;
-using namespace jasperengine::anim;
+
+namespace jasperengine::anim {
 
 namespace{
 
@@ -333,48 +334,48 @@ void anim::Pose::copyFrom(const Pose& other){
 
 // ---------------------------------------------------------------- dispatch
 
-PoseBackend anim::poseOpsBackend(){
+PoseBackend poseOpsBackend(){
     return (PoseBackend)gBackend.load(std::memory_order_relaxed);
 }
 
-void anim::setPoseOpsBackend(PoseBackend backend){
+void setPoseOpsBackend(PoseBackend backend){
     gBackend.store((int)backend, std::memory_order_relaxed);
 }
 
-const char* anim::poseNativeBackendName(){
+const char* poseNativeBackendName(){
     return simd::Native::name;
 }
 
-void anim::poseClear(Pose& out){
+void poseClear(Pose& out){
     Kernels<simd::Scalar>::clear(out);
 }
 
-void anim::poseAccumulate(Pose& acc, const Pose& src, float weight){
+void poseAccumulate(Pose& acc, const Pose& src, float weight){
     if (useScalar()) Kernels<simd::Scalar>::accumulate(acc, src, weight);
     else Kernels<simd::Native>::accumulate(acc, src, weight);
 }
 
-void anim::poseNormalize(Pose& acc, float total, const Pose& fallback){
+void poseNormalize(Pose& acc, float total, const Pose& fallback){
     if (useScalar()) Kernels<simd::Scalar>::normalizeAcc(acc, total, fallback);
     else Kernels<simd::Native>::normalizeAcc(acc, total, fallback);
 }
 
-void anim::poseBlend(Pose& out, const Pose& base, const Pose& layer, float weight, const float* mask, const float* channelMask){
+void poseBlend(Pose& out, const Pose& base, const Pose& layer, float weight, const float* mask, const float* channelMask){
     if (useScalar()) Kernels<simd::Scalar>::blend(out, base, layer, weight, mask, channelMask);
     else Kernels<simd::Native>::blend(out, base, layer, weight, mask, channelMask);
 }
 
-void anim::poseAdditive(Pose& out, const Pose& base, const Pose& delta, float weight, const float* mask, const float* channelMask){
+void poseAdditive(Pose& out, const Pose& base, const Pose& delta, float weight, const float* mask, const float* channelMask){
     if (useScalar()) Kernels<simd::Scalar>::additive(out, base, delta, weight, mask, channelMask);
     else Kernels<simd::Native>::additive(out, base, delta, weight, mask, channelMask);
 }
 
-void anim::poseMakeDelta(Pose& delta, const Pose& pose, const Pose& reference){
+void poseMakeDelta(Pose& delta, const Pose& pose, const Pose& reference){
     if (useScalar()) Kernels<simd::Scalar>::makeDelta(delta, pose, reference);
     else Kernels<simd::Native>::makeDelta(delta, pose, reference);
 }
 
-void anim::poseIdentityDelta(Pose& delta){
+void poseIdentityDelta(Pose& delta){
     delta.setIdentity();
 }
 
@@ -449,7 +450,7 @@ anim::Affine anim::Affine::compose(const Vector3& t, const Quaternion& q, const 
     return r;
 }
 
-void anim::poseToRigSpaceFrom(const Pose& local, const int* parents, size_t from, RigSpace out){
+void poseToRigSpaceFrom(const Pose& local, const int* parents, size_t from, RigSpace out){
     const size_t n = local.boneCount();
     const float* tx = local.array(Pose::TX); const float* ty = local.array(Pose::TY); const float* tz = local.array(Pose::TZ);
     const float* qx = local.array(Pose::QX); const float* qy = local.array(Pose::QY);
@@ -474,7 +475,7 @@ void anim::poseToRigSpaceFrom(const Pose& local, const int* parents, size_t from
     }
 }
 
-void anim::poseToRigSpaceSubtree(const Pose& local, const int* parents, size_t bone, RigSpace out){
+void poseToRigSpaceSubtree(const Pose& local, const int* parents, size_t bone, RigSpace out){
     const size_t n = local.boneCount();
     size_t end = bone + 1;
     while (end < n && parents[end] >= (int)bone) end++;
@@ -501,11 +502,11 @@ void anim::poseToRigSpaceSubtree(const Pose& local, const int* parents, size_t b
     }
 }
 
-void anim::poseToRigSpace(const Pose& local, const int* parents, RigSpace out){
+void poseToRigSpace(const Pose& local, const int* parents, RigSpace out){
     poseToRigSpaceFrom(local, parents, 0, out);
 }
 
-void anim::poseRigRotations(const Pose& local, const int* parents, size_t count, Quaternion* out){
+void poseRigRotations(const Pose& local, const int* parents, size_t count, Quaternion* out){
     const float* qx = local.array(Pose::QX); const float* qy = local.array(Pose::QY);
     const float* qz = local.array(Pose::QZ); const float* qw = local.array(Pose::QW);
     const size_t n = std::min(count, local.boneCount());
@@ -516,7 +517,7 @@ void anim::poseRigRotations(const Pose& local, const int* parents, size_t count,
     }
 }
 
-void anim::poseMeshSpaceRotation(Pose& out, const int* parents, const uint16_t* boundary, size_t boundaryCount,
+void poseMeshSpaceRotation(Pose& out, const int* parents, const uint16_t* boundary, size_t boundaryCount,
                                  const float* mask, float weight, Quaternion* belowRig, const Quaternion* layerRig){
     if (boundaryCount == 0) return;
     float* qx = out.array(Pose::QX); float* qy = out.array(Pose::QY);
@@ -561,13 +562,13 @@ namespace{
 
 }
 
-float anim::poseBlendValue(float base, float layer, float weight){
+float poseBlendValue(float base, float layer, float weight){
     if (weight == 0.0f) return base;
     if (weight == 1.0f) return layer;
     return base + (layer - base) * weight;
 }
 
-Quaternion anim::poseBlendRotation(const Quaternion& base, const Quaternion& layer, float weight){
+Quaternion poseBlendRotation(const Quaternion& base, const Quaternion& layer, float weight){
     if (weight == 0.0f) return base;
     if (weight == 1.0f) return layer;
     const float d = ((base.x * layer.x) + (base.y * layer.y)) + ((base.z * layer.z) + (base.w * layer.w));
@@ -582,7 +583,7 @@ Quaternion anim::poseBlendRotation(const Quaternion& base, const Quaternion& lay
     return Quaternion(w, x, y, z);
 }
 
-Quaternion anim::poseAdditiveRotation(const Quaternion& base, const Quaternion& delta, float weight){
+Quaternion poseAdditiveRotation(const Quaternion& base, const Quaternion& delta, float weight){
     if (weight == 0.0f) return base;
     const float sign = delta.w < 0.0f ? -1.0f : 1.0f;
     const float ws = weight * sign;
@@ -598,7 +599,7 @@ Quaternion anim::poseAdditiveRotation(const Quaternion& base, const Quaternion& 
     return Quaternion(rw, rx, ry, rz);
 }
 
-Quaternion anim::poseMeshSpaceLocal(const Quaternion& parentRig, const Quaternion& belowRig, const Quaternion& layerRig, float weight){
+Quaternion poseMeshSpaceLocal(const Quaternion& parentRig, const Quaternion& belowRig, const Quaternion& layerRig, float weight){
     const Quaternion target = poseBlendRotation(belowRig, layerRig, weight);
     // conj(parentRig) * target
     const float px = -parentRig.x, py = -parentRig.y, pz = -parentRig.z, pw = parentRig.w;
@@ -611,12 +612,14 @@ Quaternion anim::poseMeshSpaceLocal(const Quaternion& parentRig, const Quaternio
     return Quaternion(rw, rx, ry, rz);
 }
 
-float anim::poseAdditiveScale(float base, float delta, float weight){
+float poseAdditiveScale(float base, float delta, float weight){
     if (weight == 0.0f) return base;
     return base * (1.0f + ((delta - 1.0f) * weight));
 }
 
-float anim::poseAdditiveValue(float base, float delta, float weight){
+float poseAdditiveValue(float base, float delta, float weight){
     if (weight == 0.0f) return base;
     return base + (delta * weight);
 }
+
+}  // namespace jasperengine::anim

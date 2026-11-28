@@ -19,7 +19,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::platform;
+
+namespace jasperengine::editor::platform {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -141,7 +143,7 @@ namespace {
 
 }
 
-const char* platform::runDeviceKindName(RunDeviceKind kind) {
+const char* runDeviceKindName(RunDeviceKind kind) {
     switch (kind) {
         case RunDeviceKind::Host: return "host";
         case RunDeviceKind::Device: return "device";
@@ -152,7 +154,7 @@ const char* platform::runDeviceKindName(RunDeviceKind kind) {
     return "device";
 }
 
-std::vector<RunDevice> platform::parseAdbDevicesLong(const std::string& output) {
+std::vector<RunDevice> parseAdbDevicesLong(const std::string& output) {
     std::vector<RunDevice> devices;
     for (const std::string& line : deviceLines(output)) {
         if (line.empty() || line.rfind("List of devices", 0) == 0 || line.rfind("*", 0) == 0 || line.rfind("adb server", 0) == 0) continue;
@@ -193,7 +195,7 @@ std::vector<RunDevice> platform::parseAdbDevicesLong(const std::string& output) 
     return devices;
 }
 
-void platform::applyAndroidProperties(RunDevice& device, const std::string& output, unsigned int minSdk) {
+void applyAndroidProperties(RunDevice& device, const std::string& output, unsigned int minSdk) {
     const std::vector<std::string> values = deviceLines(output);
     if (values.size() > 0 && !values[0].empty()) device.name = values[0];
     if (values.size() > 1) {
@@ -212,7 +214,7 @@ void platform::applyAndroidProperties(RunDevice& device, const std::string& outp
     }
 }
 
-std::vector<RunDevice> platform::parseSimctlJson(const std::string& text) {
+std::vector<RunDevice> parseSimctlJson(const std::string& text) {
     std::vector<RunDevice> devices;
     const nlohmann::json root = nlohmann::json::parse(text, nullptr, false);
     if (root.is_discarded() || !root.is_object() || !root.contains("devices") || !root["devices"].is_object()) return devices;
@@ -242,7 +244,7 @@ std::vector<RunDevice> platform::parseSimctlJson(const std::string& text) {
     return devices;
 }
 
-ToolLocation platform::adbLocation() {
+ToolLocation adbLocation() {
     const std::string hint = "SDK Manager package \"platform-tools\"";
     ToolLocation location{"adb", {}, "", hint};
     const std::string configured = AppSettings::getExternalToolPath("adb");
@@ -270,7 +272,7 @@ ToolLocation platform::adbLocation() {
     return location;
 }
 
-RunDevice platform::missingAdbRow() {
+RunDevice missingAdbRow() {
     RunDevice row;
     row.id = "adb";
     row.platform = BuildPlatform::Android;
@@ -280,7 +282,7 @@ RunDevice platform::missingAdbRow() {
     return row;
 }
 
-RunDevice platform::hostDevice() {
+RunDevice hostDevice() {
     RunDevice host;
     host.id = "host";
     host.platform = hostBuildPlatform();
@@ -291,7 +293,7 @@ RunDevice platform::hostDevice() {
     return host;
 }
 
-RunDevice platform::browserDevice() {
+RunDevice browserDevice() {
     RunDevice browser;
     browser.id = "web";
     browser.platform = BuildPlatform::Web;
@@ -302,7 +304,7 @@ RunDevice platform::browserDevice() {
     return browser;
 }
 
-std::vector<RunDevice> platform::probeDevices(BuildPlatform platform, unsigned int androidMinSdk, int timeoutMs) {
+std::vector<RunDevice> probeDevices(BuildPlatform platform, unsigned int androidMinSdk, int timeoutMs) {
     switch (platform) {
         case BuildPlatform::Android: return deviceProbeAndroid(androidMinSdk, timeoutMs);
         case BuildPlatform::IOS: return deviceProbeIos(timeoutMs);
@@ -313,7 +315,7 @@ std::vector<RunDevice> platform::probeDevices(BuildPlatform platform, unsigned i
     return {};
 }
 
-std::vector<RunDevice> platform::devicesOf(BuildPlatform platform, unsigned int androidMinSdk, int maxAgeMs) {
+std::vector<RunDevice> devicesOf(BuildPlatform platform, unsigned int androidMinSdk, int maxAgeMs) {
     DeviceProbeCache& probes = deviceProbeCache();
     const auto now = std::chrono::steady_clock::now();
     {
@@ -329,7 +331,7 @@ std::vector<RunDevice> platform::devicesOf(BuildPlatform platform, unsigned int 
     return devices;
 }
 
-const RunDevice* platform::pickDevice(const std::vector<RunDevice>& devices, BuildPlatform platform, const std::string& id, std::string& error) {
+const RunDevice* pickDevice(const std::vector<RunDevice>& devices, BuildPlatform platform, const std::string& id, std::string& error) {
     const std::string platformName = platform == BuildPlatform::Android ? "Android" : platform == BuildPlatform::IOS ? "iOS Simulator"
                                    : buildPlatformName(platform);
     if (id == "auto" || id.empty()) {
@@ -367,3 +369,5 @@ const RunDevice* platform::pickDevice(const std::vector<RunDevice>& devices, Bui
     error = "no " + platformName + " device " + id + " is connected (get_build_info devices:true lists them)";
     return nullptr;
 }
+
+}  // namespace jasperengine::editor::platform

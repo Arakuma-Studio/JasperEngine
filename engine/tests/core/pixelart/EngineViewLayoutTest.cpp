@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+namespace EngineViewLayoutTest_cpp {
+
 using namespace jasperengine;
 
 TEST(EngineViewLayoutTest, IntegerModes){
@@ -103,3 +105,5 @@ TEST(EngineViewLayoutTest, PointerMapsThroughTheExactCanvas){
     Engine::setPixelPerfectView(PixelPerfectViewRequest());
     Engine::systemViewChanged();
 }
+
+}  // namespace EngineViewLayoutTest_cpp

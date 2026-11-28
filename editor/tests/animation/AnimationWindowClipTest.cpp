@@ -71,6 +71,12 @@
 #include <utility>
 #include <vector>
 
+namespace AnimationWindowClipTest_cpp {
+
+using namespace jasperengine;
+using namespace jasperengine::editor;
+using namespace animwindowdriver;
+using Json = nlohmann::json;
 namespace fs = std::filesystem;
 
 namespace {
@@ -1500,3 +1506,5 @@ TEST_F(AnimationWindowClipTest, PastedPropertyKeysKeepTheirKind) {
     EXPECT_EQ(activeKeys, 3u);
     EXPECT_TRUE(pastedOnActive) << "pasted on its own property at the playhead";
 }
+
+}  // namespace AnimationWindowClipTest_cpp

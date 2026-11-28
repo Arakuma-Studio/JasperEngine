@@ -29,14 +29,13 @@
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vertexcolor;
 namespace vcd = jasperengine::editor::vertexcolor::detail;
 
 namespace {
 
     // one file's live values (main thread)
     struct VcLiveFile {
-        std::shared_ptr<vc::Data> data;
+        std::shared_ptr<jasperengine::editor::vertexcolor::vc::Data> data;
         uint64_t version = 1;          // grows with every write to `data`
         bool hold = false;             // R10: written by the scene's save only
     };
@@ -56,7 +55,7 @@ namespace {
     class VcFileWriter {
     public:
         struct Job {
-            std::shared_ptr<const vc::Data> data;
+            std::shared_ptr<const jasperengine::vertexcolor::Data> data;
             uint64_t version = 0;
             fs::path root;
         };
@@ -68,7 +67,7 @@ namespace {
             return *writer;
         }
 
-        void enqueue(const std::string& file, std::shared_ptr<const vc::Data> data, uint64_t version, fs::path root) {
+        void enqueue(const std::string& file, std::shared_ptr<const jasperengine::vertexcolor::Data> data, uint64_t version, fs::path root) {
             std::unique_lock<std::mutex> lock(mutex);
             failed.erase(file);
             Job& job = jobs[file];
@@ -159,7 +158,7 @@ namespace {
     };
 
     bool VcFileWriter::write(const std::string& file, const Job& job, std::string& error) {
-        const std::vector<uint8_t> bytes = vc::encode(*job.data, true);
+        const std::vector<uint8_t> bytes = jasperengine::vertexcolor::encode(*job.data, true);
         const fs::path path = FileUtils::pathFromUtf8(file);
         if (!job.root.empty()) {
             return safewrite::writeFileResolvedBeneath(job.root, path, std::string(bytes.begin(), bytes.end()), error);
@@ -183,7 +182,7 @@ namespace {
 
     void vcQueue(const std::string& key, VcLiveFile& file) {
         if (file.hold || !file.data) return;
-        VcFileWriter::get().enqueue(key, std::make_shared<const vc::Data>(*file.data), file.version, vcWriteRoot());
+        VcFileWriter::get().enqueue(key, std::make_shared<const jasperengine::vertexcolor::Data>(*file.data), file.version, vcWriteRoot());
     }
 
     std::string vcSafeStem(const std::string& name, const char* fallback) {
@@ -216,7 +215,7 @@ fs::path vcd::absoluteAssetPath(Project& project, const std::string& assetPath) 
     return (project.getAssetsPath() / FileUtils::pathFromUtf8(assetPath)).lexically_normal();
 }
 
-std::shared_ptr<vc::Data> vcd::resolve(Project* project, uint32_t sceneId, Entity entity, std::string* error) {
+std::shared_ptr<jasperengine::editor::vertexcolor::vc::Data> vcd::resolve(Project* project, uint32_t sceneId, Entity entity, std::string* error) {
     Scene* scene = sceneOf(project, sceneId);
     VertexColorsComponent* component = componentOf(project, sceneId, entity);
     if (!component || component->data.path.empty()) return nullptr;
@@ -230,17 +229,17 @@ std::shared_ptr<vc::Data> vcd::resolve(Project* project, uint32_t sceneId, Entit
             // the table's are the unsaved values of the file
             component->loaded = found->second.data;
             component->revision++;
-            vc::markVertexColorsChanged(scene, entity);
+            jasperengine::vertexcolor::markVertexColorsChanged(scene, entity);
         }
         return component->loaded;
     }
-    std::shared_ptr<vc::Data> data;
+    std::shared_ptr<jasperengine::vertexcolor::Data> data;
     if (found != files.end() && found->second.data) {
         data = found->second.data;
     } else {
-        auto read = std::make_shared<vc::Data>();
+        auto read = std::make_shared<jasperengine::vertexcolor::Data>();
         std::string why;
-        if (!vc::readFile(absoluteAssetPath(*project, component->data.path), *read, why)) {
+        if (!jasperengine::vertexcolor::readFile(absoluteAssetPath(*project, component->data.path), *read, why)) {
             if (error) *error = "'" + component->data.path + "' did not load (" + why + "), so it stays as it is. Fix or replace it, or clear the Data field.";
             return nullptr;
         }
@@ -250,14 +249,14 @@ std::shared_ptr<vc::Data> vcd::resolve(Project* project, uint32_t sceneId, Entit
     component->loaded = data;
     component->loadedPath = component->data.path;
     component->revision++;
-    vc::markVertexColorsChanged(scene, entity);
+    jasperengine::vertexcolor::markVertexColorsChanged(scene, entity);
     return data;
 }
 
 void vcd::touched(Project* project, uint32_t sceneId, Entity entity, bool queueWrite) {
     VertexColorsComponent* component = componentOf(project, sceneId, entity);
     if (!component || !component->loaded) return;
-    const std::shared_ptr<vc::Data> data = component->loaded;
+    const std::shared_ptr<jasperengine::vertexcolor::Data> data = component->loaded;
     // every GameObject showing these values draws them again (R14)
     for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
         if (!sceneProject->scene) continue;
@@ -266,7 +265,7 @@ void vcd::touched(Project* project, uint32_t sceneId, Entity entity, bool queueW
             VertexColorsComponent& other = array->getComponentFromIndex(i);
             if (other.loaded != data) continue;
             other.revision++;
-            vc::markVertexColorsChanged(sceneProject->scene, array->getEntity(i));
+            jasperengine::vertexcolor::markVertexColorsChanged(sceneProject->scene, array->getEntity(i));
             sceneProject->needUpdateRender = true;
         }
     }
@@ -278,7 +277,7 @@ void vcd::touched(Project* project, uint32_t sceneId, Entity entity, bool queueW
     if (queueWrite) vcQueue(key, file);
 }
 
-void vcd::registerData(Project& project, const std::string& assetPath, std::shared_ptr<vc::Data> data, bool dirty) {
+void vcd::registerData(Project& project, const std::string& assetPath, std::shared_ptr<jasperengine::vertexcolor::Data> data, bool dirty) {
     const std::string key = vcFileKey(project, assetPath);
     VcLiveFile& file = vcLiveFiles()[key];
     file.data = std::move(data);
@@ -301,12 +300,12 @@ bool vcd::isDirty(Project& project, const std::string& assetPath) {
     return it->second.hold || VcFileWriter::get().writtenVersion(key) < it->second.version;
 }
 
-bool vcd::writeNewFile(Project& project, const std::string& assetPath, const vc::Data& data, AssetRef& ref, std::string* error) {
+bool vcd::writeNewFile(Project& project, const std::string& assetPath, const jasperengine::vertexcolor::Data& data, AssetRef& ref, std::string* error) {
     const fs::path file = absoluteAssetPath(project, assetPath);
     std::error_code ignored;
     fs::create_directories(file.parent_path(), ignored);
     VcFileWriter::Job job;
-    job.data = std::make_shared<const vc::Data>(data);
+    job.data = std::make_shared<const jasperengine::vertexcolor::Data>(data);
     job.root = vcWriteRoot();
     std::string why;
     if (!VcFileWriter::write(file.generic_string(), job, why)) {
@@ -334,7 +333,7 @@ std::string vcd::newFilePath(Project& project, const SceneProject& sceneProject,
     }
     const std::string stem = vcSafeStem(entityName, "GameObject");
     for (int attempt = 0;; attempt++) {
-        const std::string name = attempt == 0 ? stem + vc::VCOLORS_EXTENSION : stem + " " + std::to_string(attempt) + vc::VCOLORS_EXTENSION;
+        const std::string name = attempt == 0 ? stem + jasperengine::vertexcolor::VCOLORS_EXTENSION : stem + " " + std::to_string(attempt) + jasperengine::vertexcolor::VCOLORS_EXTENSION;
         const fs::path candidate = (folder / FileUtils::pathFromUtf8(name)).lexically_normal();
         std::error_code ignored;
         if (fs::exists(project.getAssetsPath() / candidate, ignored)) continue;
@@ -348,7 +347,7 @@ bool vcd::flushWrites() {
     return VcFileWriter::get().flushAll();
 }
 
-void vcd::fillSnapshot(vc::TargetData& target, const vc::MeshView& mesh) {
+void vcd::fillSnapshot(jasperengine::vertexcolor::TargetData& target, const jasperengine::vertexcolor::MeshView& mesh) {
     // a stale target keeps the snapshot of the mesh it was painted on: its transfer needs it (R10)
     if (target.fingerprint != mesh.fingerprint()) return;
     target.snapshotPositions = mesh.positions;
@@ -364,11 +363,11 @@ void vcd::fillSnapshot(vc::TargetData& target, const vc::MeshView& mesh) {
     }
 }
 
-void vcd::refreshSnapshots(Project* project, uint32_t sceneId, Entity entity, vc::Data& data) {
+void vcd::refreshSnapshots(Project* project, uint32_t sceneId, Entity entity, jasperengine::vertexcolor::Data& data) {
     Scene* scene = sceneOf(project, sceneId);
     if (!scene) return;
-    for (vc::TargetData& target : data.targets) {
-        const std::shared_ptr<const vc::MeshView> mesh = vc::sceneMeshView(scene, entity, target.key);
+    for (jasperengine::vertexcolor::TargetData& target : data.targets) {
+        const std::shared_ptr<const jasperengine::vertexcolor::MeshView> mesh = jasperengine::vertexcolor::sceneMeshView(scene, entity, target.key);
         if (mesh) fillSnapshot(target, *mesh);
     }
 }

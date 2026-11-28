@@ -15,7 +15,8 @@
 #endif
 
 using namespace jasperengine;
-using namespace jasperengine::memory;
+
+namespace jasperengine::memory {
 
 namespace{
     // the index of the highest set bit of a non-zero value (std::bit_width - 1)
@@ -329,3 +330,5 @@ RangeAllocator::Stats RangeAllocator::getStats() const{
 void RangeAllocator::publishStats() noexcept{
     memory::detail::publish(record, used * unitBytes, peak * unitBytes, capacity * unitBytes, outstanding);
 }
+
+}  // namespace jasperengine::memory

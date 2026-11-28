@@ -6,6 +6,8 @@
 #include "titleart/TitleArtHash.h"
 #include "titleart/TitleArtIO.h"
 
+namespace TitleArtHashTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -157,3 +159,5 @@ TEST_F(TitleArtHashTest, AGeneratorsParamsAreItsContent) {
     EXPECT_NE(after.content, before.content) << "a param edit is new pixels, not a cache hit";
     EXPECT_EQ(after.placement, before.placement);
 }
+
+}  // namespace TitleArtHashTest_cpp

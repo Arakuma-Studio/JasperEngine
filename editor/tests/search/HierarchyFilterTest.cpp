@@ -14,6 +14,8 @@
 #include <chrono>
 #include <cstdio>
 
+namespace HierarchyFilterTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -178,3 +180,5 @@ TEST(HierarchyFilterTest, FindsJapaneseNames) {
     EXPECT_EQ(shownFor("激熱 glow"), Names{});     // both words in one name
     EXPECT_EQ(shownFor("氷"), Names{});
 }
+
+}  // namespace HierarchyFilterTest_cpp

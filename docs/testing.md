@@ -1024,18 +1024,40 @@ that lose data). `-Wunused-parameter` and `-Wmissing-field-initializers` stay of
 ### Unity build
 
 `JASPERENGINE_UNITY_BUILD=ON` (`UNITY=1 tools/build.sh linux`, preset `linux-unity`) merges the
-sources of our own targets 16 at a time; Objective-C++ and generated sources are always compiled
-alone, and a source that cannot share a unit is fixed (a colliding file-local helper gets a
-name of its own) or listed in `jasperengine_skip_unity_build(REASON ... SOURCES ...)`: today the
-sources that include Xlib (macros such as `None` and `Status`), and the HTML UI and MCP tool
-sources, which keep one generic helper set (`lower`, `trim`, `Target`...) per file. A new
-`namespace {}` helper in our code must not reuse a name another source of the target defines at
-file scope. Nor may a source hand the sources after it anything at file scope: a `using namespace`
-of anything but `jasperengine` and `jasperengine::editor` (take the names it uses, or put the
-tests in that namespace), a global alias such as `using Json = ...` (give it a name of the file's
-own), or a macro (`#undef` it at the end). A name an engine header shares with an editor one
-(`SelectionState`, `View`, `pixelart`, `test`) is spelled out where both are in sight. Each tree
-CI builds compiles with `UNITY=1`: `tools/build.sh linux`, and `unit-tests` for both suites.
+sources of our own targets 16 at a time (`UNITY_BATCH=<n>` for another size, in a tree of its own);
+Objective-C++ and generated sources are always compiled alone, and a source that cannot share a unit
+is listed in `jasperengine_skip_unity_build(REASON ... SOURCES ...)`: today the sources that include
+Xlib (macros such as `None` and `Status`), the two that replace the global `operator new`, and whole
+trees (the HTML UI, the MCP tools, Title Art...) that keep one generic helper set per file. Which
+sources share a unit moves whenever a source is added or removed, so nothing at file scope may reach
+the next source:
+
+- A test source (`engine/tests`, `editor/tests`) keeps its code, its `using namespace` lines and its
+  helpers in a namespace of its own, `namespace <FileStem>_cpp { ... }` (`<dir>_<FileStem>_cpp` when
+  another source has the same name), with the tests inside it: an anonymous namespace at global
+  scope, or inside a namespace other files open too, is the same one for the whole batch. Tests that
+  live in the namespace they test nest it: `namespace jasperengine::editor::unity::UnityYamlTest_cpp`.
+  Only named namespaces (definitions of what a header declares, `*TestAccess` friends) and macro
+  calls stand outside it.
+- In an engine or editor source, a `using namespace` at namespace scope names only `jasperengine` or
+  `jasperengine::editor` at global scope, or sits inside a namespace no other file opens; a test source
+  has none outside its own namespace, a header none at global scope but `jasperengine`. A source
+  that implements a namespace puts its code in `namespace jasperengine::x { ... }`; one that uses
+  another namespace's names qualifies them (`terraincore::TileCoord`).
+- A global alias (`using Json = ...`) gets a name of the file's own, and a macro is `#undef`ined at
+  the end of its file.
+- Each header's include guard is its own: a unit that includes two headers with one guard loses the
+  second.
+- A name two namespaces in sight both declare is spelled out: an engine header's and an editor
+  one's (`SelectionState`, `pixelart`, `cook`, `test`), or two namespaces a source opens
+  (`pixelart::RgbaImage` and `pixelart::cleanup::RgbaImage`). Which of them a unit has seen depends
+  on its neighbours' includes, so a batch of other sizes finds what 16 does not.
+
+`tools/unity_wrap.py [file...]` puts a test source in that layout (`--check` lists what it would
+wrap). `tools/check_unity_scope.py` (the lint lane) checks the first two rules and the include guards; its
+`NOT_UNITY` list names the trees that are never unity-built. The others need a compiler: the nightly
+builds `tools/build.sh linux` and both `unit-tests` trees with `UNITY=1`, and a build at another
+batch size (`UNITY=1 UNITY_BATCH=23`) moves every boundary.
 
 ### Build speed
 
@@ -1826,7 +1848,9 @@ Gradle retries through `systemProp.org.gradle.internal.*` in
 `engine/workspaces/androidstudio/gradle.properties` (Gradle 9.6 ignores the keys without
 `systemProp.`), and the NDK is installed before Gradle with a retry; a workflow's download commands
 (`brew`, `choco`, `curl`, `gh release download`) run through `tools/ci/retry.sh`, and the Vulkan SDK
-action gets a second step when the first fails. Nothing else is retried: a flaky test gets `DISABLED_`
+action gets a second step when the first fails. Windows ccache comes from its release zip
+(`tools/ci/ccache_windows.sh`: pinned version and sha256, cached, `ccache --version` checked), not
+Chocolatey, which exited 0 with nothing installed during an outage. Nothing else is retried: a flaky test gets `DISABLED_`
 and an issue.
 
 ## Known gaps
@@ -1926,7 +1950,7 @@ on, 2026-11-17, one run each (seconds):
 
 An edit rebuilds the 16 sources of its unit, and with ccache a unit misses whenever any of them
 changes, or when a source added to or removed from the target moves the batch boundaries after it.
-No PR lane builds unity; the nightly's unity job keeps `tools/build.sh linux` unity-safe.
+No PR lane builds unity: `tools/check_unity_scope.py` and the nightly's unity jobs keep the trees unity-safe.
 
 ### MCP, smoke (after the S01 merge)
 

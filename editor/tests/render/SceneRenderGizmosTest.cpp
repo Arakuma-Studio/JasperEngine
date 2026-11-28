@@ -26,6 +26,8 @@
 #include <stdexcept>
 #include <string>
 
+namespace SceneRenderGizmosTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -105,3 +107,5 @@ TEST(SceneRenderGizmos, SystemEntitiesPerKind) {
     sceneProject->selectedEntities.clear();
     sceneProject->isModified = false;
 }
+
+}  // namespace SceneRenderGizmosTest_cpp

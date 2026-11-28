@@ -25,7 +25,8 @@
 #include <memory>
 
 using namespace jasperengine;
-using namespace jasperengine::player;
+
+namespace jasperengine::player {
 
 namespace fs = std::filesystem;
 
@@ -374,3 +375,5 @@ void PlayerTests::frame(const FrameReader& reader) {
     r.runner.reset();
     RunControl::requestQuit(none ? EXIT_NO_TESTS : bad ? EXIT_TESTS_FAILED : EXIT_OK);
 }
+
+}  // namespace jasperengine::player

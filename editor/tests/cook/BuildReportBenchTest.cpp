@@ -17,6 +17,8 @@
 #include <cstdio>
 #include <string>
 
+namespace BuildReportBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -103,3 +105,5 @@ TEST(BuildReportBench, LargeReport) {
         EXPECT_LE(chainMs, 1.0 * slack);
     }
 }
+
+}  // namespace BuildReportBenchTest_cpp

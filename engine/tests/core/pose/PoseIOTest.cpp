@@ -15,6 +15,8 @@
 #include <limits>
 #include <sstream>
 
+namespace PoseIOTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pose;
 using posetest::anyWarningContains;
@@ -837,3 +839,5 @@ TEST(PoseIO, NoTemplateKeyWithoutTemplateInfo){
     ASSERT_TRUE(parsePoseAnimation(withHeader("\"template\": {\"name\": \"X\"}"), data, warnings, nullptr));
     EXPECT_TRUE(warnings.empty());
 }
+
+}  // namespace PoseIOTest_cpp

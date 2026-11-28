@@ -24,6 +24,8 @@
 #include <sstream>
 #include <thread>
 
+namespace ProfilerTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -427,3 +429,5 @@ TEST(ProfilerBench, ScopePair){
         EXPECT_LE(offNs, 2.0 * slack);
     }
 }
+
+}  // namespace ProfilerTest_cpp

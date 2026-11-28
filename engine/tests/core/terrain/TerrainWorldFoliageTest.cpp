@@ -30,6 +30,8 @@
 #include <set>
 #include <thread>
 
+namespace TerrainWorldFoliageTest_cpp {
+
 using namespace terrainworldtest;
 using jasperengine::Camera;
 using jasperengine::Entity;
@@ -550,3 +552,5 @@ TEST(TerrainWorldData, WorldBinCarriesTreeTiles) {
     ASSERT_TRUE(decodeWorldBin(plain, decoded, &error)) << error;
     EXPECT_FALSE(decoded.tiles[1].trees);
 }
+
+}  // namespace TerrainWorldFoliageTest_cpp

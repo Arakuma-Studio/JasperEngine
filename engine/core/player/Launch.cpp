@@ -11,10 +11,9 @@
 #include <cstdio>
 
 using namespace jasperengine;
-using namespace jasperengine::player;
 
 namespace {
-    GameConfigurator gameConfigurator = nullptr;
+    player::GameConfigurator gameConfigurator = nullptr;
 }
 
 void jasperengine::player::setGameConfigurator(GameConfigurator configurator) {

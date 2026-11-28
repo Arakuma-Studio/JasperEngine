@@ -9,6 +9,8 @@
 
 #include <filesystem>
 
+namespace TitleLibraryCliTest_cpp {
+
 using namespace jasperengine::editor::titlelibrary;
 namespace fs = std::filesystem;
 
@@ -21,3 +23,5 @@ TEST(TitleLibraryCli, MesaShaderCacheFollowsHome) {
     EXPECT_EQ(fs::path(mesaShaderCacheDir("", "", "/home/u")), fs::path("/home/u/.cache/mesa_shader_cache")) << "empty values are unset";
     EXPECT_EQ(mesaShaderCacheDir(nullptr, nullptr, nullptr), "");
 }
+
+}  // namespace TitleLibraryCliTest_cpp

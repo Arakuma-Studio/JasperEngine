@@ -20,7 +20,9 @@
 #include <string>
 #include <vector>
 
-namespace jasperengine::editor::spritenormals {
+// the tests live in the namespace they test, in a namespace of this file's own (a unity build merges
+// the test sources)
+namespace jasperengine::editor::spritenormals::SpriteNormalsGapsTest_cpp {
 
 namespace {
 
@@ -520,4 +522,4 @@ TEST(SpriteNormalsGaps, UnmatchedOnAFlatImage) {
     EXPECT_FALSE(warns(run(t.color, presetSettings(Preset::Stones)), "gaps_unmatched"));
 }
 
-} // namespace jasperengine::editor::spritenormals
+}  // namespace jasperengine::editor::spritenormals::SpriteNormalsGapsTest_cpp

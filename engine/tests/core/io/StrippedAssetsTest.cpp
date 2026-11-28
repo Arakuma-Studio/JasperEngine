@@ -21,6 +21,8 @@
 #include <fstream>
 #include <string>
 
+namespace StrippedAssetsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -75,3 +77,5 @@ TEST(StrippedAssets, ACompileBuildReadsTheListBesideItsGameJson) {
     std::error_code ec;
     std::filesystem::remove_all(dir, ec);
 }
+
+}  // namespace StrippedAssetsTest_cpp

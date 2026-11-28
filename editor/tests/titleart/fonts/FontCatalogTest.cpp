@@ -19,6 +19,8 @@
 #include <mutex>
 #include <thread>
 
+namespace FontCatalogTest_cpp {
+
 using namespace jasperengine::editor::titlefonts;
 using namespace jasperengine::editor::titlefonts::test;
 using TJson = jasperengine::titleart::Json;
@@ -473,3 +475,5 @@ TEST_F(FontCatalogTest, GoogleDownloadsAtMostTwoAtOnce) {
     catalog.waitIdle();
     EXPECT_EQ(google->fontCalls.load(), 3);
 }
+
+}  // namespace FontCatalogTest_cpp

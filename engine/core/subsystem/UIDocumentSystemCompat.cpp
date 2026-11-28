@@ -38,7 +38,6 @@ namespace jasperengine{
 }
 
 using namespace jasperengine;
-using namespace jasperengine::htmlui::compat;
 
 namespace {
 
@@ -59,10 +58,10 @@ namespace {
     }
 
     // "ui/menu.html:45: attempt to index a nil value" -> file, line, message
-    Diagnostic scriptError(const DocumentScript& script, const std::string& error){
-        Diagnostic diagnostic;
-        diagnostic.code = codes::LuaScriptError;
-        diagnostic.severity = Severity::Error;
+    htmlui::compat::Diagnostic scriptError(const htmlui::compat::DocumentScript& script, const std::string& error){
+        htmlui::compat::Diagnostic diagnostic;
+        diagnostic.code = htmlui::compat::codes::LuaScriptError;
+        diagnostic.severity = htmlui::compat::Severity::Error;
         diagnostic.file = script.sourceFile;
         diagnostic.line = script.firstLine;
         std::string first = error.substr(0, error.find('\n'));
@@ -92,15 +91,15 @@ HtmlUICompatState& UIDocumentSystem::getCompatState(){
     return *compatState;
 }
 
-std::shared_ptr<const CompatDocument> UIDocumentSystem::getCompiledDocument(Entity entity) const{
-    return DocumentLoader::compiledOf(getDocument(entity));
+std::shared_ptr<const htmlui::compat::CompatDocument> UIDocumentSystem::getCompiledDocument(Entity entity) const{
+    return htmlui::compat::DocumentLoader::compiledOf(getDocument(entity));
 }
 
-const std::vector<Diagnostic>& UIDocumentSystem::getDiagnostics(Entity entity) const{
-    static const std::vector<Diagnostic> none;
+const std::vector<htmlui::compat::Diagnostic>& UIDocumentSystem::getDiagnostics(Entity entity) const{
+    static const std::vector<htmlui::compat::Diagnostic> none;
     if (Rml::ElementDocument* document = getDocument(entity)){
-        if (DocumentLoader::compiledOf(document))
-            return DocumentLoader::diagnosticsOf(document);
+        if (htmlui::compat::DocumentLoader::compiledOf(document))
+            return htmlui::compat::DocumentLoader::diagnosticsOf(document);
         return none;
     }
     // not loaded: why (a missing .html, ...)
@@ -137,15 +136,15 @@ void UIDocumentSystem::compatDocumentLoaded(Entity entity){
         const UIDocumentComponent* component = scene->findComponent<UIDocumentComponent>(entity);
         const std::string path = documentPathOf(component);
         if (!path.empty() && HtmlUIContext::isCompatPath(path)){
-            CompatOptions options;
-            getCompatState().failed[entity] = DocumentLoader::compile(path, options)->diagnostics;
+            htmlui::compat::CompatOptions options;
+            getCompatState().failed[entity] = htmlui::compat::DocumentLoader::compile(path, options)->diagnostics;
         }
         return;
     }
     if (compatState)
         compatState->failed.erase(entity);
 
-    if (!DocumentLoader::compiledOf(document))
+    if (!htmlui::compat::DocumentLoader::compiledOf(document))
         return;   // an .rml document
 
     // the style sheets a script added, over a reload or another file of the component (S93 R29)
@@ -169,15 +168,15 @@ void UIDocumentSystem::compatDocumentLoaded(Entity entity){
             const size_t cut = path.find_first_of("?#");
             if (cut != std::string::npos)
                 path = path.substr(0, cut);
-            const UrlKind kind = UrlResolver::classify(path);
+            const htmlui::compat::UrlKind kind = htmlui::compat::UrlResolver::classify(path);
             bool outside = false;
             std::string target;
             if (!url.empty())
                 target = url;   // resolved by the anchor (HtmlAnchorElement)
-            else if (kind == UrlKind::Relative)
-                target = UrlResolver::joinPath(documentPathOf(component), UrlResolver::percentDecode(path), &outside);
-            else if (kind == UrlKind::RootRelative)
-                target = UrlResolver::normalizePath(path.compare(0, 8, "asset://") == 0 ? path.substr(8) : path, &outside);
+            else if (kind == htmlui::compat::UrlKind::Relative)
+                target = htmlui::compat::UrlResolver::joinPath(documentPathOf(component), htmlui::compat::UrlResolver::percentDecode(path), &outside);
+            else if (kind == htmlui::compat::UrlKind::RootRelative)
+                target = htmlui::compat::UrlResolver::normalizePath(path.compare(0, 8, "asset://") == 0 ? path.substr(8) : path, &outside);
             if (target.empty() || outside || !(HtmlUIContext::isCompatPath(target) ||
                 (target.size() > 4 && target.compare(target.size() - 4, 4, ".rml") == 0)))
                 return;   // fragments scroll (the anchor), other links only dispatch the event
@@ -195,15 +194,15 @@ void UIDocumentSystem::compatDocumentLoaded(Entity entity){
 }
 
 void UIDocumentSystem::compatDocumentShown(Rml::ElementDocument* document){
-    if (DocumentLoader::compiledOf(document))
-        DocumentLoader::applyAutofocus(document);
+    if (htmlui::compat::DocumentLoader::compiledOf(document))
+        htmlui::compat::DocumentLoader::applyAutofocus(document);
 }
 
 void UIDocumentSystem::startDocumentScripts(){
     HtmlUICompatState& state = getCompatState();
     state.scriptsEnabled = true;
     for (const auto& pair : documents){
-        if (DocumentLoader::compiledOf(pair.second) &&
+        if (htmlui::compat::DocumentLoader::compiledOf(pair.second) &&
             std::find(state.pendingScripts.begin(), state.pendingScripts.end(), pair.first) == state.pendingScripts.end())
             state.pendingScripts.push_back(pair.first);
     }
@@ -226,7 +225,7 @@ void UIDocumentSystem::compatRunScripts(){
         const Entity entity = compatState->pendingScripts.front();
         compatState->pendingScripts.erase(compatState->pendingScripts.begin());
         Rml::ElementDocument* document = getDocument(entity);
-        std::shared_ptr<const CompatDocument> compiled = DocumentLoader::compiledOf(document);
+        std::shared_ptr<const htmlui::compat::CompatDocument> compiled = htmlui::compat::DocumentLoader::compiledOf(document);
         if (!compiled || compiled->scripts.empty())
             continue;
         for (size_t index = 0; index < compiled->scripts.size(); index++){
@@ -240,19 +239,19 @@ void UIDocumentSystem::compatRunScripts(){
         compatState->runningScripts = false;
 }
 
-bool UIDocumentSystem::compatRunScript(Entity entity, Rml::ElementDocument* document, const CompatDocument& compiled, size_t index){
+bool UIDocumentSystem::compatRunScript(Entity entity, Rml::ElementDocument* document, const htmlui::compat::CompatDocument& compiled, size_t index){
     if (index >= compiled.scripts.size())
         return false;
-    const DocumentScript& script = compiled.scripts[index];
+    const htmlui::compat::DocumentScript& script = compiled.scripts[index];
     UIDocument handle(scene, entity);
     std::string error;
     // the listeners it attaches are the script's (not moved by a reload: it runs again; a patch
     // removes them before it runs this script again)
     HtmlUIEventListener::ScriptScope scriptScope(document, (int)index);
     if (!HtmlUILua::runDocumentScript(handle, script, &error)){
-        const Diagnostic diagnostic = scriptError(script, error);
-        Log::error("[HTML UI] %s", toText(diagnostic).c_str());
-        DocumentLoader::addRuntimeDiagnostic(document, diagnostic);
+        const htmlui::compat::Diagnostic diagnostic = scriptError(script, error);
+        Log::error("[HTML UI] %s", htmlui::compat::toText(diagnostic).c_str());
+        htmlui::compat::DocumentLoader::addRuntimeDiagnostic(document, diagnostic);
         return false;
     }
     return true;
@@ -264,11 +263,11 @@ bool UIDocumentSystem::compatScriptsRun() const{
 
 bool UIDocumentSystem::compatRestyle(Entity entity){
     Rml::ElementDocument* document = getDocument(entity);
-    std::shared_ptr<const CompatDocument> compiled = DocumentLoader::compiledOf(document);
+    std::shared_ptr<const htmlui::compat::CompatDocument> compiled = htmlui::compat::DocumentLoader::compiledOf(document);
     if (!compiled)
         return false;
-    std::shared_ptr<const CompatDocument> fresh = DocumentLoader::compile(compiled->sourcePath, compiled->options);
-    if (!fresh->compiled || !DocumentLoader::sameRml(*fresh, *compiled))
+    std::shared_ptr<const htmlui::compat::CompatDocument> fresh = htmlui::compat::DocumentLoader::compile(compiled->sourcePath, compiled->options);
+    if (!fresh->compiled || !htmlui::compat::DocumentLoader::sameRml(*fresh, *compiled))
         return false;
     // scripts and templates are part of the document: a change reloads it (scripts run again)
     if (fresh->scripts.size() != compiled->scripts.size() || fresh->templates.size() != compiled->templates.size())
@@ -282,13 +281,13 @@ bool UIDocumentSystem::compatRestyle(Entity entity){
             return false;
     }
     if (fresh != compiled){
-        logDiagnostics(fresh->sourcePath, fresh->diagnostics, fresh->options.verboseDiagnostics);
-        DocumentLoader::restyle(document, fresh, fresh->options);
+        htmlui::compat::logDiagnostics(fresh->sourcePath, fresh->diagnostics, fresh->options.verboseDiagnostics);
+        htmlui::compat::DocumentLoader::restyle(document, fresh, fresh->options);
     }
     return true;
 }
 
 std::vector<std::string> UIDocumentSystem::compatDependencies(Rml::ElementDocument* document) const{
-    std::shared_ptr<const CompatDocument> compiled = DocumentLoader::compiledOf(document);
+    std::shared_ptr<const htmlui::compat::CompatDocument> compiled = htmlui::compat::DocumentLoader::compiledOf(document);
     return compiled ? compiled->dependencies : std::vector<std::string>();
 }

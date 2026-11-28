@@ -38,7 +38,6 @@
 #include <map>
 
 using namespace jasperengine;
-using namespace jasperengine::terraincore;
 namespace fs = std::filesystem;
 
 namespace {
@@ -201,7 +200,7 @@ bool editor::TerrainFoliagePanel::setPrototypes(SceneProject* sceneProject, Enti
 }
 
 void editor::TerrainFoliagePanel::addPrototype(SceneProject* sceneProject, Entity entity, TerrainComponent& terrain, const std::string& meshPath) {
-    if (terrain.treePrototypes.size() >= static_cast<size_t>(FOLIAGE_MAX_PROTOTYPES)) return;
+    if (terrain.treePrototypes.size() >= static_cast<size_t>(terraincore::FOLIAGE_MAX_PROTOTYPES)) return;
     std::vector<TerrainTreePrototype> prototypes = terrain.treePrototypes;
     TerrainTreePrototype added;
     uint32_t id = 1;
@@ -226,10 +225,10 @@ void editor::TerrainFoliagePanel::removePrototype(SceneProject* sceneProject, En
         // T4 R27: every tile's, those out of memory too
         TerrainWorldTreeEdit edit(project, sceneProject->id, entity);
         for (const terraincore::TileCoord& tile : edit.presentTiles()) {
-            const TreeStore* store = edit.trees(tile);
+            const terraincore::TreeStore* store = edit.trees(tile);
             if (!store) continue;
             std::vector<uint32_t> removed;
-            for (const TreeRecord& record : store->records()) {
+            for (const terraincore::TreeRecord& record : store->records()) {
                 if (record.prototypeId == id) removed.push_back(record.id);
             }
             if (!removed.empty()) edit.apply(tile, removed, {});
@@ -240,13 +239,13 @@ void editor::TerrainFoliagePanel::removePrototype(SceneProject* sceneProject, En
             bakeStatus = error;
             return;
         }
-    } else if (std::shared_ptr<TreeStore> store = foliage->getTreeStore(entity)) {
+    } else if (std::shared_ptr<terraincore::TreeStore> store = foliage->getTreeStore(entity)) {
         std::vector<uint32_t> removed;
-        for (const TreeRecord& record : store->records()) {
+        for (const terraincore::TreeRecord& record : store->records()) {
             if (record.prototypeId == id) removed.push_back(record.id);
         }
         if (!removed.empty()) {
-            TreeDelta delta;
+            terraincore::TreeDelta delta;
             store->apply(removed, {}, {}, &delta);
             history->addCommand(new TreeEditCmd(project, sceneProject->id, entity, "Erase Trees (" + sceneProject->scene->getEntityName(entity) + ")", std::move(delta)));
         }
@@ -314,8 +313,8 @@ void editor::TerrainFoliagePanel::drawPrototypeGrid(SceneProject* sceneProject, 
         // a World's trees are in tiles out of memory too: it always asks
         uint64_t count = terrain.world ? 1 : 0;
         if (!terrain.world && removeIndex < static_cast<int>(terrain.treePrototypes.size())) {
-            if (std::shared_ptr<TreeStore> store = foliage->getTreeStore(entity)) {
-                for (const TreeRecord& record : store->records()) {
+            if (std::shared_ptr<terraincore::TreeStore> store = foliage->getTreeStore(entity)) {
+                for (const terraincore::TreeRecord& record : store->records()) {
                     if (record.prototypeId == terrain.treePrototypes[removeIndex].id) count++;
                 }
             }
@@ -536,42 +535,42 @@ void editor::TerrainFoliagePanel::drawMassPlace(SceneProject* sceneProject, Enti
         request.terrain = entity;
         request.dryRun = dryRun;
         request.undoName = "Mass Place Trees (" + sceneProject->scene->getEntityName(entity) + ")";
-        Op op;
-        op.type = OpType::Registered;
+        terraincore::Op op;
+        op.type = terraincore::OpType::Registered;
         op.registeredName = "scatter_by_rules";
         op.seed = static_cast<uint32_t>(massSeed);
-        const auto number = [](double value) { OpParam param; param.kind = OpParam::Kind::Number; param.number = value; return param; };
-        const auto text = [](const std::string& value) { OpParam param; param.kind = OpParam::Kind::String; param.text = value; return param; };
-        OpParam targets;
-        targets.kind = OpParam::Kind::List;
+        const auto number = [](double value) { terraincore::OpParam param; param.kind = terraincore::OpParam::Kind::Number; param.number = value; return param; };
+        const auto text = [](const std::string& value) { terraincore::OpParam param; param.kind = terraincore::OpParam::Kind::String; param.text = value; return param; };
+        terraincore::OpParam targets;
+        targets.kind = terraincore::OpParam::Kind::List;
         for (size_t i = 0; i < terrain.treePrototypes.size(); i++) {
-            OpParam entry;
-            entry.kind = OpParam::Kind::Object;
+            terraincore::OpParam entry;
+            entry.kind = terraincore::OpParam::Kind::Object;
             entry.fields.emplace_back("prototype", number(static_cast<double>(i)));
             entry.fields.emplace_back("weight", number(massWeights[i]));
             targets.items.push_back(std::move(entry));
         }
-        OpParam target;
-        target.kind = OpParam::Kind::Object;
+        terraincore::OpParam target;
+        target.kind = terraincore::OpParam::Kind::Object;
         target.fields.emplace_back("trees", std::move(targets));
-        OpParam range;
-        range.kind = OpParam::Kind::List;
+        terraincore::OpParam range;
+        range.kind = terraincore::OpParam::Kind::List;
         range.items = {number(massSlope[0]), number(massSlope[1])};
-        OpParam rangeHeight;
-        rangeHeight.kind = OpParam::Kind::List;
+        terraincore::OpParam rangeHeight;
+        rangeHeight.kind = terraincore::OpParam::Kind::List;
         rangeHeight.items = {number(massHeight[0]), number(massHeight[1])};
-        OpParam exclude;
-        exclude.kind = OpParam::Kind::Object;
-        OpParam holes;
-        holes.kind = OpParam::Kind::Bool;
+        terraincore::OpParam exclude;
+        exclude.kind = terraincore::OpParam::Kind::Object;
+        terraincore::OpParam holes;
+        holes.kind = terraincore::OpParam::Kind::Bool;
         holes.boolean = massExcludeHoles;
         exclude.fields.emplace_back("holes", std::move(holes));
-        OpParam rules;
-        rules.kind = OpParam::Kind::Object;
+        terraincore::OpParam rules;
+        rules.kind = terraincore::OpParam::Kind::Object;
         rules.fields.emplace_back("slope", std::move(range));
         rules.fields.emplace_back("height", std::move(rangeHeight));
         rules.fields.emplace_back("exclude", std::move(exclude));
-        op.params.kind = OpParam::Kind::Object;
+        op.params.kind = terraincore::OpParam::Kind::Object;
         op.params.fields.emplace_back("target", std::move(target));
         op.params.fields.emplace_back("count", number(massCount));
         op.params.fields.emplace_back("mode", text(massKeepExisting ? "add" : "replace"));
@@ -587,7 +586,7 @@ void editor::TerrainFoliagePanel::drawMassPlace(SceneProject* sceneProject, Enti
         massStatus = "Counting...";
         massRunner = FoliageOpRunner::start(project, makeRequest(true), [status](const FoliageOpRunner::Outcome& outcome) {
             int64_t added = 0;
-            for (const OpEntry& entry : outcome.result.ops) {
+            for (const terraincore::OpEntry& entry : outcome.result.ops) {
                 for (const auto& [key, value] : entry.fields) {
                     if (key == "instances_added") added += static_cast<int64_t>(value.number);
                 }
@@ -622,7 +621,7 @@ void editor::TerrainFoliagePanel::drawMassPlace(SceneProject* sceneProject, Enti
 }
 
 editor::TerrainFoliagePanel::Estimate editor::TerrainFoliagePanel::estimateFor(int tier, const TerrainComponent& terrain, uint64_t detailVisibleHigh, uint64_t treesVisible, uint64_t treesStored, uint32_t draws) {
-    const FoliageTierLimits limits = foliageTierLimits(tier == 0 ? FoliageTier::High : FoliageTier::Low);
+    const terraincore::FoliageTierLimits limits = terraincore::foliageTierLimits(tier == 0 ? terraincore::FoliageTier::High : terraincore::FoliageTier::Low);
     const float distanceScale = tier == 0 ? 1.0f : 0.5f;
     Estimate estimate;
     // what a tier leaves of what High shows here: density scales it, Foliage Distance by its square
@@ -630,9 +629,9 @@ editor::TerrainFoliagePanel::Estimate editor::TerrainFoliagePanel::estimateFor(i
     estimate.treesVisible = std::min<uint64_t>(treesVisible, limits.maxVisibleTrees);
     estimate.meshTrees = std::min<uint64_t>(treesVisible, std::min<uint64_t>(static_cast<uint64_t>(std::max(terrain.maxMeshTrees, 0)), limits.maxMeshTreesCap));
     estimate.draws = std::min(draws, limits.maxDraws);
-    const uint64_t instanceBytes = (estimate.detailVisible + estimate.treesVisible) * sizeof(FoliageInstance);
-    estimate.cpuBytes = treesStored * sizeof(TreeRecord) + instanceBytes;
-    estimate.gpuBytes = instanceBytes + estimate.meshTrees * sizeof(FoliageInstance);
+    const uint64_t instanceBytes = (estimate.detailVisible + estimate.treesVisible) * sizeof(terraincore::FoliageInstance);
+    estimate.cpuBytes = treesStored * sizeof(terraincore::TreeRecord) + instanceBytes;
+    estimate.gpuBytes = instanceBytes + estimate.meshTrees * sizeof(terraincore::FoliageInstance);
     estimate.over = detailVisibleHigh * limits.detailDensity > limits.maxDetailInstances || treesVisible > limits.maxVisibleTrees || draws > limits.maxDraws;
     return estimate;
 }
@@ -724,7 +723,7 @@ void editor::TerrainFoliagePanel::drawWarnings(SceneProject* sceneProject, Entit
             }
         }
     }
-    const FoliageTierLimits low = foliageTierLimits(FoliageTier::Low);
+    const terraincore::FoliageTierLimits low = terraincore::foliageTierLimits(terraincore::FoliageTier::Low);
     if (stats.treesTotal > low.maxVisibleTrees) {
         ImGui::TextColored(warning, "%llu trees: past the Mobile budget of %u visible.", static_cast<unsigned long long>(stats.treesTotal), low.maxVisibleTrees);
     }
@@ -736,7 +735,7 @@ void editor::TerrainFoliagePanel::drawWarnings(SceneProject* sceneProject, Entit
 }
 
 void editor::TerrainFoliagePanel::drawConvert(SceneProject* sceneProject, Entity entity, TerrainComponent& terrain) {
-    FoliageOpHost host;
+    terraincore::FoliageOpHost host;
     FoliageOpRunner::fillHost(project, sceneProject->id, entity, host);
     for (const auto& [key, placed] : host.placedHosts) {
         if (placed.instances.empty()) continue;
@@ -744,19 +743,19 @@ void editor::TerrainFoliagePanel::drawConvert(SceneProject* sceneProject, Entity
         // a host needs a prototype of its model to become trees
         std::string label = "Convert Placed Instances to Trees (" + placed.name + ")";
         bool hasPrototype = false;
-        for (const FoliageOpHost::Prototype& prototypeEntry : host.prototypes) hasPrototype = hasPrototype || prototypeEntry.id == placed.prototypeId;
+        for (const terraincore::FoliageOpHost::Prototype& prototypeEntry : host.prototypes) hasPrototype = hasPrototype || prototypeEntry.id == placed.prototypeId;
         ImGui::BeginDisabled(!hasPrototype || terrain.treePrototypes.empty());
         if (ImGui::Button(label.c_str())) {
             FoliageOpRunner::Request request;
             request.sceneId = sceneProject->id;
             request.terrain = entity;
             request.undoName = "Convert Placed Instances (" + sceneProject->scene->getEntityName(entity) + ")";
-            Op op;
-            op.type = OpType::Registered;
+            terraincore::Op op;
+            op.type = terraincore::OpType::Registered;
             op.registeredName = "convert_placed_to_trees";
-            op.params.kind = OpParam::Kind::Object;
-            OpParam hostParam;
-            hostParam.kind = OpParam::Kind::String;
+            op.params.kind = terraincore::OpParam::Kind::Object;
+            terraincore::OpParam hostParam;
+            hostParam.kind = terraincore::OpParam::Kind::String;
             hostParam.text = key;
             op.params.fields.emplace_back("host", std::move(hostParam));
             request.ops.push_back(std::move(op));
@@ -890,25 +889,25 @@ bool editor::TerrainFoliagePanel::beginStroke(SceneProject* sceneProject, Entity
     return stamp(sceneProject, entity, local, brushSize);
 }
 
-void editor::TerrainFoliagePanel::commitStamp(SceneProject* sceneProject, Entity entity, TreeDelta&& delta) {
+void editor::TerrainFoliagePanel::commitStamp(SceneProject* sceneProject, Entity entity, terraincore::TreeDelta&& delta) {
     if (delta.removed.empty() && delta.added.empty()) return;
     strokeChanged += static_cast<int>(delta.removed.size() + delta.added.size());
     CommandHandle::get(sceneProject->id)->addCommand(new TreeEditCmd(project, sceneProject->id, entity, strokeName, std::move(delta), strokeId));
 }
 
-TreeRecord editor::TerrainFoliagePanel::strokeTree(const TerrainTreePrototype& authored) {
+terraincore::TreeRecord editor::TerrainFoliagePanel::strokeTree(const TerrainTreePrototype& authored) {
     std::uniform_real_distribution<float> unit(0.0f, 1.0f);
-    TreeRecord record{};
+    terraincore::TreeRecord record{};
     const float tall = treeHeight * (1.0f + (unit(random) * 2.0f - 1.0f) * treeHeightRandom);
     const float wide = lockWidthToHeight ? tall : treeWidth * (1.0f + (unit(random) * 2.0f - 1.0f) * treeWidthRandom);
     record.scale = std::max(wide, 0.01f);
     record.heightRatio = static_cast<uint8_t>(std::clamp(tall / record.scale * 128.0f + 0.5f, 1.0f, 255.0f));
     float rotation[4];
     const float up[3] = {0.0f, 1.0f, 0.0f};
-    foliageOrientation(randomRotation ? unit(random) : 0.0f, 0.0f, up, rotation);
-    foliageQuantizeRotation(rotation, record.rotation);
+    terraincore::foliageOrientation(randomRotation ? unit(random) : 0.0f, 0.0f, up, rotation);
+    terraincore::foliageQuantizeRotation(rotation, record.rotation);
     record.prototypeId = static_cast<uint16_t>(authored.id);
-    record.flags = TREE_SNAP_TO_TERRAIN | treeAlignFlags(normalAlignment);
+    record.flags = terraincore::TREE_SNAP_TO_TERRAIN | terraincore::treeAlignFlags(normalAlignment);
     const float tint = 1.0f - unit(random) * colorVariation;
     const uint8_t shade = static_cast<uint8_t>(std::clamp(tint * 255.0f + 0.5f, 0.0f, 255.0f));
     record.color[0] = record.color[1] = record.color[2] = shade;
@@ -922,16 +921,16 @@ bool editor::TerrainFoliagePanel::stamp(SceneProject* sceneProject, Entity entit
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
     if (worldStroke) return stampWorld(terrain, local, brushSize);
     FoliageSystem* foliage = scene->getSystem<FoliageSystem>().get();
-    std::shared_ptr<TreeStore> store = foliage->getOrCreateTreeStore(entity);
+    std::shared_ptr<terraincore::TreeStore> store = foliage->getOrCreateTreeStore(entity);
     if (!store) return false;
     const float size = terrain.terrainSize;
-    TreeDelta delta;
+    terraincore::TreeDelta delta;
 
     if (strokeErase) {
         const uint32_t onlyId = (strokeEraseSelectedOnly && isReady(terrain)) ? terrain.treePrototypes[prototype].id : UINT32_MAX;
         const float radiusSquared = brushSize * brushSize;
         std::vector<uint32_t> removed;
-        for (const TreeRecord& record : store->records()) {
+        for (const terraincore::TreeRecord& record : store->records()) {
             if (onlyId != UINT32_MAX && record.prototypeId != onlyId) continue;
             const float dx = foliageTreeLocalX(record, size) - local.x;
             const float dz = foliageTreeLocalZ(record, size) - local.z;
@@ -954,7 +953,7 @@ bool editor::TerrainFoliagePanel::stamp(SceneProject* sceneProject, Entity entit
 
     const float half = size * 0.5f;
     const float spacingSquared = spacing * spacing;
-    std::vector<TreeRecord> added;
+    std::vector<terraincore::TreeRecord> added;
     for (int i = 0; i < count; i++) {
         const float angle = unit(random) * 6.28318530718f;
         const float radius = std::sqrt(unit(random)) * brushSize;
@@ -963,7 +962,7 @@ bool editor::TerrainFoliagePanel::stamp(SceneProject* sceneProject, Entity entit
         if (x < -half || x > half || z < -half || z > half) continue;
         bool close = false;
         if (spacing > 0.0f) {
-            for (const TreeRecord& other : store->records()) {
+            for (const terraincore::TreeRecord& other : store->records()) {
                 const float dx = foliageTreeLocalX(other, size) - x;
                 const float dz = foliageTreeLocalZ(other, size) - z;
                 if (dx * dx + dz * dz < spacingSquared) {
@@ -971,18 +970,18 @@ bool editor::TerrainFoliagePanel::stamp(SceneProject* sceneProject, Entity entit
                     break;
                 }
             }
-            for (const TreeRecord& other : added) {
+            for (const terraincore::TreeRecord& other : added) {
                 const float dx = foliageTreeLocalX(other, size) - x;
                 const float dz = foliageTreeLocalZ(other, size) - z;
                 if (dx * dx + dz * dz < spacingSquared) close = true;
             }
         }
         if (close) continue;
-        const SurfaceSample sample = querySurface(terrain, x, z);
+        const terraincore::SurfaceSample sample = querySurface(terrain, x, z);
         // R7: over a hole there is nothing to stand on
         if (sample.hole) continue;
-        TreeRecord record = strokeTree(authored);
-        foliageSetTreeSurface(record, size, terrain.maxHeight, x, z, sample.height);
+        terraincore::TreeRecord record = strokeTree(authored);
+        terraincore::foliageSetTreeSurface(record, size, terrain.maxHeight, x, z, sample.height);
         added.push_back(record);
     }
     if (added.empty()) return false;
@@ -1007,11 +1006,11 @@ bool editor::TerrainFoliagePanel::stampWorld(TerrainComponent& terrain, const Ve
         const float radiusSquared = brushSize * brushSize;
         bool any = false;
         for (const terraincore::TileCoord& tile : reached) {
-            const TreeStore* store = edit.trees(tile);
+            const terraincore::TreeStore* store = edit.trees(tile);
             if (!store) continue;
             const Vector2 centre = edit.centre(tile);
             std::vector<uint32_t> removed;
-            for (const TreeRecord& record : store->records()) {
+            for (const terraincore::TreeRecord& record : store->records()) {
                 if (onlyId != UINT32_MAX && record.prototypeId != onlyId) continue;
                 const float dx = foliageTreeLocalX(record, size) + centre.x - local.x;
                 const float dz = foliageTreeLocalZ(record, size) + centre.y - local.z;
@@ -1035,7 +1034,7 @@ bool editor::TerrainFoliagePanel::stampWorld(TerrainComponent& terrain, const Ve
     if (count == 0) return false;
 
     const float spacingSquared = spacing * spacing;
-    std::map<uint32_t, std::vector<TreeRecord>> added;
+    std::map<uint32_t, std::vector<terraincore::TreeRecord>> added;
     std::vector<Vector2> placed;    // this stamp's, entity-local
     for (int i = 0; i < count; i++) {
         const float angle = unit(random) * 6.28318530718f;
@@ -1053,10 +1052,10 @@ bool editor::TerrainFoliagePanel::stampWorld(TerrainComponent& terrain, const Ve
         if (spacing > 0.0f) {
             // the trees of every tile within spacing: a border lets no two trees closer
             for (const terraincore::TileCoord& nearby : edit.tilesIn(x - spacing, z - spacing, x + spacing, z + spacing)) {
-                const TreeStore* store = edit.trees(nearby);
+                const terraincore::TreeStore* store = edit.trees(nearby);
                 if (!store) continue;
                 const Vector2 centre = edit.centre(nearby);
-                for (const TreeRecord& other : store->records()) {
+                for (const terraincore::TreeRecord& other : store->records()) {
                     const float dx = foliageTreeLocalX(other, size) + centre.x - x;
                     const float dz = foliageTreeLocalZ(other, size) + centre.y - z;
                     if (dx * dx + dz * dz < spacingSquared) {
@@ -1071,11 +1070,11 @@ bool editor::TerrainFoliagePanel::stampWorld(TerrainComponent& terrain, const Ve
             }
         }
         if (close) continue;
-        const SurfaceSample sample = querySurface(terrain, x, z);
+        const terraincore::SurfaceSample sample = querySurface(terrain, x, z);
         if (sample.hole || !sample.present) continue;
-        TreeRecord record = strokeTree(authored);
+        terraincore::TreeRecord record = strokeTree(authored);
         const Vector2 centre = edit.centre(tile);
-        foliageSetTreeSurface(record, size, edit.maxHeight(), x - centre.x, z - centre.y, sample.height);
+        terraincore::foliageSetTreeSurface(record, size, edit.maxHeight(), x - centre.x, z - centre.y, sample.height);
         added[tile.key()].push_back(record);
         placed.push_back(Vector2(x, z));
     }
@@ -1140,8 +1139,8 @@ bool editor::TerrainFoliagePanel::pickPrototype(SceneProject* sceneProject, Enti
     FoliageSystem* foliage = scene->getSystem<FoliageSystem>().get();
     float best = radius * radius;
     int found = -1;
-    const auto consider = [&](const TreeStore& store, float size, float centreX, float centreZ) {
-        for (const TreeRecord& record : store.records()) {
+    const auto consider = [&](const terraincore::TreeStore& store, float size, float centreX, float centreZ) {
+        for (const terraincore::TreeRecord& record : store.records()) {
             const float dx = foliageTreeLocalX(record, size) + centreX - local.x;
             const float dz = foliageTreeLocalZ(record, size) + centreZ - local.z;
             const float squared = dx * dx + dz * dz;
@@ -1159,9 +1158,9 @@ bool editor::TerrainFoliagePanel::pickPrototype(SceneProject* sceneProject, Enti
         // T4 R27: the tiles round the point, each in its own frame
         TerrainWorldTreeEdit edit(project, sceneProject->id, entity);
         for (const terraincore::TileCoord& tile : edit.tilesIn(local.x - radius, local.z - radius, local.x + radius, local.z + radius)) {
-            if (const TreeStore* store = edit.trees(tile)) consider(*store, edit.tileSize(), edit.centre(tile).x, edit.centre(tile).y);
+            if (const terraincore::TreeStore* store = edit.trees(tile)) consider(*store, edit.tileSize(), edit.centre(tile).x, edit.centre(tile).y);
         }
-    } else if (std::shared_ptr<TreeStore> store = foliage->getTreeStore(entity)) {
+    } else if (std::shared_ptr<terraincore::TreeStore> store = foliage->getTreeStore(entity)) {
         consider(*store, terrain.terrainSize, 0.0f, 0.0f);
     }
     if (found < 0) return false;

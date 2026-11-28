@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+namespace DialogueExpressionTest_cpp {
+
 using namespace jasperengine::dialogue;
 
 namespace {
@@ -232,3 +234,5 @@ TEST(DialogueExpression, MalformedInputNeverCrashes) {
     }
     EXPECT_GT(compiled, 0);
 }
+
+}  // namespace DialogueExpressionTest_cpp

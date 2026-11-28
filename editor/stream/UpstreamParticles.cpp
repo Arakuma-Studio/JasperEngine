@@ -14,7 +14,6 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
 namespace up = jasperengine::editor::upstreamparticles;
 
 namespace {
@@ -142,62 +141,62 @@ namespace {
         // A MinMaxCurve: a number, {mode: two_constants, min, max}, {mode: curve, multiplier,
         // curve} or {mode: two_curves, multiplier, min, max}; `scale` converts its unit (rad/s
         // to deg/s). An absent value is `fallback` (in S20's unit already).
-        MinMaxCurve minMax(const YAML::Node& node, const MinMaxCurve& fallback, const std::string& path, float scale = 1.0f){
+        particles::MinMaxCurve minMax(const YAML::Node& node, const particles::MinMaxCurve& fallback, const std::string& path, float scale = 1.0f){
             if (!node || node.IsNull())
                 return fallback;
             if (node.IsScalar())
-                return MinMaxCurve(number(node, fallback.constant / (scale != 0.0f ? scale : 1.0f)) * scale);
+                return particles::MinMaxCurve(number(node, fallback.constant / (scale != 0.0f ? scale : 1.0f)) * scale);
             if (!node.IsMap()){
                 note(path + ": not a value (the default is kept)");
                 return fallback;
             }
             const std::string mode = node["mode"] && node["mode"].IsScalar() ? node["mode"].Scalar() : std::string("constant");
             if (mode == "two_constants")
-                return MinMaxCurve::twoConstants(number(node["min"], 0.0f) * scale, number(node["max"], 0.0f) * scale);
+                return particles::MinMaxCurve::twoConstants(number(node["min"], 0.0f) * scale, number(node["max"], 0.0f) * scale);
             if (mode == "curve")
-                return MinMaxCurve::fromCurve(curve(node["curve"], path + ".curve"), number(node["multiplier"], 1.0f) * scale);
+                return particles::MinMaxCurve::fromCurve(curve(node["curve"], path + ".curve"), number(node["multiplier"], 1.0f) * scale);
             if (mode == "two_curves"){
-                MinMaxCurve value = MinMaxCurve::fromCurve(curve(node["min"], path + ".min"), number(node["multiplier"], 1.0f) * scale);
-                value.mode = CurveMode::TwoCurves;
+                particles::MinMaxCurve value = particles::MinMaxCurve::fromCurve(curve(node["min"], path + ".min"), number(node["multiplier"], 1.0f) * scale);
+                value.mode = particles::CurveMode::TwoCurves;
                 value.curveMax = curve(node["max"], path + ".max");
                 return value;
             }
             if (mode != "constant")
                 note(path + ": mode '" + mode + "' is not a curve mode (a constant is read)");
             const YAML::Node constant = node["value"] ? node["value"] : node["constant"];
-            return MinMaxCurve(number(constant, fallback.constant / (scale != 0.0f ? scale : 1.0f)) * scale);
+            return particles::MinMaxCurve(number(constant, fallback.constant / (scale != 0.0f ? scale : 1.0f)) * scale);
         }
 
         // A MinMaxGradient: a colour, {mode: two_colors, min, max}, {mode: gradient |
         // random_color, gradient} or {mode: two_gradients, min, max}
-        MinMaxGradient minMaxGradient(const YAML::Node& node, const MinMaxGradient& fallback, const std::string& path){
+        particles::MinMaxGradient minMaxGradient(const YAML::Node& node, const particles::MinMaxGradient& fallback, const std::string& path){
             if (!node || node.IsNull())
                 return fallback;
             Vector4 single;
             if ((node.IsScalar() || node.IsSequence()) && color(node, single))
-                return MinMaxGradient(single);
+                return particles::MinMaxGradient(single);
             if (!node.IsMap()){
                 note(path + ": not a colour (the default is kept)");
                 return fallback;
             }
             const std::string mode = node["mode"] && node["mode"].IsScalar() ? node["mode"].Scalar() : std::string("color");
             const Vector4 white(1.0f, 1.0f, 1.0f, 1.0f);
-            MinMaxGradient value;
+            particles::MinMaxGradient value;
             if (mode == "two_colors"){
-                value.mode = GradientValueMode::TwoColors;
+                value.mode = particles::GradientValueMode::TwoColors;
                 value.color = colorOr(node["min"], white, path + ".min");
                 value.colorMax = colorOr(node["max"], white, path + ".max");
             }else if (mode == "gradient" || mode == "random_color"){
-                value.mode = mode == "gradient" ? GradientValueMode::Gradient : GradientValueMode::RandomColor;
+                value.mode = mode == "gradient" ? particles::GradientValueMode::Gradient : particles::GradientValueMode::RandomColor;
                 value.gradient = gradient(node["gradient"], path + ".gradient");
             }else if (mode == "two_gradients"){
-                value.mode = GradientValueMode::TwoGradients;
+                value.mode = particles::GradientValueMode::TwoGradients;
                 value.gradient = gradient(node["min"], path + ".min");
                 value.gradientMax = gradient(node["max"], path + ".max");
             }else{
                 if (mode != "color")
                     note(path + ": mode '" + mode + "' is not a gradient mode (a colour is read)");
-                value = MinMaxGradient(colorOr(node["color"], fallback.color, path + ".color"));
+                value = particles::MinMaxGradient(colorOr(node["color"], fallback.color, path + ".color"));
             }
             return value;
         }
@@ -211,14 +210,14 @@ namespace {
         return YAML::Node(YAML::NodeType::Map);
     }
 
-    ValueSpace space(int v){ return v == 1 ? ValueSpace::World : ValueSpace::Local; }
+    particles::ValueSpace space(int v){ return v == 1 ? particles::ValueSpace::World : particles::ValueSpace::Local; }
 
-    ShapeMultiMode multiMode(int v){
+    particles::ShapeMultiMode multiMode(int v){
         switch (v){
-            case 1: return ShapeMultiMode::Loop;
-            case 2: return ShapeMultiMode::PingPong;
-            case 3: return ShapeMultiMode::BurstSpread;
-            default: return ShapeMultiMode::Random;
+            case 1: return particles::ShapeMultiMode::Loop;
+            case 2: return particles::ShapeMultiMode::PingPong;
+            case 3: return particles::ShapeMultiMode::BurstSpread;
+            default: return particles::ShapeMultiMode::Random;
         }
     }
 
@@ -249,18 +248,18 @@ namespace {
         return rounded == 0.0f ? 0.0f : rounded;
     }
 
-    MeshSource primitiveOfName(const std::string& mesh, bool& known){
-        MeshSource source;
-        source.type = MeshSourceType::Primitive;
+    particles::MeshSource primitiveOfName(const std::string& mesh, bool& known){
+        particles::MeshSource source;
+        source.type = particles::MeshSourceType::Primitive;
         known = true;
-        if (mesh == "quad" || mesh.empty()) source.primitive = PrimitiveMesh::Quad;
-        else if (mesh == "cube") source.primitive = PrimitiveMesh::Cube;
-        else if (mesh == "sphere") source.primitive = PrimitiveMesh::Sphere;
-        else if (mesh == "cylinder") source.primitive = PrimitiveMesh::Cylinder;
-        else if (mesh == "capsule") source.primitive = PrimitiveMesh::Capsule;
-        else if (mesh == "plane") source.primitive = PrimitiveMesh::Plane;
+        if (mesh == "quad" || mesh.empty()) source.primitive = particles::PrimitiveMesh::Quad;
+        else if (mesh == "cube") source.primitive = particles::PrimitiveMesh::Cube;
+        else if (mesh == "sphere") source.primitive = particles::PrimitiveMesh::Sphere;
+        else if (mesh == "cylinder") source.primitive = particles::PrimitiveMesh::Cylinder;
+        else if (mesh == "capsule") source.primitive = particles::PrimitiveMesh::Capsule;
+        else if (mesh == "plane") source.primitive = particles::PrimitiveMesh::Plane;
         else {
-            source.type = MeshSourceType::Model;
+            source.type = particles::MeshSourceType::Model;
             source.model = mesh;
             known = false;
         }
@@ -271,7 +270,7 @@ namespace {
         return std::find(features.begin(), features.end(), name) != features.end();
     }
 
-    void setProperty(RendererModule& r, const std::string& name, const Vector4& value, int components){
+    void setProperty(particles::RendererModule& r, const std::string& name, const Vector4& value, int components){
         for (particles::ShaderProperty& p : r.shaderProperties){
             if (p.name == name){
                 p.value = value;
@@ -286,7 +285,7 @@ namespace {
         r.shaderProperties.push_back(p);
     }
 
-    void addFeature(RendererModule& r, const std::string& name){
+    void addFeature(particles::RendererModule& r, const std::string& name){
         if (!hasFeature(r.shaderFeatures, name))
             r.shaderFeatures.push_back(name);
     }
@@ -321,7 +320,7 @@ up::Target up::targetOf(const YAML::Node& components){
             const SpriteComponent decoded = editor::Stream::decodeSpriteComponent(sprite);
             for (unsigned int i = 0; i < decoded.numFramesRect; i++){
                 const Rect& r = decoded.framesRect[i].rect;
-                target.frames.push_back(SpriteRect{r.getX(), r.getY(), r.getWidth(), r.getHeight()});
+                target.frames.push_back(particles::SpriteRect{r.getX(), r.getY(), r.getWidth(), r.getHeight()});
             }
         }
     }else if (const YAML::Node pointsNode = components["points"]; pointsNode && pointsNode.IsMap()){
@@ -332,7 +331,7 @@ up::Target up::targetOf(const YAML::Node& components){
             target.textureGuid = points.texture.getPathGuid().str();
         for (unsigned int i = 0; i < points.numFramesRect; i++){
             const Rect& r = points.framesRect[i].rect;
-            target.frames.push_back(SpriteRect{r.getX(), r.getY(), r.getWidth(), r.getHeight()});
+            target.frames.push_back(particles::SpriteRect{r.getX(), r.getY(), r.getWidth(), r.getHeight()});
         }
         target.pointsShader = points.customShader.path;
         target.pointsFeatures = points.shaderFeatures;
@@ -354,10 +353,10 @@ up::Target up::targetOf(const YAML::Node& components){
         switch (points.blendMode){
             case MaterialBlendMode::AUTO: target.pointsBlend = -1; break;
             case MaterialBlendMode::NONE: target.pointsOpaque = true; break;
-            case MaterialBlendMode::PREMULTIPLIED: target.pointsBlend = (int)ParticleBlend::Premultiplied; break;
-            case MaterialBlendMode::ADDITIVE: target.pointsBlend = (int)ParticleBlend::Additive; break;
-            case MaterialBlendMode::MULTIPLY: target.pointsBlend = (int)ParticleBlend::Multiply; break;
-            default: target.pointsBlend = (int)ParticleBlend::Alpha; break;
+            case MaterialBlendMode::PREMULTIPLIED: target.pointsBlend = (int)particles::ParticleBlend::Premultiplied; break;
+            case MaterialBlendMode::ADDITIVE: target.pointsBlend = (int)particles::ParticleBlend::Additive; break;
+            case MaterialBlendMode::MULTIPLY: target.pointsBlend = (int)particles::ParticleBlend::Multiply; break;
+            default: target.pointsBlend = (int)particles::ParticleBlend::Alpha; break;
         }
         target.pointsDepthWrite = points.depthWrite == MaterialDepthWrite::AUTO ? -1 : (points.depthWrite == MaterialDepthWrite::ENABLED ? 1 : 0);
     }
@@ -389,42 +388,42 @@ Vector3 up::shapeRotation(const Vector3& e){
     return Vector3(tidy(b * kRadToDeg), tidy(a * kRadToDeg), tidy(c * kRadToDeg));
 }
 
-bool up::applyRenderMode(int renderMode, int alignment, bool localSimulation, RendererModule& r){
+bool up::applyRenderMode(int renderMode, int alignment, bool localSimulation, particles::RendererModule& r){
     switch (renderMode){
-        case 1: r.renderMode = RenderMode::StretchedBillboard; break;
-        case 2: r.renderMode = RenderMode::HorizontalBillboard; break;
-        case 3: r.renderMode = RenderMode::VerticalBillboard; break;
-        case 4: r.renderMode = RenderMode::Mesh; break;
+        case 1: r.renderMode = particles::RenderMode::StretchedBillboard; break;
+        case 2: r.renderMode = particles::RenderMode::HorizontalBillboard; break;
+        case 3: r.renderMode = particles::RenderMode::VerticalBillboard; break;
+        case 4: r.renderMode = particles::RenderMode::Mesh; break;
         default:
             switch (alignment){
                 // World turns a Local system's particles with its emitter there
-                case 1: r.renderMode = localSimulation ? RenderMode::LocalOriented : RenderMode::WorldOriented; break;
-                case 2: r.renderMode = RenderMode::LocalOriented; break;
-                case 3: r.renderMode = RenderMode::FacingCameraPosition; break;
-                case 4: r.renderMode = RenderMode::VelocityAligned; break;
-                default: r.renderMode = RenderMode::Billboard; break;
+                case 1: r.renderMode = localSimulation ? particles::RenderMode::LocalOriented : particles::RenderMode::WorldOriented; break;
+                case 2: r.renderMode = particles::RenderMode::LocalOriented; break;
+                case 3: r.renderMode = particles::RenderMode::FacingCameraPosition; break;
+                case 4: r.renderMode = particles::RenderMode::VelocityAligned; break;
+                default: r.renderMode = particles::RenderMode::Billboard; break;
             }
             return true;
     }
-    if (r.renderMode == RenderMode::Mesh){
+    if (r.renderMode == particles::RenderMode::Mesh){
         switch (alignment){
             // World there: the simulation's axes (a Local system's meshes turn with its emitter)
-            case 1: r.meshAlignment = MeshAlignment::Simulation; break;
-            case 2: r.meshAlignment = MeshAlignment::Local; break;
-            case 3: r.meshAlignment = MeshAlignment::Facing; break;
-            case 4: r.meshAlignment = MeshAlignment::Velocity; break;
-            default: r.meshAlignment = MeshAlignment::View; break;
+            case 1: r.meshAlignment = particles::MeshAlignment::Simulation; break;
+            case 2: r.meshAlignment = particles::MeshAlignment::Local; break;
+            case 3: r.meshAlignment = particles::MeshAlignment::Facing; break;
+            case 4: r.meshAlignment = particles::MeshAlignment::Velocity; break;
+            default: r.meshAlignment = particles::MeshAlignment::View; break;
         }
         return true;
     }
     return alignment == 0;
 }
 
-MeshSource up::meshSourceOf(const std::string& name, bool& primitive){
+particles::MeshSource up::meshSourceOf(const std::string& name, bool& primitive){
     return primitiveOfName(name, primitive);
 }
 
-void up::applyMaterial(const Material& material, RendererModule& r, std::vector<std::string>& notes){
+void up::applyMaterial(const Material& material, particles::RendererModule& r, std::vector<std::string>& notes){
     const std::string shader = material.shader.path;
     if (shader != "library:unlit")
         notes.push_back("its material's shader " + (shader.empty() ? std::string("(the built-in Lit)") : "'" + shader + "'") +
@@ -449,7 +448,7 @@ void up::applyMaterial(const Material& material, RendererModule& r, std::vector<
     }
     // without a base map: the built-in soft particle (PARTICLE_TEXTURE), else a white quad
     if (!textured)
-        r.untexturedShape = hasFeature(material.shaderFeatures, "PARTICLE_TEXTURE") ? UntexturedShape::Disc : UntexturedShape::Square;
+        r.untexturedShape = hasFeature(material.shaderFeatures, "PARTICLE_TEXTURE") ? particles::UntexturedShape::Disc : particles::UntexturedShape::Square;
 
     for (const auto& param : material.shaderParams){
         const std::string& name = param.first;
@@ -478,15 +477,15 @@ void up::applyMaterial(const Material& material, RendererModule& r, std::vector<
     }
 
     switch (material.blendMode){
-        case MaterialBlendMode::ADDITIVE: r.blend = ParticleBlend::Additive; break;
-        case MaterialBlendMode::MULTIPLY: r.blend = ParticleBlend::Multiply; break;
-        case MaterialBlendMode::PREMULTIPLIED: r.blend = ParticleBlend::Premultiplied; break;
+        case MaterialBlendMode::ADDITIVE: r.blend = particles::ParticleBlend::Additive; break;
+        case MaterialBlendMode::MULTIPLY: r.blend = particles::ParticleBlend::Multiply; break;
+        case MaterialBlendMode::PREMULTIPLIED: r.blend = particles::ParticleBlend::Premultiplied; break;
         case MaterialBlendMode::NONE:
-            r.blend = ParticleBlend::Alpha;
+            r.blend = particles::ParticleBlend::Alpha;
             r.depthWrite = true;
             notes.push_back("an opaque material draws alpha blended, with depth writes");
             break;
-        default: r.blend = ParticleBlend::Alpha; break;
+        default: r.blend = particles::ParticleBlend::Alpha; break;
     }
     if (material.depthWrite == MaterialDepthWrite::ENABLED)
         r.depthWrite = true;
@@ -495,48 +494,48 @@ void up::applyMaterial(const Material& material, RendererModule& r, std::vector<
 up::Result up::convert(const YAML::Node& node, const Target& target){
     Result result;
     Reader read{result.notes};
-    ParticleEffectDocument& d = result.effect;
+    particles::ParticleEffectDocument& d = result.effect;
 
     d.useUnscaledTime = read.flag(node["useUnscaledTime"], false);
 
     // ---------------------------------------------------------------- main
     const YAML::Node main = moduleOf(node, "main");
-    MainModule& m = d.main;
+    particles::MainModule& m = d.main;
     d.duration = std::max(0.05f, read.number(main["duration"], 5.0f));
     d.looping = read.flag(main["looping"], true);
     d.prewarm = read.flag(main["prewarm"], false);
-    d.startDelay = read.minMax(main["startDelay"], MinMaxCurve(0.0f), "main.startDelay");
+    d.startDelay = read.minMax(main["startDelay"], particles::MinMaxCurve(0.0f), "main.startDelay");
     if (d.startDelay.usesCurve()){
         // a delay is picked once per play: its curve's start
         const float at0 = d.startDelay.curve.evaluate(0.0f) * d.startDelay.multiplier;
-        d.startDelay = MinMaxCurve(at0);
+        d.startDelay = particles::MinMaxCurve(at0);
         read.note("main.startDelay: a curve delay starts at its value at 0");
     }
-    m.startLifetime = read.minMax(main["startLifetime"], MinMaxCurve(5.0f), "main.startLifetime");
-    m.startSpeed = read.minMax(main["startSpeed"], MinMaxCurve(5.0f), "main.startSpeed");
+    m.startLifetime = read.minMax(main["startLifetime"], particles::MinMaxCurve(5.0f), "main.startLifetime");
+    m.startSpeed = read.minMax(main["startSpeed"], particles::MinMaxCurve(5.0f), "main.startSpeed");
     m.startSize3D = read.flag(main["startSize3D"], false);
-    m.startSize = read.minMax(main["startSize"], MinMaxCurve(1.0f), "main.startSize");
-    m.startSizeY = read.minMax(main["startSizeY"], MinMaxCurve(1.0f), "main.startSizeY");
-    m.startSizeZ = read.minMax(main["startSizeZ"], MinMaxCurve(1.0f), "main.startSizeZ");
+    m.startSize = read.minMax(main["startSize"], particles::MinMaxCurve(1.0f), "main.startSize");
+    m.startSizeY = read.minMax(main["startSizeY"], particles::MinMaxCurve(1.0f), "main.startSizeY");
+    m.startSizeZ = read.minMax(main["startSizeZ"], particles::MinMaxCurve(1.0f), "main.startSizeZ");
     m.startRotation3D = read.flag(main["startRotation3D"], false);
-    m.startRotation = read.minMax(main["startRotation"], MinMaxCurve(0.0f), "main.startRotation", kRadToDeg);
-    m.startRotationX = read.minMax(main["startRotationX"], MinMaxCurve(0.0f), "main.startRotationX", kRadToDeg);
-    m.startRotationY = read.minMax(main["startRotationY"], MinMaxCurve(0.0f), "main.startRotationY", kRadToDeg);
+    m.startRotation = read.minMax(main["startRotation"], particles::MinMaxCurve(0.0f), "main.startRotation", kRadToDeg);
+    m.startRotationX = read.minMax(main["startRotationX"], particles::MinMaxCurve(0.0f), "main.startRotationX", kRadToDeg);
+    m.startRotationY = read.minMax(main["startRotationY"], particles::MinMaxCurve(0.0f), "main.startRotationY", kRadToDeg);
     m.flipRotation = std::clamp(read.number(main["flipRotation"], 0.0f), 0.0f, 1.0f);
-    m.startColor = read.minMaxGradient(main["startColor"], MinMaxGradient(), "main.startColor");
-    m.gravityModifier = read.minMax(main["gravityModifier"], MinMaxCurve(0.0f), "main.gravityModifier");
+    m.startColor = read.minMaxGradient(main["startColor"], particles::MinMaxGradient(), "main.startColor");
+    m.gravityModifier = read.minMax(main["gravityModifier"], particles::MinMaxCurve(0.0f), "main.gravityModifier");
     // over the emitter's time there (Unity's)
     if (m.gravityModifier.usesCurve())
-        m.gravityModifier.driver = CurveDriver::EmitterTime;
-    m.gravitySource = read.enumeration(main["gravitySource"], kGravitySource, 0, "main.gravitySource") == 1 ? GravitySource::Physics2D : GravitySource::Physics3D;
-    d.simulationSpace = read.enumeration(main["simulationSpace"], kSimulationSpace, 0, "main.simulationSpace") == 1 ? SimulationSpace::World : SimulationSpace::Local;
+        m.gravityModifier.driver = particles::CurveDriver::EmitterTime;
+    m.gravitySource = read.enumeration(main["gravitySource"], kGravitySource, 0, "main.gravitySource") == 1 ? particles::GravitySource::Physics2D : particles::GravitySource::Physics3D;
+    d.simulationSpace = read.enumeration(main["simulationSpace"], kSimulationSpace, 0, "main.simulationSpace") == 1 ? particles::SimulationSpace::World : particles::SimulationSpace::Local;
     d.simulationSpeed = std::max(0.0f, read.number(main["simulationSpeed"], 1.0f));
-    d.scalingMode = (ScalingMode)read.enumeration(main["scalingMode"], kScalingMode, 1, "main.scalingMode");
+    d.scalingMode = (particles::ScalingMode)read.enumeration(main["scalingMode"], kScalingMode, 1, "main.scalingMode");
     result.playOnAwake = read.flag(main["playOnAwake"], true);
-    d.maxParticles = (uint32_t)std::clamp(read.integer(main["maxParticles"], 1000), 0, (int)kMaxParticlesPerEmitter);
+    d.maxParticles = (uint32_t)std::clamp(read.integer(main["maxParticles"], 1000), 0, (int)particles::kMaxParticlesPerEmitter);
     d.emitterVelocityMode = read.enumeration(main["emitterVelocityMode"], kEmitterVelocity, 0, "main.emitterVelocityMode") == 1 ?
-        EmitterVelocityMode::Rigidbody : EmitterVelocityMode::Transform;
-    d.stopAction = (StopAction)read.enumeration(main["stopAction"], kStopAction, 0, "main.stopAction");
+        particles::EmitterVelocityMode::Rigidbody : particles::EmitterVelocityMode::Transform;
+    d.stopAction = (particles::StopAction)read.enumeration(main["stopAction"], kStopAction, 0, "main.stopAction");
     if (!read.flag(main["autoRandomSeed"], true)){
         const int seed = read.integer(main["randomSeed"], 0);
         // 0 is "a new seed every play" here: a fixed seed 0 plays as seed 1
@@ -545,23 +544,23 @@ up::Result up::convert(const YAML::Node& node, const Target& target){
 
     // ---------------------------------------------------------------- emission
     const YAML::Node emission = moduleOf(node, "emission");
-    EmissionModule& e = d.emission;
+    particles::EmissionModule& e = d.emission;
     e.enabled = read.flag(emission["enabled"], true);
-    e.rateOverTime = read.minMax(emission["rateOverTime"], MinMaxCurve(10.0f), "emission.rateOverTime");
-    e.rateOverDistance = read.minMax(emission["rateOverDistance"], MinMaxCurve(0.0f), "emission.rateOverDistance");
+    e.rateOverTime = read.minMax(emission["rateOverTime"], particles::MinMaxCurve(10.0f), "emission.rateOverTime");
+    e.rateOverDistance = read.minMax(emission["rateOverDistance"], particles::MinMaxCurve(0.0f), "emission.rateOverDistance");
     if (const YAML::Node bursts = emission["bursts"]; bursts && bursts.IsSequence()){
         for (size_t i = 0; i < bursts.size(); i++){
             const YAML::Node b = bursts[i];
             if (!b.IsMap())
                 continue;
-            if (e.bursts.size() >= kMaxBursts){
-                read.note("emission.bursts: more than " + std::to_string(kMaxBursts) + " bursts: the first " + std::to_string(kMaxBursts) + " are kept");
+            if (e.bursts.size() >= particles::kMaxBursts){
+                read.note("emission.bursts: more than " + std::to_string(particles::kMaxBursts) + " bursts: the first " + std::to_string(particles::kMaxBursts) + " are kept");
                 break;
             }
             const std::string at = "emission.bursts[" + std::to_string(i) + "]";
-            Burst burst;
+            particles::Burst burst;
             burst.time = std::max(0.0f, read.number(b["time"], 0.0f));
-            burst.count = read.minMax(b["count"], MinMaxCurve(30.0f), at + ".count");
+            burst.count = read.minMax(b["count"], particles::MinMaxCurve(30.0f), at + ".count");
             burst.cycles = std::max(0, read.integer(b["cycles"], 1));
             burst.interval = std::max(0.0001f, read.number(b["interval"], 0.01f));
             burst.probability = std::clamp(read.number(b["probability"], 1.0f), 0.0f, 1.0f);
@@ -571,32 +570,32 @@ up::Result up::convert(const YAML::Node& node, const Target& target){
 
     // ---------------------------------------------------------------- shape
     const YAML::Node shape = moduleOf(node, "shape");
-    ShapeModule& s = d.shape;
+    particles::ShapeModule& s = d.shape;
     s.enabled = read.flag(shape["enabled"], true);
     switch (read.enumeration(shape["shapeType"], kShapeType, 2, "shape.shapeType")){
-        case 0: s.shape = ShapeType::Sphere; s.emitFrom = ShapeEmitFrom::Volume; break;
-        case 1: s.shape = ShapeType::Hemisphere; s.emitFrom = ShapeEmitFrom::Volume; break;
-        case 3: s.shape = ShapeType::Cone; s.emitFrom = ShapeEmitFrom::Volume; break;
-        case 4: s.shape = ShapeType::Box; s.emitFrom = ShapeEmitFrom::Volume; break;
-        case 5: s.shape = ShapeType::Box; s.emitFrom = ShapeEmitFrom::Shell; break;
-        case 6: s.shape = ShapeType::Box; s.emitFrom = ShapeEmitFrom::Edge; break;
-        case 7: s.shape = ShapeType::Circle; s.emitFrom = ShapeEmitFrom::Volume; break;
-        case 8: s.shape = ShapeType::Edge; s.emitFrom = ShapeEmitFrom::Volume; break;
-        case 9: s.shape = ShapeType::Rectangle; s.emitFrom = ShapeEmitFrom::Volume; break;
-        case 10: s.shape = ShapeType::Donut; s.emitFrom = ShapeEmitFrom::Volume; break;
-        default: s.shape = ShapeType::Cone; s.emitFrom = ShapeEmitFrom::Base; break;
+        case 0: s.shape = particles::ShapeType::Sphere; s.emitFrom = particles::ShapeEmitFrom::Volume; break;
+        case 1: s.shape = particles::ShapeType::Hemisphere; s.emitFrom = particles::ShapeEmitFrom::Volume; break;
+        case 3: s.shape = particles::ShapeType::Cone; s.emitFrom = particles::ShapeEmitFrom::Volume; break;
+        case 4: s.shape = particles::ShapeType::Box; s.emitFrom = particles::ShapeEmitFrom::Volume; break;
+        case 5: s.shape = particles::ShapeType::Box; s.emitFrom = particles::ShapeEmitFrom::Shell; break;
+        case 6: s.shape = particles::ShapeType::Box; s.emitFrom = particles::ShapeEmitFrom::Edge; break;
+        case 7: s.shape = particles::ShapeType::Circle; s.emitFrom = particles::ShapeEmitFrom::Volume; break;
+        case 8: s.shape = particles::ShapeType::Edge; s.emitFrom = particles::ShapeEmitFrom::Volume; break;
+        case 9: s.shape = particles::ShapeType::Rectangle; s.emitFrom = particles::ShapeEmitFrom::Volume; break;
+        case 10: s.shape = particles::ShapeType::Donut; s.emitFrom = particles::ShapeEmitFrom::Volume; break;
+        default: s.shape = particles::ShapeType::Cone; s.emitFrom = particles::ShapeEmitFrom::Base; break;
     }
     s.radius = read.number(shape["radius"], 1.0f);
     s.radiusThickness = std::clamp(read.number(shape["radiusThickness"], 1.0f), 0.0f, 1.0f);
     s.radiusMode = multiMode(read.enumeration(shape["radiusMode"], kMultiMode, 0, "shape.radiusMode"));
     s.radiusSpread = std::clamp(read.number(shape["radiusSpread"], 0.0f), 0.0f, 1.0f);
-    s.radiusSpeed = read.minMax(shape["radiusSpeed"], MinMaxCurve(1.0f), "shape.radiusSpeed");
+    s.radiusSpeed = read.minMax(shape["radiusSpeed"], particles::MinMaxCurve(1.0f), "shape.radiusSpeed");
     s.angle = std::clamp(read.number(shape["angle"], 25.0f), 0.0f, 90.0f);
     s.length = std::max(0.0f, read.number(shape["length"], 5.0f));
     s.arc = std::clamp(read.number(shape["arc"], 360.0f), 0.0f, 360.0f);
     s.arcMode = multiMode(read.enumeration(shape["arcMode"], kMultiMode, 0, "shape.arcMode"));
     s.arcSpread = std::clamp(read.number(shape["arcSpread"], 0.0f), 0.0f, 1.0f);
-    s.arcSpeed = read.minMax(shape["arcSpeed"], MinMaxCurve(1.0f), "shape.arcSpeed");
+    s.arcSpeed = read.minMax(shape["arcSpeed"], particles::MinMaxCurve(1.0f), "shape.arcSpeed");
     s.boxThickness = read.vector3(shape["boxThickness"], Vector3(0.0f, 0.0f, 0.0f));
     s.donutRadius = read.number(shape["donutRadius"], 0.2f);
     s.position = read.vector3(shape["position"], Vector3(0.0f, 0.0f, 0.0f));
@@ -609,39 +608,39 @@ up::Result up::convert(const YAML::Node& node, const Target& target){
 
     // ---------------------------------------------------------------- velocity over lifetime
     if (const YAML::Node vol = node["velocityOverLifetime"]){
-        VelocityOverLifetimeModule& v = d.velocityOverLifetime;
+        particles::VelocityOverLifetimeModule& v = d.velocityOverLifetime;
         v.present = true;
         v.enabled = read.flag(vol["enabled"], false);
-        v.x = read.minMax(vol["x"], MinMaxCurve(0.0f), "velocityOverLifetime.x");
-        v.y = read.minMax(vol["y"], MinMaxCurve(0.0f), "velocityOverLifetime.y");
-        v.z = read.minMax(vol["z"], MinMaxCurve(0.0f), "velocityOverLifetime.z");
-        v.orbitalX = read.minMax(vol["orbitalX"], MinMaxCurve(0.0f), "velocityOverLifetime.orbitalX", kRadToDeg);
-        v.orbitalY = read.minMax(vol["orbitalY"], MinMaxCurve(0.0f), "velocityOverLifetime.orbitalY", kRadToDeg);
-        v.orbitalZ = read.minMax(vol["orbitalZ"], MinMaxCurve(0.0f), "velocityOverLifetime.orbitalZ", kRadToDeg);
-        v.offsetX = read.minMax(vol["orbitalOffsetX"], MinMaxCurve(0.0f), "velocityOverLifetime.orbitalOffsetX");
-        v.offsetY = read.minMax(vol["orbitalOffsetY"], MinMaxCurve(0.0f), "velocityOverLifetime.orbitalOffsetY");
-        v.offsetZ = read.minMax(vol["orbitalOffsetZ"], MinMaxCurve(0.0f), "velocityOverLifetime.orbitalOffsetZ");
-        v.radial = read.minMax(vol["radial"], MinMaxCurve(0.0f), "velocityOverLifetime.radial");
-        v.speedModifier = read.minMax(vol["speedModifier"], MinMaxCurve(1.0f), "velocityOverLifetime.speedModifier");
+        v.x = read.minMax(vol["x"], particles::MinMaxCurve(0.0f), "velocityOverLifetime.x");
+        v.y = read.minMax(vol["y"], particles::MinMaxCurve(0.0f), "velocityOverLifetime.y");
+        v.z = read.minMax(vol["z"], particles::MinMaxCurve(0.0f), "velocityOverLifetime.z");
+        v.orbitalX = read.minMax(vol["orbitalX"], particles::MinMaxCurve(0.0f), "velocityOverLifetime.orbitalX", kRadToDeg);
+        v.orbitalY = read.minMax(vol["orbitalY"], particles::MinMaxCurve(0.0f), "velocityOverLifetime.orbitalY", kRadToDeg);
+        v.orbitalZ = read.minMax(vol["orbitalZ"], particles::MinMaxCurve(0.0f), "velocityOverLifetime.orbitalZ", kRadToDeg);
+        v.offsetX = read.minMax(vol["orbitalOffsetX"], particles::MinMaxCurve(0.0f), "velocityOverLifetime.orbitalOffsetX");
+        v.offsetY = read.minMax(vol["orbitalOffsetY"], particles::MinMaxCurve(0.0f), "velocityOverLifetime.orbitalOffsetY");
+        v.offsetZ = read.minMax(vol["orbitalOffsetZ"], particles::MinMaxCurve(0.0f), "velocityOverLifetime.orbitalOffsetZ");
+        v.radial = read.minMax(vol["radial"], particles::MinMaxCurve(0.0f), "velocityOverLifetime.radial");
+        v.speedModifier = read.minMax(vol["speedModifier"], particles::MinMaxCurve(1.0f), "velocityOverLifetime.speedModifier");
         v.space = space(read.enumeration(vol["space"], kSimulationSpace, 0, "velocityOverLifetime.space"));
     }
 
     // ---------------------------------------------------------------- limit velocity
     if (const YAML::Node lim = node["limitVelocityOverLifetime"]){
-        LimitVelocityModule& l = d.limitVelocity;
+        particles::LimitVelocityModule& l = d.limitVelocity;
         l.present = true;
         l.enabled = read.flag(lim["enabled"], false);
         l.separateAxes = read.flag(lim["separateAxes"], false);
-        l.limit = read.minMax(l.separateAxes ? lim["limitX"] : lim["limit"], MinMaxCurve(1.0f), "limitVelocityOverLifetime.limit");
-        l.limitY = read.minMax(lim["limitY"], MinMaxCurve(1.0f), "limitVelocityOverLifetime.limitY");
-        l.limitZ = read.minMax(lim["limitZ"], MinMaxCurve(1.0f), "limitVelocityOverLifetime.limitZ");
+        l.limit = read.minMax(l.separateAxes ? lim["limitX"] : lim["limit"], particles::MinMaxCurve(1.0f), "limitVelocityOverLifetime.limit");
+        l.limitY = read.minMax(lim["limitY"], particles::MinMaxCurve(1.0f), "limitVelocityOverLifetime.limitY");
+        l.limitZ = read.minMax(lim["limitZ"], particles::MinMaxCurve(1.0f), "limitVelocityOverLifetime.limitZ");
         if (l.separateAxes && lim["limit"])
             read.note("limitVelocityOverLifetime.limit: with separate axes the X limit is the limit (its speed limit left out)");
         else if (!l.separateAxes && lim["limitX"])
             read.note("limitVelocityOverLifetime.limitX: without separate axes the speed limit is the limit (its X limit left out)");
         l.space = space(read.enumeration(lim["space"], kSimulationSpace, 0, "limitVelocityOverLifetime.space"));
         l.dampen = std::clamp(read.number(lim["dampen"], 1.0f), 0.0f, 1.0f);
-        l.drag = read.minMax(lim["drag"], MinMaxCurve(0.0f), "limitVelocityOverLifetime.drag");
+        l.drag = read.minMax(lim["drag"], particles::MinMaxCurve(0.0f), "limitVelocityOverLifetime.drag");
         l.multiplyBySize = read.flag(lim["multiplyDragByParticleSize"], true);
         // origin/main's default is on
         l.multiplyByVelocity = read.flag(lim["multiplyDragByParticleVelocity"], true);
@@ -650,9 +649,9 @@ up::Result up::convert(const YAML::Node& node, const Target& target){
     // ---------------------------------------------------------------- inherit velocity (Main here)
     if (const YAML::Node inherit = node["inheritVelocity"]){
         if (read.flag(inherit["enabled"], false)){
-            m.inheritVelocity = read.minMax(inherit["curve"], MinMaxCurve(0.0f), "inheritVelocity.curve");
+            m.inheritVelocity = read.minMax(inherit["curve"], particles::MinMaxCurve(0.0f), "inheritVelocity.curve");
             m.inheritVelocityMode = read.enumeration(inherit["mode"], kInheritMode, 0, "inheritVelocity.mode") == 1 ?
-                InheritVelocityMode::Current : InheritVelocityMode::Initial;
+                particles::InheritVelocityMode::Current : particles::InheritVelocityMode::Initial;
         }else if (inherit["curve"] || inherit["mode"]){
             read.note("inheritVelocity: its module was off: Main's Inherit Velocity stays 0");
         }
@@ -660,12 +659,12 @@ up::Result up::convert(const YAML::Node& node, const Target& target){
 
     // ---------------------------------------------------------------- force over lifetime
     if (const YAML::Node force = node["forceOverLifetime"]){
-        ForceOverLifetimeModule& f = d.forceOverLifetime;
+        particles::ForceOverLifetimeModule& f = d.forceOverLifetime;
         f.present = true;
         f.enabled = read.flag(force["enabled"], false);
-        f.x = read.minMax(force["x"], MinMaxCurve(0.0f), "forceOverLifetime.x");
-        f.y = read.minMax(force["y"], MinMaxCurve(0.0f), "forceOverLifetime.y");
-        f.z = read.minMax(force["z"], MinMaxCurve(0.0f), "forceOverLifetime.z");
+        f.x = read.minMax(force["x"], particles::MinMaxCurve(0.0f), "forceOverLifetime.x");
+        f.y = read.minMax(force["y"], particles::MinMaxCurve(0.0f), "forceOverLifetime.y");
+        f.z = read.minMax(force["z"], particles::MinMaxCurve(0.0f), "forceOverLifetime.z");
         f.space = space(read.enumeration(force["space"], kSimulationSpace, 0, "forceOverLifetime.space"));
         f.randomizePerTick = read.flag(force["randomized"], false);
     }
@@ -674,19 +673,19 @@ up::Result up::convert(const YAML::Node& node, const Target& target){
     if (const YAML::Node col = node["colorOverLifetime"]){
         d.colorOverLifetime.present = true;
         d.colorOverLifetime.enabled = read.flag(col["enabled"], false);
-        d.colorOverLifetime.color = read.minMaxGradient(col["color"], MinMaxGradient(), "colorOverLifetime.color");
+        d.colorOverLifetime.color = read.minMaxGradient(col["color"], particles::MinMaxGradient(), "colorOverLifetime.color");
     }
     if (const YAML::Node col = node["colorBySpeed"]){
         d.colorBySpeed.present = true;
         d.colorBySpeed.enabled = read.flag(col["enabled"], false);
-        d.colorBySpeed.color = read.minMaxGradient(col["color"], MinMaxGradient(), "colorBySpeed.color");
+        d.colorBySpeed.color = read.minMaxGradient(col["color"], particles::MinMaxGradient(), "colorBySpeed.color");
         d.colorBySpeed.speedRange = read.vector2(col["range"], Vector2(0.0f, 1.0f));
     }
 
     // ---------------------------------------------------------------- size
-    const MinMaxCurve linear01 = MinMaxCurve::fromCurve(Curve::linear(0.0f, 1.0f));
+    const particles::MinMaxCurve linear01 = particles::MinMaxCurve::fromCurve(Curve::linear(0.0f, 1.0f));
     if (const YAML::Node size = node["sizeOverLifetime"]){
-        SizeOverLifetimeModule& z = d.sizeOverLifetime;
+        particles::SizeOverLifetimeModule& z = d.sizeOverLifetime;
         z.present = true;
         z.enabled = read.flag(size["enabled"], false);
         z.separateAxes = read.flag(size["separateAxes"], false);
@@ -695,7 +694,7 @@ up::Result up::convert(const YAML::Node& node, const Target& target){
         z.sizeZ = read.minMax(size["z"], linear01, "sizeOverLifetime.z");
     }
     if (const YAML::Node size = node["sizeBySpeed"]){
-        SizeBySpeedModule& z = d.sizeBySpeed;
+        particles::SizeBySpeedModule& z = d.sizeBySpeed;
         z.present = true;
         z.enabled = read.flag(size["enabled"], false);
         z.separateAxes = read.flag(size["separateAxes"], false);
@@ -707,72 +706,72 @@ up::Result up::convert(const YAML::Node& node, const Target& target){
 
     // ---------------------------------------------------------------- rotation (rad/s there, deg/s here)
     if (const YAML::Node rot = node["rotationOverLifetime"]){
-        RotationOverLifetimeModule& r = d.rotationOverLifetime;
+        particles::RotationOverLifetimeModule& r = d.rotationOverLifetime;
         r.present = true;
         r.enabled = read.flag(rot["enabled"], false);
         r.separateAxes = read.flag(rot["separateAxes"], false);
-        r.angularVelocityX = read.minMax(rot["x"], MinMaxCurve(0.0f), "rotationOverLifetime.x", kRadToDeg);
-        r.angularVelocityY = read.minMax(rot["y"], MinMaxCurve(0.0f), "rotationOverLifetime.y", kRadToDeg);
-        r.angularVelocity = read.minMax(rot["z"], MinMaxCurve(45.0f), "rotationOverLifetime.z", kRadToDeg);
+        r.angularVelocityX = read.minMax(rot["x"], particles::MinMaxCurve(0.0f), "rotationOverLifetime.x", kRadToDeg);
+        r.angularVelocityY = read.minMax(rot["y"], particles::MinMaxCurve(0.0f), "rotationOverLifetime.y", kRadToDeg);
+        r.angularVelocity = read.minMax(rot["z"], particles::MinMaxCurve(45.0f), "rotationOverLifetime.z", kRadToDeg);
     }
     if (const YAML::Node rot = node["rotationBySpeed"]){
-        RotationBySpeedModule& r = d.rotationBySpeed;
+        particles::RotationBySpeedModule& r = d.rotationBySpeed;
         r.present = true;
         r.enabled = read.flag(rot["enabled"], false);
         r.separateAxes = read.flag(rot["separateAxes"], false);
-        r.angularVelocityX = read.minMax(rot["x"], MinMaxCurve(0.0f), "rotationBySpeed.x", kRadToDeg);
-        r.angularVelocityY = read.minMax(rot["y"], MinMaxCurve(0.0f), "rotationBySpeed.y", kRadToDeg);
-        r.angularVelocity = read.minMax(rot["z"], MinMaxCurve(45.0f), "rotationBySpeed.z", kRadToDeg);
+        r.angularVelocityX = read.minMax(rot["x"], particles::MinMaxCurve(0.0f), "rotationBySpeed.x", kRadToDeg);
+        r.angularVelocityY = read.minMax(rot["y"], particles::MinMaxCurve(0.0f), "rotationBySpeed.y", kRadToDeg);
+        r.angularVelocity = read.minMax(rot["z"], particles::MinMaxCurve(45.0f), "rotationBySpeed.z", kRadToDeg);
         r.speedRange = read.vector2(rot["range"], Vector2(0.0f, 1.0f));
     }
 
     // ---------------------------------------------------------------- noise
     if (const YAML::Node noise = node["noise"]){
-        NoiseModule& n = d.noise;
+        particles::NoiseModule& n = d.noise;
         n.present = true;
         n.enabled = read.flag(noise["enabled"], false);
         n.separateAxes = read.flag(noise["separateAxes"], false);
-        n.strength = read.minMax(noise["strength"], MinMaxCurve(1.0f), "noise.strength");
-        n.strengthY = read.minMax(noise["strengthY"], MinMaxCurve(1.0f), "noise.strengthY");
-        n.strengthZ = read.minMax(noise["strengthZ"], MinMaxCurve(1.0f), "noise.strengthZ");
+        n.strength = read.minMax(noise["strength"], particles::MinMaxCurve(1.0f), "noise.strength");
+        n.strengthY = read.minMax(noise["strengthY"], particles::MinMaxCurve(1.0f), "noise.strengthY");
+        n.strengthZ = read.minMax(noise["strengthZ"], particles::MinMaxCurve(1.0f), "noise.strengthZ");
         n.frequency = std::max(0.0001f, read.number(noise["frequency"], 0.5f));
-        n.scrollSpeed = read.minMax(noise["scrollSpeed"], MinMaxCurve(0.0f), "noise.scrollSpeed");
+        n.scrollSpeed = read.minMax(noise["scrollSpeed"], particles::MinMaxCurve(0.0f), "noise.scrollSpeed");
         n.damping = read.flag(noise["damping"], true);
         n.octaves = std::clamp(read.integer(noise["octaves"], 1), 1, 4);
         n.octaveMultiplier = read.number(noise["octaveMultiplier"], 0.5f);
         n.octaveScale = read.number(noise["octaveScale"], 2.0f);
-        n.positionAmount = read.minMax(noise["positionAmount"], MinMaxCurve(1.0f), "noise.positionAmount");
+        n.positionAmount = read.minMax(noise["positionAmount"], particles::MinMaxCurve(1.0f), "noise.positionAmount");
         // radians per second at amount 1 in both
-        n.rotationAmount = read.minMax(noise["rotationAmount"], MinMaxCurve(0.0f), "noise.rotationAmount");
-        n.sizeAmount = read.minMax(noise["sizeAmount"], MinMaxCurve(0.0f), "noise.sizeAmount");
+        n.rotationAmount = read.minMax(noise["rotationAmount"], particles::MinMaxCurve(0.0f), "noise.rotationAmount");
+        n.sizeAmount = read.minMax(noise["sizeAmount"], particles::MinMaxCurve(0.0f), "noise.sizeAmount");
     }
 
     // ---------------------------------------------------------------- texture sheet
     if (const YAML::Node sheet = node["textureSheetAnimation"]){
-        TextureSheetAnimationModule& t = d.textureSheetAnimation;
+        particles::TextureSheetAnimationModule& t = d.textureSheetAnimation;
         t.present = true;
         t.enabled = read.flag(sheet["enabled"], false);
-        t.mode = read.enumeration(sheet["mode"], kAnimationMode, 0, "textureSheetAnimation.mode") == 1 ? TextureSheetMode::Sprites : TextureSheetMode::Grid;
+        t.mode = read.enumeration(sheet["mode"], kAnimationMode, 0, "textureSheetAnimation.mode") == 1 ? particles::TextureSheetMode::Sprites : particles::TextureSheetMode::Grid;
         t.tilesX = std::max(1, read.integer(sheet["numTilesX"], 1));
         t.tilesY = std::max(1, read.integer(sheet["numTilesY"], 1));
         t.animation = read.enumeration(sheet["animation"], kAnimationType, 0, "textureSheetAnimation.animation") == 1 ?
-            TextureSheetAnimation::SingleRow : TextureSheetAnimation::WholeSheet;
-        t.rowMode = read.enumeration(sheet["rowMode"], kRowMode, 0, "textureSheetAnimation.rowMode") == 1 ? TextureSheetRowMode::Random : TextureSheetRowMode::Custom;
+            particles::TextureSheetAnimation::SingleRow : particles::TextureSheetAnimation::WholeSheet;
+        t.rowMode = read.enumeration(sheet["rowMode"], kRowMode, 0, "textureSheetAnimation.rowMode") == 1 ? particles::TextureSheetRowMode::Random : particles::TextureSheetRowMode::Custom;
         t.rowIndex = std::max(0, read.integer(sheet["rowIndex"], 0));
         switch (read.enumeration(sheet["timeMode"], kTimeMode, 0, "textureSheetAnimation.timeMode")){
-            case 1: t.timeMode = TextureSheetTimeMode::Speed; break;
-            case 2: t.timeMode = TextureSheetTimeMode::FPS; break;
-            default: t.timeMode = TextureSheetTimeMode::Lifetime; break;
+            case 1: t.timeMode = particles::TextureSheetTimeMode::Speed; break;
+            case 2: t.timeMode = particles::TextureSheetTimeMode::FPS; break;
+            default: t.timeMode = particles::TextureSheetTimeMode::Lifetime; break;
         }
-        t.frameOverTime = read.minMax(sheet["frameOverTime"], MinMaxCurve::fromCurve(Curve::linear(0.0f, 1.0f)), "textureSheetAnimation.frameOverTime");
+        t.frameOverTime = read.minMax(sheet["frameOverTime"], particles::MinMaxCurve::fromCurve(Curve::linear(0.0f, 1.0f)), "textureSheetAnimation.frameOverTime");
         // origin/main's default is 30 frames per second
         t.fps = read.number(sheet["fps"], 30.0f);
         t.speedRange = read.vector2(sheet["speedRange"], Vector2(0.0f, 1.0f));
-        t.startFrame = read.minMax(sheet["startFrame"], MinMaxCurve(0.0f), "textureSheetAnimation.startFrame");
+        t.startFrame = read.minMax(sheet["startFrame"], particles::MinMaxCurve(0.0f), "textureSheetAnimation.startFrame");
         t.cycles = (float)std::max(1, read.integer(sheet["cycles"], 1));
         t.flipU = std::clamp(read.number(sheet["flipU"], 0.0f), 0.0f, 1.0f);
         t.flipV = std::clamp(read.number(sheet["flipV"], 0.0f), 0.0f, 1.0f);
-        if (t.mode == TextureSheetMode::Sprites){
+        if (t.mode == particles::TextureSheetMode::Sprites){
             // frame ids of the target's sprite frames: their rects
             if (const YAML::Node ids = sheet["sprites"]; ids && ids.IsSequence()){
                 for (const YAML::Node& id : ids){
@@ -781,7 +780,7 @@ up::Result up::convert(const YAML::Node& node, const Target& target){
                         read.note("textureSheetAnimation.sprites: frame " + std::to_string(index) + " is not one of its target's frames: left out");
                         continue;
                     }
-                    if (t.sprites.size() >= kMaxSpriteFrames){
+                    if (t.sprites.size() >= particles::kMaxSpriteFrames){
                         read.note("textureSheetAnimation.sprites: more than 64 frames: the first 64 are kept");
                         break;
                     }
@@ -793,17 +792,17 @@ up::Result up::convert(const YAML::Node& node, const Target& target){
 
     // ---------------------------------------------------------------- renderer
     const YAML::Node rn = moduleOf(node, "renderer");
-    RendererModule& r = d.renderer;
+    particles::RendererModule& r = d.renderer;
     const int renderMode = read.enumeration(rn["renderMode"], kRenderMode, 0, "renderer.renderMode");
     const int alignment = read.enumeration(rn["alignment"], kRenderSpace, 0, "renderer.alignment");
-    if (!applyRenderMode(renderMode, alignment, d.simulationSpace == SimulationSpace::Local, r))
+    if (!applyRenderMode(renderMode, alignment, d.simulationSpace == particles::SimulationSpace::Local, r))
         read.note("renderer.alignment: a stretched, horizontal or vertical billboard has no alignment of its own: left out");
-    if (r.renderMode == RenderMode::Mesh){
+    if (r.renderMode == particles::RenderMode::Mesh){
         const std::string mesh = rn["mesh"] && rn["mesh"].IsScalar() ? rn["mesh"].Scalar() : std::string("quad");
         if (target.kind == Target::Kind::Mesh){
             // the GameObject's own mesh (the one origin/main made from the name, or a model's)
-            MeshSource self;
-            self.type = MeshSourceType::GameObject;
+            particles::MeshSource self;
+            self.type = particles::MeshSourceType::GameObject;
             r.meshes = {self};
             result.drawsTargetMesh = true;
         }else{
@@ -817,10 +816,10 @@ up::Result up::convert(const YAML::Node& node, const Target& target){
     r.speedScale = read.number(rn["velocityScale"], 0.0f);
     r.lengthScale = read.number(rn["lengthScale"], 2.0f);
     switch (read.enumeration(rn["sortMode"], kSortMode, 0, "renderer.sortMode")){
-        case 1: r.sortMode = SortMode::ByDistance; break;
-        case 2: r.sortMode = SortMode::OldestInFront; break;
-        case 3: r.sortMode = SortMode::YoungestInFront; break;
-        default: r.sortMode = SortMode::None; break;
+        case 1: r.sortMode = particles::SortMode::ByDistance; break;
+        case 2: r.sortMode = particles::SortMode::OldestInFront; break;
+        case 3: r.sortMode = particles::SortMode::YoungestInFront; break;
+        default: r.sortMode = particles::SortMode::None; break;
     }
     r.sortingFudge = read.number(rn["sortingFudge"], 0.0f);
     r.sortPriority = read.integer(rn["sortPriority"], 0);
@@ -840,7 +839,7 @@ up::Result up::convert(const YAML::Node& node, const Target& target){
         r.texture = target.texture;
         r.textureGuid = target.textureGuid;
         // points without a texture drew squares, without a size cap but the device's
-        r.untexturedShape = UntexturedShape::Square;
+        r.untexturedShape = particles::UntexturedShape::Square;
         r.maxScreenSize = std::max(r.maxScreenSize, 10.0f);
         r.shaderFeatures = target.pointsFeatures;
         r.shaderProperties = target.pointsProperties;
@@ -848,10 +847,10 @@ up::Result up::convert(const YAML::Node& node, const Target& target){
         if (!target.pointsShader.empty() && target.pointsShader != "library:particle")
             read.note("the custom points shader \"" + target.pointsShader + "\" is not a particles shader: library:particles draws them");
         if (target.pointsOpaque){
-            r.blend = ParticleBlend::Alpha;
+            r.blend = particles::ParticleBlend::Alpha;
             read.note("an opaque Points blend draws alpha blended");
         }else{
-            r.blend = target.pointsBlend < 0 ? ParticleBlend::Alpha : (ParticleBlend)target.pointsBlend;
+            r.blend = target.pointsBlend < 0 ? particles::ParticleBlend::Alpha : (particles::ParticleBlend)target.pointsBlend;
         }
         r.depthWrite = target.pointsDepthWrite == 1;
     }else{

@@ -46,6 +46,8 @@
 #include <algorithm>
 #include <cmath>
 
+namespace AnimatorControllerTest_cpp {
+
 using namespace jasperengine;
 using namespace animatortest;
 
@@ -797,3 +799,5 @@ TEST(ControllerIO, ParameterNamesThatAreNotLuaIdentifiersAreWarned){
     for (const ClipWarning& warning : anim::validateController(parsed.data, nullptr)) named += warning.message.find("not a Lua-safe name") != std::string::npos;
     EXPECT_EQ(named, 3);
 }
+
+}  // namespace AnimatorControllerTest_cpp

@@ -20,7 +20,6 @@
 #include <utility>
 
 using namespace jasperengine;
-using namespace jasperengine::vat;
 
 namespace {
 
@@ -36,7 +35,7 @@ namespace {
     }
 
     // the .vat.glb an asset plays on, as a Model filename (asset-relative, like `animation`)
-    std::string expectedMesh(const std::string& animation, const VatData& data){
+    std::string expectedMesh(const std::string& animation, const vat::VatData& data){
         const std::filesystem::path dir = std::filesystem::path(animation).parent_path();
         return normalizePath((dir / data.mesh).generic_string());
     }
@@ -50,14 +49,14 @@ namespace {
         Scene* scene = nullptr;
         Entity entity = NULL_ENTITY;
         VertexAnimatorComponent* animator = nullptr;
-        VertexAnimatorRuntime* runtime = nullptr;
-        const VertexAnimation* asset = nullptr;
-        const VatData* data = nullptr;
+        vat::VertexAnimatorRuntime* runtime = nullptr;
+        const vat::VertexAnimation* asset = nullptr;
+        const vat::VatData* data = nullptr;
         float speed = 1.0f;             // the component's, finite
         bool fire = false;              // play mode: callbacks are queued
         bool instanced = false;         // has an Instanced Mesh: the instances are what is drawn
 
-        const VatClip& clip(int index) const{ return data->clips[(size_t)index]; }
+        const vat::VatClip& clip(int index) const{ return data->clips[(size_t)index]; }
         bool validClip(int index) const{ return index >= 0 && index < (int)data->clips.size(); }
     };
 
@@ -75,7 +74,7 @@ namespace {
         const int index = a.data->findClip(name);
         if (index < 0){
             std::string names;
-            for (const VatClip& clip : a.data->clips) names += (names.empty() ? "" : ", ") + clip.name;
+            for (const vat::VatClip& clip : a.data->clips) names += (names.empty() ? "" : ", ") + clip.name;
             warnOnce(a, "clip|" + name, "no clip '" + name + "' in " + a.animator->animation +
                      (names.empty() ? std::string(" (it has none)") : " (clips: " + names + ")"));
         }
@@ -90,7 +89,7 @@ namespace {
         return index >= 0 ? index : 0;
     }
 
-    float effectiveSpeed(const Animating& a, const VatStateExtra& extra, int clip){
+    float effectiveSpeed(const Animating& a, const vat::VatStateExtra& extra, int clip){
         if (!a.validClip(clip)) return 0.0f;
         const float speed = a.speed * extra.speed * a.clip(clip).speed;
         return std::isfinite(speed) ? speed : 0.0f;
@@ -99,18 +98,18 @@ namespace {
     // where a clip starts: its end when played backwards (not for loops, where both are the same)
     double startTau(const Animating& a, int clip, float speed){
         if (!a.validClip(clip)) return 0.0;
-        const VatClip& c = a.clip(clip);
+        const vat::VatClip& c = a.clip(clip);
         return (speed < 0.0f && c.wrap != ClipWrapMode::Loop) ? (double)c.length() : 0.0;
     }
 
-    void touch(const Animating& a, VatStateExtra& extra){
+    void touch(const Animating& a, vat::VatStateExtra& extra){
         extra.dirty = true;
         a.runtime->anyDirty = true;
     }
 
     // a track at local time `tau` from `now`, with `speed` (0: held there, packed as speed 0 with
     // the local time as its start: vat::vatLocalTime, nothing to rewrite while it holds)
-    void setTrack(VatTrack& track, VatTrackHold& hold, int clip, double tau, float speed, double now){
+    void setTrack(vat::VatTrack& track, vat::VatTrackHold& hold, int clip, double tau, float speed, double now){
         track.clip = clip;
         if (speed == 0.0f){
             hold.held = true;
@@ -125,16 +124,16 @@ namespace {
         }
     }
 
-    bool hasB(const VatTrackPair& pair){
+    bool hasB(const vat::VatTrackPair& pair){
         return pair.b.clip >= 0;
     }
 
-    bool blendMode(const VatTrackPair& pair){
+    bool blendMode(const vat::VatTrackPair& pair){
         return hasB(pair) && pair.blend >= 0.0f;
     }
 
     // in blend mode B's time follows A's phase: its track mirrors A's
-    void mirrorBlendB(VatTrackPair& pair){
+    void mirrorBlendB(vat::VatTrackPair& pair){
         if (blendMode(pair)){
             pair.b.start = pair.a.start;
             pair.b.speed = pair.a.speed;
@@ -142,12 +141,12 @@ namespace {
     }
 
     // a finished crossfade: B is the current track
-    void settle(const Animating& a, VatTrackPair& pair, VatStateExtra& extra){
+    void settle(const Animating& a, vat::VatTrackPair& pair, vat::VatStateExtra& extra){
         pair.a = pair.b;
         extra.holdA = extra.holdB;
         extra.freshA = extra.freshB;
-        pair.b = VatTrack();
-        extra.holdB = VatTrackHold();
+        pair.b = vat::VatTrack();
+        extra.holdB = vat::VatTrackHold();
         extra.freshB = false;
         pair.fadeStart = 0.0f;
         pair.fadeEnd = 0.0f;
@@ -156,29 +155,29 @@ namespace {
         touch(a, extra);
     }
 
-    bool dominantIsB(const VatTrackPair& pair, double now){
-        return hasB(pair) && vatWeightB(pair, (float)now) >= 0.5f;
+    bool dominantIsB(const vat::VatTrackPair& pair, double now){
+        return hasB(pair) && vat::vatWeightB(pair, (float)now) >= 0.5f;
     }
 
     // the one track a crossfade, stop or seek continues from: the dominant one
-    void collapse(const Animating& a, VatTrackPair& pair, VatStateExtra& extra, double now){
+    void collapse(const Animating& a, vat::VatTrackPair& pair, vat::VatStateExtra& extra, double now){
         if (!hasB(pair)) return;
         if (dominantIsB(pair, now) && !blendMode(pair)){
             settle(a, pair, extra);
         }else if (dominantIsB(pair, now)){
             // blend: B at A's phase becomes a track of its own
-            const VatClip& clipA = a.clip(pair.a.clip);
-            const VatClip& clipB = a.clip(pair.b.clip);
-            const VatFrameSample sample = vatSample(clipA, (float)vatTrackTau(pair.a, extra.holdA, now));
+            const vat::VatClip& clipA = a.clip(pair.a.clip);
+            const vat::VatClip& clipB = a.clip(pair.b.clip);
+            const vat::VatFrameSample sample = vatSample(clipA, (float)vatTrackTau(pair.a, extra.holdA, now));
             const double tauB = (double)sample.normalized * (double)clipB.length();
             const int clip = pair.b.clip;
-            pair.b = VatTrack();
+            pair.b = vat::VatTrack();
             pair.blend = -1.0f;
             setTrack(pair.a, extra.holdA, clip, tauB, extra.stopped ? 0.0f : effectiveSpeed(a, extra, clip), now);
             extra.finishNotified = false;
         }else{
-            pair.b = VatTrack();
-            extra.holdB = VatTrackHold();
+            pair.b = vat::VatTrack();
+            extra.holdB = vat::VatTrackHold();
             extra.freshB = false;
             pair.fadeStart = 0.0f;
             pair.fadeEnd = 0.0f;
@@ -188,13 +187,13 @@ namespace {
     }
 
     // every track written again with the current speeds, keeping its local time
-    void respeed(const Animating& a, VatTrackPair& pair, VatStateExtra& extra, double now){
+    void respeed(const Animating& a, vat::VatTrackPair& pair, vat::VatStateExtra& extra, double now){
         if (pair.a.clip >= 0){
-            const double tau = vatTrackTau(pair.a, extra.holdA, now);
+            const double tau = vat::vatTrackTau(pair.a, extra.holdA, now);
             setTrack(pair.a, extra.holdA, pair.a.clip, tau, extra.stopped ? 0.0f : effectiveSpeed(a, extra, pair.a.clip), now);
         }
         if (hasB(pair) && !blendMode(pair)){
-            const double tau = vatTrackTau(pair.b, extra.holdB, now);
+            const double tau = vat::vatTrackTau(pair.b, extra.holdB, now);
             setTrack(pair.b, extra.holdB, pair.b.clip, tau, extra.stopped ? 0.0f : effectiveSpeed(a, extra, pair.b.clip), now);
         }
         mirrorBlendB(pair);
@@ -202,12 +201,12 @@ namespace {
     }
 
     // plays `clip` at once from `tau` (NaN: its start)
-    void playNow(const Animating& a, VatTrackPair& pair, VatStateExtra& extra, std::vector<std::string>& queue,
+    void playNow(const Animating& a, vat::VatTrackPair& pair, vat::VatStateExtra& extra, std::vector<std::string>& queue,
                  int clip, double now, double tau = NAN){
         const float speed = effectiveSpeed(a, extra, clip);
-        pair = VatTrackPair();
-        extra.holdA = VatTrackHold();
-        extra.holdB = VatTrackHold();
+        pair = vat::VatTrackPair();
+        extra.holdA = vat::VatTrackHold();
+        extra.holdB = vat::VatTrackHold();
         extra.stopped = false;
         extra.finishNotified = false;
         extra.freshB = false;
@@ -217,14 +216,14 @@ namespace {
         touch(a, extra);
     }
 
-    bool isFinished(const Animating& a, const VatTrackPair& pair, const VatStateExtra& extra, double now){
+    bool isFinished(const Animating& a, const vat::VatTrackPair& pair, const vat::VatStateExtra& extra, double now){
         if (!a.validClip(pair.a.clip) || hasB(pair)) return false;
-        const VatClip& clip = a.clip(pair.a.clip);
+        const vat::VatClip& clip = a.clip(pair.a.clip);
         if (clip.wrap != ClipWrapMode::Once && clip.wrap != ClipWrapMode::ClampForever) return false;
-        return extra.finishNotified || vatSample(clip, (float)vatTrackTau(pair.a, extra.holdA, now)).finished;
+        return extra.finishNotified || vat::vatSample(clip, (float)vat::vatTrackTau(pair.a, extra.holdA, now)).finished;
     }
 
-    void crossFade(const Animating& a, VatTrackPair& pair, VatStateExtra& extra, std::vector<std::string>& queue,
+    void crossFade(const Animating& a, vat::VatTrackPair& pair, vat::VatStateExtra& extra, std::vector<std::string>& queue,
                    int clip, float fade, double now){
         if (!(fade > 0.0f) || pair.a.clip < 0 || extra.stopped){
             playNow(a, pair, extra, queue, clip, now);
@@ -243,7 +242,7 @@ namespace {
         touch(a, extra);
     }
 
-    void blendClips(const Animating& a, VatTrackPair& pair, VatStateExtra& extra, std::vector<std::string>& queue,
+    void blendClips(const Animating& a, vat::VatTrackPair& pair, vat::VatStateExtra& extra, std::vector<std::string>& queue,
                     int clipA, int clipB, float weight, double now){
         weight = std::isfinite(weight) ? std::clamp(weight, 0.0f, 1.0f) : 0.0f;
         const bool same = pair.a.clip == clipA && !extra.stopped &&
@@ -262,13 +261,13 @@ namespace {
         pair.blend = weight;
         pair.fadeStart = 0.0f;
         pair.fadeEnd = 0.0f;
-        extra.holdB = VatTrackHold();
+        extra.holdB = vat::VatTrackHold();
         extra.freshB = false;
         mirrorBlendB(pair);
         touch(a, extra);
     }
 
-    void queueClip(const Animating& a, VatTrackPair& pair, VatStateExtra& extra, std::vector<std::string>& queue,
+    void queueClip(const Animating& a, vat::VatTrackPair& pair, vat::VatStateExtra& extra, std::vector<std::string>& queue,
                    int clip, double now){
         // nothing playing: plays now
         if (pair.a.clip < 0 || extra.stopped || isFinished(a, pair, extra, now)){
@@ -279,18 +278,18 @@ namespace {
         a.runtime->watchDirty = true;
     }
 
-    void stopState(const Animating& a, VatTrackPair& pair, VatStateExtra& extra, std::vector<std::string>& queue, double now){
+    void stopState(const Animating& a, vat::VatTrackPair& pair, vat::VatStateExtra& extra, std::vector<std::string>& queue, double now){
         collapse(a, pair, extra, now);
         queue.clear();
         if (pair.a.clip >= 0){
-            setTrack(pair.a, extra.holdA, pair.a.clip, vatTrackTau(pair.a, extra.holdA, now), 0.0f, now);
+            setTrack(pair.a, extra.holdA, pair.a.clip, vat::vatTrackTau(pair.a, extra.holdA, now), 0.0f, now);
         }
         extra.stopped = true;
         extra.freshA = false;
         touch(a, extra);
     }
 
-    void setStateTime(const Animating& a, VatTrackPair& pair, VatStateExtra& extra, double time, double now){
+    void setStateTime(const Animating& a, vat::VatTrackPair& pair, vat::VatStateExtra& extra, double time, double now){
         // the current clip's time: the one faded to ends its fade (a blend sets A, B follows)
         if (hasB(pair) && !blendMode(pair)) settle(a, pair, extra);
         if (pair.a.clip < 0 || !std::isfinite(time)) return;
@@ -302,10 +301,10 @@ namespace {
 
     // a seeded start time in the current clip (randomStart, randomizeTimes); a blend keeps its
     // pair (A gets the time, B follows its phase), a crossfade continues from the dominant clip
-    void randomizeState(const Animating& a, VatTrackPair& pair, VatStateExtra& extra, uint64_t seed, int64_t index, double now){
+    void randomizeState(const Animating& a, vat::VatTrackPair& pair, vat::VatStateExtra& extra, uint64_t seed, int64_t index, double now){
         if (!blendMode(pair)) collapse(a, pair, extra, now);
         if (pair.a.clip < 0) return;
-        const double tau = vatRandomUnit(seed, index) * vatClipPeriod(a.clip(pair.a.clip));
+        const double tau = vat::vatRandomUnit(seed, index) * vat::vatClipPeriod(a.clip(pair.a.clip));
         const float speed = extra.stopped ? 0.0f : effectiveSpeed(a, extra, pair.a.clip);
         setTrack(pair.a, extra.holdA, pair.a.clip, tau, speed, now);
         mirrorBlendB(pair);
@@ -314,10 +313,10 @@ namespace {
     }
 
     // a state as playAutomatically starts it: the default clip, at a seeded time with randomStart
-    void startState(const Animating& a, VatTrackPair& pair, VatStateExtra& extra, std::vector<std::string>& queue,
+    void startState(const Animating& a, vat::VatTrackPair& pair, vat::VatStateExtra& extra, std::vector<std::string>& queue,
                     int64_t index, double now){
-        pair = VatTrackPair();
-        extra = VatStateExtra();
+        pair = vat::VatTrackPair();
+        extra = vat::VatStateExtra();
         queue.clear();
         int clip = a.animator->playAutomatically ? defaultClip(a) : -1;
         // an instance's own start (Create Crowd): its clip and its speed
@@ -346,8 +345,8 @@ namespace {
 
     // ---- events and finishes ----
 
-    void pendEvent(const Animating& a, int instance, const VatClip& clip, const ClipEventData& data, double when){
-        VatPendingCallback callback;
+    void pendEvent(const Animating& a, int instance, const vat::VatClip& clip, const ClipEventData& data, double when){
+        vat::VatPendingCallback callback;
         callback.when = when;
         callback.instance = instance;
         callback.clip = clip.name;
@@ -364,15 +363,15 @@ namespace {
     }
 
     // events of one track over the clock interval [t0, t1]
-    void trackEvents(const Animating& a, int instance, const VatTrack& track, const VatTrackHold& hold, bool& fresh,
+    void trackEvents(const Animating& a, int instance, const vat::VatTrack& track, const vat::VatTrackHold& hold, bool& fresh,
                      double t0, double t1){
         const bool includeStart = fresh;
         fresh = false;
         if (!a.validClip(track.clip) || hold.held) return;
-        const VatClip& clip = a.clip(track.clip);
-        std::vector<VatCrossedEvent> crossed;
-        vatCrossedEvents(clip, vatTrackTau(track, hold, t0), vatTrackTau(track, hold, t1), includeStart, crossed);
-        for (const VatCrossedEvent& event : crossed){
+        const vat::VatClip& clip = a.clip(track.clip);
+        std::vector<vat::VatCrossedEvent> crossed;
+        vat::vatCrossedEvents(clip, vat::vatTrackTau(track, hold, t0), vat::vatTrackTau(track, hold, t1), includeStart, crossed);
+        for (const vat::VatCrossedEvent& event : crossed){
             const double when = (double)track.start + event.position / (double)track.speed;
             pendEvent(a, instance, clip, clip.events[event.index], std::clamp(when, t0, t1));
         }
@@ -380,7 +379,7 @@ namespace {
 
     // the events of the interval: of the dominant track only (weight >= 0.5); a crossfade hands
     // over at its midpoint
-    void stateEvents(const Animating& a, int instance, VatTrackPair& pair, VatStateExtra& extra, double t0, double t1){
+    void stateEvents(const Animating& a, int instance, vat::VatTrackPair& pair, vat::VatStateExtra& extra, double t0, double t1){
         // nothing fires (edit mode, an instance without instanceEvents): a start still waiting
         // for its events keeps them for when it does (Play after edit mode starts at 0)
         if (!firesFor(a, instance)) return;
@@ -396,16 +395,16 @@ namespace {
             // B follows A's phase: A's local time scaled to B's length
             extra.freshA = false;
             if (!a.validClip(pair.a.clip) || !a.validClip(pair.b.clip) || extra.holdA.held) return;
-            const VatClip& clipA = a.clip(pair.a.clip);
-            const VatClip& clipB = a.clip(pair.b.clip);
+            const vat::VatClip& clipA = a.clip(pair.a.clip);
+            const vat::VatClip& clipB = a.clip(pair.b.clip);
             const double lengthA = clipA.length();
             if (!(lengthA > 0.0)) return;
             const double scale = (double)clipB.length() / lengthA;
-            const double from = vatTrackTau(pair.a, extra.holdA, t0);
-            const double to = vatTrackTau(pair.a, extra.holdA, t1);
-            std::vector<VatCrossedEvent> crossed;
-            vatCrossedEvents(clipB, from * scale, to * scale, false, crossed);
-            for (const VatCrossedEvent& event : crossed){
+            const double from = vat::vatTrackTau(pair.a, extra.holdA, t0);
+            const double to = vat::vatTrackTau(pair.a, extra.holdA, t1);
+            std::vector<vat::VatCrossedEvent> crossed;
+            vat::vatCrossedEvents(clipB, from * scale, to * scale, false, crossed);
+            for (const vat::VatCrossedEvent& event : crossed){
                 const double position = event.position / scale;
                 const double when = to != from ? t0 + (t1 - t0) * (position - from) / (to - from) : t0;
                 pendEvent(a, instance, clipB, clipB.events[event.index], std::clamp(when, t0, t1));
@@ -427,7 +426,7 @@ namespace {
 
     void pendFinish(const Animating& a, int instance, const std::string& clip, double when){
         if (!firesFor(a, instance)) return;
-        VatPendingCallback callback;
+        vat::VatPendingCallback callback;
         callback.when = when;
         callback.instance = instance;
         callback.finish = true;
@@ -436,7 +435,7 @@ namespace {
     }
 
     // A state from `prev` to `now`: events, crossfade completion, finishes, queued clips
-    void advanceState(const Animating& a, int instance, VatTrackPair& pair, VatStateExtra& extra,
+    void advanceState(const Animating& a, int instance, vat::VatTrackPair& pair, vat::VatStateExtra& extra,
                       std::vector<std::string>& queue, double prev, double now){
         double t = prev;
         for (int step = 0; step <= MAX_TRANSITIONS; step++){
@@ -453,10 +452,10 @@ namespace {
                     next = Next::Settle;
                 }
             }else if (!hasB(pair) && a.validClip(pair.a.clip) && !extra.stopped && !extra.holdA.held){
-                const VatClip& clip = a.clip(pair.a.clip);
+                const vat::VatClip& clip = a.clip(pair.a.clip);
                 const double speed = pair.a.speed;
-                const double from = vatTrackTau(pair.a, extra.holdA, t);
-                const double to = vatTrackTau(pair.a, extra.holdA, now);
+                const double from = vat::vatTrackTau(pair.a, extra.holdA, t);
+                const double to = vat::vatTrackTau(pair.a, extra.holdA, now);
                 if (clip.wrap == ClipWrapMode::Once || clip.wrap == ClipWrapMode::ClampForever){
                     const double length = clip.length();
                     const double end = speed > 0.0 ? length : 0.0;
@@ -480,7 +479,7 @@ namespace {
                     }
                 }else if (!queue.empty()){
                     // the next one waits for the end of the current cycle
-                    const double period = vatClipPeriod(clip);
+                    const double period = vat::vatClipPeriod(clip);
                     if (period > 0.0){
                         const double boundary = speed > 0.0 ? (std::floor(from / period) + 1.0) * period
                                                             : (std::ceil(from / period) - 1.0) * period;
@@ -503,7 +502,7 @@ namespace {
                 continue;
             }
             // the end of A (once / clamp_forever), or of its cycle with something queued
-            const VatClip& ended = a.clip(pair.a.clip);
+            const vat::VatClip& ended = a.clip(pair.a.clip);
             const bool endsPlaying = ended.wrap == ClipWrapMode::Once || ended.wrap == ClipWrapMode::ClampForever;
             if (endsPlaying && !extra.finishNotified){
                 extra.finishNotified = true;
@@ -524,20 +523,20 @@ namespace {
 
     // the clock moved back by `shift` (an epoch): every time is rewritten once, loops and
     // ended clips brought near the clock so their floats keep their precision
-    void rebaseState(const Animating& a, VatTrackPair& pair, VatStateExtra& extra, double shift, double now){
+    void rebaseState(const Animating& a, vat::VatTrackPair& pair, vat::VatStateExtra& extra, double shift, double now){
         // a crossfade that ended before the shift is settled first
         if (hasB(pair) && !blendMode(pair) && (double)pair.fadeEnd - shift <= now){
             settle(a, pair, extra);
         }
-        auto rebaseTrack = [&](VatTrack& track, VatTrackHold& hold){
+        auto rebaseTrack = [&](vat::VatTrack& track, vat::VatTrackHold& hold){
             // a held track's start is its local time, not a clock time: it stays
             if (!a.validClip(track.clip) || hold.held || track.speed == 0.0f) return;
             // the local time now, from the old clock (now + shift)
             double tau = (now + shift - (double)track.start) * (double)track.speed;
-            const VatClip& clip = a.clip(track.clip);
+            const vat::VatClip& clip = a.clip(track.clip);
             const double length = clip.length();
             if (clip.wrap == ClipWrapMode::Loop || clip.wrap == ClipWrapMode::PingPong){
-                const double period = vatClipPeriod(clip);
+                const double period = vat::vatClipPeriod(clip);
                 if (period > 0.0) tau -= std::floor(tau / period) * period;
             }else{
                 // past either end it shows the end: kept within a second of it
@@ -558,15 +557,15 @@ namespace {
     // ---- requests ----
 
     struct Target{
-        VatTrackPair* pair;
-        VatStateExtra* extra;
+        vat::VatTrackPair* pair;
+        vat::VatStateExtra* extra;
         std::vector<std::string>* queue;
         int64_t index;                  // seed index: 0 the entity, instance + 1
     };
 
     void applyRequest(const Animating& a, const VertexAnimatorRequest& request, double now){
         VertexAnimatorComponent& animator = *a.animator;
-        VertexAnimatorRuntime& runtime = *a.runtime;
+        vat::VertexAnimatorRuntime& runtime = *a.runtime;
         std::vector<Target> targets;
         const bool entity = request.instance < 0 || request.all;
         if (entity){
@@ -601,8 +600,8 @@ namespace {
         }
 
         for (const Target& target : targets){
-            VatTrackPair& pair = *target.pair;
-            VatStateExtra& extra = *target.extra;
+            vat::VatTrackPair& pair = *target.pair;
+            vat::VatStateExtra& extra = *target.extra;
             std::vector<std::string>& queue = *target.queue;
             switch (request.kind){
                 case Kind::Play:
@@ -645,7 +644,7 @@ namespace {
     // editor or a test, without a request)
     bool writeGpu(const Animating& a, InstancedMeshComponent* instanced){
         VertexAnimatorComponent& animator = *a.animator;
-        VertexAnimatorRuntime& runtime = *a.runtime;
+        vat::VertexAnimatorRuntime& runtime = *a.runtime;
         Vector4 v0, v1;
         vatPackInstance(animator.state, v0, v1);
         const bool entityChanged = !samePacked(v0, v1, animator.gpuState0, animator.gpuState1);
@@ -661,7 +660,7 @@ namespace {
         bool changed = false;
         const size_t count = std::min(instanced->instances.size(), animator.instanceStates.size());
         for (size_t i = 0; i < count; i++){
-            VatStateExtra& extra = runtime.instances[i];
+            vat::VatStateExtra& extra = runtime.instances[i];
             if (!extra.dirty) continue;
             extra.dirty = false;
             InstanceData& instance = instanced->instances[i];
@@ -683,13 +682,13 @@ namespace {
     uint64_t clipMask(const Animating& a, const InstancedMeshComponent* instanced, bool& rest){
         uint64_t mask = 0;
         rest = false;
-        auto add = [&mask, &rest, &a](const VatTrackPair& pair){
+        auto add = [&mask, &rest, &a](const vat::VatTrackPair& pair){
             if (a.validClip(pair.a.clip) && pair.a.clip < 64) mask |= (uint64_t)1 << pair.a.clip;
             if (a.validClip(pair.b.clip) && pair.b.clip < 64) mask |= (uint64_t)1 << pair.b.clip;
             if (!a.validClip(pair.a.clip)) rest = true;
         };
         if (instanced){
-            for (const VatTrackPair& pair : a.animator->instanceStates) add(pair);
+            for (const vat::VatTrackPair& pair : a.animator->instanceStates) add(pair);
         }else{
             add(a.animator->state);
         }
@@ -714,7 +713,7 @@ namespace {
 
     // the bounds of the clips in use, and of the rest pose when a state is at rest
     void updateBounds(const Animating& a, const InstancedMeshComponent* instanced){
-        VertexAnimatorRuntime& runtime = *a.runtime;
+        vat::VertexAnimatorRuntime& runtime = *a.runtime;
         bool rest = false;
         const uint64_t mask = clipMask(a, instanced, rest);
         const AABB restBounds = restBoundsOf(a, rest);
@@ -726,7 +725,7 @@ namespace {
 
         AABB bounds;
         for (size_t c = 0; c < a.data->clips.size() && c < 64; c++){
-            const VatBounds& clip = a.data->clips[c].bounds;
+            const vat::VatBounds& clip = a.data->clips[c].bounds;
             if ((mask & ((uint64_t)1 << c)) && clip.valid){
                 bounds.merge(AABB(clip.min, clip.max));
             }
@@ -760,9 +759,9 @@ namespace {
     }
 
     // every state written to the GPU again at the next write (compared with what is there)
-    void touchAll(VertexAnimatorRuntime& runtime){
+    void touchAll(vat::VertexAnimatorRuntime& runtime){
         runtime.entity.dirty = true;
-        for (VatStateExtra& extra : runtime.instances) extra.dirty = true;
+        for (vat::VatStateExtra& extra : runtime.instances) extra.dirty = true;
         runtime.anyDirty = true;
     }
 
@@ -820,20 +819,20 @@ namespace {
 
     // back to before its first update (the asset stays)
     void resetPlayback(VertexAnimatorComponent& animator){
-        animator.state = VatTrackPair();
-        for (VatTrackPair& pair : animator.instanceStates) pair = VatTrackPair();
+        animator.state = vat::VatTrackPair();
+        for (vat::VatTrackPair& pair : animator.instanceStates) pair = vat::VatTrackPair();
         animator.queued.clear();
         animator.requests.clear();
         animator.started = false;
         animator.lastNow = 0.0f;
         animator.gpuNow = 0.0f;
         if (animator.runtime){
-            VertexAnimatorRuntime& runtime = *animator.runtime;
+            vat::VertexAnimatorRuntime& runtime = *animator.runtime;
             runtime.clock = 0.0;
             runtime.epoch = 0;
             runtime.lastNow = 0.0;
-            runtime.entity = VatStateExtra();
-            for (VatStateExtra& extra : runtime.instances) extra = VatStateExtra();
+            runtime.entity = vat::VatStateExtra();
+            for (vat::VatStateExtra& extra : runtime.instances) extra = vat::VatStateExtra();
             runtime.pending.clear();
             // a reset from a callback: the rest of the list being dispatched goes too
             runtime.dispatching.clear();
@@ -849,7 +848,7 @@ namespace {
     // animator did
     void syncInstances(const Animating& a, const InstancedMeshComponent* instanced, double now){
         VertexAnimatorComponent& animator = *a.animator;
-        VertexAnimatorRuntime& runtime = *a.runtime;
+        vat::VertexAnimatorRuntime& runtime = *a.runtime;
         const size_t count = instanced ? instanced->instances.size() : 0;
         if (runtime.instances.size() != animator.instanceStates.size()){
             runtime.instances.resize(animator.instanceStates.size());
@@ -870,20 +869,20 @@ namespace {
     }
 
     // a reloaded asset (a rebake): every state plays the clip of the same name, or the default
-    void remapClips(const Animating& a, const VatData& old, double now){
-        auto remap = [&](VatTrack& track){
+    void remapClips(const Animating& a, const vat::VatData& old, double now){
+        auto remap = [&](vat::VatTrack& track){
             if (track.clip < 0) return;
             const int index = track.clip < (int)old.clips.size() ? a.data->findClip(old.clips[(size_t)track.clip].name) : -1;
             track.clip = index >= 0 ? index : defaultClip(a);
         };
-        auto remapState = [&](VatTrackPair& pair, VatStateExtra& extra){
+        auto remapState = [&](vat::VatTrackPair& pair, vat::VatStateExtra& extra){
             remap(pair.a);
             remap(pair.b);
             if (pair.a.clip < 0 && pair.b.clip >= 0){
                 pair.a = pair.b;
-                pair.b = VatTrack();
+                pair.b = vat::VatTrack();
             }
-            if (pair.a.clip < 0) pair = VatTrackPair();
+            if (pair.a.clip < 0) pair = vat::VatTrackPair();
             respeed(a, pair, extra, now);
         };
         remapState(a.animator->state, a.runtime->entity);
@@ -893,7 +892,7 @@ namespace {
         a.runtime->boundsSet = false;
     }
 
-    void failLoad(Scene* scene, Entity entity, VertexAnimatorComponent& animator, VertexAnimatorRuntime& runtime, const std::string& message){
+    void failLoad(Scene* scene, Entity entity, VertexAnimatorComponent& animator, vat::VertexAnimatorRuntime& runtime, const std::string& message){
         animator.asset.reset();
         animator.loadError = message;
         animator.gpuActive = false;
@@ -906,7 +905,7 @@ namespace {
     }
 
     // the asset of `animation`, loaded or reloaded as needed; null while there is none
-    bool ensureLoaded(Scene* scene, Entity entity, VertexAnimatorComponent& animator, VertexAnimatorRuntime& runtime,
+    bool ensureLoaded(Scene* scene, Entity entity, VertexAnimatorComponent& animator, vat::VertexAnimatorRuntime& runtime,
                       double dt, double now){
         if (animator.animation.empty()){
             animator.asset.reset();
@@ -928,7 +927,7 @@ namespace {
             animator.needsLoad = false;
             std::string error;
             std::vector<ClipWarning> warnings;
-            std::shared_ptr<const VertexAnimation> loaded = VertexAnimationPool::getOrLoad(animator.animation, &error, &warnings);
+            std::shared_ptr<const vat::VertexAnimation> loaded = VertexAnimationPool::getOrLoad(animator.animation, &error, &warnings);
             if (!loaded){
                 failLoad(scene, entity, animator, runtime, animator.animation + ": " + (error.empty() ? std::string("could not be loaded") : error));
                 return false;
@@ -937,7 +936,7 @@ namespace {
                 Log::warn("Vertex Animator '%s': %s: %s: %s", scene->getEntityName(entity).c_str(), animator.animation.c_str(),
                           warning.path.c_str(), warning.message.c_str());
             }
-            std::shared_ptr<const VertexAnimation> old = animator.asset;
+            std::shared_ptr<const vat::VertexAnimation> old = animator.asset;
             animator.asset = loaded;
             animator.loadedGeneration = VertexAnimationPool::getGeneration(animator.animation);
             animator.loadError.clear();
@@ -962,7 +961,7 @@ namespace {
 
     // The mesh the asset was baked for: the GameObject's Model is "<.vat's folder>/<data.mesh>".
     // False with `wait` while the Model loads, else with the mesh_mismatch text
-    bool meshMatches(Scene* scene, Entity entity, const VertexAnimatorComponent& animator, const VatData& data,
+    bool meshMatches(Scene* scene, Entity entity, const VertexAnimatorComponent& animator, const vat::VatData& data,
                      bool& wait, std::string& error){
         wait = false;
         const std::string expected = expectedMesh(animator.animation, data);
@@ -994,7 +993,7 @@ VertexAnimatorSystem::VertexAnimatorSystem(Scene* scene): SubSystem(scene){
 }
 
 void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent& animator, double dt){
-    VertexAnimatorRuntime& runtime = animatorRuntime(animator);
+    vat::VertexAnimatorRuntime& runtime = vat::animatorRuntime(animator);
 
     if (!animator.enabled){
         // disabled: the mesh draws at rest at once (its instances too: written once), nothing moves
@@ -1041,13 +1040,13 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
     if ((!paused || animator.preview) && std::isfinite(dt) && dt > 0.0){
         runtime.clock += dt;
     }
-    double now = runtime.clock - (double)runtime.epoch * VAT_EPOCH_SECONDS;
+    double now = runtime.clock - (double)runtime.epoch * vat::VAT_EPOCH_SECONDS;
     bool rebase = false;
     double shift = 0.0;
-    if (now >= VAT_EPOCH_SECONDS){
-        const int64_t periods = (int64_t)std::floor(now / VAT_EPOCH_SECONDS);
+    if (now >= vat::VAT_EPOCH_SECONDS){
+        const int64_t periods = (int64_t)std::floor(now / vat::VAT_EPOCH_SECONDS);
         runtime.epoch += periods;
-        shift = (double)periods * VAT_EPOCH_SECONDS;
+        shift = (double)periods * vat::VAT_EPOCH_SECONDS;
         now -= shift;
         prev -= shift;
         rebase = true;
@@ -1056,7 +1055,7 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
     if (!ensureLoaded(scene, entity, animator, runtime, dt, now)){
         if (rebase){
             // no clip table to bring them near the clock: the times only move with it
-            auto shiftState = [shift](VatTrackPair& pair){
+            auto shiftState = [shift](vat::VatTrackPair& pair){
                 // (a held track's start is its local time: it stays)
                 if (pair.a.speed != 0.0f) pair.a.start = (float)((double)pair.a.start - shift);
                 if (pair.b.speed != 0.0f) pair.b.start = (float)((double)pair.b.start - shift);
@@ -1064,7 +1063,7 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
                 pair.fadeEnd = (float)((double)pair.fadeEnd - shift);
             };
             shiftState(animator.state);
-            for (VatTrackPair& pair : animator.instanceStates) shiftState(pair);
+            for (vat::VatTrackPair& pair : animator.instanceStates) shiftState(pair);
         }
         animator.gpuActive = false;
         runtime.lastNow = now;
@@ -1155,7 +1154,7 @@ void VertexAnimatorSystem::updateAnimator(Entity entity, VertexAnimatorComponent
         if (runtime.watchDirty){
             runtime.watched.clear();
             for (size_t i = 0; i < runtime.instances.size(); i++){
-                const VatStateExtra& extra = runtime.instances[i];
+                const vat::VatStateExtra& extra = runtime.instances[i];
                 if (!extra.queue.empty()){
                     runtime.watched.push_back((int)i);
                 }
@@ -1198,7 +1197,7 @@ void VertexAnimatorSystem::applyRequests(Entity entity){
             !animator->runtime || !animator->enabled){
         return;
     }
-    VertexAnimatorRuntime& runtime = *animator->runtime;
+    vat::VertexAnimatorRuntime& runtime = *animator->runtime;
     Animating a = animating(scene, entity, *animator, false);
     InstancedMeshComponent* instanced = scene->findComponent<InstancedMeshComponent>(entity);
     // instances added since the last update first: a request may name them
@@ -1225,7 +1224,7 @@ void VertexAnimatorSystem::refreshInstances(){
                 animator.needsLoad || !animator.runtime || !scene->isEntityActiveInHierarchy(entity)){
             continue;
         }
-        VertexAnimatorRuntime& runtime = *animator.runtime;
+        vat::VertexAnimatorRuntime& runtime = *animator.runtime;
         Animating a = animating(scene, entity, animator, false);
         syncInstances(a, instanced, runtime.lastNow);
         touchAll(runtime);
@@ -1244,18 +1243,18 @@ bool VertexAnimatorSystem::dispatchCallbacks(){
         VertexAnimatorComponent* animator = scene->isEntityCreated(entity) ? scene->findComponent<VertexAnimatorComponent>(entity) : nullptr;
         if (!animator || !animator->runtime || !animator->runtime->dispatching.empty()) continue;
         // held: a callback can remove the component
-        std::shared_ptr<VertexAnimatorRuntime> runtime = animator->runtime;
+        std::shared_ptr<vat::VertexAnimatorRuntime> runtime = animator->runtime;
         // dispatched from the runtime, so an instance removed by a callback re-indexes (or drops)
         // the callbacks not called yet (eraseInstanceState)
         runtime->dispatching.swap(runtime->pending);
         runtime->dispatchNext = 0;
-        std::stable_sort(runtime->dispatching.begin(), runtime->dispatching.end(), [](const VatPendingCallback& a, const VatPendingCallback& b){
+        std::stable_sort(runtime->dispatching.begin(), runtime->dispatching.end(), [](const vat::VatPendingCallback& a, const vat::VatPendingCallback& b){
             return a.when < b.when;
         });
 
         while (runtime->dispatchNext < runtime->dispatching.size()){
             // a copy: the list may change under the call
-            const VatPendingCallback callback = runtime->dispatching[runtime->dispatchNext++];
+            const vat::VatPendingCallback callback = runtime->dispatching[runtime->dispatchNext++];
             // callbacks may add components (arrays move) or destroy the GameObject
             animator = scene->isEntityCreated(entity) ? scene->findComponent<VertexAnimatorComponent>(entity) : nullptr;
             if (!animator || animator->runtime != runtime) break;

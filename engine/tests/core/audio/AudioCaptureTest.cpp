@@ -13,6 +13,8 @@
 #include "support/AllocationCounter.h"
 #endif
 
+namespace AudioCaptureTest_cpp {
+
 using namespace jasperengine;
 
 #if JASPERENGINE_AUDIO_CAPTURE
@@ -59,3 +61,5 @@ TEST(AudioCaptureTest, OffPathAllocatesNothing) {
     EXPECT_EQ(allocated, 0u);
 }
 #endif
+
+}  // namespace AudioCaptureTest_cpp

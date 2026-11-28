@@ -30,6 +30,8 @@
 #include <string>
 #include <vector>
 
+namespace TilemapImportApplyTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -358,3 +360,5 @@ TEST(TilemapImportAsepriteStrip, AReimportedStripReachesTheTileset) {
     ImportedAssets::setProvider(nullptr);
     TilesetPool::invalidate("maps/strip.tileset");
 }
+
+}  // namespace TilemapImportApplyTest_cpp

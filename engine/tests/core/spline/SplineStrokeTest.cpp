@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <cstring>
 
+namespace SplineStrokeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 using namespace jasperengine::test;
@@ -218,3 +220,5 @@ TEST(SplineStrokeTests, ExtendPicksTheNearerEndpoint){
     EXPECT_EQ(extendWithStroke(s, stroke, 2.0f), SplineStrokeExtension::Prepended);
     expectNearVector(s.knot(0).position, Vector3(-3, 0, 0), 0.0f);
 }
+
+}  // namespace SplineStrokeTest_cpp

@@ -11,6 +11,8 @@
 #include <deque>
 #include <random>
 
+namespace FillOpsTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
 using jasperengine::editor::pixelart::s47test::json;
@@ -149,3 +151,5 @@ TEST(FillOps, LinkedCelsAreFilledOnce) {
     ASSERT_TRUE(run.ok) << run.problem.message;
     EXPECT_EQ(draw::celCanvas(sprite.doc, 0, 0).at(0, 0), (PixelRgba{128, 0, 0, 255})) << "darkened once, not once per frame showing it";
 }
+
+}  // namespace FillOpsTest_cpp

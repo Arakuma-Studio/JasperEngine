@@ -6,7 +6,8 @@
 #include <algorithm>
 
 using namespace jasperengine;
-using namespace jasperengine::titleanim;
+
+namespace jasperengine::titleanim {
 
 namespace {
 
@@ -53,31 +54,31 @@ namespace {
 
 }
 
-const char* titleanim::animWrapName(AnimWrap wrap){ return WRAP_NAMES[(size_t)wrap]; }
-bool titleanim::animWrapFromName(std::string_view name, AnimWrap& out){ return fromNames(name, WRAP_NAMES, out); }
-const char* titleanim::animRoleName(AnimRole role){ return ROLE_NAMES[(size_t)role]; }
-bool titleanim::animRoleFromName(std::string_view name, AnimRole& out){ return fromNames(name, ROLE_NAMES, out); }
-const char* titleanim::trackClassName(TrackClass cls){ return CLASS_NAMES[(size_t)cls]; }
-const char* titleanim::staggerOrderName(StaggerOrder order){ return ORDER_NAMES[(size_t)order]; }
-bool titleanim::staggerOrderFromName(std::string_view name, StaggerOrder& out){ return fromNames(name, ORDER_NAMES, out); }
-const char* titleanim::staggerUnitName(StaggerUnit unit){ return UNIT_NAMES[(size_t)unit]; }
-bool titleanim::staggerUnitFromName(std::string_view name, StaggerUnit& out){ return fromNames(name, UNIT_NAMES, out); }
-const char* titleanim::trackPivotName(TrackPivot pivot){ return PIVOT_NAMES[(size_t)pivot]; }
-bool titleanim::trackPivotFromName(std::string_view name, TrackPivot& out){ return fromNames(name, PIVOT_NAMES, out); }
-const char* titleanim::rerenderPolicyName(RerenderPolicy policy){ return POLICY_NAMES[(size_t)policy]; }
-bool titleanim::rerenderPolicyFromName(std::string_view name, RerenderPolicy& out){ return fromNames(name, POLICY_NAMES, out); }
+const char* animWrapName(AnimWrap wrap){ return WRAP_NAMES[(size_t)wrap]; }
+bool animWrapFromName(std::string_view name, AnimWrap& out){ return fromNames(name, WRAP_NAMES, out); }
+const char* animRoleName(AnimRole role){ return ROLE_NAMES[(size_t)role]; }
+bool animRoleFromName(std::string_view name, AnimRole& out){ return fromNames(name, ROLE_NAMES, out); }
+const char* trackClassName(TrackClass cls){ return CLASS_NAMES[(size_t)cls]; }
+const char* staggerOrderName(StaggerOrder order){ return ORDER_NAMES[(size_t)order]; }
+bool staggerOrderFromName(std::string_view name, StaggerOrder& out){ return fromNames(name, ORDER_NAMES, out); }
+const char* staggerUnitName(StaggerUnit unit){ return UNIT_NAMES[(size_t)unit]; }
+bool staggerUnitFromName(std::string_view name, StaggerUnit& out){ return fromNames(name, UNIT_NAMES, out); }
+const char* trackPivotName(TrackPivot pivot){ return PIVOT_NAMES[(size_t)pivot]; }
+bool trackPivotFromName(std::string_view name, TrackPivot& out){ return fromNames(name, PIVOT_NAMES, out); }
+const char* rerenderPolicyName(RerenderPolicy policy){ return POLICY_NAMES[(size_t)policy]; }
+bool rerenderPolicyFromName(std::string_view name, RerenderPolicy& out){ return fromNames(name, POLICY_NAMES, out); }
 
-TitleField titleanim::titleFieldFromPath(std::string_view path){
+TitleField titleFieldFromPath(std::string_view path){
     for (size_t i = 1; i < (size_t)TitleField::Count; i++)
         if (path == TITLE_FIELD_PATHS[i]) return (TitleField)i;
     return TitleField::None;
 }
 
-const char* titleanim::titleFieldPath(TitleField field){
+const char* titleFieldPath(TitleField field){
     return field < TitleField::Count ? TITLE_FIELD_PATHS[(size_t)field] : "";
 }
 
-GlyphField titleanim::glyphFieldFromPath(std::string_view path){
+GlyphField glyphFieldFromPath(std::string_view path){
     for (size_t i = 1; i < (size_t)GlyphField::Count; i++){
         std::string_view full = GLYPH_FIELD_PATHS[i];
         if (path == full || path == full.substr(6)) return (GlyphField)i;
@@ -85,11 +86,11 @@ GlyphField titleanim::glyphFieldFromPath(std::string_view path){
     return GlyphField::None;
 }
 
-const char* titleanim::glyphFieldPath(GlyphField field){
+const char* glyphFieldPath(GlyphField field){
     return field < GlyphField::Count ? GLYPH_FIELD_PATHS[(size_t)field] : "";
 }
 
-VirtualFieldInfo titleanim::titleFieldInfo(TitleField field){
+VirtualFieldInfo titleFieldInfo(TitleField field){
     switch (field){
         case TitleField::Position: return info(TrackValue::Vec2, 2, {0, 0}, -1e6, 1e6, TrackCombine::Add, "Position");
         case TitleField::Rotation: return info(TrackValue::Number, 1, {0}, -36000, 36000, TrackCombine::Add, "Rotation");
@@ -111,7 +112,7 @@ VirtualFieldInfo titleanim::titleFieldInfo(TitleField field){
     return VirtualFieldInfo();
 }
 
-VirtualFieldInfo titleanim::glyphFieldInfo(GlyphField field){
+VirtualFieldInfo glyphFieldInfo(GlyphField field){
     switch (field){
         case GlyphField::Offset: return info(TrackValue::Vec2, 2, {0, 0}, -10000, 10000, TrackCombine::Add, "Glyph Offset");
         case GlyphField::Rotation: return info(TrackValue::Number, 1, {0}, -36000, 36000, TrackCombine::Add, "Glyph Rotation");
@@ -165,3 +166,5 @@ bool TitlePoseSummary::any() const{
     for (bool set : liveSet) if (set) return true;
     return false;
 }
+
+}  // namespace jasperengine::titleanim

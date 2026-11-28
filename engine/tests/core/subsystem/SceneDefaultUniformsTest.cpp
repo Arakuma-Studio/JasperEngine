@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+namespace SceneDefaultUniformsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -108,3 +110,5 @@ TEST(SceneDefaultUniforms, FlagsOnlyInheritors) {
     EXPECT_TRUE(scene.removeDefaultShaderUniform(ShaderType::MESH, "tint"));
     EXPECT_TRUE(scene.getComponent<MeshComponent>(inheriting).needUpdateShaderUniforms);
 }
+
+}  // namespace SceneDefaultUniformsTest_cpp

@@ -45,6 +45,8 @@
 #include <iterator>
 #include <memory>
 
+namespace HumanoidModelTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pose;
 
@@ -903,3 +905,5 @@ TEST_F(HumanoidModel, PerformanceBudget){
     }
 #endif
 }
+
+}  // namespace HumanoidModelTest_cpp

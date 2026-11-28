@@ -27,12 +27,12 @@
 #include <thread>
 
 using namespace jasperengine;
-using namespace jasperengine::diag;
 
 namespace je_hang {}
-using namespace je_hang;
 
 namespace je_hang {
+
+    using namespace jasperengine::diag;
 
     constexpr size_t kMaxScopes = 16;
     constexpr size_t kLabelBytes = 96;
@@ -407,16 +407,16 @@ namespace je_hang {
 }
 
 void diag::heartbeat() {
-    Shared& s = shared();
+    je_hang::Shared& s = je_hang::shared();
     s.beats.store(s.beats.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
 }
 
 uint64_t diag::heartbeats() {
-    return shared().beats.load(std::memory_order_relaxed);
+    return je_hang::shared().beats.load(std::memory_order_relaxed);
 }
 
 void diag::watchdog::start(const WatchdogConfig& input) {
-    Shared& s = shared();
+    je_hang::Shared& s = je_hang::shared();
     std::unique_lock<std::mutex> lock(s.mutex);
     if (s.running.load(std::memory_order_relaxed)) return;
     WatchdogConfig config = input;
@@ -424,8 +424,8 @@ void diag::watchdog::start(const WatchdogConfig& input) {
         config.enabled = std::strcmp(value, "0") != 0;
     }
     if (!config.enabled) return;
-    config.thresholdMs = envMs("JASPERENGINE_HANG_WATCHDOG_MS", config.thresholdMs);
-    config.shutdownMs = envMs("JASPERENGINE_HANG_WATCHDOG_SHUTDOWN_MS", config.shutdownMs);
+    config.thresholdMs = je_hang::envMs("JASPERENGINE_HANG_WATCHDOG_MS", config.thresholdMs);
+    config.shutdownMs = je_hang::envMs("JASPERENGINE_HANG_WATCHDOG_SHUTDOWN_MS", config.shutdownMs);
     s.config = config;
     s.thresholdMs.store(config.thresholdMs, std::memory_order_relaxed);
     s.shutdownMs.store(config.shutdownMs, std::memory_order_relaxed);
@@ -445,21 +445,21 @@ void diag::watchdog::start(const WatchdogConfig& input) {
     s.watched = std::this_thread::get_id();
     s.running.store(true, std::memory_order_release);
     if (config.pollMs > 0) {
-        s.thread = thread::spawnNamed("Hang Watchdog", loop, thread::Priority::BelowNormal);
+        s.thread = thread::spawnNamed("Hang Watchdog", je_hang::loop, thread::Priority::BelowNormal);
     }
 }
 
 void diag::watchdog::beginShutdownWatch() {
-    Shared& s = shared();
+    je_hang::Shared& s = je_hang::shared();
     if (!s.running.load(std::memory_order_relaxed)) return;
     s.readJobs.store(false, std::memory_order_relaxed);
     heartbeat();
-    s.phase.store(kShutdownPhase, std::memory_order_relaxed);
+    s.phase.store(je_hang::kShutdownPhase, std::memory_order_relaxed);
     s.shutdownWindow.store(true, std::memory_order_relaxed);
 }
 
 void diag::watchdog::stop() {
-    Shared& s = shared();
+    je_hang::Shared& s = je_hang::shared();
     std::thread worker;
     {
         std::lock_guard<std::mutex> lock(s.mutex);
@@ -475,11 +475,11 @@ void diag::watchdog::stop() {
 }
 
 bool diag::watchdog::isRunning() {
-    return shared().running.load(std::memory_order_acquire);
+    return je_hang::shared().running.load(std::memory_order_acquire);
 }
 
-HealthSnapshot diag::watchdog::health() {
-    Shared& s = shared();
+diag::HealthSnapshot diag::watchdog::health() {
+    je_hang::Shared& s = je_hang::shared();
     HealthSnapshot out;
     out.enabled = s.running.load(std::memory_order_acquire);
     out.shutdownWindow = s.shutdownWindow.load(std::memory_order_relaxed);
@@ -487,47 +487,47 @@ HealthSnapshot diag::watchdog::health() {
     out.reports = s.reports.load(std::memory_order_relaxed);
     const char* phase = s.phase.load(std::memory_order_relaxed);
     out.phase = phase ? phase : "";
-    const std::vector<ScopeView> scopes = readScopes(s);
-    for (const ScopeView& scope : scopes) out.busyScopes.push_back(scope.label);
+    const std::vector<je_hang::ScopeView> scopes = je_hang::readScopes(s);
+    for (const je_hang::ScopeView& scope : scopes) out.busyScopes.push_back(scope.label);
     if (!out.enabled || !s.armed.load(std::memory_order_relaxed) || s.paused.load(std::memory_order_relaxed)) return out;
     // the main thread beat since the last poll: alive, whatever the stall the watchdog last saw
     if (s.beats.load(std::memory_order_relaxed) != s.polledBeats.load(std::memory_order_relaxed)) return out;
     // never the config's clock: health is asked from any thread, the clock is the watchdog's
-    const uint64_t now = s.config.clock ? 0 : steadyNs();
+    const uint64_t now = s.config.clock ? 0 : je_hang::steadyNs();
     const uint64_t lastBeat = s.lastBeatNs.load(std::memory_order_relaxed);
     out.stalledMs = now > lastBeat ? (now - lastBeat) / 1000000 : 0;
-    const uint64_t threshold = effectiveThresholdMs(s, scopes);
-    out.responsive = threshold == kUnlimited || out.stalledMs <= threshold;
+    const uint64_t threshold = je_hang::effectiveThresholdMs(s, scopes);
+    out.responsive = threshold == je_hang::kUnlimited || out.stalledMs <= threshold;
     return out;
 }
 
 void diag::watchdog::setThresholdMs(uint32_t thresholdMs) {
-    if (thresholdMs > 0) shared().thresholdMs.store(thresholdMs, std::memory_order_relaxed);
+    if (thresholdMs > 0) je_hang::shared().thresholdMs.store(thresholdMs, std::memory_order_relaxed);
 }
 
 void diag::watchdog::setPaused(bool paused) {
-    shared().paused.store(paused, std::memory_order_relaxed);
+    je_hang::shared().paused.store(paused, std::memory_order_relaxed);
 }
 
 void diag::watchdog::setFrameInfo(uint64_t frame, float lastFrameMs) {
-    Shared& s = shared();
+    je_hang::Shared& s = je_hang::shared();
     s.frame.store(frame, std::memory_order_relaxed);
     s.lastFrameUs.store(lastFrameMs > 0.0f ? static_cast<uint32_t>(lastFrameMs * 1000.0f) : 0u, std::memory_order_relaxed);
 }
 
 void diag::watchdog::setContext(ContextSlot slot, std::string_view value) {
     if (slot >= ContextSlot::Count) return;
-    ContextValue& c = shared().context[static_cast<size_t>(slot)];
+    je_hang::ContextValue& c = je_hang::shared().context[static_cast<size_t>(slot)];
     const uint32_t seq = c.seq.load(std::memory_order_relaxed);
     c.seq.store(seq + 1, std::memory_order_release);
-    const size_t n = std::min(value.size(), kContextBytes - 1);
+    const size_t n = std::min(value.size(), je_hang::kContextBytes - 1);
     std::memcpy(c.value, value.data(), n);
     c.value[n] = '\0';
     c.seq.store(seq + 2, std::memory_order_release);
 }
 
-std::vector<HangNotice> diag::watchdog::takeNotices() {
-    Shared& s = shared();
+std::vector<diag::HangNotice> diag::watchdog::takeNotices() {
+    je_hang::Shared& s = je_hang::shared();
     std::lock_guard<std::mutex> lock(s.mutex);
     std::vector<HangNotice> out(s.notices.begin(), s.notices.end());
     s.notices.clear();
@@ -535,38 +535,38 @@ std::vector<HangNotice> diag::watchdog::takeNotices() {
 }
 
 void diag::watchdog::setLuaHooks(LuaHooks hooks) {
-    Shared& s = shared();
+    je_hang::Shared& s = je_hang::shared();
     std::lock_guard<std::mutex> lock(s.mutex);
     s.luaHooks = std::move(hooks);
 }
 
 void diag::watchdog::setBreakLuaAfterMs(uint32_t milliseconds) {
-    shared().breakLuaMs.store(milliseconds, std::memory_order_relaxed);
+    je_hang::shared().breakLuaMs.store(milliseconds, std::memory_order_relaxed);
 }
 
 uint32_t diag::watchdog::breakLuaAfterMs() {
-    return shared().breakLuaMs.load(std::memory_order_relaxed);
+    return je_hang::shared().breakLuaMs.load(std::memory_order_relaxed);
 }
 
 void diag::watchdog::poll() {
-    Shared& s = shared();
+    je_hang::Shared& s = je_hang::shared();
     std::unique_lock<std::mutex> lock(s.mutex);
-    if (s.running.load(std::memory_order_relaxed)) tick(s, lock);
+    if (s.running.load(std::memory_order_relaxed)) je_hang::tick(s, lock);
 }
 
 diag::BusyScope::BusyScope(std::string_view label, uint32_t budgetMs) {
-    Shared& s = shared();
-    if (!onWatchedThread(s)) return;
+    je_hang::Shared& s = je_hang::shared();
+    if (!je_hang::onWatchedThread(s)) return;
     entered = true;
     const uint32_t depth = s.scopeDepth.load(std::memory_order_relaxed);
-    if (depth < kMaxScopes) {
+    if (depth < je_hang::kMaxScopes) {
         s.scopeSeq.fetch_add(1, std::memory_order_acq_rel);
-        ScopeSlot& slot = s.scopes[depth];
-        const size_t n = std::min(label.size(), kLabelBytes - 1);
+        je_hang::ScopeSlot& slot = s.scopes[depth];
+        const size_t n = std::min(label.size(), je_hang::kLabelBytes - 1);
         std::memcpy(slot.label, label.data(), n);
         slot.label[n] = '\0';
         slot.budgetMs = budgetMs;
-        slot.startNs = s.config.clock ? s.config.clock() : steadyNs();
+        slot.startNs = s.config.clock ? s.config.clock() : je_hang::steadyNs();
         s.scopeSeq.fetch_add(1, std::memory_order_acq_rel);
     }
     s.scopeDepth.store(depth + 1, std::memory_order_release);
@@ -574,7 +574,7 @@ diag::BusyScope::BusyScope(std::string_view label, uint32_t budgetMs) {
 
 diag::BusyScope::~BusyScope() {
     if (!entered) return;
-    Shared& s = shared();
+    je_hang::Shared& s = je_hang::shared();
     const uint32_t depth = s.scopeDepth.load(std::memory_order_relaxed);
     if (depth > 0) s.scopeDepth.store(depth - 1, std::memory_order_release);
     // the stall a long scope covered starts again from here
@@ -582,13 +582,13 @@ diag::BusyScope::~BusyScope() {
 }
 
 diag::PhaseScope::PhaseScope(const char* staticLabel) {
-    Shared& s = shared();
-    if (!onWatchedThread(s)) return;
+    je_hang::Shared& s = je_hang::shared();
+    if (!je_hang::onWatchedThread(s)) return;
     entered = true;
     previous = s.phase.exchange(staticLabel, std::memory_order_relaxed);
 }
 
 diag::PhaseScope::~PhaseScope() {
     if (!entered) return;
-    shared().phase.store(previous, std::memory_order_relaxed);
+    je_hang::shared().phase.store(previous, std::memory_order_relaxed);
 }

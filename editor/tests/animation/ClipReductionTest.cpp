@@ -19,6 +19,8 @@
 #include <limits>
 #include <thread>
 
+namespace ClipReductionTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -691,3 +693,5 @@ TEST(ClipReduction, AfterAWriteTheErrorIsReadFromTheFile){
 TEST(ClipReduction, ClipExtensionKeyDoesNotWarn){
     EXPECT_TRUE(anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 1, \"optimize\": {\"tolerance_mm\": 1}, \"tracks\": [], \"events\": []}").warnings.empty());
 }
+
+}  // namespace ClipReductionTest_cpp

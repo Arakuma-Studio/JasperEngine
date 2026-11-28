@@ -41,7 +41,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::titledesigner;
 namespace ta = jasperengine::titleart;
 namespace fs = std::filesystem;
 
@@ -63,11 +62,11 @@ namespace {
         return ScreenOrientation::LandscapeLeft;
     }
 
-    bool rectContains(const TitleRect& r, TitleVec2 p) {
+    bool rectContains(const titledesigner::TitleRect& r, titledesigner::TitleVec2 p) {
         return p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height;
     }
 
-    bool rectsTouch(const TitleRect& a, const TitleRect& b) {
+    bool rectsTouch(const titledesigner::TitleRect& a, const titledesigner::TitleRect& b) {
         return a.x <= b.x + b.width && b.x <= a.x + a.width && a.y <= b.y + b.height && b.y <= a.y + a.height;
     }
 
@@ -84,7 +83,7 @@ TitleDesignerWindow::DerivedKey TitleDesignerWindow::derivedKey() const {
     return key;
 }
 
-TitleRect TitleDesignerWindow::layerBounds(const std::string& layerId) const {
+titledesigner::TitleRect TitleDesignerWindow::layerBounds(const std::string& layerId) const {
     if (!geometry || !doc.isOpen()) return {};
     const DerivedKey key = derivedKey();
     if (!(key == boundsKey)) {
@@ -93,9 +92,9 @@ TitleRect TitleDesignerWindow::layerBounds(const std::string& layerId) const {
     }
     auto cached = boundsCache.find(layerId);
     if (cached != boundsCache.end()) return cached->second;
-    const ta::Json* layer = layerById(doc.shown(), layerId);
+    const ta::Json* layer = titledesigner::layerById(doc.shown(), layerId);
     if (!layer) return {};
-    const TitleRect bounds = geometry->contentBounds(*layer, doc.shown());
+    const titledesigner::TitleRect bounds = geometry->contentBounds(*layer, doc.shown());
     boundsCache.emplace(layerId, bounds);
     documentPasses++;
     return bounds;
@@ -111,9 +110,9 @@ const ta::TitleArtHashes& TitleDesignerWindow::shownHashes() {
     return hashesCache;
 }
 
-TitleRect TitleDesignerWindow::stageRect() const {
+titledesigner::TitleRect TitleDesignerWindow::stageRect() const {
     const ta::TitleArtDoc& shown = doc.shown();
-    const DocumentView* v = viewOrNull();
+    const titledesigner::DocumentView* v = viewOrNull();
     // In Context: the instance's screen (R30)
     if (v && v->backdrop.kind == "in_context" && inContext && inContext->screenWidth > 0 && inContext->screenHeight > 0) {
         return {-inContext->screenWidth * 0.5, -inContext->screenHeight * 0.5, (double)inContext->screenWidth, (double)inContext->screenHeight};
@@ -132,12 +131,12 @@ TitleRect TitleDesignerWindow::stageRect() const {
         }
         if (w > 0 && h > 0) return {-w * 0.5, -h * 0.5, (double)w, (double)h};
     }
-    return canvasRect(shown.canvasWidth(), shown.canvasHeight());
+    return titledesigner::canvasRect(shown.canvasWidth(), shown.canvasHeight());
 }
 
 void TitleDesignerWindow::zoomAbout(float factor, ImVec2 screen) {
-    DocumentView& v = view();
-    const TitleVec2 before = xform.toDoc(screen);
+    titledesigner::DocumentView& v = view();
+    const titledesigner::TitleVec2 before = xform.toDoc(screen);
     const float current = xform.zoom;
     const float next = std::clamp(current * factor, 1.0f / 16.0f, 32.0f);
     v.fit = false;
@@ -151,8 +150,8 @@ void TitleDesignerWindow::zoomAbout(float factor, ImVec2 screen) {
 }
 
 void TitleDesignerWindow::updateView(float width, float height) {
-    DocumentView& v = view();
-    const TitleRect stage = stageRect();
+    titledesigner::DocumentView& v = view();
+    const titledesigner::TitleRect stage = stageRect();
     // ImGui pixels per document unit (the canvas framebuffer is ImGui pixels x display scale)
     float zoom = v.zoom;
     if (v.fit) {
@@ -163,7 +162,7 @@ void TitleDesignerWindow::updateView(float width, float height) {
     }
     zoom = std::clamp(zoom, 1.0f / 16.0f, 32.0f);
     const ImVec2 centre((canvasMin.x + canvasMax.x) * 0.5f, (canvasMin.y + canvasMax.y) * 0.5f);
-    CanvasXform next;
+    titledesigner::CanvasXform next;
     next.zoom = zoom;
     next.origin = ImVec2(centre.x - (float)v.panX * zoom, centre.y + (float)v.panY * zoom);
     if (next.zoom != xform.zoom || next.origin.x != xform.origin.x || next.origin.y != xform.origin.y) lastViewChange = now();
@@ -171,7 +170,7 @@ void TitleDesignerWindow::updateView(float width, float height) {
 }
 
 // the title's placement on a device stage (Anchor, Display Height: R31)
-static void devicePlacement(const DocumentView& v, const TitleRect& stage, const ta::TitleArtDoc& doc, double& scale, double& offsetX, double& offsetY,
+static void devicePlacement(const titledesigner::DocumentView& v, const titledesigner::TitleRect& stage, const ta::TitleArtDoc& doc, double& scale, double& offsetX, double& offsetY,
                             const TitleInContext* context) {
     scale = 1.0;
     offsetX = offsetY = 0.0;
@@ -200,17 +199,17 @@ static void devicePlacement(const DocumentView& v, const TitleRect& stage, const
 void TitleDesignerWindow::requestCanvasRender() {
     JE_PROFILE_SCOPE("TD requestCanvasRender");
     if (!canvas || !doc.isOpen()) return;
-    const DocumentView& v = view();
+    const titledesigner::DocumentView& v = view();
     const bool baked = v.previewAs == "baked";
-    const PreviewModeDef* mode = activePreviewMode();
+    const titledesigner::PreviewModeDef* mode = activePreviewMode();
     if (baked || (mode && mode->draw)) return;
-    if (canvasPoseSource().active && canvasPoseSource().active(doc)) return;    // S85: the panel draws the pose
+    if (titledesigner::canvasPoseSource().active && titledesigner::canvasPoseSource().active(doc)) return;    // S85: the panel draws the pose
     const ta::TitleArtDoc& shown = doc.shown();
     const double t = now();
     const bool settled = t - lastViewChange >= SETTLE_SECONDS;
     const bool gesture = doc.gestureActive() || drag != Drag::None || panning;
     // Draft while interacting (Auto), Full when settled (R68)
-    const bool draft = settings.quality == Quality::Draft || (settings.quality == Quality::Auto && gesture);
+    const bool draft = settings.quality == titledesigner::Quality::Draft || (settings.quality == titledesigner::Quality::Auto && gesture);
     double stageScale = 1.0, ox = 0.0, oy = 0.0;
     devicePlacement(v, stageRect(), shown, stageScale, ox, oy, inContext ? &*inContext : nullptr);
     // display resolution of the visible window (at most 8,192 px a side)
@@ -221,7 +220,7 @@ void TitleDesignerWindow::requestCanvasRender() {
     if (!settled && canvas->info().hasImage && !doc.gestureActive() && !doc.previewActive()) return;
     {
         // the visible part of the canvas in canvas px (y down from its top-left)
-        const TitleVec2 a = xform.toDoc(canvasMin), b = xform.toDoc(canvasMax);
+        const titledesigner::TitleVec2 a = xform.toDoc(canvasMin), b = xform.toDoc(canvasMax);
         const double x0 = (std::min(a.x, b.x) - ox) / stageScale + canvasW * 0.5, x1 = (std::max(a.x, b.x) - ox) / stageScale + canvasW * 0.5;
         const double y0 = canvasH * 0.5 - (std::max(a.y, b.y) - oy) / stageScale, y1 = canvasH * 0.5 - (std::min(a.y, b.y) - oy) / stageScale;
         const int rx0 = std::max(0, (int)std::floor(x0)), ry0 = std::max(0, (int)std::floor(y0));
@@ -231,7 +230,7 @@ void TitleDesignerWindow::requestCanvasRender() {
     const int side = region.empty() ? std::max(shown.canvasWidth(), shown.canvasHeight()) : std::max(region.width, region.height);
     pxScale = std::min(pxScale, (float)MAX_RENDER_SIDE / std::max(1, side));
     if (draft) pxScale = std::max(pxScale * 0.5f, std::min(pxScale, 0.25f * displayScale));
-    CanvasRenderRequest request;
+    titledesigner::CanvasRenderRequest request;
     request.doc = doc.shownSnapshot();
     request.docChange = doc.changeCount() * 1000003ull ^ transient.revision();
     request.pxScale = std::max(0.02f, std::round(pxScale * 1000.0f) / 1000.0f);
@@ -243,7 +242,7 @@ void TitleDesignerWindow::requestCanvasRender() {
     // S86's Realtime tiers in Preview As: the canvas as that tier renders it
     request.tier = mode ? mode->renderTier : 0;
     request.language = doc.language();
-    if (const TimeSource& time = timeSource()) {
+    if (const titledesigner::TimeSource& time = titledesigner::timeSource()) {
         // S85's playhead reaches the canvas as overrides it samples; the time feeds the key
         request.docChange ^= (uint64_t)std::llround(time() * 1000.0) << 20;
     }
@@ -260,8 +259,8 @@ void TitleDesignerWindow::requestCanvasRender() {
 
 std::string TitleDesignerWindow::pickLayer(ImVec2 screen, bool drill) {
     const ta::TitleArtDoc& shown = doc.shown();
-    const TitleVec2 p = titleXform.toDoc(screen);
-    const DocumentView& v = view();
+    const titledesigner::TitleVec2 p = titleXform.toDoc(screen);
+    const titledesigner::DocumentView& v = view();
     std::string hit;
     // topmost visible, unlocked layer under the cursor: walk front to back
     std::function<bool(const ta::Json&, bool)> walk = [&](const ta::Json& list, bool parentVisible) -> bool {
@@ -334,7 +333,7 @@ std::string TitleDesignerWindow::pickLayer(ImVec2 screen, bool drill) {
     };
     // the selected layer wins while it is under the cursor (it can be dragged out from under others)
     for (const std::string& id : doc.selectedLayers()) {
-        const ta::Json* layer = layerById(shown, id);
+        const ta::Json* layer = titledesigner::layerById(shown, id);
         if (layer && !layer->value("locked", false) && ta::layerTypeOf(*layer) != ta::LayerType::Group && rectContains(layerBounds(id), p)) {
             if (!drill) return id;
         }
@@ -343,7 +342,7 @@ std::string TitleDesignerWindow::pickLayer(ImVec2 screen, bool drill) {
     if (hit.empty()) return {};
     // root-then-drill (S26): the first click takes the top-level group, the next its child
     std::vector<std::string> chain;
-    for (std::string id = hit; !id.empty(); id = parentLayerOf(shown, id)) chain.insert(chain.begin(), id);
+    for (std::string id = hit; !id.empty(); id = titledesigner::parentLayerOf(shown, id)) chain.insert(chain.begin(), id);
     const float spot = std::abs(screen.x - clickSpot.x) + std::abs(screen.y - clickSpot.y);
     if (drill && spot < 4.0f && clickLayer == hit) clickDepth++;
     else if (drill) clickDepth = 0;
@@ -359,10 +358,10 @@ bool TitleDesignerWindow::textEditing() const {
 
 void TitleDesignerWindow::beginTextEdit(const std::string& layerId, bool selectAll) {
     if (!textEdit || !doc.editable()) return;
-    const ta::Json* layer = layerById(doc.committed(), layerId);
+    const ta::Json* layer = titledesigner::layerById(doc.committed(), layerId);
     if (!layer || ta::layerTypeOf(*layer) != ta::LayerType::Text) return;
     if (textEdit->active()) endTextEdit(true);
-    doc.selectOne({NodeKind::Layer, layerId, {}, {}});
+    doc.selectOne({titledesigner::NodeKind::Layer, layerId, {}, {}});
     textEdit->begin(layerId, str(*layer, "text"), selectAll);
     doc.beginGesture("Edit Text");
 }
@@ -376,8 +375,8 @@ void TitleDesignerWindow::endTextEdit(bool commit) {
     doc.cancelGesture();
     if (!commit || text == original) return;
     // one step "Edit Text"; char adjustments past the new length are dropped by S80 (R39)
-    const ta::Json* layer = layerById(doc.committed(), layerId);
-    const size_t removed = layer ? lettersRemoved(layer->value("chars", ta::Json::object()), codepointCount(text)) : 0;
+    const ta::Json* layer = titledesigner::layerById(doc.committed(), layerId);
+    const size_t removed = layer ? titledesigner::lettersRemoved(layer->value("chars", ta::Json::object()), titledesigner::codepointCount(text)) : 0;
     std::string name = "Edit Text";
     if (removed > 0) name += " (" + std::to_string(removed) + " Letter Adjustment" + (removed == 1 ? "" : "s") + " Removed)";
     std::string error;
@@ -425,16 +424,16 @@ void TitleDesignerWindow::handleCanvasInput() {
     const bool hovered = ImGui::IsItemHovered();
     cursorInCanvas = hovered;
     if (hovered) {
-        const TitleVec2 p = titleXform.toDoc(mouse);
+        const titledesigner::TitleVec2 p = titleXform.toDoc(mouse);
         cursorDoc = ImVec2((float)p.x, (float)p.y);
     }
-    const GizmoModifiers mods{io.KeyShift, io.KeyCtrl || io.KeySuper, io.KeyAlt};
-    DocumentView& v = view();
+    const titledesigner::GizmoModifiers mods{io.KeyShift, io.KeyCtrl || io.KeySuper, io.KeyAlt};
+    titledesigner::DocumentView& v = view();
 
     // zoom about the cursor (wheel), pan with the middle or right button, or the Hand tool
     if (hovered && io.MouseWheel != 0.0f) zoomAbout(io.MouseWheel > 0 ? 1.15f : 1.0f / 1.15f, mouse);
     const bool panButton = ImGui::IsMouseDragging(ImGuiMouseButton_Middle, 0.0f) || ImGui::IsMouseDragging(ImGuiMouseButton_Right, 2.0f) ||
-                           (currentTool == Tool::Hand && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f) && drag == Drag::Pan);
+                           (currentTool == titledesigner::Tool::Hand && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f) && drag == Drag::Pan);
     if (hovered && (ImGui::IsMouseClicked(ImGuiMouseButton_Middle) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))) panning = true;
     if (panning || panButton) {
         if (io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f) {
@@ -448,15 +447,15 @@ void TitleDesignerWindow::handleCanvasInput() {
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Middle) && !ImGui::IsMouseDown(ImGuiMouseButton_Right)) panning = false;
 
     const bool editable = doc.editable();
-    SnapContext snap;
+    titledesigner::SnapContext snap;
     snap.settings.enabled = v.snap;
     snap.settings.pixelGrid = v.pixelGrid;
     snap.settings.moveIncrement = settings.snapMove;
     snap.settings.rotateIncrement = settings.snapRotate;
     snap.settings.scaleIncrement = settings.snapScale;
     snap.zoom = titleXform.zoom;
-    snap.canvas = canvasRect(doc.shown().canvasWidth(), doc.shown().canvasHeight());
-    for (const Guide& g : v.guides) (g.vertical ? snap.guidesX : snap.guidesY).push_back(g.position);
+    snap.canvas = titledesigner::canvasRect(doc.shown().canvasWidth(), doc.shown().canvasHeight());
+    for (const titledesigner::Guide& g : v.guides) (g.vertical ? snap.guidesX : snap.guidesY).push_back(g.position);
     const std::vector<std::string> selected = doc.selectedLayers();
     // the other layers' edges matter to a drag only
     const bool snapping = drag != Drag::None || doc.gestureActive() || ImGui::IsMouseDown(ImGuiMouseButton_Left);
@@ -464,7 +463,7 @@ void TitleDesignerWindow::handleCanvasInput() {
         const std::string id = str(l, "id");
         if (std::find(selected.begin(), selected.end(), id) == selected.end() && l.value("visible", true) &&
             ta::layerTypeOf(l) != ta::LayerType::Group && ta::layerTypeOf(l) != ta::LayerType::Adjustment) {
-            const TitleRect b = layerBounds(id);
+            const titledesigner::TitleRect b = layerBounds(id);
             if (!b.empty() && b.width < snap.canvas.width * 1.5) snap.others.push_back(b);
         }
         return true;
@@ -483,9 +482,9 @@ void TitleDesignerWindow::handleCanvasInput() {
                 doc.stage(ta::Json::array({ta::Json{{"op", "set_text"}, {"layer", "id:" + textEdit->layerId()}, {"text", textEdit->previewText()}}}), &error);
                 return;
             }
-            const std::vector<FieldEdit> edits = gizmo3d->update(mouse, mods);
+            const std::vector<titledesigner::FieldEdit> edits = gizmo3d->update(mouse, mods);
             ta::Json values = ta::Json::object();
-            for (const FieldEdit& e : edits) values[e.path] = e.value;
+            for (const titledesigner::FieldEdit& e : edits) values[e.path] = e.value;
             if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
                 stageLetters(values);
             } else {
@@ -496,8 +495,8 @@ void TitleDesignerWindow::handleCanvasInput() {
             return;
         }
         if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && editable && editLetters3D && gizmo3d && gizmo3d->visible()) {
-            const Gizmo3DHandle h3 = gizmo3d->hitTest(mouse);
-            if (h3 != Gizmo3DHandle::None && gizmo3d->begin(h3, mouse, mods)) {
+            const titledesigner::Gizmo3DHandle h3 = gizmo3d->hitTest(mouse);
+            if (h3 != titledesigner::Gizmo3DHandle::None && gizmo3d->begin(h3, mouse, mods)) {
                 drag = Drag::Gizmo3D;
                 return;
             }
@@ -514,8 +513,8 @@ void TitleDesignerWindow::handleCanvasInput() {
             return;
         }
         if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-            const TitleLetterGizmo::Hit hit = editable && io.MouseClickedCount[0] == 1 ? letterGizmo.hitTest(mouse) : TitleLetterGizmo::Hit();
-            if (hit.part != TitleLetterGizmo::Part::None) {
+            const titledesigner::TitleLetterGizmo::Hit hit = editable && io.MouseClickedCount[0] == 1 ? letterGizmo.hitTest(mouse) : titledesigner::TitleLetterGizmo::Hit();
+            if (hit.part != titledesigner::TitleLetterGizmo::Part::None) {
                 letterGizmo.begin(hit, mouse);
                 dragStart = mouse;
                 drag = Drag::Letters;
@@ -542,17 +541,17 @@ void TitleDesignerWindow::handleCanvasInput() {
         }
         std::string error;
         const double degrees = envDragStart + (mouse.x - dragStart.x) * 0.5;
-        if (!doc.stage(editsToOps({{envDragLayer, "style_3d.lighting.environment.rotation", std::round(degrees * 10.0) / 10.0}}), &error)) reportError(error);
+        if (!doc.stage(titledesigner::editsToOps({{envDragLayer, "style_3d.lighting.environment.rotation", std::round(degrees * 10.0) / 10.0}}), &error)) reportError(error);
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             if (!doc.endGesture(&error)) reportError(error);
             drag = Drag::None;
         }
         return;
     }
-    if (drag == Drag::None && hovered && io.KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && editable && currentTool != Tool::Hand) {
+    if (drag == Drag::None && hovered && io.KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && editable && currentTool != titledesigner::Tool::Hand) {
         const std::string under = pickLayer(mouse, false);
-        const ta::Json* layer = under.empty() ? nullptr : layerById(doc.shown(), under);
-        if (layer && doc.isSelected({NodeKind::Layer, under, {}, {}}) && layer->value("dimension", std::string("2d")) == "3d") {
+        const ta::Json* layer = under.empty() ? nullptr : titledesigner::layerById(doc.shown(), under);
+        if (layer && doc.isSelected({titledesigner::NodeKind::Layer, under, {}, {}}) && layer->value("dimension", std::string("2d")) == "3d") {
             // (style_3d and scene_3d are null until made: read them as objects only when they are)
             auto objectAt = [](const ta::Json& o, const char* key) {
                 auto it = o.is_object() ? o.find(key) : o.end();
@@ -571,17 +570,17 @@ void TitleDesignerWindow::handleCanvasInput() {
         }
     }
     // gizmo and handles first
-    if (drag == Drag::None && hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && editable && currentTool != Tool::Hand) {
+    if (drag == Drag::None && hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && editable && currentTool != titledesigner::Tool::Hand) {
         const int handle = handles ? handles->hitTest(mouse) : -1;
-        const Gizmo3DHandle h3 = gizmo3d && gizmo3d->visible() ? gizmo3d->hitTest(mouse) : Gizmo3DHandle::None;
-        const Gizmo2DHandle h2 = gizmo2d ? gizmo2d->hitTest(mouse) : Gizmo2DHandle::None;
+        const titledesigner::Gizmo3DHandle h3 = gizmo3d && gizmo3d->visible() ? gizmo3d->hitTest(mouse) : titledesigner::Gizmo3DHandle::None;
+        const titledesigner::Gizmo2DHandle h2 = gizmo2d ? gizmo2d->hitTest(mouse) : titledesigner::Gizmo2DHandle::None;
         if (handle >= 0 && handles->begin(handle, mouse, mods)) {
             drag = Drag::Handle;
             doc.beginGesture(handles->gestureName());
-        } else if (h3 != Gizmo3DHandle::None && gizmo3d->begin(h3, mouse, mods)) {
+        } else if (h3 != titledesigner::Gizmo3DHandle::None && gizmo3d->begin(h3, mouse, mods)) {
             drag = Drag::Gizmo3D;
             doc.beginGesture(gizmo3d->stepName());
-        } else if (h2 != Gizmo2DHandle::None && h2 != Gizmo2DHandle::Inside && gizmo2d->begin(h2, mouse, mods)) {
+        } else if (h2 != titledesigner::Gizmo2DHandle::None && h2 != titledesigner::Gizmo2DHandle::Inside && gizmo2d->begin(h2, mouse, mods)) {
             drag = Drag::Gizmo;
             doc.beginGesture("Move Layer");
         }
@@ -596,7 +595,7 @@ void TitleDesignerWindow::handleCanvasInput() {
             drag = Drag::None;
             return;
         }
-        std::vector<FieldEdit> edits;
+        std::vector<titledesigner::FieldEdit> edits;
         if (drag == Drag::Gizmo) {
             edits = gizmo2d->update(mouse, mods, &snap);
             doc.setGestureName(gizmo2d->gestureName());
@@ -607,7 +606,7 @@ void TitleDesignerWindow::handleCanvasInput() {
         }
         if (!edits.empty()) {
             std::string error;
-            if (!doc.stage(editsToOps(edits), &error)) reportError(error);
+            if (!doc.stage(titledesigner::editsToOps(edits), &error)) reportError(error);
         }
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             std::string error;
@@ -632,7 +631,7 @@ void TitleDesignerWindow::handleCanvasInput() {
 
     // guides: drag from a ruler adds one; drag one moves it, back onto the ruler deletes it (R32)
     if (drag == Drag::NewGuide || drag == Drag::Guide) {
-        const TitleVec2 p = titleXform.toDoc(mouse);
+        const titledesigner::TitleVec2 p = titleXform.toDoc(mouse);
         if (guideIndex >= 0 && guideIndex < (int)v.guides.size()) v.guides[(size_t)guideIndex].position = guideVertical ? std::round(p.x) : std::round(p.y);
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             const bool onRuler = guideVertical ? mouse.y < canvasMin.y : mouse.x < canvasMin.x;
@@ -644,7 +643,7 @@ void TitleDesignerWindow::handleCanvasInput() {
     }
     if (drag == Drag::None && hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && v.showGuides) {
         for (size_t i = 0; i < v.guides.size(); i++) {
-            const Guide& g = v.guides[i];
+            const titledesigner::Guide& g = v.guides[i];
             const ImVec2 s = titleXform.toScreen({g.vertical ? g.position : 0.0, g.vertical ? 0.0 : g.position});
             if ((g.vertical && std::abs(mouse.x - s.x) < 4.0f) || (!g.vertical && std::abs(mouse.y - s.y) < 4.0f)) {
                 drag = Drag::Guide;
@@ -656,7 +655,7 @@ void TitleDesignerWindow::handleCanvasInput() {
     }
 
     // Hand tool: drag pans
-    if (currentTool == Tool::Hand && hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) drag = Drag::Pan;
+    if (currentTool == titledesigner::Tool::Hand && hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) drag = Drag::Pan;
     if (drag == Drag::Pan) {
         if (io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f) {
             v.fit = false;
@@ -675,7 +674,7 @@ void TitleDesignerWindow::handleCanvasInput() {
         if (io.MouseClickedCount[0] == 2) {
             // double-click a text layer edits it on the canvas (R36)
             const std::string id = pickLayer(mouse, false);
-            const ta::Json* layer = layerById(doc.committed(), id);
+            const ta::Json* layer = titledesigner::layerById(doc.committed(), id);
             if (layer && ta::layerTypeOf(*layer) == ta::LayerType::Text) {
                 beginTextEdit(id, false);
                 textEdit->clickAt(mouse, false, true);
@@ -687,28 +686,28 @@ void TitleDesignerWindow::handleCanvasInput() {
             if (!io.KeyShift && !(io.KeyCtrl || io.KeySuper)) doc.select({});
             drag = Drag::Marquee;
         } else {
-            const NodeRef node{NodeKind::Layer, id, {}, {}};
+            const titledesigner::NodeRef node{titledesigner::NodeKind::Layer, id, {}, {}};
             if (io.KeyShift) doc.select([&] {
-                std::vector<NodeRef> s = doc.selection();
+                std::vector<titledesigner::NodeRef> s = doc.selection();
                 s.push_back(node);
                 return s;
             }());
             else if (io.KeyCtrl || io.KeySuper) doc.toggle(node);
             else if (!doc.isSelected(node)) doc.selectOne(node);
             // a press on the layer then a drag moves it (the gizmo's free move)
-            if (editable && gizmo2d && currentTool != Tool::Hand) {
-                std::vector<Gizmo2DTarget> targets;
+            if (editable && gizmo2d && currentTool != titledesigner::Tool::Hand) {
+                std::vector<titledesigner::Gizmo2DTarget> targets;
                 for (const std::string& layerId : doc.selectedLayers()) {
-                    const ta::Json* layer = layerById(doc.shown(), layerId);
+                    const ta::Json* layer = titledesigner::layerById(doc.shown(), layerId);
                     if (!layer || layer->value("locked", false)) continue;
-                    Gizmo2DTarget t;
+                    titledesigner::Gizmo2DTarget t;
                     t.layerId = layerId;
                     t.type = ta::layerTypeOf(*layer);
                     t.transform = ta::decodeTransform(layer->value("transform", ta::Json::object()));
                     targets.push_back(t);
                 }
                 (void)targets;
-                if (gizmo2d->begin(Gizmo2DHandle::Inside, mouse, mods)) {
+                if (gizmo2d->begin(titledesigner::Gizmo2DHandle::Inside, mouse, mods)) {
                     drag = Drag::Gizmo;
                     doc.beginGesture("Move Layer");
                 }
@@ -720,13 +719,13 @@ void TitleDesignerWindow::handleCanvasInput() {
         dl->AddRectFilled(dragStart, mouse, IM_COL32(90, 160, 255, 40));
         dl->AddRect(dragStart, mouse, IM_COL32(90, 160, 255, 200));
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-            const TitleVec2 a = titleXform.toDoc(dragStart), b = titleXform.toDoc(mouse);
-            const TitleRect box{std::min(a.x, b.x), std::min(a.y, b.y), std::abs(a.x - b.x), std::abs(a.y - b.y)};
+            const titledesigner::TitleVec2 a = titleXform.toDoc(dragStart), b = titleXform.toDoc(mouse);
+            const titledesigner::TitleRect box{std::min(a.x, b.x), std::min(a.y, b.y), std::abs(a.x - b.x), std::abs(a.y - b.y)};
             if (box.width > 1.0 / titleXform.zoom || box.height > 1.0 / titleXform.zoom) {
-                std::vector<NodeRef> picked = (io.KeyShift || io.KeyCtrl) ? doc.selection() : std::vector<NodeRef>{};
+                std::vector<titledesigner::NodeRef> picked = (io.KeyShift || io.KeyCtrl) ? doc.selection() : std::vector<titledesigner::NodeRef>{};
                 for (const ta::Json& layer : doc.shown().layers()) {
                     if (!layer.value("visible", true) || layer.value("locked", false)) continue;
-                    if (rectsTouch(layerBounds(str(layer, "id")), box)) picked.push_back({NodeKind::Layer, str(layer, "id"), {}, {}});
+                    if (rectsTouch(layerBounds(str(layer, "id")), box)) picked.push_back({titledesigner::NodeKind::Layer, str(layer, "id"), {}, {}});
                 }
                 doc.select(picked);
             }
@@ -739,7 +738,7 @@ void TitleDesignerWindow::handleCanvasInput() {
 
 void TitleDesignerWindow::drawRulers(ImDrawList* dl) {
     JE_PROFILE_SCOPE("TD drawRulers");
-    const DocumentView& v = view();
+    const titledesigner::DocumentView& v = view();
     if (!v.rulers) return;
     const ImVec2 top0(canvasMin.x, canvasMin.y - RULER), left0(canvasMin.x - RULER, canvasMin.y);
     const ImU32 bg = IM_COL32(40, 40, 44, 255), tick = IM_COL32(150, 150, 155, 255);
@@ -758,7 +757,7 @@ void TitleDesignerWindow::drawRulers(ImDrawList* dl) {
         }
         step *= 10.0;
     }
-    const TitleVec2 a = xform.toDoc(canvasMin), b = xform.toDoc(canvasMax);
+    const titledesigner::TitleVec2 a = xform.toDoc(canvasMin), b = xform.toDoc(canvasMax);
     char label[32];
     for (double x = std::floor(a.x / step) * step; x <= b.x; x += step) {
         const float sx = xform.toScreen({x, 0}).x;
@@ -784,7 +783,7 @@ void TitleDesignerWindow::drawEmptyState(ImDrawList* dl) {
     JE_PROFILE_SCOPE("TD drawEmptyState");
     // R5: the card, with the template cards when the Library exists
     const ImVec2 centre((canvasMin.x + canvasMax.x) * 0.5f, (canvasMin.y + canvasMax.y) * 0.5f);
-    TitleLibraryProvider* library = libraryProvider();
+    titledesigner::TitleLibraryProvider* library = titledesigner::libraryProvider();
     const float scale = ImGui::GetFontSize() / 16.0f;
     const ImVec2 size(std::min(560.0f * scale, canvasMax.x - canvasMin.x - 40.0f), (library ? 300.0f : 96.0f) * scale);
     const ImVec2 min(centre.x - size.x * 0.5f, centre.y - size.y * 0.5f);
@@ -812,7 +811,7 @@ void TitleDesignerWindow::drawEmptyState(ImDrawList* dl) {
     if (ImGui::Button("Shape " ICON_FA_CARET_DOWN "###emptyshape")) ImGui::OpenPopup("##emptyshapes");
     if (ImGui::BeginPopup("##emptyshapes")) {
         for (const char* shape : {"rect", "parallelogram", "ellipse", "orb", "polygon", "star", "burst", "shield", "speech", "shout", "ribbon"}) {
-            if (ImGui::MenuItem(enumLabel(shape).c_str())) addLayer("shape", ta::Json{{"shape", shape}});
+            if (ImGui::MenuItem(titledesigner::enumLabel(shape).c_str())) addLayer("shape", ta::Json{{"shape", shape}});
         }
         ImGui::EndPopup();
     }
@@ -824,17 +823,17 @@ void TitleDesignerWindow::drawEmptyState(ImDrawList* dl) {
     if (library) {
         ImGui::Spacing();
         ImGui::TextDisabled("Templates");
-        std::vector<LibraryItem> featured;
-        for (const LibraryItem& item : library->items(LibraryTab::Templates)) {
+        std::vector<titledesigner::LibraryItem> featured;
+        for (const titledesigner::LibraryItem& item : library->items(titledesigner::LibraryTab::Templates)) {
             if (item.featured && featured.size() < 6) featured.push_back(item);
         }
         const float card = (size.x - 40.0f - 5.0f * ImGui::GetStyle().ItemSpacing.x) / 6.0f;
         for (size_t i = 0; i < featured.size(); i++) {
             if (i) ImGui::SameLine();
             ImGui::PushID((int)i);
-            const LibraryTile tile = library->tile(LibraryTab::Templates, featured[i], std::string(), card, card * 0.5625f, true);
+            const titledesigner::LibraryTile tile = library->tile(titledesigner::LibraryTab::Templates, featured[i], std::string(), card, card * 0.5625f, true);
             const ImVec2 p = ImGui::GetCursorScreenPos();
-            if (ImGui::InvisibleButton("##template", ImVec2(card, card * 0.5625f)) && editable) applyLibraryItem(LibraryTab::Templates, featured[i], false);
+            if (ImGui::InvisibleButton("##template", ImVec2(card, card * 0.5625f)) && editable) applyLibraryItem(titledesigner::LibraryTab::Templates, featured[i], false);
             ImGui::GetWindowDrawList()->AddRectFilled(p, ImVec2(p.x + card, p.y + card * 0.5625f), IM_COL32(50, 50, 56, 255), 4.0f);
             if (tile.texture) ImGui::GetWindowDrawList()->AddImage(tile.texture, p, ImVec2(p.x + card, p.y + card * 0.5625f));
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", featured[i].name.c_str());
@@ -848,19 +847,19 @@ void TitleDesignerWindow::drawEmptyState(ImDrawList* dl) {
 
 void TitleDesignerWindow::drawCanvasOverlays(ImDrawList* dl) {
     runCanvasOverlays(doc, dl, titleXform);
-    const DocumentView& v = view();
+    const titledesigner::DocumentView& v = view();
     const ta::TitleArtDoc& shown = doc.shown();
-    const TitleRect stage = stageRect();
+    const titledesigner::TitleRect stage = stageRect();
     const ImVec2 stageMin = xform.toScreen({stage.x, stage.y + stage.height}), stageMax = xform.toScreen({stage.x + stage.width, stage.y});
 
     // registered overlays (S87's fit boxes) in document space, the device placement applied
-    if (!canvasOverlays().empty()) {
+    if (!titledesigner::canvasOverlays().empty()) {
         double scale = 1.0, ox = 0.0, oy = 0.0;
         devicePlacement(v, stage, shown, scale, ox, oy, inContext ? &*inContext : nullptr);
-        CanvasXform placed = xform;
+        titledesigner::CanvasXform placed = xform;
         placed.origin = xform.toScreen({ox, oy});
         placed.zoom = (float)(xform.zoom * scale);
-        for (const CanvasOverlayDef& overlay : canvasOverlays()) {
+        for (const titledesigner::CanvasOverlayDef& overlay : titledesigner::canvasOverlays()) {
             if (overlay.draw) overlay.draw(doc, dl, stageMin, stageMax, placed);
         }
     }
@@ -881,7 +880,7 @@ void TitleDesignerWindow::drawCanvasOverlays(ImDrawList* dl) {
             devicePlacement(v, stage, shown, scale, ox, oy, inContext ? &*inContext : nullptr);
             for (const ta::Json& layer : shown.layers()) {
                 if (!layer.value("visible", true)) continue;
-                const TitleRect b = layerBounds(str(layer, "id"));
+                const titledesigner::TitleRect b = layerBounds(str(layer, "id"));
                 if (b.empty()) continue;
                 const ImVec2 lmin = xform.toScreen({ox + b.x * scale, oy + (b.y + b.height) * scale});
                 const ImVec2 lmax = xform.toScreen({ox + (b.x + b.width) * scale, oy + b.y * scale});
@@ -913,13 +912,13 @@ void TitleDesignerWindow::drawCanvasOverlays(ImDrawList* dl) {
     }
     // pixel grid at 8x and above
     if (v.pixelGrid && titleXform.zoom >= 8.0f) {
-        const TitleVec2 a = titleXform.toDoc(canvasMin), b = titleXform.toDoc(canvasMax);
+        const titledesigner::TitleVec2 a = titleXform.toDoc(canvasMin), b = titleXform.toDoc(canvasMax);
         for (double x = std::floor(a.x); x <= b.x; x += 1.0) dl->AddLine(titleXform.toScreen({x, a.y}), titleXform.toScreen({x, b.y}), IM_COL32(255, 255, 255, 25));
         for (double y = std::floor(b.y); y <= a.y; y += 1.0) dl->AddLine(titleXform.toScreen({a.x, y}), titleXform.toScreen({b.x, y}), IM_COL32(255, 255, 255, 25));
     }
     // guides
     if (v.showGuides) {
-        for (const Guide& g : v.guides) {
+        for (const titledesigner::Guide& g : v.guides) {
             if (g.vertical) {
                 const float x = titleXform.toScreen({g.position, 0}).x;
                 dl->AddLine(ImVec2(x, canvasMin.y), ImVec2(x, canvasMax.y), IM_COL32(0, 220, 255, 200));
@@ -932,9 +931,9 @@ void TitleDesignerWindow::drawCanvasOverlays(ImDrawList* dl) {
     // effect reach (Guides > Effect Reach)
     if (v.effectReach && geometry) {
         for (const std::string& id : doc.selectedLayers()) {
-            const ta::Json* layer = layerById(shown, id);
+            const ta::Json* layer = titledesigner::layerById(shown, id);
             if (!layer) continue;
-            const TitleRect r = geometry->reachBounds(*layer, shown, 1.0);
+            const titledesigner::TitleRect r = geometry->reachBounds(*layer, shown, 1.0);
             dl->AddRect(titleXform.toScreen({r.x, r.y + r.height}), titleXform.toScreen({r.x + r.width, r.y}), IM_COL32(255, 255, 255, 70), 0.0f, 0, 1.0f);
         }
     }
@@ -985,7 +984,7 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
         return;
     }
     if (!geometry) geometry = std::make_unique<ta::geometry::TitleGeometry>(&transient);
-    const DocumentView& v = view();
+    const titledesigner::DocumentView& v = view();
     const float ruler = v.rulers ? RULER : 0.0f;
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -1003,39 +1002,39 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
     // the composited view (backdrop + title) from the private scene
     JE_PROFILE_SCOPE("TD drawCanvas view");
     const ta::TitleArtDoc& shown = doc.shown();
-    const TitleRect stage = stageRect();
-    CanvasViewSetup setup;
+    const titledesigner::TitleRect stage = stageRect();
+    titledesigner::CanvasViewSetup setup;
     setup.width = std::max(16, (int)std::round((canvasMax.x - canvasMin.x) * displayScale));
     setup.height = std::max(16, (int)std::round((canvasMax.y - canvasMin.y) * displayScale));
     setup.zoom = xform.zoom * displayScale;
-    const TitleVec2 centre = xform.toDoc(ImVec2((canvasMin.x + canvasMax.x) * 0.5f, (canvasMin.y + canvasMax.y) * 0.5f));
+    const titledesigner::TitleVec2 centre = xform.toDoc(ImVec2((canvasMin.x + canvasMax.x) * 0.5f, (canvasMin.y + canvasMax.y) * 0.5f));
     setup.centerX = centre.x;
     setup.centerY = centre.y;
     setup.stage = stage;
     devicePlacement(v, stage, shown, setup.stageScale, setup.stageOffsetX, setup.stageOffsetY, inContext ? &*inContext : nullptr);
     setup.checkerPixels = 8.0f * displayScale;
     const bool baked = v.previewAs == "baked";
-    const PreviewModeDef* activeMode = activePreviewMode();
-    const bool poseShown = canvasPoseSource().active && canvasPoseSource().active(doc);
+    const titledesigner::PreviewModeDef* activeMode = activePreviewMode();
+    const bool poseShown = titledesigner::canvasPoseSource().active && titledesigner::canvasPoseSource().active(doc);
     setup.dim = (baked || (activeMode && activeMode->draw) || poseShown) ? 0.0f : 1.0f;
-    CanvasBackdrop backdrop;
+    titledesigner::CanvasBackdrop backdrop;
     const std::string& kind = v.backdrop.kind;
-    if (kind == "black") backdrop.kind = CanvasBackdrop::Kind::Black;
-    else if (kind == "white") backdrop.kind = CanvasBackdrop::Kind::White;
-    else if (kind == "gray") backdrop.kind = CanvasBackdrop::Kind::Gray;
+    if (kind == "black") backdrop.kind = titledesigner::CanvasBackdrop::Kind::Black;
+    else if (kind == "white") backdrop.kind = titledesigner::CanvasBackdrop::Kind::White;
+    else if (kind == "gray") backdrop.kind = titledesigner::CanvasBackdrop::Kind::Gray;
     else if (kind == "color") {
-        backdrop.kind = CanvasBackdrop::Kind::Color;
+        backdrop.kind = titledesigner::CanvasBackdrop::Kind::Color;
         ta::TitleColor c;
         ta::parseTitleColor(ta::Json(v.backdrop.color), c);
         backdrop.color = Vector4(c.r, c.g, c.b, 1.0f);
     } else if ((kind == "in_context" && inContext && !inContext->snapshotRgba.empty())) {
-        backdrop.kind = CanvasBackdrop::Kind::Image;
+        backdrop.kind = titledesigner::CanvasBackdrop::Kind::Image;
         backdrop.imageKey = "incontext:" + inContext->document.generic_string();
         backdrop.imageRgba = inContext->snapshotRgba;
         backdrop.imageWidth = inContext->screenWidth;
         backdrop.imageHeight = inContext->screenHeight;
     } else if ((kind == "image" || kind == "game_scene") && !snapshotRgba.empty() && snapshotKey == (kind == "image" ? v.backdrop.image : v.backdrop.scene)) {
-        backdrop.kind = CanvasBackdrop::Kind::Image;
+        backdrop.kind = titledesigner::CanvasBackdrop::Kind::Image;
         backdrop.imageKey = snapshotKey;
         backdrop.imageRgba = snapshotRgba;
         backdrop.imageWidth = snapshotWidth;
@@ -1138,7 +1137,7 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
         }
         if (bakedStale) dl->AddText(ImVec2(canvasMin.x + 12.0f, canvasMax.y - 24.0f), IM_COL32(240, 170, 50, 255), ICON_FA_TRIANGLE_EXCLAMATION " Stale: the bake differs from the document");
     }
-    for (const PreviewModeDef& mode : previewModes()) {
+    for (const titledesigner::PreviewModeDef& mode : titledesigner::previewModes()) {
         if (mode.id != v.previewAs || !mode.draw) continue;
         if (!mode.draw(doc, dl, canvasMin, canvasMax, titleXform)) {
             dl->AddText(ImVec2(canvasMin.x + 12.0f, canvasMin.y + 12.0f), IM_COL32(200, 200, 200, 255), "Preparing preview...");
@@ -1146,35 +1145,35 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
         if (!mode.note.empty()) dl->AddText(ImVec2(canvasMin.x + 12.0f, canvasMax.y - 24.0f), IM_COL32(200, 200, 200, 220), mode.note.c_str());
     }
 
-    if (poseShown && canvasPoseSource().draw) canvasPoseSource().draw(doc, dl, canvasMin, canvasMax, titleXform);
+    if (poseShown && titledesigner::canvasPoseSource().draw) titledesigner::canvasPoseSource().draw(doc, dl, canvasMin, canvasMax, titleXform);
 
     drawCanvasOverlays(dl);
 
     // selection boxes, gizmo and handles (R33-R35)
-    std::vector<Gizmo2DTarget> targets;
+    std::vector<titledesigner::Gizmo2DTarget> targets;
     for (const std::string& id : doc.selectedLayers()) {
-        const ta::Json* layer = layerById(shown, id);
+        const ta::Json* layer = titledesigner::layerById(shown, id);
         if (!layer || layer->value("locked", false)) continue;     // locked layers have no gizmo
         if (layer->value("dimension", std::string("2d")) == "3d") continue;
-        Gizmo2DTarget t;
+        titledesigner::Gizmo2DTarget t;
         t.layerId = id;
         t.type = ta::layerTypeOf(*layer);
         t.transform = ta::decodeTransform(layer->value("transform", ta::Json::object()));
-        Affine2 parentToDoc;
+        titledesigner::Affine2 parentToDoc;
         std::vector<std::string> chain;
-        for (std::string p = parentLayerOf(shown, id); !p.empty(); p = parentLayerOf(shown, p)) chain.push_back(p);
+        for (std::string p = titledesigner::parentLayerOf(shown, id); !p.empty(); p = titledesigner::parentLayerOf(shown, p)) chain.push_back(p);
         for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
-            parentToDoc = parentToDoc * layerTransformAffine(ta::decodeTransform(layerById(shown, *it)->value("transform", ta::Json::object())));
+            parentToDoc = parentToDoc * titledesigner::layerTransformAffine(ta::decodeTransform(titledesigner::layerById(shown, *it)->value("transform", ta::Json::object())));
         }
         t.parentToDoc = parentToDoc;
         // the content box in the layer's own space (before effects)
-        const Affine2 layerToDoc = parentToDoc * layerTransformAffine(t.transform);
+        const titledesigner::Affine2 layerToDoc = parentToDoc * titledesigner::layerTransformAffine(t.transform);
         if (ta::layerTypeHasStyle(t.type) && geometry) {
             const ta::geometry::LayerElements els = geometry->elements(*layer, shown);
             double x0 = 1e300, y0 = 1e300, x1 = -1e300, y1 = -1e300;
             // the content box: faces and rims (S80's content bounds of a 2D title include its rims)
             for (const ta::geometry::TitleElement& e : els.elements) {
-                const TitleRect b = ta::geometry::elementBounds(e);
+                const titledesigner::TitleRect b = ta::geometry::elementBounds(e);
                 x0 = std::min(x0, b.x);
                 y0 = std::min(y0, b.y);
                 x1 = std::max(x1, b.x + b.width);
@@ -1184,11 +1183,11 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
         }
         if (t.localBox.empty()) {
             // groups, generators, adjustments: their document box in local space
-            const TitleRect b = layerBounds(id);
-            const Affine2 inv = layerToDoc.inverse();
+            const titledesigner::TitleRect b = layerBounds(id);
+            const titledesigner::Affine2 inv = layerToDoc.inverse();
             double x0 = 1e300, y0 = 1e300, x1 = -1e300, y1 = -1e300;
-            for (TitleVec2 c : {TitleVec2{b.x, b.y}, TitleVec2{b.x + b.width, b.y}, TitleVec2{b.x, b.y + b.height}, TitleVec2{b.x + b.width, b.y + b.height}}) {
-                const TitleVec2 l = inv.apply(c);
+            for (titledesigner::TitleVec2 c : {titledesigner::TitleVec2{b.x, b.y}, titledesigner::TitleVec2{b.x + b.width, b.y}, titledesigner::TitleVec2{b.x, b.y + b.height}, titledesigner::TitleVec2{b.x + b.width, b.y + b.height}}) {
+                const titledesigner::TitleVec2 l = inv.apply(c);
                 x0 = std::min(x0, l.x);
                 y0 = std::min(y0, l.y);
                 x1 = std::max(x1, l.x);
@@ -1206,22 +1205,22 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
             t.pivot = pivot->second;
         }
         if (v.effectReach && geometry) {
-            const TitleRect reach = geometry->reachBounds(*layer, shown, 1.0), content = layerBounds(id);
+            const titledesigner::TitleRect reach = geometry->reachBounds(*layer, shown, 1.0), content = layerBounds(id);
             t.effectReach = std::max(0.0, std::max(content.x - reach.x, reach.x + reach.width - content.x - content.width));
         }
         targets.push_back(t);
     }
-    const PreviewModeDef* toolsMode = activePreviewMode();
+    const titledesigner::PreviewModeDef* toolsMode = activePreviewMode();
     const bool rendersWorking = v.previewAs == "realtime" || (toolsMode && !toolsMode->draw);
-    const bool showTools = !textEditing() && doc.editable() && currentTool != Tool::Hand && rendersWorking;
+    const bool showTools = !textEditing() && doc.editable() && currentTool != titledesigner::Tool::Hand && rendersWorking;
     if (gizmo2d) {
-        Gizmo2DSettings gs = gizmo2d->getSettings();
+        titledesigner::Gizmo2DSettings gs = gizmo2d->getSettings();
         gs.cjkLabels = ImGui::GetFont()->IsGlyphInFont((ImWchar)0x9577);       // 長
         gizmo2d->setSettings(gs);
-        if (drag != Drag::Gizmo) gizmo2d->setTargets(targets, currentTool, pivotMode ? PivotMode::Pivot : PivotMode::Center, titleXform);
+        if (drag != Drag::Gizmo) gizmo2d->setTargets(targets, currentTool, pivotMode ? titledesigner::PivotMode::Pivot : titledesigner::PivotMode::Center, titleXform);
         if (showTools && !targets.empty()) {
-            const Gizmo2DHandle hovered = drag == Drag::None && cursorInCanvas ? gizmo2d->hitTest(ImGui::GetIO().MousePos) : Gizmo2DHandle::None;
-            if (hovered != Gizmo2DHandle::None) ImGui::SetMouseCursor(imguiCursor(gizmo2d->cursor(hovered)));
+            const titledesigner::Gizmo2DHandle hovered = drag == Drag::None && cursorInCanvas ? gizmo2d->hitTest(ImGui::GetIO().MousePos) : titledesigner::Gizmo2DHandle::None;
+            if (hovered != titledesigner::Gizmo2DHandle::None) ImGui::SetMouseCursor(titledesigner::imguiCursor(gizmo2d->cursor(hovered)));
             gizmo2d->draw(dl, hovered, gizmo2d->activeHandle());
             if (gizmo2d->active()) {
                 drawSnap(dl, titleXform, gizmo2d->lastSnap());
@@ -1230,7 +1229,7 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
                 if (!readout.empty() && gizmo2d->screenCorners(corners)) {
                     const float y = std::max(std::max(corners[0].y, corners[1].y), std::max(corners[2].y, corners[3].y)) + 12.0f;
                     const float x = (corners[0].x + corners[2].x) * 0.5f;
-                    overlay::label(dl, ImVec2(x, y), readout, overlay::WHITE, true);
+                    titledesigner::overlay::label(dl, ImVec2(x, y), readout, titledesigner::overlay::WHITE, true);
                 }
             }
         }
@@ -1240,39 +1239,39 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
     if (gizmo3d && !(showTools || lettersTools) && drag != Drag::Gizmo3D) gizmo3d->hide();
     if (gizmo3d && (showTools || lettersTools)) {
         const std::vector<std::string> layers = doc.selectedLayers();
-        const Gizmo3DProvider& provider = gizmo3DProvider();
+        const titledesigner::Gizmo3DProvider& provider = titledesigner::gizmo3DProvider();
         bool shownGizmo = false;
         if (provider && drag != Drag::Gizmo3D) {
-            Gizmo3DTarget target;
+            titledesigner::Gizmo3DTarget target;
             const bool got = lettersTools ? provider(doc, textEdit->layerId(), &editLetters, target)
                                           : layers.size() == 1 && provider(doc, layers[0], nullptr, target);
-            if (got) shownGizmo = gizmo3d->layout(target, Gizmo3DCamera::frontOn(titleXform, displayScale));
+            if (got) shownGizmo = gizmo3d->layout(target, titledesigner::Gizmo3DCamera::frontOn(titleXform, displayScale));
         } else if (drag == Drag::Gizmo3D) {
             shownGizmo = true;
         }
         if (!shownGizmo) gizmo3d->hide();
         if (shownGizmo && gizmo3d->visible()) {
-            const Gizmo3DHandle hovered = drag == Drag::None && cursorInCanvas ? gizmo3d->hitTest(ImGui::GetIO().MousePos) : Gizmo3DHandle::None;
-            gizmo3d->draw(dl, hovered, drag == Drag::Gizmo3D ? hovered : Gizmo3DHandle::None);
+            const titledesigner::Gizmo3DHandle hovered = drag == Drag::None && cursorInCanvas ? gizmo3d->hitTest(ImGui::GetIO().MousePos) : titledesigner::Gizmo3DHandle::None;
+            gizmo3d->draw(dl, hovered, drag == Drag::Gizmo3D ? hovered : titledesigner::Gizmo3DHandle::None);
         }
     }
     if (handles) {
         handles->setView(titleXform);
         if (drag != Drag::Handle) {
             handles->clear();
-            const NodeRef primary = doc.primary();
-            const ta::Json* layer = layerById(shown, primary.layer);
-            if (layer && primary.kind != NodeKind::Document && showTools) {
-                HandleFrame frame;
+            const titledesigner::NodeRef primary = doc.primary();
+            const ta::Json* layer = titledesigner::layerById(shown, primary.layer);
+            if (layer && primary.kind != titledesigner::NodeKind::Document && showTools) {
+                titledesigner::HandleFrame frame;
                 frame.layerId = primary.layer;
-                Affine2 parentToDoc;
+                titledesigner::Affine2 parentToDoc;
                 std::vector<std::string> chain;
-                for (std::string p = parentLayerOf(shown, primary.layer); !p.empty(); p = parentLayerOf(shown, p)) chain.push_back(p);
+                for (std::string p = titledesigner::parentLayerOf(shown, primary.layer); !p.empty(); p = titledesigner::parentLayerOf(shown, p)) chain.push_back(p);
                 for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
-                    parentToDoc = parentToDoc * layerTransformAffine(ta::decodeTransform(layerById(shown, *it)->value("transform", ta::Json::object())));
+                    parentToDoc = parentToDoc * titledesigner::layerTransformAffine(ta::decodeTransform(titledesigner::layerById(shown, *it)->value("transform", ta::Json::object())));
                 }
-                frame.layerToDoc = parentToDoc * layerTransformAffine(ta::decodeTransform(layer->value("transform", ta::Json::object())));
-                for (const Gizmo2DTarget& t : targets) {
+                frame.layerToDoc = parentToDoc * titledesigner::layerTransformAffine(ta::decodeTransform(layer->value("transform", ta::Json::object())));
+                for (const titledesigner::Gizmo2DTarget& t : targets) {
                     if (t.layerId == primary.layer) frame.localBox = t.localBox;
                 }
                 frame.sourceSize = ta::layerSourceSize(*layer);
@@ -1289,47 +1288,47 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
     // text editing overlay: caret, selection, preedit (R36, R37)
     JE_PROFILE_SCOPE("TD drawCanvas text");
     if (textEditing()) {
-        const ta::Json* layer = layerById(doc.committed(), textEdit->layerId());
+        const ta::Json* layer = titledesigner::layerById(doc.committed(), textEdit->layerId());
         if (!layer) {
             textEdit->end();
             doc.cancelGesture();
-            letterGizmo.setGlyphs({}, Affine2(), titleXform, 1.0);
+            letterGizmo.setGlyphs({}, titledesigner::Affine2(), titleXform, 1.0);
         } else {
             if (!textLayout) textLayout = std::make_unique<ta::TitleTextLayout>(&transient);
             // the working layer: a Letters drag in progress moves its cells too
-            const ta::Json* working = layerById(doc.shown(), textEdit->layerId());
+            const ta::Json* working = titledesigner::layerById(doc.shown(), textEdit->layerId());
             ta::Json staged = working ? *working : *layer;
             staged["text"] = textEdit->previewText();
             const ta::LaidOutText& laid = textLayout->layout(staged);
-            Affine2 parentToDoc;
+            titledesigner::Affine2 parentToDoc;
             std::vector<std::string> chain;
-            for (std::string p = parentLayerOf(shown, textEdit->layerId()); !p.empty(); p = parentLayerOf(shown, p)) chain.push_back(p);
+            for (std::string p = titledesigner::parentLayerOf(shown, textEdit->layerId()); !p.empty(); p = titledesigner::parentLayerOf(shown, p)) chain.push_back(p);
             for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
-                parentToDoc = parentToDoc * layerTransformAffine(ta::decodeTransform(layerById(shown, *it)->value("transform", ta::Json::object())));
+                parentToDoc = parentToDoc * titledesigner::layerTransformAffine(ta::decodeTransform(titledesigner::layerById(shown, *it)->value("transform", ta::Json::object())));
             }
-            TextEditFrame frame;
+            titledesigner::TextEditFrame frame;
             frame.layout = &laid;
-            frame.layerToDoc = parentToDoc * layerTransformAffine(ta::decodeTransform(layer->value("transform", ta::Json::object())));
+            frame.layerToDoc = parentToDoc * titledesigner::layerTransformAffine(ta::decodeTransform(layer->value("transform", ta::Json::object())));
             frame.xform = titleXform;
             frame.fieldPos = ImVec2(canvasMin.x + 2.0f, canvasMin.y + 2.0f);
             // the art outside the edited layer dims to 60 %
-            const TitleRect editBox = layerBounds(textEdit->layerId());
+            const titledesigner::TitleRect editBox = layerBounds(textEdit->layerId());
             const ImVec2 emin = titleXform.toScreen({editBox.x, editBox.y + editBox.height}), emax = titleXform.toScreen({editBox.x + editBox.width, editBox.y});
             const ImU32 dim = IM_COL32(20, 20, 22, 102);
             dl->AddRectFilled(canvasMin, ImVec2(canvasMax.x, emin.y), dim);
             dl->AddRectFilled(ImVec2(canvasMin.x, emax.y), canvasMax, dim);
             dl->AddRectFilled(ImVec2(canvasMin.x, emin.y), ImVec2(emin.x, emax.y), dim);
             dl->AddRectFilled(ImVec2(emax.x, emin.y), ImVec2(canvasMax.x, emax.y), dim);
-            const TitleTextEdit::Result result = textEdit->frame(frame, dl);
+            const titledesigner::TitleTextEdit::Result result = textEdit->frame(frame, dl);
             // the selected characters' gizmos (R38)
             {
                 int first = 0, end = 0;
                 textEdit->selection(first, end);
-                std::vector<LetterGlyph> glyphs;
+                std::vector<titledesigner::LetterGlyph> glyphs;
                 const ta::Json chars = staged.value("chars", ta::Json::object());
                 for (const ta::LaidOutCluster& cluster : laid.clusters) {
                     if ((int)cluster.index < first || (int)cluster.index >= end || cluster.emCell.width <= 0.0 || cluster.emCell.height <= 0.0) continue;
-                    LetterGlyph g;
+                    titledesigner::LetterGlyph g;
                     g.index = (int)cluster.index;
                     g.centre = {cluster.emCell.x + cluster.emCell.width * 0.5, cluster.emCell.y + cluster.emCell.height * 0.5};
                     g.width = cluster.emCell.width;
@@ -1342,13 +1341,13 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
                 }
                 if (!doc.editable()) glyphs.clear();
                 // a Dimension 3D layer's letters take the 3D gizmo (S86 R56): their centre, for the provider
-                editLetters3D = !glyphs.empty() && staged.value("dimension", std::string("2d")) == "3d" && gizmo3DProvider();
+                editLetters3D = !glyphs.empty() && staged.value("dimension", std::string("2d")) == "3d" && titledesigner::gizmo3DProvider();
                 if (editLetters3D) {
                     editLetters.indexes.clear();
                     double cx = 0.0, cy = 0.0;
-                    for (const LetterGlyph& g : glyphs) {
+                    for (const titledesigner::LetterGlyph& g : glyphs) {
                         editLetters.indexes.push_back(g.index);
-                        const TitleVec2 c = frame.layerToDoc.apply(g.centre);
+                        const titledesigner::TitleVec2 c = frame.layerToDoc.apply(g.centre);
                         cx += c.x;
                         cy += c.y;
                     }
@@ -1356,15 +1355,15 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
                     glyphs.clear();
                 }
                 letterGizmo.setGlyphs(std::move(glyphs), frame.layerToDoc, titleXform, staged.value("size", 100.0));
-                const TitleLetterGizmo::Hit hot = drag == Drag::None && cursorInCanvas ? letterGizmo.hitTest(ImGui::GetIO().MousePos) : TitleLetterGizmo::Hit();
+                const titledesigner::TitleLetterGizmo::Hit hot = drag == Drag::None && cursorInCanvas ? letterGizmo.hitTest(ImGui::GetIO().MousePos) : titledesigner::TitleLetterGizmo::Hit();
                 letterGizmo.draw(dl, hot);
             }
-            if (result == TitleTextEdit::Result::Changed) {
+            if (result == titledesigner::TitleTextEdit::Result::Changed) {
                 std::string error;
                 doc.stage(ta::Json::array({ta::Json{{"op", "set_text"}, {"layer", "id:" + textEdit->layerId()}, {"text", textEdit->previewText()}}}), &error);
-            } else if (result == TitleTextEdit::Result::Commit) {
+            } else if (result == titledesigner::TitleTextEdit::Result::Commit) {
                 endTextEdit(true);
-            } else if (result == TitleTextEdit::Result::Cancel) {
+            } else if (result == titledesigner::TitleTextEdit::Result::Cancel) {
                 endTextEdit(false);
             }
         }
@@ -1372,7 +1371,7 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
 
     // progress: a 2 px bar and "Rendering 3/7 passes" after 250 ms of a Full render (R71)
     JE_PROFILE_SCOPE("TD drawCanvas tail");
-    const CanvasRenderInfo& info = canvas->info();
+    const titledesigner::CanvasRenderInfo& info = canvas->info();
     if (info.busy && info.runningMs > 250.0 && !info.draft) {
         dl->AddRectFilled(canvasMin, ImVec2(canvasMin.x + (canvasMax.x - canvasMin.x) * info.progress, canvasMin.y + 2.0f), IM_COL32(90, 160, 255, 255));
     }
@@ -1397,8 +1396,8 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
         const bool onTop = m.y >= canvasMin.y - RULER && m.y < canvasMin.y && m.x > canvasMin.x;
         const bool onLeft = m.x >= canvasMin.x - RULER && m.x < canvasMin.x && m.y > canvasMin.y;
         if (onTop || onLeft) {
-            DocumentView& mv = view();
-            const TitleVec2 p = titleXform.toDoc(m);
+            titledesigner::DocumentView& mv = view();
+            const titledesigner::TitleVec2 p = titleXform.toDoc(m);
             mv.guides.push_back({onLeft, onLeft ? std::round(p.x) : std::round(p.y)});
             guideIndex = (int)mv.guides.size() - 1;
             guideVertical = onLeft;

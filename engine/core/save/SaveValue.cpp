@@ -22,7 +22,8 @@
 #include <vector>
 
 using namespace jasperengine;
-using namespace jasperengine::savegame;
+
+namespace jasperengine::savegame {
 
 namespace {
 
@@ -905,7 +906,7 @@ namespace {
 
 }
 
-SaveError savegame::makeError(SaveErrorCode code, std::string message, std::string path){
+SaveError makeError(SaveErrorCode code, std::string message, std::string path){
     SaveError error;
     error.code = code;
     error.message = std::move(message);
@@ -913,7 +914,7 @@ SaveError savegame::makeError(SaveErrorCode code, std::string message, std::stri
     return error;
 }
 
-const char* savegame::errorCodeName(SaveErrorCode code){
+const char* errorCodeName(SaveErrorCode code){
     switch (code){
         case SaveErrorCode::None: return "";
         case SaveErrorCode::Name: return "name";
@@ -932,7 +933,7 @@ const char* savegame::errorCodeName(SaveErrorCode code){
     return "";
 }
 
-bool savegame::encodeLua(lua_State* L, int index, std::string& out, SaveError& error){
+bool encodeLua(lua_State* L, int index, std::string& out, SaveError& error){
     const int top = lua_gettop(L);
     index = lua_absindex(L, index);
     LuaEncoder encoder{L, out, error};
@@ -943,7 +944,7 @@ bool savegame::encodeLua(lua_State* L, int index, std::string& out, SaveError& e
     return ok;
 }
 
-bool savegame::decodeLua(lua_State* L, std::string_view payload, SaveError& error){
+bool decodeLua(lua_State* L, std::string_view payload, SaveError& error){
     Reader reader(payload, error);
     const int top = lua_gettop(L);
     const bool ok = pushValue(L, reader, 0) && reader.finish();
@@ -951,17 +952,17 @@ bool savegame::decodeLua(lua_State* L, std::string_view payload, SaveError& erro
     return ok;
 }
 
-bool savegame::validatePayload(std::string_view payload, SaveError& error){
+bool validatePayload(std::string_view payload, SaveError& error){
     Reader reader(payload, error);
     return skipValue(reader, 0) && reader.finish();
 }
 
-bool savegame::toJson(std::string_view payload, nlohmann::json& out, SaveError& error){
+bool toJson(std::string_view payload, nlohmann::json& out, SaveError& error){
     Reader reader(payload, error);
     return jsonValue(reader, out, 0) && reader.finish();
 }
 
-bool savegame::fromJson(const nlohmann::json& value, std::string& payload, SaveError& error){
+bool fromJson(const nlohmann::json& value, std::string& payload, SaveError& error){
     JsonEncoder encoder{error};
     std::string out;
     if (!encoder.value(value, out, 0)) return false;
@@ -969,21 +970,21 @@ bool savegame::fromJson(const nlohmann::json& value, std::string& payload, SaveE
     return true;
 }
 
-void savegame::beginPairTable(std::string& out, uint64_t pairCount){
+void beginPairTable(std::string& out, uint64_t pairCount){
     out.push_back(static_cast<char>(TagTable));
     putVarint(out, 0);
     putVarint(out, pairCount);
 }
 
-void savegame::appendString(std::string& out, std::string_view text){
+void appendString(std::string& out, std::string_view text){
     putString(out, text);
 }
 
-void savegame::appendInteger(std::string& out, int64_t value){
+void appendInteger(std::string& out, int64_t value){
     putInteger(out, value);
 }
 
-bool savegame::findField(std::string_view payload, std::string_view key, std::string_view& value){
+bool findField(std::string_view payload, std::string_view key, std::string_view& value){
     SaveError ignored;
     Reader r(payload, ignored);
     uint8_t tag = 0;
@@ -1014,7 +1015,7 @@ bool savegame::findField(std::string_view payload, std::string_view key, std::st
     return false;
 }
 
-bool savegame::readString(std::string_view payload, std::string& out){
+bool readString(std::string_view payload, std::string& out){
     SaveError ignored;
     Reader r(payload, ignored);
     uint8_t tag = 0;
@@ -1024,7 +1025,7 @@ bool savegame::readString(std::string_view payload, std::string& out){
     return true;
 }
 
-bool savegame::readInteger(std::string_view payload, int64_t& out){
+bool readInteger(std::string_view payload, int64_t& out){
     SaveError ignored;
     Reader r(payload, ignored);
     uint8_t tag = 0;
@@ -1033,3 +1034,5 @@ bool savegame::readInteger(std::string_view payload, int64_t& out){
     out = unzigzag(v);
     return true;
 }
+
+}  // namespace jasperengine::savegame

@@ -18,7 +18,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vertexcolor;
+
+namespace jasperengine::editor::vertexcolor {
 
 namespace {
 
@@ -1211,3 +1212,5 @@ std::string VertexPaintSceneTool::status() const {
     }
     return tools.statusText();
 }
+
+}  // namespace jasperengine::editor::vertexcolor

@@ -17,6 +17,8 @@
 #include <random>
 #include <vector>
 
+namespace MipChainTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -358,3 +360,5 @@ TEST(MipChain, NearestResize){
     for (size_t i = 0; i < nearest[1].pixels.size(); i += 4)
         EXPECT_TRUE(nearest[1].pixels[i] == 0 || nearest[1].pixels[i] == 255) << "Nearest keeps source values";
 }
+
+}  // namespace MipChainTest_cpp

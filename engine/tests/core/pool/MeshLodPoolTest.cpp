@@ -15,6 +15,8 @@
 #include <cmath>
 #include <cstring>
 
+namespace MeshLodPoolTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -356,3 +358,5 @@ TEST(MeshLodPool, ReadsTheLevelsACookedModelBaked){
     tinygltf::Primitive plain;
     EXPECT_FALSE(MeshLodPool::readGltfLevels(model, plain, AttributeDataType::UNSIGNED_SHORT, 4, recipe));
 }
+
+}  // namespace MeshLodPoolTest_cpp

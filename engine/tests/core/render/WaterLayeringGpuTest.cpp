@@ -36,6 +36,8 @@
 #include <string>
 #include <vector>
 
+namespace WaterLayeringGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -366,3 +368,5 @@ TEST_F(WaterLayeringGpu, UIStaysOutOfTheRefraction){
     EXPECT_LT(over.g - over.r, 20) << "the water refracts the UI";
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace WaterLayeringGpuTest_cpp

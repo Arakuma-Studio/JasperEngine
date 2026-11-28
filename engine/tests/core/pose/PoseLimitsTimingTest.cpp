@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PoseLimitsTimingTest_cpp {
+
 using namespace posetest;
 using H = HumanBone;
 
@@ -217,3 +219,5 @@ TEST(PoseLimits, TwistedKeysAtTheSwingCapSurviveTheFrames){
     }
     EXPECT_GT(cases, 500);
 }
+
+}  // namespace PoseLimitsTimingTest_cpp

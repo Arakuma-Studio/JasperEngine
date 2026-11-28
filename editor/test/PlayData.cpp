@@ -25,7 +25,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::gametests;
+
+namespace jasperengine::editor::gametests {
 
 namespace {
 
@@ -201,3 +202,5 @@ void PlayData::select(Project* project, const std::string& profile) {
     const io::WriteResult written = io::writeFileAtomic(file, "play_data: \"" + profile + "\"\n", options);
     if (!written.ok()) Out::warning("Play Data: the choice was not saved: %s", written.message.c_str());
 }
+
+}  // namespace jasperengine::editor::gametests

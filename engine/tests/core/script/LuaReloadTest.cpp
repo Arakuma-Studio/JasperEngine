@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+namespace LuaReloadTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -435,3 +437,5 @@ TEST_F(LuaReloadTest, Bench200Instances) {
     }
     ASSERT_EQ(lua("reloadBench = nil"), "");
 }
+
+}  // namespace LuaReloadTest_cpp

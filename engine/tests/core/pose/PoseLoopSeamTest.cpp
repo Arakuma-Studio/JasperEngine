@@ -14,6 +14,8 @@
 
 #include <map>
 
+namespace PoseLoopSeamTest_cpp {
+
 using namespace posetest;
 using H = HumanBone;
 
@@ -105,3 +107,5 @@ TEST(PoseLoopSeam, ContinuousAcrossEveryWrapForEveryPreset){
         }
     }
 }
+
+}  // namespace PoseLoopSeamTest_cpp

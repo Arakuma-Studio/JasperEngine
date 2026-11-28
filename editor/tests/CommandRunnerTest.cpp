@@ -29,6 +29,8 @@
 #include <thread>
 #include <vector>
 
+namespace CommandRunnerTest_cpp {
+
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
@@ -383,3 +385,5 @@ TEST(CommandRunner, InvalidUtf8OutputIsRepaired) {
     EXPECT_EQ(lines, (std::vector<std::string>{"ok", "\xEF\xBF\xBDt\xEF\xBF\xBD"}));
 }
 #endif
+
+}  // namespace CommandRunnerTest_cpp

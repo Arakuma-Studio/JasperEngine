@@ -19,6 +19,8 @@
 #include <cstdio>
 #include <map>
 
+namespace TextureCookBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -120,3 +122,5 @@ TEST(TextureCookBench, WarmCookOf200Textures){
         EXPECT_LE(seconds, 10.0 * perfSlack());
     }
 }
+
+}  // namespace TextureCookBenchTest_cpp

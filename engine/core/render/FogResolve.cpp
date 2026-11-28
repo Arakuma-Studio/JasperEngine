@@ -133,7 +133,6 @@ namespace {
 }
 }
 
-using namespace jasperengine::fogresolve;
 
 std::string jasperengine::fogLayerSourceName(const FogLayerSource& source){
     switch (source.layer){
@@ -174,17 +173,17 @@ void jasperengine::resolveFog(const FogComponent& fog, const FogProfileData* pro
     }
 
     if (!zones.empty()){
-        if (zones.size() <= kFogInlineZones){
-            std::array<FogZoneSample, kFogInlineZones> sorted;
+        if (zones.size() <= fogresolve::kFogInlineZones){
+            std::array<FogZoneSample, fogresolve::kFogInlineZones> sorted;
             std::copy(zones.begin(), zones.end(), sorted.begin());
-            std::sort(sorted.begin(), sorted.begin() + zones.size(), &fogZoneBefore);
+            std::sort(sorted.begin(), sorted.begin() + zones.size(), &fogresolve::fogZoneBefore);
             for (size_t z = 0; z < zones.size(); z++)
-                applyFogZone(sorted[z], out);
+                fogresolve::applyFogZone(sorted[z], out);
         }else{
             std::vector<FogZoneSample> sorted(zones.begin(), zones.end());
-            std::sort(sorted.begin(), sorted.end(), &fogZoneBefore);
+            std::sort(sorted.begin(), sorted.end(), &fogresolve::fogZoneBefore);
             for (const FogZoneSample& zone : sorted)
-                applyFogZone(zone, out);
+                fogresolve::applyFogZone(zone, out);
         }
     }
 
@@ -258,13 +257,13 @@ std::vector<FogZoneState> FogScene::zoneStates(Scene* scene, const Vector3& came
         state.entity = entity;
         state.priority = zone.priority;
         state.distance = fogZoneDistance(zone, *transform, camera);
-        state.profileKey = fogRefKey(zone.profile);
-        const std::shared_ptr<const FogProfileData> profile = fogZoneProfileOf(zone);
+        state.profileKey = fogresolve::fogRefKey(zone.profile);
+        const std::shared_ptr<const FogProfileData> profile = fogresolve::fogZoneProfileOf(zone);
         state.profileMissing = zone.profile.isSet() && !profile;
         state.weight = profile ? fogZoneWeight(zone, state.distance) : 0.0f;
         states.push_back(std::move(state));
     }
-    std::sort(states.begin(), states.end(), &fogZoneStateBefore);
+    std::sort(states.begin(), states.end(), &fogresolve::fogZoneStateBefore);
     return states;
 }
 
@@ -282,8 +281,8 @@ void FogScene::resolve(Scene* scene, const FogComponent& fog, const Vector3& cam
         blend.t = runtime->duration > 0.0 ? (float)std::clamp(runtime->elapsed / runtime->duration, 0.0, 1.0) : 1.0f;
     }
 
-    std::vector<FogZoneSample>& samples = fogZoneScratch();
-    std::vector<std::shared_ptr<const FogProfileData>>& held = fogProfileScratch();
+    std::vector<FogZoneSample>& samples = fogresolve::fogZoneScratch();
+    std::vector<std::shared_ptr<const FogProfileData>>& held = fogresolve::fogProfileScratch();
     samples.clear();
     held.clear();
     if (scene && scene->isComponentRegistered<FogZoneComponent>()){
@@ -294,7 +293,7 @@ void FogScene::resolve(Scene* scene, const FogComponent& fog, const Vector3& cam
             if (!transform || !scene->isEntityActiveInHierarchy(entity))
                 continue;
             const FogZoneComponent& zone = zones->getComponentFromIndex(i);
-            std::shared_ptr<const FogProfileData> zoneData = fogZoneProfileOf(zone);
+            std::shared_ptr<const FogProfileData> zoneData = fogresolve::fogZoneProfileOf(zone);
             if (!zoneData)
                 continue;
             const float weight = fogZoneWeight(zone, fogZoneDistance(zone, *transform, camera));
@@ -332,7 +331,7 @@ void FogScene::resolveAtMainCamera(Scene* scene, const FogComponent& fog, FogRes
 std::string FogScene::profileKey(const FogComponent& fog){
     if (const FogRuntime* runtime = fog.runtime.get(); runtime && runtime->profileOverridden)
         return runtime->profileKey;
-    return fogRefKey(fog.profile);
+    return fogresolve::fogRefKey(fog.profile);
 }
 
 std::shared_ptr<const FogProfileData> FogScene::profileOf(const FogComponent& fog){
@@ -354,7 +353,7 @@ bool FogScene::isRunning(Scene* scene){
 
 void FogScene::blendTo(FogComponent& fog, const std::string& key, double seconds){
     FogComponent from;
-    currentFogBase(fog, from);
+    fogresolve::currentFogBase(fog, from);
     FogRuntime& runtime = fog.runtime.ensure();
     runtime.from = from;
     runtime.targetKey = key;
@@ -362,7 +361,7 @@ void FogScene::blendTo(FogComponent& fog, const std::string& key, double seconds
     runtime.elapsed = 0.0;
     runtime.blending = true;
     if (!(seconds > 0.0))
-        finishFogBlend(runtime);
+        fogresolve::finishFogBlend(runtime);
 }
 
 void FogScene::setRuntimeProfile(FogComponent& fog, const std::string& key){
@@ -397,7 +396,7 @@ void FogScene::advance(Scene* scene, double dt){
             continue;
         runtime->elapsed += dt;
         if (runtime->elapsed >= runtime->duration)
-            finishFogBlend(*runtime);
+            fogresolve::finishFogBlend(*runtime);
     }
 }
 

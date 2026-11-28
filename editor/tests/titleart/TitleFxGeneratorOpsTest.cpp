@@ -19,6 +19,8 @@
 #include "titleart/fx/FxGeneratorChecks.h"
 #include "titleart/fx/FxPresets.h"
 
+namespace TitleFxGeneratorOpsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using TitleFxGeneratorOpsJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
@@ -168,3 +170,5 @@ TEST_F(TitleFxGeneratorOpsTest, FollowMissingReportsAndFixes) {
     ASSERT_TRUE(fixed.ok) << fixed.error();
     EXPECT_TRUE(titleFollowProblems(fixed.doc).empty());
 }
+
+}  // namespace TitleFxGeneratorOpsTest_cpp

@@ -22,6 +22,8 @@
 #include <sstream>
 #include <string>
 
+namespace LocalizationLuaTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -140,3 +142,5 @@ TEST_F(LocalizationLua, LanguageIsWritableListArgumentsArePositionalAndBareKeysU
         "assert(Localization.get('coins', {n = 1}) == '1 coin')\n"
         "assert(Localization.has('play') and not Localization.has('nope'))\n"), "");
 }
+
+}  // namespace LocalizationLuaTest_cpp

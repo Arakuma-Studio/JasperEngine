@@ -29,7 +29,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::titledesigner;
 namespace ta = jasperengine::titleart;
 
 namespace {
@@ -49,12 +48,12 @@ namespace {
     }
 
     // the type badge of a page
-    const char* badgeOf(const ta::TitleArtDoc& doc, const NodeRef& node) {
-        if (node.kind == NodeKind::Document) return "DOC";
-        if (node.kind == NodeKind::Part) return "PART";
-        if (node.kind == NodeKind::Effect) return "FX";
-        if (node.kind == NodeKind::Mask) return "MASK";
-        const ta::Json* layer = layerById(doc, node.layer);
+    const char* badgeOf(const ta::TitleArtDoc& doc, const titledesigner::NodeRef& node) {
+        if (node.kind == titledesigner::NodeKind::Document) return "DOC";
+        if (node.kind == titledesigner::NodeKind::Part) return "PART";
+        if (node.kind == titledesigner::NodeKind::Effect) return "FX";
+        if (node.kind == titledesigner::NodeKind::Mask) return "MASK";
+        const ta::Json* layer = titledesigner::layerById(doc, node.layer);
         if (!layer) return "?";
         switch (ta::layerTypeOf(*layer)) {
             case ta::LayerType::Text: return "T";
@@ -72,7 +71,7 @@ namespace {
 
 std::string TitleDesignerWindow::indexSelection() const {
     std::string selectionKey = searchEveryLayer ? std::string("*") : std::string();
-    for (const NodeRef& node : doc.selection()) selectionKey += node.layer + ";";
+    for (const titledesigner::NodeRef& node : doc.selection()) selectionKey += node.layer + ";";
     return selectionKey;
 }
 
@@ -101,7 +100,7 @@ void TitleDesignerWindow::stepIndexBuild(bool urgent) {
         indexBuild.units = planCollect(doc, searchEveryLayer);
         indexBuild.next = 0;
         indexBuild.pending.clear();
-        clearCollectAudit();
+        titledesigner::clearCollectAudit();
         indexBuild.change = doc.changeCount();
         indexBuild.selection = selection;
         indexBuild.ms = 0.0;
@@ -116,13 +115,13 @@ void TitleDesignerWindow::stepIndexBuild(bool urgent) {
     const auto start = std::chrono::steady_clock::now();
     int count = 0;
     {
-        const CollectLayerLookup lookup(doc.shown());
+        const titledesigner::CollectLayerLookup lookup(doc.shown());
         auto since = [](std::chrono::steady_clock::time_point t) {
             return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t).count();
         };
         while (indexBuild.next < indexBuild.units.size()) {
             const auto unitStart = std::chrono::steady_clock::now();
-            const CollectUnit& unit = indexBuild.units[indexBuild.next++];
+            const titledesigner::CollectUnit& unit = indexBuild.units[indexBuild.next++];
             collectUnit(doc, this, indexBuild.pending, unit);
             const double unitMs = since(unitStart);
             indexBuild.unitMsMax = std::max(indexBuild.unitMsMax, unitMs);
@@ -140,7 +139,7 @@ void TitleDesignerWindow::stepIndexBuild(bool urgent) {
     indexBuild.frames++;
     if (indexBuild.next < indexBuild.units.size()) return;
     index = std::move(indexBuild.pending);
-    indexBuild.pending = PropertyIndex();
+    indexBuild.pending = titledesigner::PropertyIndex();
     indexChange = indexBuild.change;
     indexSelectionKey = indexBuild.selection;
     indexMs = indexBuild.ms;
@@ -152,13 +151,13 @@ void TitleDesignerWindow::stepIndexBuild(bool urgent) {
     mergedKey = ~0ull;
 }
 
-const PropertyIndex& TitleDesignerWindow::searchIndex() {
+const titledesigner::PropertyIndex& TitleDesignerWindow::searchIndex() {
     if (!indexBuild.active || indexBuild.pending.size() == 0) return index;
     const uint64_t key = (indexBuild.generation << 40) ^ ((uint64_t)indexBuild.pending.size() << 20) ^ (uint64_t)index.size();
     if (key != mergedKey) {
         mergedKey = key;
         mergedIndex.clear();
-        const PropertyIndex& pending = indexBuild.pending;
+        const titledesigner::PropertyIndex& pending = indexBuild.pending;
         mergedIndex.replay(pending.record(0, pending.size()));
         std::set<std::string> fresh;
         for (size_t i = 0; i < pending.size(); i++) fresh.insert(pending.entry(i).rowId);
@@ -181,9 +180,9 @@ void TitleDesignerWindow::rebuildIndexIfNeeded() {
 }
 
 void TitleDesignerWindow::jumpToHit(size_t i) {
-    const PropertyIndex& served = searchIndex();
+    const titledesigner::PropertyIndex& served = searchIndex();
     if (i >= served.size()) return;
-    const IndexEntry entry = served.entry(i);
+    const titledesigner::IndexEntry entry = served.entry(i);
     selectNode(entry.node);
     // its sections open, the row scrolls to the centre and flashes for 1.6 s (R26)
     flashRow = entry.rowId;
@@ -227,7 +226,7 @@ void TitleDesignerWindow::drawSearch() {
         if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) highlightedHit = std::max(0, highlightedHit - 1);
         if (ImGui::IsKeyPressed(ImGuiKey_Enter)) {
             stepIndexBuild(true);
-            const std::vector<SearchHit> hits = searchIndex().query(searchText, resultLimit);
+            const std::vector<titledesigner::SearchHit> hits = searchIndex().query(searchText, resultLimit);
             if (!hits.empty()) jumpToHit(hits[(size_t)std::clamp(highlightedHit, 0, (int)hits.size() - 1)].entry);
         }
     }
@@ -237,29 +236,29 @@ void TitleDesignerWindow::drawSearchResults() {
     JE_PROFILE_SCOPE("TD drawSearchResults");
     // never waits for a build: the served index answers, stale until the new one is complete
     stepIndexBuild(true);
-    const PropertyIndex& served = searchIndex();
+    const titledesigner::PropertyIndex& served = searchIndex();
     const auto start = std::chrono::steady_clock::now();
-    std::vector<SearchHit> hits = served.query(searchText, 0);
+    std::vector<titledesigner::SearchHit> hits = served.query(searchText, 0);
     queryMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     // stable keys while a result is being edited (R26)
     if (!editingHit.empty() && !stableOrder.empty()) {
-        std::vector<SearchHit> ordered;
+        std::vector<titledesigner::SearchHit> ordered;
         for (const std::string& rowId : stableOrder) {
-            for (const SearchHit& hit : hits) {
+            for (const titledesigner::SearchHit& hit : hits) {
                 if (served.entry(hit.entry).rowId == rowId) ordered.push_back(hit);
             }
         }
         hits = ordered;
     } else {
         stableOrder.clear();
-        for (const SearchHit& hit : hits) stableOrder.push_back(served.entry(hit.entry).rowId);
+        for (const titledesigner::SearchHit& hit : hits) stableOrder.push_back(served.entry(hit.entry).rowId);
     }
     if (hits.empty()) ImGui::TextDisabled("No setting matches \"%s\"", searchText.c_str());
     highlightedHit = std::clamp(highlightedHit, 0, std::max(0, (int)hits.size() - 1));
     const size_t shown = std::min(hits.size(), resultLimit);
     std::string group;
     for (size_t i = 0; i < shown; i++) {
-        const IndexEntry& entry = served.entry(hits[i].entry);
+        const titledesigner::IndexEntry& entry = served.entry(hits[i].entry);
         if (searchEveryLayer && entry.nodeLabel != group) {
             group = entry.nodeLabel;
             ImGui::SeparatorText(group.c_str());
@@ -274,7 +273,7 @@ void TitleDesignerWindow::drawSearchResults() {
         if (ImGui::Selectable(((location.empty() ? entry.nodeLabel : location) + "##loc").c_str(), false)) jumpToHit(hits[i].entry);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Go to its page (Enter)");
         // the live control: the same row bound to the same targets
-        RowContext ctx;
+        titledesigner::RowContext ctx;
         ctx.host = this;
         ctx.state = &doc;
         ctx.node = entry.node;
@@ -290,9 +289,9 @@ void TitleDesignerWindow::drawSearchResults() {
                 part == "Erode" || part == "Warp" || part == "Distort" || part == "Global Light")
                 prefix += part + " ";
         }
-        if (entry.node.kind == NodeKind::Effect) {
-            const ta::Json* layer = layerById(doc.shown(), entry.node.layer);
-            const ta::Json* effect = layer ? effectOf(*layer, entry.node) : nullptr;
+        if (entry.node.kind == titledesigner::NodeKind::Effect) {
+            const ta::Json* layer = titledesigner::layerById(doc.shown(), entry.node.layer);
+            const ta::Json* effect = layer ? titledesigner::effectOf(*layer, entry.node) : nullptr;
             const ta::EffectDef* def = effect ? ta::findEffect(str(*effect, "type")) : nullptr;
             prefix = def ? std::string(def->label) + " " : std::string();
         }
@@ -300,7 +299,7 @@ void TitleDesignerWindow::drawSearchResults() {
         const uint64_t before = doc.changeCount();
         if (entry.kind == "font") {
             std::vector<std::string> layers;
-            for (const FieldRef& target : entry.targets) layers.push_back(target.layer);
+            for (const titledesigner::FieldRef& target : entry.targets) layers.push_back(target.layer);
             drawFontRow(layers, ctx.readOnly);
         } else if (entry.link) {
             ui::DocRowOptions options;
@@ -308,7 +307,7 @@ void TitleDesignerWindow::drawSearchResults() {
             options.fieldPath = entry.fieldPath;
             if (ui::docRowLink(entry.rowId.c_str(), options, "Open on its page")) jumpToHit(hits[i].entry);
         } else {
-            fieldRow(ctx, entry.targets, {.label = entry.label.c_str()});
+            titledesigner::fieldRow(ctx, entry.targets, {.label = entry.label.c_str()});
         }
         if (doc.changeCount() != before || doc.gestureActive()) {
             editingHit = entry.rowId;
@@ -321,9 +320,9 @@ void TitleDesignerWindow::drawSearchResults() {
 
     // effects the layer does not have: + Add (R26)
     if (!doc.selectedLayers().empty() && doc.editable()) {
-        const std::vector<OfferHit> offers = served.queryOffers(searchText, 6);
-        for (const OfferHit& hit : offers) {
-            const AddOffer& offer = served.offer(hit.offer);
+        const std::vector<titledesigner::OfferHit> offers = served.queryOffers(searchText, 6);
+        for (const titledesigner::OfferHit& hit : offers) {
+            const titledesigner::AddOffer& offer = served.offer(hit.offer);
             ImGui::PushID(("offer" + offer.type).c_str());
             const std::string label = offer.kind == "generator" ? "+ Add Generator Layer " + offer.label : "+ Add " + offer.label;
             const bool clicked = ImGui::Selectable(label.c_str());
@@ -331,7 +330,7 @@ void TitleDesignerWindow::drawSearchResults() {
             const std::string layer = doc.selectedLayers().back();
             ta::Json op = offer.kind == "generator" ? ta::Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", offer.type}, {"after", "id:" + layer}}
                                                 : ta::Json{{"op", "add_effect"}, {"layer", "id:" + layer}, {"type", offer.type}};
-            const ta::Json* target = layerById(doc.committed(), layer);
+            const ta::Json* target = titledesigner::layerById(doc.committed(), layer);
             const std::string name = offer.kind == "generator" ? "Add Layer " + offer.label
                                                                : "Add Effect " + offer.label + " to " + (target ? str(*target, "name") : std::string());
             if (hovered) {
@@ -342,8 +341,8 @@ void TitleDesignerWindow::drawSearchResults() {
                     addHoverSince = now();
                     addHoverMouse = mouse;
                 } else if (now() - addHoverSince >= 0.15 && (mouse.x != addHoverMouse.x || mouse.y != addHoverMouse.y || true)) {
-                    PreviewItem item;
-                    item.kind = offer.kind == "generator" ? PreviewItem::Kind::Generator : PreviewItem::Kind::Effect;
+                    titledesigner::PreviewItem item;
+                    item.kind = offer.kind == "generator" ? titledesigner::PreviewItem::Kind::Generator : titledesigner::PreviewItem::Kind::Effect;
                     item.id = offer.type;
                     item.label = offer.label;
                     item.ops = ta::Json::array({op});
@@ -372,30 +371,30 @@ void TitleDesignerWindow::drawSearchResults() {
 
 void TitleDesignerWindow::drawPropertiesHeader() {
     JE_PROFILE_SCOPE("TD drawPropertiesHeader");
-    const NodeRef primary = doc.primary();
+    const titledesigner::NodeRef primary = doc.primary();
     const ta::TitleArtDoc& shown = doc.shown();
     // breadcrumb: Title > Logo > Rim 2 > Outer Glow, each crumb a button (R18)
-    std::vector<std::pair<std::string, NodeRef>> crumbs;
-    crumbs.push_back({shown.root.value("name", std::string()).empty() ? std::string("Document") : shown.root.value("name", std::string()), NodeRef{}});
-    if (primary.kind != NodeKind::Document) {
+    std::vector<std::pair<std::string, titledesigner::NodeRef>> crumbs;
+    crumbs.push_back({shown.root.value("name", std::string()).empty() ? std::string("Document") : shown.root.value("name", std::string()), titledesigner::NodeRef{}});
+    if (primary.kind != titledesigner::NodeKind::Document) {
         std::vector<std::string> chain;
         std::string id = primary.layer;
         while (!id.empty()) {
             chain.push_back(id);
-            id = parentLayerOf(shown, id);
+            id = titledesigner::parentLayerOf(shown, id);
         }
         for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
-            const ta::Json* layer = layerById(shown, *it);
-            crumbs.push_back({layer ? str(*layer, "name") : *it, NodeRef{NodeKind::Layer, *it, {}, {}}});
+            const ta::Json* layer = titledesigner::layerById(shown, *it);
+            crumbs.push_back({layer ? str(*layer, "name") : *it, titledesigner::NodeRef{titledesigner::NodeKind::Layer, *it, {}, {}}});
         }
-        const ta::Json* layer = layerById(shown, primary.layer);
-        if (layer && !primary.part.empty()) crumbs.push_back({partLabel(*layer, primary.part), NodeRef{NodeKind::Part, primary.layer, primary.part, {}}});
-        if (layer && primary.kind == NodeKind::Effect) {
+        const ta::Json* layer = titledesigner::layerById(shown, primary.layer);
+        if (layer && !primary.part.empty()) crumbs.push_back({titledesigner::partLabel(*layer, primary.part), titledesigner::NodeRef{titledesigner::NodeKind::Part, primary.layer, primary.part, {}}});
+        if (layer && primary.kind == titledesigner::NodeKind::Effect) {
             const ta::Json* effect = effectOf(*layer, primary);
             const ta::EffectDef* def = effect ? ta::findEffect(str(*effect, "type")) : nullptr;
             crumbs.push_back({def ? def->label : "Effect", primary});
         }
-        if (layer && primary.kind == NodeKind::Mask) crumbs.push_back({"Mask", primary});
+        if (layer && primary.kind == titledesigner::NodeKind::Mask) crumbs.push_back({"Mask", primary});
     }
     for (size_t i = 0; i < crumbs.size(); i++) {
         if (i) {
@@ -405,7 +404,7 @@ void TitleDesignerWindow::drawPropertiesHeader() {
         }
         ImGui::PushID((int)i);
         if (ImGui::SmallButton(crumbs[i].first.c_str())) {
-            if (crumbs[i].second.kind == NodeKind::Document) doc.select({});
+            if (crumbs[i].second.kind == titledesigner::NodeKind::Document) doc.select({});
             else selectNode(crumbs[i].second);
         }
         ImGui::PopID();
@@ -413,8 +412,8 @@ void TitleDesignerWindow::drawPropertiesHeader() {
     // type badge, lint badge
     ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "[%s]", badgeOf(shown, primary));
     ImGui::SameLine();
-    if (primary.kind == NodeKind::Layer || primary.kind == NodeKind::Document) {
-        const ta::Json* layer = layerById(shown, primary.layer);
+    if (primary.kind == titledesigner::NodeKind::Layer || primary.kind == titledesigner::NodeKind::Document) {
+        const ta::Json* layer = titledesigner::layerById(shown, primary.layer);
         ImGui::TextUnformatted(layer ? str(*layer, "name").c_str() : "Title Art");
     } else {
         ImGui::TextUnformatted(crumbs.back().first.c_str());
@@ -453,13 +452,13 @@ void TitleDesignerWindow::drawProperties() {
         drawSearchResults();
     } else {
         JE_PROFILE_SCOPE("TD drawProperties page");
-        RowContext ctx;
+        titledesigner::RowContext ctx;
         ctx.host = this;
         ctx.state = &doc;
         ctx.readOnly = !doc.editable();
         ctx.readOnlyReason = doc.readOnlyReason();
         ctx.forceOpen = forceOpenSections;
-        drawSelectionPage(ctx);
+        titledesigner::drawSelectionPage(ctx);
         forceOpenSections.clear();
     }
     ImGui::EndChild();
@@ -478,7 +477,7 @@ void TitleDesignerWindow::refreshLint(bool pixels) {
     context.file = doc.document()->absolutePath();
     context.assets = TitleArtRenderHost::editor().resolver(project);
     // the Device's Display Height is what legibility is measured at (R31)
-    const DocumentView& v = view();
+    const titledesigner::DocumentView& v = view();
     if (!v.device.profile.empty()) {
         const double screenHeight = stageRect().height;
         context.options.displayHeightPx = (int)std::round(v.device.displayHeightPx ? v.device.displayHeight : screenHeight * v.device.displayHeight / 100.0);
@@ -512,7 +511,7 @@ void TitleDesignerWindow::refreshLint(bool pixels) {
     checksRun = report.checks.size();
     for (const TitleCheckResult& result : report.checks) {
         if (result.status != TitleCheckStatus::Warn && result.status != TitleCheckStatus::Fail) continue;
-        CheckFinding f;
+        titledesigner::CheckFinding f;
         f.id = result.id;
         f.status = titleCheckStatusName(result.status);
         f.message = result.message;
@@ -525,12 +524,12 @@ void TitleDesignerWindow::refreshLint(bool pixels) {
             std::string label = result.id;
             const size_t dot = label.find('.');
             if (dot != std::string::npos) label = label.substr(0, dot);
-            f.fixName = "Style Fix: " + enumLabel(label);
+            f.fixName = "Style Fix: " + titledesigner::enumLabel(label);
         }
         findings.push_back(f);
     }
     // S84's style_lint and S85's checks register their sources
-    const std::vector<CheckFinding> extra = runCheckSources(doc);
+    const std::vector<titledesigner::CheckFinding> extra = runCheckSources(doc);
     findings.insert(findings.end(), extra.begin(), extra.end());
     checksRun += extra.size();
     pixelChecksRun = pixels;
@@ -544,7 +543,7 @@ void TitleDesignerWindow::drawLintPopup() {
     ImGui::Separator();
     ta::Json fixAll = ta::Json::array();
     for (size_t i = 0; i < findings.size(); i++) {
-        const CheckFinding& f = findings[i];
+        const titledesigner::CheckFinding& f = findings[i];
         ImGui::PushID((int)i);
         ImGui::TextColored(f.status == "FAIL" ? ImVec4(0.95f, 0.45f, 0.35f, 1.0f) : ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s", f.status.c_str());
         ImGui::SameLine();

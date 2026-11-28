@@ -9,7 +9,8 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::savegame;
+
+namespace jasperengine::savegame {
 
 namespace {
 
@@ -73,7 +74,7 @@ namespace {
 
 }
 
-std::string savegame::buildMetadata(const SaveMetadata& metadata){
+std::string buildMetadata(const SaveMetadata& metadata){
     // the keys in byte order: engine, meta, platform, requires
     const std::pair<const char*, const std::string*> fields[] = {
         {"engine", &metadata.engine}, {"meta", &metadata.meta}, {"platform", &metadata.platform}, {"requires", &metadata.requirements}};
@@ -89,7 +90,7 @@ std::string savegame::buildMetadata(const SaveMetadata& metadata){
     return out;
 }
 
-bool savegame::splitMetadata(std::string_view bytes, SaveMetadata& out){
+bool splitMetadata(std::string_view bytes, SaveMetadata& out){
     out = SaveMetadata();
     SaveError error;
     if (!validatePayload(bytes, error) || bytes.empty() || bytes[0] != 0x05) return false;
@@ -101,7 +102,7 @@ bool savegame::splitMetadata(std::string_view bytes, SaveMetadata& out){
     return true;
 }
 
-std::string savegame::buildSaveFile(const SaveFile& file){
+std::string buildSaveFile(const SaveFile& file){
     size_t total = HEADER_FIXED_BYTES + file.metadata.size() + FOOTER_BYTES;
     for (const SaveSection& section : file.sections)
         total += 6 + section.name.size() + (section.payload ? section.payload->size() : 0);
@@ -129,12 +130,12 @@ std::string savegame::buildSaveFile(const SaveFile& file){
     return out;
 }
 
-bool savegame::parseSaveHeader(std::string_view bytes, SaveFile& out, SaveError& error){
+bool parseSaveHeader(std::string_view bytes, SaveFile& out, SaveError& error){
     size_t headerSize = 0;
     return parseHeader(bytes, bytes.size(), out, headerSize, error);
 }
 
-bool savegame::parseSaveFile(std::string_view bytes, SaveFile& out, SaveError& error){
+bool parseSaveFile(std::string_view bytes, SaveFile& out, SaveError& error){
     if (bytes.size() > MAX_FILE_BYTES)
         return fail(error, "file of " + std::to_string(bytes.size()) + " bytes is above the 64 MiB cap", 0);
     // the footer first (R18), also for a format above this engine's: every format keeps it, so a
@@ -177,7 +178,7 @@ bool savegame::parseSaveFile(std::string_view bytes, SaveFile& out, SaveError& e
     return true;
 }
 
-bool savegame::isValidName(std::string_view name, size_t max){
+bool isValidName(std::string_view name, size_t max){
     if (name.empty() || name.size() > max) return false;
     for (char c : name){
         if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-')) return false;
@@ -185,7 +186,7 @@ bool savegame::isValidName(std::string_view name, size_t max){
     return true;
 }
 
-std::string savegame::suggestName(std::string_view name, size_t max){
+std::string suggestName(std::string_view name, size_t max){
     std::string out;
     for (char c : name){
         if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
@@ -196,3 +197,5 @@ std::string savegame::suggestName(std::string_view name, size_t max){
     if (out.empty()) out = "slot1";
     return out;
 }
+
+}  // namespace jasperengine::savegame

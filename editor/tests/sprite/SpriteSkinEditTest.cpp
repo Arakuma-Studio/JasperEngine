@@ -13,6 +13,8 @@
 
 #include <cmath>
 
+namespace SpriteSkinEditTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -163,3 +165,5 @@ TEST(SpriteSkinTest, MetaRoundTrip) {
     EXPECT_FALSE(sprite::skinSetFromYaml(newer, read, error));
     EXPECT_NE(error.find("newer"), std::string::npos);
 }
+
+}  // namespace SpriteSkinEditTest_cpp

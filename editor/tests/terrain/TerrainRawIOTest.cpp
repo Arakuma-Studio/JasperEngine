@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+namespace TerrainRawIOTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace {
@@ -134,3 +136,5 @@ TEST(TerrainRawIO, FlipVertically) {
     options.flipVertically = true;
     EXPECT_EQ(TerrainRawIO::decode("f.r16", bytes, options).normalized, rows) << "and read back the right way";
 }
+
+}  // namespace TerrainRawIOTest_cpp

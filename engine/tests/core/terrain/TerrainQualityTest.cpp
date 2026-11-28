@@ -19,6 +19,8 @@
 #include <random>
 #include <vector>
 
+namespace TerrainQualityTest_cpp {
+
 using namespace jasperengine::terraincore;
 
 TEST(TerrainQuality, Table) {
@@ -394,3 +396,5 @@ TEST(TerrainMacroNormal, MatchesCentralDifferences) {
     // capped at 2048 a side
     EXPECT_EQ(macroNormalSize(4097), TERRAIN_MACRO_NORMAL_MAX_SIZE);
 }
+
+}  // namespace TerrainQualityTest_cpp

@@ -20,6 +20,8 @@
 #include <string>
 #include <thread>
 
+namespace PerfSamplerTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -344,3 +346,5 @@ TEST(PerfSamplerBench, TickCost){
     std::printf("[bench] PerfSampler tick worst: %.3f us\n", worstUs);
     expectWithin(totalUs / ticks, 50.0, "PerfSampler tick, us");
 }
+
+}  // namespace PerfSamplerTest_cpp

@@ -30,6 +30,8 @@
 #include <mutex>
 #include <random>
 
+namespace Physics3DBodyTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::physics3dtest;
@@ -811,3 +813,5 @@ TEST(Physics3DBody, WorldSettingsApply) {
     EXPECT_FLOAT_EQ(world.physics()->getWorld3D()->GetPhysicsSettings().mSpeculativeContactDistance, 0.05f);
     world.physics()->getWorld3D()->RemoveStepListener(&listener);
 }
+
+}  // namespace Physics3DBodyTest_cpp

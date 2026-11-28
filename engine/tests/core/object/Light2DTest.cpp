@@ -17,6 +17,8 @@
 
 #include <string>
 
+namespace Light2DTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -68,3 +70,5 @@ TEST(Light2D, LuaConstructorStartsAt64AndWrapKeepsZero){
     EXPECT_EQ(scene.getComponent<Light2DComponent>(stored).height, 0.0f);
     runLight2DLua(L, "lightScene = nil\nSTORED_LIGHT = nil\ncollectgarbage()\n");
 }
+
+}  // namespace Light2DTest_cpp

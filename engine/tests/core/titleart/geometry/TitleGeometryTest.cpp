@@ -22,6 +22,8 @@
 #include <cmath>
 #include <cstdio>
 
+namespace TitleGeometryTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::geometry;
@@ -470,3 +472,5 @@ TEST_F(TitleGeometryTest, MitreSpikesOfTheClassicLook) {
     EXPECT_EQ(mitreSpike(els.elements.back()).length, 0.0);
     std::printf("[ spikes   ] NMVW %.2f, standard title %.2f of the band\n", spiky, clean);
 }
+
+}  // namespace TitleGeometryTest_cpp

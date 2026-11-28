@@ -13,6 +13,8 @@
 #include <cmath>
 #include <map>
 
+namespace ParticleEffectTimingTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::particles;
@@ -224,3 +226,5 @@ TEST(ParticleEffectTiming, ABurstsOnlySystemFirstEmitsAtItsFirstBurst) {
     // the first death: the first burst's particles at their shortest life
     EXPECT_FLOAT_EQ(rows[1].start, 1.75f);
 }
+
+}  // namespace ParticleEffectTimingTest_cpp

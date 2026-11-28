@@ -23,7 +23,6 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::l10n;
 
 FunctionSubscribe<void(const std::string&)> Localization::onLanguageChanged;
 
@@ -45,7 +44,7 @@ namespace {
     struct LoadedNamespace {
         LocalizationNamespace info;
         // the chain's languages that were asked for: a table, or null when the file did not read
-        std::map<std::string, std::shared_ptr<const StringTable>> tables;
+        std::map<std::string, std::shared_ptr<const l10n::StringTable>> tables;
         // the shown language is the source's (no "untranslated" capture), set per language change
         bool sourceShown = true;
     };
@@ -114,10 +113,10 @@ namespace {
         return path.substr(dot);
     }
 
-    std::shared_ptr<const StringTable> loadTable(State& s, const std::string& path, const std::string& language) {
+    std::shared_ptr<const l10n::StringTable> loadTable(State& s, const std::string& path, const std::string& language) {
         const std::string extension = extensionOf(path);
         std::string error;
-        std::shared_ptr<const StringTable> table;
+        std::shared_ptr<const l10n::StringTable> table;
         const auto reader = s.readers.find(extension);
         if (reader != s.readers.end()) {
             table = reader->second(path, language, &error);
@@ -127,11 +126,11 @@ namespace {
             if (!ok) {
                 error = "cannot be read";
             } else if (extension == ".strbin") {
-                table = StringTable::fromStrbin(text, &error);
+                table = l10n::StringTable::fromStrbin(text, &error);
             } else if (extension == ".stringtable") {
-                table = StringTable::fromStringTableJson(text, nullptr, nullptr, &error);
+                table = l10n::StringTable::fromStringTableJson(text, nullptr, nullptr, &error);
             } else if (extension == ".translation") {
-                table = StringTable::fromTranslationJson(text, nullptr, &error);
+                table = l10n::StringTable::fromTranslationJson(text, nullptr, &error);
             } else {
                 error = "is not a string table";
             }
@@ -141,11 +140,11 @@ namespace {
     }
 
     // the table of one language of a namespace, loaded on first use; null when it has none
-    const StringTable* tableOf(State& s, LoadedNamespace& ns, const std::string& language) {
+    const l10n::StringTable* tableOf(State& s, LoadedNamespace& ns, const std::string& language) {
         auto it = ns.tables.find(language);
         if (it != ns.tables.end()) return it->second.get();
         const auto file = ns.info.files.find(language);
-        std::shared_ptr<const StringTable> table;
+        std::shared_ptr<const l10n::StringTable> table;
         if (file != ns.info.files.end()) table = loadTable(s, file->second, language);
         return ns.tables.emplace(language, std::move(table)).first->second.get();
     }
@@ -291,7 +290,7 @@ namespace {
 
 #if JASPERENGINE_L10N_CAPTURE
     uint64_t hashText(std::string_view text) {
-        return StringTable::hashKey(text, 0x5bd1e995ull);
+        return l10n::StringTable::hashKey(text, 0x5bd1e995ull);
     }
 #endif
 
@@ -343,14 +342,14 @@ namespace {
         bool review = false;
         for (const std::string& language : s.chain) {
             if (language == ns.info.sourceLanguage) break;
-            const StringTable* table = tableOf(s, ns, language);
+            const l10n::StringTable* table = tableOf(s, ns, language);
             if (table && table->find(local, found.text, &review, &found.plain)) {
                 found.language = language;
                 if (review) capture(s, key, "stale", where);
                 return true;
             }
         }
-        const StringTable* source = tableOf(s, ns, ns.info.sourceLanguage);
+        const l10n::StringTable* source = tableOf(s, ns, ns.info.sourceLanguage);
         if (!source || !source->find(local, found.text, nullptr, &found.plain)) return false;
         found.language = ns.info.sourceLanguage;
         if (!ns.sourceShown) capture(s, key, "untranslated", where);
@@ -373,7 +372,7 @@ namespace {
     }
 
     void formatFound(State& s, const Found& found, const LocalizationArgs& args, std::string& out) {
-        FormatOptions options;
+        l10n::FormatOptions options;
         options.language = found.language;
         options.args = &args;
         options.showMissing = development();
@@ -381,7 +380,7 @@ namespace {
         options.resolveContext = &s;
         if (!s.pseudo) {
             if (found.plain) out.append(found.text);
-            else if (!MessageFormat::format(found.text, options, out)) {
+            else if (!l10n::MessageFormat::format(found.text, options, out)) {
                 Log::warn("[Localization] a message does not parse, shown as written: %.*s", static_cast<int>(found.text.size()), found.text.data());
             }
             return;
@@ -389,7 +388,7 @@ namespace {
         const bool rtl = s.language == kPseudoRtl;
         options.literal = rtl ? reverseLiteral : accentLiteral;
         std::string body;
-        MessageFormat::format(found.text, options, body);
+        l10n::MessageFormat::format(found.text, options, body);
         if (rtl) {
             out += body;
             return;
@@ -526,7 +525,7 @@ bool Localization::has(std::string_view key) {
 }
 
 std::string Localization::format(std::string_view pattern, const LocalizationArgs& args, std::string_view language) {
-    FormatOptions options;
+    l10n::FormatOptions options;
     std::string current;
     if (language.empty() && active.load()) {
         State& s = state();
@@ -537,18 +536,18 @@ std::string Localization::format(std::string_view pattern, const LocalizationArg
     options.args = &args;
     options.showMissing = development();
     std::string out;
-    MessageFormat::format(pattern, options, out);
+    l10n::MessageFormat::format(pattern, options, out);
     return out;
 }
 
 std::string Localization::pseudoLocalize(std::string_view text, const std::string& code, std::string_view language) {
-    FormatOptions options;
+    l10n::FormatOptions options;
     options.language = language;
     options.showMissing = true;
     const bool rtl = code == kPseudoRtl;
     options.literal = rtl ? reverseLiteral : accentLiteral;
     std::string body;
-    MessageFormat::format(text, options, body);
+    l10n::MessageFormat::format(text, options, body);
     if (rtl) return body;
     std::string out = "\xE2\x9F\xA6" + body;
     for (size_t k = 0, filler = (codePoints(body) * 4 + 9) / 10; k < filler; k++) out += "\xC2\xB7";

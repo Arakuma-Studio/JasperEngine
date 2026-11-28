@@ -6,7 +6,8 @@
 #include "log/Logger.h"
 
 using namespace jasperengine;
-using namespace jasperengine::test;
+
+namespace jasperengine::test {
 
 namespace {
     size_t testStart = 0;
@@ -71,3 +72,5 @@ std::string LogCapture::describeErrors() const{
     }
     return text;
 }
+
+}  // namespace jasperengine::test

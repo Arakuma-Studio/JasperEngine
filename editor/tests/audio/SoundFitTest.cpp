@@ -10,6 +10,8 @@
 
 #include <cmath>
 
+namespace SoundFitTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -108,3 +110,5 @@ TEST(SoundDesign, TheTableIsTheSpecs) {
     EXPECT_EQ(SoundDesign::families("pop"), (std::vector<std::string>{"bubble", "cork", "soft"}));
     EXPECT_TRUE(SoundDesign::families("click").empty());
 }
+
+}  // namespace SoundFitTest_cpp

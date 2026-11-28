@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace AtmosphereShaderBuildTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -112,3 +114,5 @@ TEST(AtmosphereShaderBuild, FogPointShadowsFitGles3Limits){
         EXPECT_EQ(pointBlock, properties != 0);
     }
 }
+
+}  // namespace AtmosphereShaderBuildTest_cpp

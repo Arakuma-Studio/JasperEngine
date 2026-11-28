@@ -14,6 +14,8 @@
 #include <map>
 #include <string>
 
+namespace NavFindingsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 using nav::FindingSeverity;
@@ -179,3 +181,5 @@ TEST_F(NavFindingsTest, CachedStaleCounts){
     EXPECT_TRUE(asked.empty());
     EXPECT_TRUE(std::none_of(fresh.begin(), fresh.end(), [](const NavFinding& f) { return f.code == "stale_bake"; }));
 }
+
+}  // namespace NavFindingsTest_cpp

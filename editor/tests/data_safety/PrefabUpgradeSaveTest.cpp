@@ -20,11 +20,12 @@
 #include <fstream>
 #include <sstream>
 
+namespace prefab_upgrade_save_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
-namespace prefab_upgrade_save_test {
 
     int fileVersion(const fs::path& path) {
         std::ifstream in(path);
@@ -34,6 +35,8 @@ namespace prefab_upgrade_save_test {
     }
 
 }
+
+namespace prefab_upgrade_save_test {
 
 using namespace prefab_upgrade_save_test;
 
@@ -70,3 +73,5 @@ TEST(PrefabUpgradeSave, MigratedPrefabIsWrittenInTheCurrentVersionWithItsScene) 
     for (SceneProject& open : project->getScenes()) CommandHandle::remove(open.id);
     project->releaseScenes();
 }
+
+}  // namespace prefab_upgrade_save_test

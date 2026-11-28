@@ -31,10 +31,11 @@
 #include <fstream>
 #include <string>
 
+namespace audio_spatial_blend_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
-namespace audio_spatial_blend_test {
 
     namespace fs = std::filesystem;
 
@@ -183,6 +184,8 @@ namespace audio_spatial_blend_test {
     }
 
 }
+
+namespace audio_spatial_blend_test {
 
 using namespace audio_spatial_blend_test;
 
@@ -348,3 +351,5 @@ TEST_F(AudioSpatialBlendTest, LuaReadsAndClampsTheBlend) {
     lua_pushnil(L);
     lua_setglobal(L, "blendSource");
 }
+
+}  // namespace audio_spatial_blend_test

@@ -37,10 +37,11 @@
 #include <string>
 #include <vector>
 
+namespace water_light_records_gpu_test {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
-namespace water_light_records_gpu_test {
 
     constexpr double RECORDS_PINNED_TIME = 3.5;
 
@@ -156,6 +157,8 @@ namespace water_light_records_gpu_test {
     };
 
 }
+
+namespace water_light_records_gpu_test {
 
 using namespace water_light_records_gpu_test;
 
@@ -278,3 +281,5 @@ TEST_F(WaterLightRecordsGpu, LightsPastTheFirstRowAndUploadsOnlyOnChange){
     EXPECT_EQ(differing, 0u) << "the records form draws another water than the block form past the first row";
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace water_light_records_gpu_test

@@ -27,7 +27,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vertexcolor;
+
+namespace jasperengine::editor::vertexcolor {
+
 namespace vcd = jasperengine::editor::vertexcolor::detail;
 
 namespace {
@@ -162,7 +164,7 @@ namespace {
 
 }
 
-std::vector<vc::Warning> editor::vertexcolor::materialWarnings(Project* project, uint32_t sceneId, Entity entity, vc::ChannelMask painted) {
+std::vector<vc::Warning> materialWarnings(Project* project, uint32_t sceneId, Entity entity, vc::ChannelMask painted) {
     std::vector<vc::Warning> warnings;
     const VcEntityReads reads = vcEntityReads(project, sceneId, entity);
     for (const VcMaterialReads& material : reads.materials) {
@@ -176,7 +178,7 @@ std::vector<vc::Warning> editor::vertexcolor::materialWarnings(Project* project,
     return warnings;
 }
 
-std::array<std::string, 4> editor::vertexcolor::channelUses(Project* project, uint32_t sceneId, Entity entity) {
+std::array<std::string, 4> channelUses(Project* project, uint32_t sceneId, Entity entity) {
     std::array<std::string, 4> out;
     const VcEntityReads reads = vcEntityReads(project, sceneId, entity);
     const VertexColorsComponent* component = vcd::componentOf(project, sceneId, entity);
@@ -196,7 +198,7 @@ std::array<std::string, 4> editor::vertexcolor::channelUses(Project* project, ui
     return out;
 }
 
-bool editor::vertexcolor::fixMaterialWarning(Project* project, uint32_t sceneId, Entity entity, const vc::Warning& warning, std::string* error) {
+bool fixMaterialWarning(Project* project, uint32_t sceneId, Entity entity, const vc::Warning& warning, std::string* error) {
     auto fail = [&](const std::string& why) {
         if (error) *error = why;
         return false;
@@ -269,3 +271,5 @@ bool editor::vertexcolor::fixMaterialWarning(Project* project, uint32_t sceneId,
     }
     return true;
 }
+
+}  // namespace jasperengine::editor::vertexcolor

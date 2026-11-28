@@ -15,6 +15,8 @@
 #include <cctype>
 #include <string>
 
+namespace ShaderCreationReflectTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -87,3 +89,5 @@ TEST(ShaderCreationReflect, EveryFieldIsASettingsRow){
     }
     ASSERT_NE(registry.find("shader_creation.warmup_entries"), nullptr);
 }
+
+}  // namespace ShaderCreationReflectTest_cpp

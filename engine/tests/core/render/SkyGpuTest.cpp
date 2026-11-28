@@ -37,6 +37,8 @@
 #include <string>
 #include <vector>
 
+namespace SkyGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -421,3 +423,5 @@ TEST_F(SkyGpu, PanoramaVertexMapping){
     EXPECT_NE(vertex.find("a_texcoord1"), std::string::npos) << "the grid's coordinate";
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace SkyGpuTest_cpp

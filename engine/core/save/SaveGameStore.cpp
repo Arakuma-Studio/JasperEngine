@@ -33,7 +33,8 @@ extern "C" {
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
-using namespace jasperengine::savegame;
+
+namespace jasperengine::savegame {
 
 namespace {
 
@@ -183,6 +184,8 @@ namespace {
     }
 
 }
+
+}  // namespace jasperengine::savegame
 
 namespace jasperengine::savegame {
 
@@ -749,36 +752,38 @@ namespace jasperengine::savegame {
 
 // ================================================================ free functions
 
-void savegame::configure(const SaveSettings& settings){
+namespace jasperengine::savegame {
+
+void configure(const SaveSettings& settings){
     configuredBackups.store(std::clamp(settings.backups, 0, 9));
     configuredMaxSlotMiB.store(std::clamp(settings.maxSlotMiB, 1, 64));
 }
 
-SaveSettings savegame::settings(){
+SaveSettings settings(){
     SaveSettings out;
     out.backups = configuredBackups.load();
     out.maxSlotMiB = configuredMaxSlotMiB.load();
     return out;
 }
 
-void savegame::setGameDataVersion(uint32_t version){
+void setGameDataVersion(uint32_t version){
     dataVersion.store(std::max<uint32_t>(version, 1));
 }
 
-uint32_t savegame::gameDataVersion(){
+uint32_t gameDataVersion(){
     return dataVersion.load();
 }
 
-void savegame::flushForLifecycle(const char* when){
+void flushForLifecycle(const char* when){
     if (!storeInstance) return;
     storeInstance->flush({}, std::chrono::seconds(2), when);
 }
 
-std::string savegame::slotFileName(std::string_view slot, uint64_t generation){
+std::string slotFileName(std::string_view slot, uint64_t generation){
     return std::string(slot) + ".g" + std::to_string(generation) + ".jsave";
 }
 
-bool savegame::parseSlotFileName(std::string_view name, std::string& slot, uint64_t& generation, bool& corrupt){
+bool parseSlotFileName(std::string_view name, std::string& slot, uint64_t& generation, bool& corrupt){
     corrupt = false;
     constexpr std::string_view corruptSuffix = ".corrupt";
     if (name.size() > corruptSuffix.size() && name.substr(name.size() - corruptSuffix.size()) == corruptSuffix){
@@ -1472,11 +1477,11 @@ size_t SyncWaiters::waiting() const{
 
 // ================================================================ test seams and hooks
 
-void savegame::setMigrator(Migrator migrator){
+void setMigrator(Migrator migrator){
     registeredMigrator() = std::move(migrator);
 }
 
-void savegame::setFileFaultInjector(FileFaultInjector injector){
+void setFileFaultInjector(FileFaultInjector injector){
     std::lock_guard<std::mutex> lock(saveFaultMutex());
     saveFaultInjector() = std::move(injector);
 }
@@ -1494,3 +1499,5 @@ size_t SaveGameStore::memoryBytes() const{
     for (const auto& entry : impl->slots) total += entry.second.bytes();
     return total;
 }
+
+}  // namespace jasperengine::savegame

@@ -13,7 +13,8 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::pose;
+
+namespace jasperengine::pose {
 
 namespace {
 
@@ -47,7 +48,7 @@ namespace {
 
 }
 
-bool pose::advancePlayback(float& time, bool& playing, float dt, float speed, float length, bool loop){
+bool advancePlayback(float& time, bool& playing, float dt, float speed, float length, bool loop){
     if (!playing) return false;
     if (length <= 0.0f){
         // a static pose: a one-shot is over at once
@@ -77,13 +78,13 @@ bool pose::advancePlayback(float& time, bool& playing, float dt, float speed, fl
     return false;
 }
 
-float pose::playbackTime(float time, float length, bool loop){
+float playbackTime(float time, float length, bool loop){
     if (length <= 0.0f) return 0.0f;
     if (loop) return positiveMod(time, length);
     return std::clamp(time, 0.0f, length);
 }
 
-Quaternion pose::slerpShortest(const Quaternion& a, const Quaternion& b, float t){
+Quaternion slerpShortest(const Quaternion& a, const Quaternion& b, float t){
     if (t <= 0.0f) return a;
     if (t >= 1.0f) return b;
     double dot = (double)a.w * b.w + (double)a.x * b.x + (double)a.y * b.y + (double)a.z * b.z;
@@ -108,7 +109,7 @@ Quaternion pose::slerpShortest(const Quaternion& a, const Quaternion& b, float t
     return Quaternion((float)(w / n), (float)(x / n), (float)(y / n), (float)(z / n));
 }
 
-void pose::sampleFrames(const std::vector<HumanPose>& frames, float length, bool loop, bool stepped,
+void sampleFrames(const std::vector<HumanPose>& frames, float length, bool loop, bool stepped,
                         float time, HumanPose& out){
     if (frames.empty()) return;
     const size_t last = frames.size() - 1;
@@ -415,3 +416,5 @@ void PoseAnimatorRuntime::sampleTransition(float dt, HumanPose& out){
     }
     transitionPose(transitionTime, out);
 }
+
+}  // namespace jasperengine::pose

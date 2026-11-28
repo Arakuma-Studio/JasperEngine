@@ -42,6 +42,8 @@
 #include <string>
 #include <vector>
 
+namespace TextureLobeMapGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -615,3 +617,5 @@ TEST(TextureLobeMapKhronosGpu, TheSamplesWithOnlyALobesMapSampleIt){
     }
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace TextureLobeMapGpuTest_cpp

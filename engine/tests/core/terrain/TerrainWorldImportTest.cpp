@@ -15,6 +15,8 @@
 #include <fstream>
 #include <map>
 
+namespace TerrainWorldImportTest_cpp {
+
 using namespace terrainworldtest;
 
 namespace {
@@ -220,3 +222,5 @@ TEST(TerrainWorldImport, CancelStopsAndLimitsRefuse) {
     ASSERT_TRUE(importHeightmap(source, plan, target, nullptr, nullptr, error)) << error;
     EXPECT_EQ(written[TileCoord(0, 0).key()].sample(1, 1), fixtureSample(0, 512));
 }
+
+}  // namespace TerrainWorldImportTest_cpp

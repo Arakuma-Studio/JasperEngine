@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+namespace CameraTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -88,3 +90,5 @@ TEST_F(CameraTest, ClipSetterTurnsSizeAndAutoResizeOff){
     camera.setOrthographicSize(-1.0f);
     EXPECT_FLOAT_EQ(camera.getOrthographicSize(), 0.0f);
 }
+
+}  // namespace CameraTest_cpp

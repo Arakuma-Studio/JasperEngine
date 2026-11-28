@@ -9,7 +9,6 @@
 #include <cctype>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
 using OrderedJson = nlohmann::ordered_json;
 
 namespace {
@@ -22,27 +21,27 @@ namespace {
         return key != "version" && key != "modules" && key != "subEmitters" && key != "exposed";
     }
 
-    bool applyPatch(ParticleEffectDocument& document, const OrderedJson& patch) {
-        std::vector<Diagnostic> diagnostics;
-        ParticleEffectDocument patched = document;
-        if (!ParticleEffectCodec::applyMergePatch(patched, patch, diagnostics)) return false;
-        const bool changed = ParticleEffectCodec::write(patched) != ParticleEffectCodec::write(document);
+    bool applyPatch(particles::ParticleEffectDocument& document, const OrderedJson& patch) {
+        std::vector<particles::Diagnostic> diagnostics;
+        particles::ParticleEffectDocument patched = document;
+        if (!particles::ParticleEffectCodec::applyMergePatch(patched, patch, diagnostics)) return false;
+        const bool changed = particles::ParticleEffectCodec::write(patched) != particles::ParticleEffectCodec::write(document);
         document = patched;
         return changed;
     }
 
-    OrderedJson moduleBody(const ParticleEffectDocument& document, const ModuleDesc& module) {
-        const OrderedJson keyed = ParticleEffectCodec::toKeyedJson(document);
+    OrderedJson moduleBody(const particles::ParticleEffectDocument& document, const particles::ModuleDesc& module) {
+        const OrderedJson keyed = particles::ParticleEffectCodec::toKeyedJson(document);
         if (!keyed.contains("modules") || !keyed["modules"].contains(module.key)) return OrderedJson::object();
         return keyed["modules"][module.key];
     }
 
 }
 
-std::set<std::string> editor::particlerows::nonDefaultFields(const ParticleEffectDocument& document) {
+std::set<std::string> editor::particlerows::nonDefaultFields(const particles::ParticleEffectDocument& document) {
     std::set<std::string> fields;
     // the canonical form leaves defaults out: what it writes is what differs
-    const OrderedJson keyed = ParticleEffectCodec::toKeyedJson(document);
+    const OrderedJson keyed = particles::ParticleEffectCodec::toKeyedJson(document);
     for (auto it = keyed.begin(); it != keyed.end(); ++it) {
         if (documentField(it.key())) fields.insert("effect." + it.key());
     }
@@ -57,7 +56,7 @@ std::set<std::string> editor::particlerows::nonDefaultFields(const ParticleEffec
     return fields;
 }
 
-bool editor::particlerows::resetField(ParticleEffectDocument& document, const std::string& path) {
+bool editor::particlerows::resetField(particles::ParticleEffectDocument& document, const std::string& path) {
     const size_t dot = path.find('.');
     if (dot == std::string::npos) return false;
     const std::string owner = path.substr(0, dot);
@@ -65,18 +64,18 @@ bool editor::particlerows::resetField(ParticleEffectDocument& document, const st
     if (key.empty() || key.find('.') != std::string::npos || key.find('[') != std::string::npos) return false;
     OrderedJson patch = OrderedJson::object();
     if (owner == "effect") {
-        if (!documentField(key) || !ParticleModules::documentFields().find(key)) return false;
+        if (!documentField(key) || !particles::ParticleModules::documentFields().find(key)) return false;
         patch[key] = nullptr;
     } else {
-        const ModuleDesc* module = ParticleModules::find(owner);
+        const particles::ModuleDesc* module = particles::ParticleModules::find(owner);
         if (!module || !module->fields.find(key) || !module->isPresent(document)) return false;
         patch["modules"][owner][key] = nullptr;
     }
     return applyPatch(document, patch);
 }
 
-bool editor::particlerows::resetModule(ParticleEffectDocument& document, ModuleId id) {
-    const ModuleDesc& module = ParticleModules::get(id);
+bool editor::particlerows::resetModule(particles::ParticleEffectDocument& document, particles::ModuleId id) {
+    const particles::ModuleDesc& module = particles::ParticleModules::get(id);
     if (!module.isPresent(document)) return false;
     const OrderedJson body = moduleBody(document, module);
     OrderedJson reset = OrderedJson::object();
@@ -85,15 +84,15 @@ bool editor::particlerows::resetModule(ParticleEffectDocument& document, ModuleI
     }
     // the Main header holds the effect's own fields too (Duration, Looping, ...)
     OrderedJson effectFields = OrderedJson::object();
-    if (id == ModuleId::Main) {
-        const OrderedJson keyed = ParticleEffectCodec::toKeyedJson(document);
+    if (id == particles::ModuleId::Main) {
+        const OrderedJson keyed = particles::ParticleEffectCodec::toKeyedJson(document);
         for (auto it = keyed.begin(); it != keyed.end(); ++it) {
             if (documentField(it.key())) effectFields[it.key()] = nullptr;
         }
     }
     // the sub-emitter list is the module's too
     bool changed = false;
-    if (id == ModuleId::SubEmitters && !document.subEmitters.empty()) {
+    if (id == particles::ModuleId::SubEmitters && !document.subEmitters.empty()) {
         document.subEmitters.clear();
         changed = true;
     }
@@ -103,29 +102,29 @@ bool editor::particlerows::resetModule(ParticleEffectDocument& document, ModuleI
     return applyPatch(document, patch) || changed;
 }
 
-std::string editor::particlerows::copyModule(const ParticleEffectDocument& document, ModuleId id) {
-    const ModuleDesc& module = ParticleModules::get(id);
+std::string editor::particlerows::copyModule(const particles::ParticleEffectDocument& document, particles::ModuleId id) {
+    const particles::ModuleDesc& module = particles::ParticleModules::get(id);
     OrderedJson clip = OrderedJson::object();
     clip[kClipboardKey] = module.key;
     clip["values"] = moduleBody(document, module);
     // the sub-emitter list lives beside the modules, but it is this module's
-    if (id == ModuleId::SubEmitters) {
-        const OrderedJson keyed = ParticleEffectCodec::toKeyedJson(document);
+    if (id == particles::ModuleId::SubEmitters) {
+        const OrderedJson keyed = particles::ParticleEffectCodec::toKeyedJson(document);
         clip["list"] = keyed.contains("subEmitters") ? keyed["subEmitters"] : OrderedJson::array();
     }
     return clip.dump();
 }
 
-const ModuleDesc* editor::particlerows::clipboardModule(const std::string& text) {
+const particles::ModuleDesc* editor::particlerows::clipboardModule(const std::string& text) {
     if (text.empty() || text[0] != '{') return nullptr;
     const OrderedJson clip = OrderedJson::parse(text, nullptr, false);
     if (clip.is_discarded() || !clip.is_object() || !clip.contains(kClipboardKey) || !clip[kClipboardKey].is_string()) return nullptr;
     if (!clip.contains("values") || !clip["values"].is_object()) return nullptr;
-    return ParticleModules::find(clip[kClipboardKey].get<std::string>());
+    return particles::ParticleModules::find(clip[kClipboardKey].get<std::string>());
 }
 
-bool editor::particlerows::pasteModule(ParticleEffectDocument& document, const std::string& text, bool valuesOnly, std::string* error) {
-    const ModuleDesc* module = clipboardModule(text);
+bool editor::particlerows::pasteModule(particles::ParticleEffectDocument& document, const std::string& text, bool valuesOnly, std::string* error) {
+    const particles::ModuleDesc* module = clipboardModule(text);
     if (!module) {
         if (error) *error = "the clipboard holds no particle module (Copy Module first)";
         return false;
@@ -149,22 +148,22 @@ bool editor::particlerows::pasteModule(ParticleEffectDocument& document, const s
     OrderedJson patch = OrderedJson::object();
     patch["modules"][module->key] = body;
     const OrderedJson clip = OrderedJson::parse(text);
-    if (module->id == ModuleId::SubEmitters && clip.contains("list") && clip["list"].is_array()) patch["subEmitters"] = clip["list"];
-    std::vector<Diagnostic> diagnostics;
-    ParticleEffectDocument patched = document;
-    if (!ParticleEffectCodec::applyMergePatch(patched, patch, diagnostics)) {
-        if (error) *error = ParticleEffectCodec::format(diagnostics);
+    if (module->id == particles::ModuleId::SubEmitters && clip.contains("list") && clip["list"].is_array()) patch["subEmitters"] = clip["list"];
+    std::vector<particles::Diagnostic> diagnostics;
+    particles::ParticleEffectDocument patched = document;
+    if (!particles::ParticleEffectCodec::applyMergePatch(patched, patch, diagnostics)) {
+        if (error) *error = particles::ParticleEffectCodec::format(diagnostics);
         return false;
     }
     // Paste Module on an absent module adds it, as the clipboard had it
     if (!valuesOnly && !module->isPresent(patched)) module->setPresent(patched, true);
-    const bool changed = ParticleEffectCodec::write(patched) != ParticleEffectCodec::write(document);
+    const bool changed = particles::ParticleEffectCodec::write(patched) != particles::ParticleEffectCodec::write(document);
     document = patched;
     return changed;
 }
 
-bool editor::particlerows::curveOverEmitterTime(const std::string& fieldPath, CurveDriver driver) {
-    if (driver == CurveDriver::EmitterTime) return true;
+bool editor::particlerows::curveOverEmitterTime(const std::string& fieldPath, particles::CurveDriver driver) {
+    if (driver == particles::CurveDriver::EmitterTime) return true;
     // the fields the kernels read at the emitter's time (their tooltips say so), whatever their driver
     static const char* const kFields[] = {"emission.rateOverTime", "noise.scrollSpeed", "shape.radiusSpeed", "shape.arcSpeed"};
     for (const char* field : kFields) {
@@ -173,7 +172,7 @@ bool editor::particlerows::curveOverEmitterTime(const std::string& fieldPath, Cu
     return fieldPath.rfind("emission.bursts[", 0) == 0 && fieldPath.size() > 6 && fieldPath.compare(fieldPath.size() - 6, 6, ".count") == 0;
 }
 
-std::string editor::particlerows::moduleHelpUrl(const ModuleDesc& module) {
+std::string editor::particlerows::moduleHelpUrl(const particles::ModuleDesc& module) {
     // GitHub's heading anchor: lower case, spaces as hyphens, other punctuation dropped
     std::string anchor;
     for (const char* c = module.label; *c; c++) {

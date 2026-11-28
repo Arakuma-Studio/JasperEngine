@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+namespace CleanupOutlineTest_cpp {
+
 using namespace jasperengine::editor::pixelart::cleanup;
 // its own name: another RgbaImage is in sight in some unity units
 using CleanupOutlineImage = jasperengine::editor::pixelart::cleanup::RgbaImage;
@@ -183,3 +185,5 @@ TEST(CleanupBentGrid, PutsEachBentLineWithinAPixelOrSoOfWhereTheCellsMeet) {
     // Straight, each line sits where its bends average out
     EXPECT_LT(std::abs(grid.xs[12] - 120), 1.0);
 }
+
+}  // namespace CleanupOutlineTest_cpp

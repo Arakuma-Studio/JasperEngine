@@ -20,6 +20,8 @@
 #include <chrono>
 #include <string>
 
+namespace CrashUserGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -115,3 +117,5 @@ TEST_F(CrashUserGpu, CaptureRetriesWhilePipelinesArePending) {
     EXPECT_EQ(error, "screenshot_unavailable: shaders still building");
     EXPECT_FALSE(diag::userreport::draftHasScreenshot());
 }
+
+}  // namespace CrashUserGpuTest_cpp

@@ -20,6 +20,8 @@
 #include <iterator>
 #include <system_error>
 
+namespace VertexColorFileTest_cpp {
+
 using namespace jasperengine;
 
 // (a named namespace, tests included: a unity build merges the test sources)
@@ -442,3 +444,5 @@ TEST(VertexColorFile, WriteFileIsAtomic) {
 }
 
 } // namespace vertex_color_file_test
+
+}  // namespace VertexColorFileTest_cpp

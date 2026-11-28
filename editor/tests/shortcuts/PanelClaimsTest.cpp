@@ -13,6 +13,8 @@
 
 #include <filesystem>
 
+namespace PanelClaimsTest_cpp {
+
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
@@ -242,3 +244,5 @@ TEST(PanelClaims, CatalogListsTheNewCommandsWithTheOldDefaults) {
     EXPECT_EQ(parseShortcutContext("Curve"), ShortcutContext::Curve);
     EXPECT_EQ(parseShortcutContext("sound_browser"), ShortcutContext::SoundBrowser);
 }
+
+}  // namespace PanelClaimsTest_cpp

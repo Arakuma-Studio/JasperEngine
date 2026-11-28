@@ -18,6 +18,8 @@
 #include <iterator>
 #include <set>
 
+namespace BitmapFontTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pixelart;
 
@@ -455,3 +457,5 @@ TEST(BitmapFont, AGlyphLargerThanAPageIsATypedError){
     EXPECT_EQ(errors[0].kind, "font_glyph_too_large");
     EXPECT_EQ(errors[0].field, "source.cell");
 }
+
+}  // namespace BitmapFontTest_cpp

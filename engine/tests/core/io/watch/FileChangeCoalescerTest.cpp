@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <map>
 
+namespace FileChangeCoalescerTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -392,3 +394,5 @@ TEST_F(FileChangeCoalescerTests, IdleHasNoDeadline) {
     EXPECT_EQ(coalescer.nextDeadline(), FileChangeCoalescerClock::time_point::max());
     EXPECT_EQ(env.stats, 0);
 }
+
+}  // namespace FileChangeCoalescerTest_cpp

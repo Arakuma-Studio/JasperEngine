@@ -8,6 +8,8 @@
 #include <cmath>
 #include <limits>
 
+namespace QuaternionMatrixTest_cpp {
+
 using namespace jasperengine;
 
 TEST(QuaternionMatrix, PreservesNonUnitCoefficientsAndColumnOrder){
@@ -48,3 +50,5 @@ TEST(QuaternionMatrix, KeepsHomogeneousEntriesFiniteForNonFiniteRotations){
         EXPECT_EQ(matrix.get(3, 3), 1.0f);
     }
 }
+
+}  // namespace QuaternionMatrixTest_cpp

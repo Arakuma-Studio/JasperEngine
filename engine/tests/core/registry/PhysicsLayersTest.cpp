@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PhysicsLayersTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -80,3 +82,5 @@ TEST(Physics, IgnoreLayerCollisionChecksTheLayers){
     Physics::resetLayerCollisionMatrix();
     EXPECT_FALSE(Physics::getIgnoreLayerCollision(10, 11));
 }
+
+}  // namespace PhysicsLayersTest_cpp

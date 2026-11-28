@@ -39,10 +39,11 @@
 #include <thread>
 #include <vector>
 
+namespace terrain_world_nav_test {
+
 using namespace jasperengine;
 
 // (a named namespace, tests included: a unity build merges the test sources)
-namespace terrain_world_nav_test {
 
     namespace tw = jasperengine::terraincore;
 
@@ -155,6 +156,8 @@ namespace terrain_world_nav_test {
     };
 
 }
+
+namespace terrain_world_nav_test {
 
 using namespace terrain_world_nav_test;
 
@@ -385,5 +388,7 @@ TEST_F(TerrainWorldNav, FollowRebakes) {
     EXPECT_FALSE(walkable(ground(30.0f, 30.0f)));
     EXPECT_TRUE(walkable(ground(90.0f, 30.0f)));
 }
+
+}  // namespace terrain_world_nav_test
 
 #endif // JASPERENGINE_TERRAIN_WORLD

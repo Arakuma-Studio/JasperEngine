@@ -17,6 +17,8 @@
 
 #include <algorithm>
 
+namespace WebFontDecodeTest_cpp {
+
 using namespace jasperengine::editor::titlefonts;
 using namespace jasperengine::editor::titlefonts::test;
 
@@ -239,3 +241,5 @@ TEST(WebFontDecodeTest, InstalledInFontFaceWebFontsOpenAsTheirSfnt) {
     }
     jasperengine::FontFace::setWebFontDecoder(nullptr);
 }
+
+}  // namespace WebFontDecodeTest_cpp

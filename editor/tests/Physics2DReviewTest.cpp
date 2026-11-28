@@ -28,6 +28,8 @@
 #include <string>
 #include <vector>
 
+namespace Physics2DReviewTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::physics2dtest;
@@ -552,3 +554,5 @@ TEST(Physics2DReview, MovePosition2D) {
     world.resolve();
     EXPECT_NEAR(world.scene.getComponent<Transform>(ball).position.x, from + 400.0f, 0.01f);
 }
+
+}  // namespace Physics2DReviewTest_cpp

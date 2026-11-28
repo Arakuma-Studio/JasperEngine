@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+namespace PoseImageTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace {
@@ -335,3 +337,5 @@ TEST(PoseImage, PngRoundTrip){
     EXPECT_TRUE(decoded.isEmpty());
     EXPECT_FALSE(PoseImage::readPng("/nonexistent/dir/none.png", decoded));
 }
+
+}  // namespace PoseImageTest_cpp

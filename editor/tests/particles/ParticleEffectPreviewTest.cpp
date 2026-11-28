@@ -14,6 +14,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ParticleEffectPreviewTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::particles;
@@ -227,3 +229,5 @@ TEST(ParticleEffectChecks, DistortionWithNoSceneColourWarns){
     EXPECT_NE(row["limited_by"].get<std::string>().find("test"), std::string::npos) << row.dump();
     EXPECT_FALSE(row["fix_hint"].get<std::string>().empty());
 }
+
+}  // namespace ParticleEffectPreviewTest_cpp

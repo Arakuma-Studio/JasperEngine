@@ -18,6 +18,8 @@
 #include <memory>
 #include <string>
 
+namespace NavGridTilemapTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 using nav::GridCell;
@@ -134,3 +136,5 @@ TEST_F(NavGridTilemapTest, TileAnchorGivesTheDrawnTile) {
     EXPECT_EQ(navGrid.getCellArea(GridCell{2, 1}), nav::AREA_NOT_WALKABLE);
     EXPECT_EQ(navGrid.getCellArea(GridCell{3, 1}), 4);
 }
+
+}  // namespace NavGridTilemapTest_cpp

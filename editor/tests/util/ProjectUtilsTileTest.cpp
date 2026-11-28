@@ -14,6 +14,8 @@
 
 #include <memory>
 
+namespace ProjectUtilsTileTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -75,3 +77,5 @@ TEST(ProjectUtilsTile, DuplicateTileRefusedAtTheDrawLimit){
     ASSERT_TRUE(duplicate->execute());
     EXPECT_EQ(below.tilemap().numTiles, (unsigned int)MAX_TILEMAP_RENDERED_TILES);
 }
+
+}  // namespace ProjectUtilsTileTest_cpp

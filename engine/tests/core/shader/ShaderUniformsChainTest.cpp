@@ -17,6 +17,8 @@
 
 #include <cstring>
 
+namespace ShaderUniformsChainTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -147,3 +149,5 @@ TEST(ShaderUniforms, ShadowedMeshUniformWarnsOnce) {
     EXPECT_TRUE(ShaderUniforms::warnShadowedByMaterial(&sceneTag, 8, "Zone 2", "zoneColor", material));
     EXPECT_EQ(log.count(D_LOG_WARN, "Property Override"), 2u);
 }
+
+}  // namespace ShaderUniformsChainTest_cpp

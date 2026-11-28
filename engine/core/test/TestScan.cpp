@@ -12,7 +12,9 @@
 #include <system_error>
 
 using namespace jasperengine;
-using namespace jasperengine::gametest;
+
+namespace jasperengine::gametest {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -283,3 +285,5 @@ std::vector<CaseSpec> TestScan::cases(const std::vector<ScannedFile>& files) {
         out.insert(out.end(), f.cases.begin(), f.cases.end());
     return out;
 }
+
+}  // namespace jasperengine::gametest

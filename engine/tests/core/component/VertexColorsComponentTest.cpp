@@ -20,6 +20,8 @@
 #include <string>
 #include <vector>
 
+namespace component_VertexColorsComponentTest_cpp {
+
 using namespace jasperengine;
 
 namespace vertex_colors_component_test {
@@ -149,3 +151,5 @@ TEST(VertexColorsClone, CopySharesTheAssetNotTheRuntimeLayers) {
     EXPECT_TRUE(copy->runtimeLayers.empty());
     EXPECT_EQ(source.runtimeLayers.size(), 1u) << "the original keeps its gameplay paint";
 }
+
+}  // namespace component_VertexColorsComponentTest_cpp

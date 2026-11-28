@@ -28,6 +28,8 @@
 #include <filesystem>
 #include <string>
 
+namespace RagdollAnimatorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::physics3dtest;
 
@@ -134,3 +136,5 @@ TEST(RagdollAnimatorTest, RagdollPausesAnimator){
     AnimationClipPool::clear();
     AnimatorAssetPool::clear();
 }
+
+}  // namespace RagdollAnimatorTest_cpp

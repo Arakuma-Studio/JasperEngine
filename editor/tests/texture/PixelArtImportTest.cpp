@@ -10,6 +10,8 @@
 #include "render/Render.h"
 #include "texture/TextureImportSettings.h"
 
+namespace PixelArtImportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -117,3 +119,5 @@ TEST(PixelArtImport, CookKeysOfOlderSettingsAreUnchanged){
     EXPECT_NE(key.find("\"alphaClip\":1"), std::string::npos) << key;
     EXPECT_NE(key.find("\"resizeFilter\":\"nearest\""), std::string::npos) << key;
 }
+
+}  // namespace PixelArtImportTest_cpp

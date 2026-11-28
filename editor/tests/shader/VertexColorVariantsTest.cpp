@@ -22,6 +22,8 @@
 #include <string>
 #include <vector>
 
+namespace VertexColorVariantsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -92,3 +94,5 @@ TEST_F(VertexColorVariants, PaintedSubmeshesShipTheColourStreamVariant){
     EXPECT_FALSE(painted.empty()) << "R16: the Vc4 variant of the painted submesh";
     EXPECT_EQ(paintedKeys, plainKeys + painted.size()) << "the plain variants stay (the component can be off at runtime)";
 }
+
+}  // namespace VertexColorVariantsTest_cpp

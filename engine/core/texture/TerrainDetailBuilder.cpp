@@ -16,7 +16,8 @@
 #include <map>
 
 using namespace jasperengine;
-using namespace jasperengine::terraincore;
+
+namespace jasperengine::terraincore {
 
 namespace {
 
@@ -147,7 +148,7 @@ namespace {
 
 }
 
-std::string jasperengine::terraincore::detailSourceKey(const Texture& texture) {
+std::string detailSourceKey(const Texture& texture) {
     const std::string path = texture.getPath(0);
     if (path.empty()) {
         return std::string();
@@ -155,11 +156,11 @@ std::string jasperengine::terraincore::detailSourceKey(const Texture& texture) {
     return TextureData::hasSvgExtension(path.c_str()) ? TextureData::buildSvgScalePath(path, texture.getSvgScale()) : path;
 }
 
-DetailPlan jasperengine::terraincore::planDetailArray(const TerrainComponent& terrain) {
+DetailPlan planDetailArray(const TerrainComponent& terrain) {
     return planDetailArray(terrainLayers(terrain), DetailPlanOptions());
 }
 
-DetailPlan jasperengine::terraincore::planDetailArray(std::span<const TerrainSurfaceLayer> layers, const DetailPlanOptions& options) {
+DetailPlan planDetailArray(std::span<const TerrainSurfaceLayer> layers, const DetailPlanOptions& options) {
     DetailPlan plan;
     // The terrain's shader reaches all three layers of any bound blend map, so its colors come in threes
     const size_t layerCount = std::min(layers.size(), static_cast<size_t>(DETAIL_MAX_LAYERS));
@@ -194,7 +195,7 @@ DetailPlan jasperengine::terraincore::planDetailArray(std::span<const TerrainSur
     return plan;
 }
 
-DetailSliceKind jasperengine::terraincore::detailSliceKind(const DetailPlan& plan, int slice) {
+DetailSliceKind detailSliceKind(const DetailPlan& plan, int slice) {
     if (slice < plan.colorSlices) return DetailSliceKind::COLOR;
     for (int layer = 0; layer < DETAIL_MAX_LAYERS; layer++) {
         if (plan.normalSlice[layer] == slice) return DetailSliceKind::NORMAL;
@@ -202,11 +203,11 @@ DetailSliceKind jasperengine::terraincore::detailSliceKind(const DetailPlan& pla
     return DetailSliceKind::SURFACE;
 }
 
-bool jasperengine::terraincore::buildDetailPixels(const TerrainComponent& terrain, const DetailPlan& plan, const DetailBuildOptions& options, DetailPixels& out) {
+bool buildDetailPixels(const TerrainComponent& terrain, const DetailPlan& plan, const DetailBuildOptions& options, DetailPixels& out) {
     return buildDetailPixels(terrainLayers(terrain), plan, options, out);
 }
 
-bool jasperengine::terraincore::buildDetailPixels(std::span<const TerrainSurfaceLayer> layers, const DetailPlan& plan, const DetailBuildOptions& options, DetailPixels& out) {
+bool buildDetailPixels(std::span<const TerrainSurfaceLayer> layers, const DetailPlan& plan, const DetailBuildOptions& options, DetailPixels& out) {
     DetailSourceFiles files;
     const std::vector<SliceSources> sliceSources = gatherSources(layers, plan, files);
     int width = files.width;
@@ -324,11 +325,11 @@ bool jasperengine::terraincore::buildDetailPixels(std::span<const TerrainSurface
     return true;
 }
 
-bool jasperengine::terraincore::buildDetailSliceTop(const TerrainComponent& terrain, const DetailPlan& plan, int slice, int maxSize, std::vector<uint8_t>& rgba, int& width, int& height) {
+bool buildDetailSliceTop(const TerrainComponent& terrain, const DetailPlan& plan, int slice, int maxSize, std::vector<uint8_t>& rgba, int& width, int& height) {
     return buildDetailSliceTop(terrainLayers(terrain), plan, slice, maxSize, rgba, width, height);
 }
 
-bool jasperengine::terraincore::buildDetailSliceTop(std::span<const TerrainSurfaceLayer> layers, const DetailPlan& plan, int slice, int maxSize, std::vector<uint8_t>& rgba, int& width, int& height) {
+bool buildDetailSliceTop(std::span<const TerrainSurfaceLayer> layers, const DetailPlan& plan, int slice, int maxSize, std::vector<uint8_t>& rgba, int& width, int& height) {
     if (slice < 0 || slice >= static_cast<int>(plan.sliceKeys.size())) return false;
     DetailSourceFiles files;
     const std::vector<SliceSources> sliceSources = gatherSources(layers, plan, files);
@@ -349,7 +350,7 @@ bool jasperengine::terraincore::buildDetailSliceTop(std::span<const TerrainSurfa
     return true;
 }
 
-bool jasperengine::terraincore::concatenateCookedSlices(const std::vector<CookedSlice>& slices, int skipLevels, DetailPixels& out, std::string* error) {
+bool concatenateCookedSlices(const std::vector<CookedSlice>& slices, int skipLevels, DetailPixels& out, std::string* error) {
     if (slices.empty()) {
         if (error) *error = "no slices";
         return false;
@@ -382,7 +383,7 @@ bool jasperengine::terraincore::concatenateCookedSlices(const std::vector<Cooked
     return true;
 }
 
-bool jasperengine::terraincore::loadCookedDetailArray(const DetailPlan& plan, int maxSize, DetailPixels& out) {
+bool loadCookedDetailArray(const DetailPlan& plan, int maxSize, DetailPixels& out) {
     std::vector<CookedSlice> slices(plan.sliceKeys.size());
     const TextureFormatSupport support = SystemRender::getTextureFormatSupport();
     for (size_t s = 0; s < plan.sliceKeys.size(); s++) {
@@ -423,7 +424,7 @@ bool jasperengine::terraincore::loadCookedDetailArray(const DetailPlan& plan, in
     return true;
 }
 
-std::string jasperengine::terraincore::cookedSliceIndexKey(const std::string& sliceKey) {
+std::string cookedSliceIndexKey(const std::string& sliceKey) {
     // a path of its own that CookedTextures::normalize leaves as it is: the key has '|' and whole paths
     uint64_t hash = 0xcbf29ce484222325ull;
     for (const unsigned char c : sliceKey) {
@@ -433,3 +434,5 @@ std::string jasperengine::terraincore::cookedSliceIndexKey(const std::string& sl
     std::snprintf(text, sizeof(text), "%016llx", static_cast<unsigned long long>(hash));
     return std::string("__terrain_slices/") + text + ".png";
 }
+
+}  // namespace jasperengine::terraincore

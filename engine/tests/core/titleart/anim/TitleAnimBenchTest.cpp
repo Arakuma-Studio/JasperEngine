@@ -27,6 +27,8 @@
 #include <memory>
 #include <vector>
 
+namespace TitleAnimBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -216,3 +218,5 @@ TEST(TitleAnimBench, Scene30){
         EXPECT_LT(p95, 5000.0 * slack);
     }
 }
+
+}  // namespace TitleAnimBenchTest_cpp

@@ -21,7 +21,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::platform;
+
+namespace jasperengine::editor::platform {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -100,7 +102,7 @@ namespace {
 
 }
 
-bool platform::canPatchExecutableResources() {
+bool canPatchExecutableResources() {
 #ifdef _WIN32
     return true;
 #else
@@ -108,7 +110,7 @@ bool platform::canPatchExecutableResources() {
 #endif
 }
 
-std::vector<uint8_t> platform::buildVersionResource(const WindowsVersionInfo& info) {
+std::vector<uint8_t> buildVersionResource(const WindowsVersionInfo& info) {
     uint16_t file[4], product[4];
     versionParts(info.fileVersion.empty() ? "1.0.0.0" : info.fileVersion, file);
     versionParts(info.productVersion.empty() ? info.fileVersion : info.productVersion, product);
@@ -158,7 +160,7 @@ std::vector<uint8_t> platform::buildVersionResource(const WindowsVersionInfo& in
     return root.bytes();
 }
 
-bool platform::buildIconResources(const fs::path& png, std::vector<uint8_t>& group, std::vector<std::vector<uint8_t>>& icons, std::string& error) {
+bool buildIconResources(const fs::path& png, std::vector<uint8_t>& group, std::vector<std::vector<uint8_t>>& icons, std::string& error) {
     int width = 0, height = 0, channels = 0;
     unsigned char* pixels = stbi_load(png.string().c_str(), &width, &height, &channels, 4);
     if (!pixels) {
@@ -195,7 +197,7 @@ bool platform::buildIconResources(const fs::path& png, std::vector<uint8_t>& gro
     return true;
 }
 
-bool platform::patchExecutableResources(const fs::path& exe, const fs::path& iconPng, const WindowsVersionInfo& info, std::string& error) {
+bool patchExecutableResources(const fs::path& exe, const fs::path& iconPng, const WindowsVersionInfo& info, std::string& error) {
 #ifdef _WIN32
     std::vector<uint8_t> group;
     std::vector<std::vector<uint8_t>> icons;
@@ -233,3 +235,5 @@ bool platform::patchExecutableResources(const fs::path& exe, const fs::path& ico
     return false;
 #endif
 }
+
+}  // namespace jasperengine::editor::platform

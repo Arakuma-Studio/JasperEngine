@@ -26,6 +26,8 @@
 #include <string>
 #include <vector>
 
+namespace Physics2DLegacyTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -222,3 +224,5 @@ TEST(Physics2DLegacy, OldSceneSimulatesAsRecordedOnMain) {
     }
     EXPECT_EQ(index, rows.size());
 }
+
+}  // namespace Physics2DLegacyTest_cpp

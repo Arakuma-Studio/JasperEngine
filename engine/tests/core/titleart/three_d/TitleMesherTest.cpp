@@ -21,6 +21,8 @@
 #include <cmath>
 #include <random>
 
+namespace TitleMesherTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::three_d;
@@ -578,3 +580,5 @@ TEST(TitleMeshTest, VertexFormatIndicesDeterminismAndCache) {
     EXPECT_LT(a->stats.acmrAfter, a->stats.acmrBefore);
     EXPECT_LE(a->stats.triangles, 55000u);
 }
+
+}  // namespace TitleMesherTest_cpp

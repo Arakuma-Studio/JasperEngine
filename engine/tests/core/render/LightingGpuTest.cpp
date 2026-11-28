@@ -34,6 +34,8 @@
 #include <string>
 #include <vector>
 
+namespace LightingGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -599,3 +601,5 @@ TEST_F(LightingGpu, GradientAmbientSphere){
     EXPECT_LE(lightingDifferenceOf(flat, readLightingTarget()).maxDiff, 2);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace LightingGpuTest_cpp

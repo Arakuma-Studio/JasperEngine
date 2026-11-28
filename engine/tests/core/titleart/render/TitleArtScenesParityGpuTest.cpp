@@ -44,6 +44,8 @@
 #include <utility>
 #include <vector>
 
+namespace TitleArtScenesParityGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test::parity;
@@ -232,3 +234,5 @@ TEST_F(TitleArtScenesParityGpu, Scenes) {
     const BlockStats lit = againstReference("mask-from-layer-luminance", unmasked);
     EXPECT_FALSE(withinParity(lit)) << "the parity metric passes the title without its luminance mask: " << lit.text();
 }
+
+}  // namespace TitleArtScenesParityGpuTest_cpp

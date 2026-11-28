@@ -21,6 +21,8 @@
 #include <cstdio>
 #include <string>
 
+namespace InputBenchTest_cpp {
+
 using namespace jasperengine;
 
 TEST(InputBench, LatchWithoutEvents){
@@ -193,3 +195,5 @@ TEST(InputBench, GamepadCursorOffFrame){
     InputSchemeTracker::latch();
     Engine::systemGamepadDisconnect(5);
 }
+
+}  // namespace InputBenchTest_cpp

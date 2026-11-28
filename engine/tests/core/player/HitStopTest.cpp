@@ -18,6 +18,8 @@
 
 #include <cmath>
 
+namespace HitStopTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -205,3 +207,5 @@ TEST_F(HitStop, BadSecondsAreIgnored){
     EXPECT_FALSE(pixelart::HitStop::isActive());
     EXPECT_EQ(frame(), 1.0);
 }
+
+}  // namespace HitStopTest_cpp

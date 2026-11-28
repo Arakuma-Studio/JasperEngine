@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ConsoleSeverityTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -19,3 +21,5 @@ TEST(ConsoleSeverity, BuildErrorLinesCountAsErrors) {
     EXPECT_EQ(ConsoleWindow::severityOf(LogType::Warning, LogLevel::Warn), ConsoleWindow::SEVERITY_WARNING);
     EXPECT_EQ(ConsoleWindow::severityOf(LogType::Info, LogLevel::Info), ConsoleWindow::SEVERITY_LOG);
 }
+
+}  // namespace ConsoleSeverityTest_cpp

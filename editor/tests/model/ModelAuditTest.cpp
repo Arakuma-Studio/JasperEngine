@@ -19,6 +19,8 @@
 #include <fstream>
 #include <memory>
 
+namespace ModelAuditTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -66,3 +68,5 @@ TEST(ModelAudit, AnUnreadRequiredExtensionFailsAndShowsOneFinding){
     queue.attach(nullptr);
     closeProject(*project);
 }
+
+}  // namespace ModelAuditTest_cpp

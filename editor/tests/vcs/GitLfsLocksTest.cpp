@@ -11,6 +11,8 @@
 
 #include <fstream>
 
+namespace GitLfsLocksTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::test;
 
@@ -135,3 +137,5 @@ TEST(GitLfsLocks, TwoUsers) {
     serviceA.close();
     serviceB.close();
 }
+
+}  // namespace GitLfsLocksTest_cpp

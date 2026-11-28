@@ -20,7 +20,6 @@ namespace jasperengine::editor::pixelart::aseprite {
 
     namespace {
 
-        using namespace detail;
 
         constexpr uint16_t kFileMagic = 0xA5E0;
         constexpr uint16_t kFrameMagic = 0xF1FA;
@@ -62,7 +61,7 @@ namespace jasperengine::editor::pixelart::aseprite {
 
             Document doc;
             std::unique_ptr<Provenance> prov;
-            HeaderSnapshot snapshot;
+            jasperengine::editor::pixelart::aseprite::detail::HeaderSnapshot snapshot;
             std::vector<PaletteEntry> currentPalette;
             bool newPaletteSeen = false;
             Owner owner;
@@ -88,27 +87,27 @@ namespace jasperengine::editor::pixelart::aseprite {
             void readHeader();
             void readFrame(int frame, size_t& pos);
             // returns the chunk's reference (the provenance record)
-            ChunkRef readChunk(int frame, uint16_t type, size_t chunkStart, size_t chunkEnd);
+            jasperengine::editor::pixelart::aseprite::detail::ChunkRef readChunk(int frame, uint16_t type, size_t chunkStart, size_t chunkEnd);
 
-            ChunkRef keepOpaque(int frame, uint16_t type, size_t chunkStart, size_t chunkEnd);
-            void readOldPalette(Cursor& c, bool sixBit);
-            void readPalette(Cursor& c);
+            jasperengine::editor::pixelart::aseprite::detail::ChunkRef keepOpaque(int frame, uint16_t type, size_t chunkStart, size_t chunkEnd);
+            void readOldPalette(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, bool sixBit);
+            void readPalette(jasperengine::editor::pixelart::aseprite::detail::Cursor& c);
             void commitPalette(int frame, size_t offset);
-            ChunkRef readLayer(Cursor& c, size_t chunkStart);
-            ChunkRef readCel(Cursor& c, int frame, size_t chunkStart, size_t chunkEnd);
-            void readCelExtra(Cursor& c, int frame);
-            void readColorProfile(Cursor& c);
-            void readExternalFiles(Cursor& c);
-            void readMask(Cursor& c, int frame);
-            void readTags(Cursor& c);
-            ChunkRef readUserData(Cursor& c, int frame, size_t chunkStart, size_t chunkEnd);
-            void readUserDataBody(Cursor& c, UserData& out);
-            PropertyValue readValue(Cursor& c, uint16_t type, int depth);
-            PropertyMap readMap(Cursor& c, int depth);
-            void readSliceBody(Cursor& c, Slice& slice, size_t chunkStart);
-            void readTileset(Cursor& c, size_t chunkStart);
+            jasperengine::editor::pixelart::aseprite::detail::ChunkRef readLayer(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, size_t chunkStart);
+            jasperengine::editor::pixelart::aseprite::detail::ChunkRef readCel(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, int frame, size_t chunkStart, size_t chunkEnd);
+            void readCelExtra(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, int frame);
+            void readColorProfile(jasperengine::editor::pixelart::aseprite::detail::Cursor& c);
+            void readExternalFiles(jasperengine::editor::pixelart::aseprite::detail::Cursor& c);
+            void readMask(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, int frame);
+            void readTags(jasperengine::editor::pixelart::aseprite::detail::Cursor& c);
+            jasperengine::editor::pixelart::aseprite::detail::ChunkRef readUserData(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, int frame, size_t chunkStart, size_t chunkEnd);
+            void readUserDataBody(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, UserData& out);
+            PropertyValue readValue(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, uint16_t type, int depth);
+            PropertyMap readMap(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, int depth);
+            void readSliceBody(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, Slice& slice, size_t chunkStart);
+            void readTileset(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, size_t chunkStart);
 
-            std::vector<uint8_t> inflateInto(Cursor& c, size_t expected, size_t chunkStart, uint16_t type);
+            std::vector<uint8_t> inflateInto(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, size_t expected, size_t chunkStart, uint16_t type);
             void budget(uint64_t bytes, size_t offset);
             void finish();
         };
@@ -116,7 +115,7 @@ namespace jasperengine::editor::pixelart::aseprite {
         void Reader::budget(uint64_t bytes, size_t offset) {
             decodedBytes += bytes;
             if (decodedBytes > kMaxDecodedPixelBytes) {
-                fail("too_large", "the sprite decodes to more than 1 GiB of pixels",
+                jasperengine::editor::pixelart::aseprite::detail::fail("too_large", "the sprite decodes to more than 1 GiB of pixels",
                      "split the file (fewer frames or layers) or crop the canvas", "", offset);
             }
         }
@@ -124,17 +123,17 @@ namespace jasperengine::editor::pixelart::aseprite {
         void Reader::readHeader() {
             if (data.size() < 128) {
                 if (data.size() >= 6 && (data[4] | (data[5] << 8)) == kFileMagic) {
-                    fail("truncated", "the file is " + std::to_string(data.size()) + " bytes, shorter than its 128-byte header",
+                    jasperengine::editor::pixelart::aseprite::detail::fail("truncated", "the file is " + std::to_string(data.size()) + " bytes, shorter than its 128-byte header",
                          "the file was cut short (a save still in progress?): save it again from Aseprite", "header", data.size());
                 }
-                fail("not_aseprite", "the file is not an Aseprite file (it is shorter than the 128-byte header)",
+                jasperengine::editor::pixelart::aseprite::detail::fail("not_aseprite", "the file is not an Aseprite file (it is shorter than the 128-byte header)",
                      "open an .aseprite or .ase file saved by Aseprite", "header", 0);
             }
-            Cursor c(data, 0, 128, 0);
+            jasperengine::editor::pixelart::aseprite::detail::Cursor c(data, 0, 128, 0);
             c.u32();   // file size: the frames say where they end
             const uint16_t magic = c.u16();
             if (magic != kFileMagic) {
-                fail("not_aseprite", "the file is not an Aseprite file (magic " + hex16(magic) + ", expected 0xA5E0)",
+                jasperengine::editor::pixelart::aseprite::detail::fail("not_aseprite", "the file is not an Aseprite file (magic " + jasperengine::editor::pixelart::aseprite::detail::hex16(magic) + ", expected 0xA5E0)",
                      "open an .aseprite or .ase file saved by Aseprite", "header", 4);
             }
             snapshot.frames = c.u16();
@@ -156,15 +155,15 @@ namespace jasperengine::editor::pixelart::aseprite {
             snapshot.gridH = c.u16();
 
             if (snapshot.depth != 32 && snapshot.depth != 16 && snapshot.depth != 8) {
-                fail("unsupported_depth", "the colour depth is " + std::to_string(snapshot.depth) + " bits (Aseprite writes 32, 16 or 8)",
+                jasperengine::editor::pixelart::aseprite::detail::fail("unsupported_depth", "the colour depth is " + std::to_string(snapshot.depth) + " bits (Aseprite writes 32, 16 or 8)",
                      "open the file in Aseprite and save it in RGB, Grayscale or Indexed mode", "header.depth", 12);
             }
             if (snapshot.width < 1 || snapshot.height < 1) {
-                fail("corrupt_chunk", "the canvas is " + std::to_string(snapshot.width) + "x" + std::to_string(snapshot.height),
+                jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "the canvas is " + std::to_string(snapshot.width) + "x" + std::to_string(snapshot.height),
                      "the file is damaged: open it in Aseprite and save it again", "header", 8);
             }
             if (snapshot.width > kMaxCanvasSide || snapshot.height > kMaxCanvasSide) {
-                fail("too_large", "the canvas is " + std::to_string(snapshot.width) + "x" + std::to_string(snapshot.height) +
+                jasperengine::editor::pixelart::aseprite::detail::fail("too_large", "the canvas is " + std::to_string(snapshot.width) + "x" + std::to_string(snapshot.height) +
                      ", above the 16384x16384 limit", "crop or scale the sprite in Aseprite", "header", 8);
             }
             if (snapshot.depth != 8) transparent = 0;
@@ -205,9 +204,9 @@ namespace jasperengine::editor::pixelart::aseprite {
                 prov->framesEnd = pos;
                 prov->header = snapshot;
                 // the fingerprints, from the decoded document as the writer will see it
-                HashCache hashes;
-                for (FrameRecord& fr : prov->frames) {
-                    for (ChunkRecord& rec : fr.chunks) {
+                jasperengine::editor::pixelart::aseprite::detail::HashCache hashes;
+                for (jasperengine::editor::pixelart::aseprite::detail::FrameRecord& fr : prov->frames) {
+                    for (jasperengine::editor::pixelart::aseprite::detail::ChunkRecord& rec : fr.chunks) {
                         rec.fingerprint = fingerprintOf(doc, rec.ref, rec.type, hashes);
                     }
                 }
@@ -224,10 +223,10 @@ namespace jasperengine::editor::pixelart::aseprite {
 
         void Reader::readFrame(int frame, size_t& pos) {
             if (pos > data.size() || data.size() - pos < 16) {
-                fail("truncated", "the file ends after " + std::to_string(frame) + " of its " + std::to_string(snapshot.frames) + " frames",
+                jasperengine::editor::pixelart::aseprite::detail::fail("truncated", "the file ends after " + std::to_string(frame) + " of its " + std::to_string(snapshot.frames) + " frames",
                      "the file was cut short (a save still in progress?): save it again from Aseprite", "frame " + std::to_string(frame), pos);
             }
-            Cursor h(data, pos, pos + 16, 0);
+            jasperengine::editor::pixelart::aseprite::detail::Cursor h(data, pos, pos + 16, 0);
             const uint32_t frameSize = h.u32();
             const uint16_t magic = h.u16();
             const uint16_t oldCount = h.u16();
@@ -235,11 +234,11 @@ namespace jasperengine::editor::pixelart::aseprite {
             h.skip(2);
             const uint32_t newCount = h.u32();
             if (magic != kFrameMagic) {
-                fail("corrupt_chunk", "frame " + std::to_string(frame) + " at byte " + std::to_string(pos) + " has the magic " + hex16(magic) +
+                jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "frame " + std::to_string(frame) + " at byte " + std::to_string(pos) + " has the magic " + jasperengine::editor::pixelart::aseprite::detail::hex16(magic) +
                      " (expected 0xF1FA)", "the file is damaged: open it in Aseprite and save it again", "frame " + std::to_string(frame), pos + 4);
             }
             if (frameSize < 16 || frameSize > data.size() - pos) {
-                fail(frameSize > data.size() - pos ? "truncated" : "corrupt_chunk",
+                jasperengine::editor::pixelart::aseprite::detail::fail(frameSize > data.size() - pos ? "truncated" : "corrupt_chunk",
                      "frame " + std::to_string(frame) + " declares " + std::to_string(frameSize) + " bytes but " +
                      std::to_string(data.size() - pos) + " are left",
                      "the file was cut short or damaged: save it again from Aseprite", "frame " + std::to_string(frame), pos);
@@ -249,7 +248,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             if ((oldCount == 0xFFFF && oldCount < newCount) || (oldCount == 0 && newCount > 0)) chunks = newCount;
             if (duration > 0) doc.frameDurations[static_cast<size_t>(frame)] = duration;
 
-            FrameRecord record;
+            jasperengine::editor::pixelart::aseprite::detail::FrameRecord record;
             record.offset = pos;
             record.size = frameSize;
             record.rawDuration = duration;
@@ -258,18 +257,18 @@ namespace jasperengine::editor::pixelart::aseprite {
             anchor = {};
             for (uint32_t i = 0; i < chunks; i++) {
                 if (frameEnd - cp < 6) {
-                    fail("corrupt_chunk", "frame " + std::to_string(frame) + " declares " + std::to_string(chunks) +
+                    jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "frame " + std::to_string(frame) + " declares " + std::to_string(chunks) +
                          " chunks but its bytes end after " + std::to_string(i),
                          "the file is damaged: open it in Aseprite and save it again", "frame " + std::to_string(frame), cp);
                 }
-                Cursor ch(data, cp, frameEnd, 0);
+                jasperengine::editor::pixelart::aseprite::detail::Cursor ch(data, cp, frameEnd, 0);
                 const uint32_t chunkSize = ch.u32();
                 const uint16_t type = ch.u16();
                 if (chunkSize < 6 || chunkSize > frameEnd - cp) {
-                    fail("corrupt_chunk", "chunk " + hex16(type) + " at byte " + std::to_string(cp) + " declares " + std::to_string(chunkSize) +
-                         " bytes, outside its frame", "the file is damaged: open it in Aseprite and save it again", chunkField(type, cp), cp);
+                    jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "chunk " + jasperengine::editor::pixelart::aseprite::detail::hex16(type) + " at byte " + std::to_string(cp) + " declares " + std::to_string(chunkSize) +
+                         " bytes, outside its frame", "the file is damaged: open it in Aseprite and save it again", jasperengine::editor::pixelart::aseprite::detail::chunkField(type, cp), cp);
                 }
-                const ChunkRef ref = readChunk(frame, type, cp, cp + chunkSize);
+                const jasperengine::editor::pixelart::aseprite::detail::ChunkRef ref = readChunk(frame, type, cp, cp + chunkSize);
                 if (prov) {
                     record.chunks.push_back({ref, type, cp, chunkSize, 0});
                 }
@@ -279,18 +278,18 @@ namespace jasperengine::editor::pixelart::aseprite {
             pos = frameEnd;
         }
 
-        ChunkRef Reader::keepOpaque(int frame, uint16_t type, size_t chunkStart, size_t chunkEnd) {
+        jasperengine::editor::pixelart::aseprite::detail::ChunkRef Reader::keepOpaque(int frame, uint16_t type, size_t chunkStart, size_t chunkEnd) {
             OpaqueChunk o;
             o.type = type;
             o.frame = frame;
             o.anchor = anchor;
             o.body.assign(data.begin() + static_cast<std::ptrdiff_t>(chunkStart + 6), data.begin() + static_cast<std::ptrdiff_t>(chunkEnd));
             doc.opaque.push_back(std::move(o));
-            return {ChunkRef::Kind::Opaque, static_cast<int>(doc.opaque.size()) - 1};
+            return {jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Opaque, static_cast<int>(doc.opaque.size()) - 1};
         }
 
-        ChunkRef Reader::readChunk(int frame, uint16_t type, size_t chunkStart, size_t chunkEnd) {
-            Cursor c(data, chunkStart + 6, chunkEnd, type);
+        jasperengine::editor::pixelart::aseprite::detail::ChunkRef Reader::readChunk(int frame, uint16_t type, size_t chunkStart, size_t chunkEnd) {
+            jasperengine::editor::pixelart::aseprite::detail::Cursor c(data, chunkStart + 6, chunkEnd, type);
             // tile user data chunks come right after a tileset's own one (aseprite_decoder's readTilesData)
             if (tileUserDataLeft > 0) {
                 if (type == kChunkUserData) {
@@ -301,7 +300,7 @@ namespace jasperengine::editor::pixelart::aseprite {
                     if (static_cast<int>(ts.tileUserData.size()) <= tile) ts.tileUserData.resize(static_cast<size_t>(tile) + 1);
                     ts.tileUserData[static_cast<size_t>(tile)] = std::move(ud);
                     tileUserDataLeft--;
-                    return userDataRef(UserDataOwner::Tile, tileUserDataTileset, tile);
+                    return jasperengine::editor::pixelart::aseprite::detail::userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Tile, tileUserDataTileset, tile);
                 }
                 tileUserDataLeft = 0;
             }
@@ -317,13 +316,13 @@ namespace jasperengine::editor::pixelart::aseprite {
                         commitPalette(frame, chunkStart);
                     }
                     anchor = {ChunkAnchor::Kind::Palette};
-                    return {ChunkRef::Kind::Palette, frame, type};
+                    return {jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Palette, frame, type};
                 case kChunkPalette:
                     readPalette(c);
                     commitPalette(frame, chunkStart);
                     newPaletteSeen = true;
                     anchor = {ChunkAnchor::Kind::Palette};
-                    return {ChunkRef::Kind::Palette, frame, type};
+                    return {jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Palette, frame, type};
                 case kChunkLayer:
                     return readLayer(c, chunkStart);
                 case kChunkCel:
@@ -331,27 +330,27 @@ namespace jasperengine::editor::pixelart::aseprite {
                 case kChunkCelExtra: {
                     if (owner.kind == Owner::Kind::Cel && owner.b == frame) {
                         readCelExtra(c, frame);
-                        return {ChunkRef::Kind::CelExtra, owner.a, owner.b};
+                        return {jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::CelExtra, owner.a, owner.b};
                     }
                     return keepOpaque(frame, type, chunkStart, chunkEnd);
                 }
                 case kChunkColorProfile:
                     if (doc.colorProfile) return keepOpaque(frame, type, chunkStart, chunkEnd);
                     readColorProfile(c);
-                    return {ChunkRef::Kind::ColorProfile};
+                    return {jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::ColorProfile};
                 case kChunkExternalFiles:
                     if (!doc.externalFiles.empty()) return keepOpaque(frame, type, chunkStart, chunkEnd);
                     readExternalFiles(c);
-                    return {ChunkRef::Kind::ExternalFiles};
+                    return {jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::ExternalFiles};
                 case kChunkMask:
                     readMask(c, frame);
-                    return {ChunkRef::Kind::Mask, static_cast<int>(doc.masks.size()) - 1};
+                    return {jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Mask, static_cast<int>(doc.masks.size()) - 1};
                 case kChunkTags: {
                     if (!doc.tags.empty()) return keepOpaque(frame, type, chunkStart, chunkEnd);
                     readTags(c);
                     owner = doc.tags.empty() ? Owner{Owner::Kind::None} : Owner{Owner::Kind::Tag, 0};
                     anchor = {ChunkAnchor::Kind::Tags};
-                    return {ChunkRef::Kind::Tags};
+                    return {jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Tags};
                 }
                 case kChunkOldSlices: {
                     const uint32_t n = c.count(c.u32(), 20, "slices");
@@ -363,7 +362,7 @@ namespace jasperengine::editor::pixelart::aseprite {
                         doc.slices.push_back(std::move(slice));
                     }
                     // the deprecated chunk does not change what the next user data belongs to
-                    return {ChunkRef::Kind::OldSlices, first, static_cast<int>(doc.slices.size()) - first};
+                    return {jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::OldSlices, first, static_cast<int>(doc.slices.size()) - first};
                 }
                 case kChunkSlice: {
                     Slice slice;
@@ -372,7 +371,7 @@ namespace jasperengine::editor::pixelart::aseprite {
                     const int index = static_cast<int>(doc.slices.size()) - 1;
                     owner = {Owner::Kind::Slice, index};
                     anchor = {ChunkAnchor::Kind::Slice, index};
-                    return {ChunkRef::Kind::Slice, index};
+                    return {jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Slice, index};
                 }
                 case kChunkUserData:
                     return readUserData(c, frame, chunkStart, chunkEnd);
@@ -381,7 +380,7 @@ namespace jasperengine::editor::pixelart::aseprite {
                     const int index = static_cast<int>(doc.tilesets.size()) - 1;
                     owner = {Owner::Kind::Tileset, index};
                     anchor = {ChunkAnchor::Kind::Tileset, index};
-                    return {ChunkRef::Kind::Tileset, index};
+                    return {jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Tileset, index};
                 }
                 default:
                     // R5: unknown chunks and the never-used path chunk are kept as they are
@@ -389,7 +388,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             }
         }
 
-        void Reader::readOldPalette(Cursor& c, bool sixBit) {
+        void Reader::readOldPalette(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, bool sixBit) {
             const uint16_t packets = c.u16();
             int skip = 0;
             for (uint16_t p = 0; p < packets; p++) {
@@ -397,8 +396,8 @@ namespace jasperengine::editor::pixelart::aseprite {
                 int size = c.u8();
                 if (size == 0) size = 256;
                 if (skip + size > 256) {
-                    fail("corrupt_chunk", "an old palette chunk addresses entry " + std::to_string(skip + size - 1) + " (255 at most)",
-                         "the file is damaged: save it again from Aseprite", chunkField(sixBit ? kChunkOldPalette64 : kChunkOldPalette, c.offset()), c.offset());
+                    jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "an old palette chunk addresses entry " + std::to_string(skip + size - 1) + " (255 at most)",
+                         "the file is damaged: save it again from Aseprite", jasperengine::editor::pixelart::aseprite::detail::chunkField(sixBit ? kChunkOldPalette64 : kChunkOldPalette, c.offset()), c.offset());
                 }
                 c.count(static_cast<uint32_t>(size), 3, "palette entries");
                 for (int i = skip; i < skip + size; i++) {
@@ -416,14 +415,14 @@ namespace jasperengine::editor::pixelart::aseprite {
             }
         }
 
-        void Reader::readPalette(Cursor& c) {
+        void Reader::readPalette(jasperengine::editor::pixelart::aseprite::detail::Cursor& c) {
             const uint32_t newSize = c.u32();
             const uint32_t from = c.u32();
             const uint32_t to = c.u32();
             c.skip(8);
             if (newSize > 65536 || (from <= to && to >= 65536)) {
-                fail("corrupt_chunk", "the palette declares " + std::to_string(std::max(newSize, to + 1)) + " entries (65536 at most)",
-                     "the file is damaged: save it again from Aseprite", chunkField(kChunkPalette, c.offset()), c.offset());
+                jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "the palette declares " + std::to_string(std::max(newSize, to + 1)) + " entries (65536 at most)",
+                     "the file is damaged: save it again from Aseprite", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkPalette, c.offset()), c.offset());
             }
             if (newSize > 0) currentPalette.resize(newSize);
             if (from > to) return;
@@ -452,8 +451,8 @@ namespace jasperengine::editor::pixelart::aseprite {
             if (frame != 0 && currentPalette == doc.paletteAt(frame)) return;
             paletteBytes += bytes;
             if (paletteBytes > kMaxPaletteBytes) {
-                fail("too_large", "the sprite's palettes (one per frame where it changes) take more than 64 MiB",
-                     "use fewer palette changes, or a smaller palette", chunkField(kChunkPalette, offset), offset);
+                jasperengine::editor::pixelart::aseprite::detail::fail("too_large", "the sprite's palettes (one per frame where it changes) take more than 64 MiB",
+                     "use fewer palette changes, or a smaller palette", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkPalette, offset), offset);
             }
             budget(bytes, offset);
             if (frame == 0) {
@@ -463,7 +462,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             }
         }
 
-        ChunkRef Reader::readLayer(Cursor& c, size_t chunkStart) {
+        jasperengine::editor::pixelart::aseprite::detail::ChunkRef Reader::readLayer(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, size_t chunkStart) {
             Layer layer;
             const uint16_t flags = c.u16();
             const uint16_t type = c.u16();
@@ -493,45 +492,45 @@ namespace jasperengine::editor::pixelart::aseprite {
                 layer.opacity = (doc.headerFlags & kHeaderLayerOpacity) ? opacity : 255;
                 if (blend > static_cast<uint16_t>(BlendMode::Divide)) {
                     warn("corrupt_chunk", "layer '" + layer.name + "' has the unknown blend mode " + std::to_string(blend) + " (drawn as normal)",
-                         "pick a blend mode in Aseprite and save again", chunkField(kChunkLayer, chunkStart), chunkStart);
+                         "pick a blend mode in Aseprite and save again", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkLayer, chunkStart), chunkStart);
                 }
             }
             if (type > static_cast<uint16_t>(LayerType::Tilemap)) {
                 warn("corrupt_chunk", "layer '" + layer.name + "' has the unknown type " + std::to_string(type) + " (not drawn)",
-                     "the file comes from a newer Aseprite: open it there and save it again", chunkField(kChunkLayer, chunkStart), chunkStart);
+                     "the file comes from a newer Aseprite: open it there and save it again", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkLayer, chunkStart), chunkStart);
             }
             doc.layers.push_back(std::move(layer));
             const int index = static_cast<int>(doc.layers.size()) - 1;
             owner = {Owner::Kind::Layer, index};
             anchor = {ChunkAnchor::Kind::Layer, index};
-            return {ChunkRef::Kind::Layer, index};
+            return {jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Layer, index};
         }
 
-        std::vector<uint8_t> Reader::inflateInto(Cursor& c, size_t expected, size_t chunkStart, uint16_t type) {
+        std::vector<uint8_t> Reader::inflateInto(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, size_t expected, size_t chunkStart, uint16_t type) {
             std::span<const uint8_t> compressed = c.bytes(c.remaining());
             // zlib expands at most ~1032:1, so a claim beyond that is corrupt before anything is
             // allocated for it: a small hostile file cannot ask for gigabytes
             if (expected / 1032 > compressed.size() + 64) {
-                fail("corrupt_chunk", "chunk " + hex16(type) + " at byte " + std::to_string(chunkStart) + " claims " + std::to_string(expected) +
+                jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "chunk " + jasperengine::editor::pixelart::aseprite::detail::hex16(type) + " at byte " + std::to_string(chunkStart) + " claims " + std::to_string(expected) +
                      " pixel bytes from " + std::to_string(compressed.size()) + " compressed ones",
-                     "the file is damaged: open it in Aseprite and save it again", chunkField(type, chunkStart), chunkStart);
+                     "the file is damaged: open it in Aseprite and save it again", jasperengine::editor::pixelart::aseprite::detail::chunkField(type, chunkStart), chunkStart);
             }
             std::vector<uint8_t> raw(expected);
             size_t produced = 0;
             std::string error;
-            if (!inflateBounded(compressed, raw.data(), expected, produced, error)) {
-                fail("corrupt_chunk", "chunk " + hex16(type) + " at byte " + std::to_string(chunkStart) + " holds damaged pixels (" + error + ")",
-                     "the file is damaged: open it in Aseprite and save it again", chunkField(type, chunkStart), chunkStart);
+            if (!jasperengine::editor::pixelart::aseprite::detail::inflateBounded(compressed, raw.data(), expected, produced, error)) {
+                jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "chunk " + jasperengine::editor::pixelart::aseprite::detail::hex16(type) + " at byte " + std::to_string(chunkStart) + " holds damaged pixels (" + error + ")",
+                     "the file is damaged: open it in Aseprite and save it again", jasperengine::editor::pixelart::aseprite::detail::chunkField(type, chunkStart), chunkStart);
             }
             if (produced < expected) {
-                warn("corrupt_chunk", "chunk " + hex16(type) + " at byte " + std::to_string(chunkStart) + " holds " + std::to_string(produced) +
+                warn("corrupt_chunk", "chunk " + jasperengine::editor::pixelart::aseprite::detail::hex16(type) + " at byte " + std::to_string(chunkStart) + " holds " + std::to_string(produced) +
                      " of its " + std::to_string(expected) + " pixel bytes (the rest is transparent)",
-                     "save the file again from Aseprite", chunkField(type, chunkStart), chunkStart);
+                     "save the file again from Aseprite", jasperengine::editor::pixelart::aseprite::detail::chunkField(type, chunkStart), chunkStart);
             }
             return raw;
         }
 
-        ChunkRef Reader::readCel(Cursor& c, int frame, size_t chunkStart, size_t chunkEnd) {
+        jasperengine::editor::pixelart::aseprite::detail::ChunkRef Reader::readCel(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, int frame, size_t chunkStart, size_t chunkEnd) {
             Cel cel;
             const uint16_t layerIndex = c.u16();
             cel.layer = layerIndex;
@@ -547,13 +546,13 @@ namespace jasperengine::editor::pixelart::aseprite {
                 static_cast<uint16_t>(doc.layers[layerIndex].type) > static_cast<uint16_t>(LayerType::Tilemap)) {
                 warn("corrupt_chunk", "frame " + std::to_string(frame) + " has a cel on layer " + std::to_string(layerIndex) +
                      (layerIndex >= doc.layers.size() ? ", which does not exist" : ", which holds no pixels") + " (kept, not drawn)",
-                     "open the file in Aseprite and save it again", chunkField(kChunkCel, chunkStart), chunkStart);
+                     "open the file in Aseprite and save it again", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkCel, chunkStart), chunkStart);
                 owner = {Owner::Kind::None};
                 return keepOpaque(frame, kChunkCel, chunkStart, chunkEnd);
             }
             if (doc.celRecord(cel.layer, frame)) {
                 warn("corrupt_chunk", "frame " + std::to_string(frame) + " has two cels on layer '" + doc.layers[layerIndex].name + "' (the second is kept, not drawn)",
-                     "open the file in Aseprite and save it again", chunkField(kChunkCel, chunkStart), chunkStart);
+                     "open the file in Aseprite and save it again", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkCel, chunkStart), chunkStart);
                 owner = {Owner::Kind::None};
                 return keepOpaque(frame, kChunkCel, chunkStart, chunkEnd);
             }
@@ -567,10 +566,10 @@ namespace jasperengine::editor::pixelart::aseprite {
                     const uint16_t h = c.u16();
                     if (tilemapLayer) {
                         warn("corrupt_chunk", "the tilemap layer '" + layer.name + "' has an image cel on frame " + std::to_string(frame),
-                             "open the file in Aseprite and save it again", chunkField(kChunkCel, chunkStart), chunkStart);
+                             "open the file in Aseprite and save it again", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkCel, chunkStart), chunkStart);
                     }
                     if (!options.pixels) break;
-                    const size_t bpp = static_cast<size_t>(bytesPerPixel(doc.mode));
+                    const size_t bpp = static_cast<size_t>(jasperengine::editor::pixelart::aseprite::detail::bytesPerPixel(doc.mode));
                     const size_t expected = static_cast<size_t>(w) * h * bpp;
                     budget(static_cast<uint64_t>(w) * h * 4 + expected, chunkStart);
                     std::vector<uint8_t> raw;
@@ -579,7 +578,7 @@ namespace jasperengine::editor::pixelart::aseprite {
                         raw.assign(b.begin(), b.end());
                         if (raw.size() < expected) {
                             warn("corrupt_chunk", "the raw cel at byte " + std::to_string(chunkStart) + " is shorter than its pixels (the rest is transparent)",
-                                 "save the file again from Aseprite", chunkField(kChunkCel, chunkStart), chunkStart);
+                                 "save the file again from Aseprite", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkCel, chunkStart), chunkStart);
                             raw.resize(expected, 0);
                         }
                     } else {
@@ -587,9 +586,9 @@ namespace jasperengine::editor::pixelart::aseprite {
                         // in finish() with the other cels
                         std::span<const uint8_t> compressed = c.bytes(c.remaining());
                         if (expected / 1032 > compressed.size() + 64) {
-                            fail("corrupt_chunk", "chunk " + hex16(kChunkCel) + " at byte " + std::to_string(chunkStart) + " claims " +
+                            jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "chunk " + jasperengine::editor::pixelart::aseprite::detail::hex16(kChunkCel) + " at byte " + std::to_string(chunkStart) + " claims " +
                                  std::to_string(expected) + " pixel bytes from " + std::to_string(compressed.size()) + " compressed ones",
-                                 "the file is damaged: open it in Aseprite and save it again", chunkField(kChunkCel, chunkStart), chunkStart);
+                                 "the file is damaged: open it in Aseprite and save it again", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkCel, chunkStart), chunkStart);
                         }
                         auto image = std::make_shared<PixelImage>();
                         deferred.push_back({image, compressed, expected, w, h, chunkStart, 0, std::string()});
@@ -598,7 +597,7 @@ namespace jasperengine::editor::pixelart::aseprite {
                         break;
                     }
                     auto image = std::make_shared<PixelImage>(
-                        imageFromFileBytes(w, h, doc.mode, raw, std::span<const uint8_t>(), -1));
+                        jasperengine::editor::pixelart::aseprite::detail::imageFromFileBytes(w, h, doc.mode, raw, std::span<const uint8_t>(), -1));
                     if (doc.mode == ColorMode::Indexed) pending.push_back({image, cel.layer, frame});
                     cel.image = image;
                     break;
@@ -609,7 +608,7 @@ namespace jasperengine::editor::pixelart::aseprite {
                     if (!target || cel.linkedFrame >= frame) {
                         warn("missing_link", "the cel of layer '" + layer.name + "' on frame " + std::to_string(frame) + " links to frame " +
                              std::to_string(cel.linkedFrame) + ", which has no cel there (an empty cel)",
-                             "unlink the cel in Aseprite and save again", chunkField(kChunkCel, chunkStart), chunkStart);
+                             "unlink the cel in Aseprite and save again", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkCel, chunkStart), chunkStart);
                     } else {
                         // links share the image they point at (a link to a link points at its target)
                         const Cel* resolved = doc.cel(cel.layer, cel.linkedFrame);
@@ -634,11 +633,11 @@ namespace jasperengine::editor::pixelart::aseprite {
                     c.skip(10);
                     if (!tilemapLayer) {
                         warn("corrupt_chunk", "the image layer '" + layer.name + "' has a tilemap cel on frame " + std::to_string(frame),
-                             "open the file in Aseprite and save it again", chunkField(kChunkCel, chunkStart), chunkStart);
+                             "open the file in Aseprite and save it again", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkCel, chunkStart), chunkStart);
                     }
                     if (tm->bitsPerTile != 8 && tm->bitsPerTile != 16 && tm->bitsPerTile != 32) {
-                        fail("corrupt_chunk", "a tilemap cel uses " + std::to_string(tm->bitsPerTile) + " bits per tile (8, 16 or 32 are valid)",
-                             "open the file in Aseprite and save it again", chunkField(kChunkCel, chunkStart), chunkStart);
+                        jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "a tilemap cel uses " + std::to_string(tm->bitsPerTile) + " bits per tile (8, 16 or 32 are valid)",
+                             "open the file in Aseprite and save it again", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkCel, chunkStart), chunkStart);
                     }
                     if (!options.pixels) break;
                     const size_t tileBytes = tm->bitsPerTile / 8;
@@ -656,23 +655,23 @@ namespace jasperengine::editor::pixelart::aseprite {
                 }
                 default:
                     warn("corrupt_chunk", "a cel has the unknown type " + std::to_string(celType) + " (kept, not drawn)",
-                         "the file comes from a newer Aseprite: open it there and save it again", chunkField(kChunkCel, chunkStart), chunkStart);
+                         "the file comes from a newer Aseprite: open it there and save it again", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkCel, chunkStart), chunkStart);
                     owner = {Owner::Kind::None};
                     return keepOpaque(frame, kChunkCel, chunkStart, chunkEnd);
             }
 
             if (!options.pixels) {
                 owner = {Owner::Kind::None};
-                return {ChunkRef::Kind::Cel, cel.layer, frame};
+                return {jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Cel, cel.layer, frame};
             }
             doc.cels.push_back(std::move(cel));
             const Cel& stored = doc.cels.back();
             owner = {Owner::Kind::Cel, stored.layer, frame};
             anchor = {ChunkAnchor::Kind::Cel, stored.layer, frame};
-            return {ChunkRef::Kind::Cel, stored.layer, frame};
+            return {jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Cel, stored.layer, frame};
         }
 
-        void Reader::readCelExtra(Cursor& c, int frame) {
+        void Reader::readCelExtra(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, int frame) {
             Cel* cel = doc.celRecord(owner.a, frame);
             if (!cel) return;
             CelExtra extra;
@@ -684,7 +683,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             cel->extra = extra;
         }
 
-        void Reader::readColorProfile(Cursor& c) {
+        void Reader::readColorProfile(jasperengine::editor::pixelart::aseprite::detail::Cursor& c) {
             ColorProfile p;
             p.type = c.u16();
             p.flags = c.u16();
@@ -697,12 +696,12 @@ namespace jasperengine::editor::pixelart::aseprite {
             }
             if (p.type > 2) {
                 warn("corrupt_chunk", "the colour profile has the unknown type " + std::to_string(p.type) + " (pixels used as sRGB)",
-                     "set the colour profile to sRGB in Aseprite", chunkField(kChunkColorProfile, c.offset()), c.offset());
+                     "set the colour profile to sRGB in Aseprite", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkColorProfile, c.offset()), c.offset());
             }
             doc.colorProfile = std::move(p);
         }
 
-        void Reader::readExternalFiles(Cursor& c) {
+        void Reader::readExternalFiles(jasperengine::editor::pixelart::aseprite::detail::Cursor& c) {
             const uint32_t n = c.count(c.u32(), 14, "external files");
             c.skip(8);
             for (uint32_t i = 0; i < n; i++) {
@@ -715,7 +714,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             }
         }
 
-        void Reader::readMask(Cursor& c, int frame) {
+        void Reader::readMask(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, int frame) {
             Mask m;
             m.frame = frame;
             m.x = c.i16();
@@ -731,7 +730,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             doc.masks.push_back(std::move(m));
         }
 
-        void Reader::readTags(Cursor& c) {
+        void Reader::readTags(jasperengine::editor::pixelart::aseprite::detail::Cursor& c) {
             const uint16_t n = c.u16();
             c.skip(8);
             for (uint16_t i = 0; i < n && !c.atEnd(); i++) {
@@ -741,7 +740,7 @@ namespace jasperengine::editor::pixelart::aseprite {
                 uint8_t dir = c.u8();
                 if (dir > 3) {
                     warn("corrupt_chunk", "a tag has the unknown direction " + std::to_string(dir) + " (read as forward)",
-                         "set the tag's direction in Aseprite", chunkField(kChunkTags, c.offset()), c.offset());
+                         "set the tag's direction in Aseprite", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkTags, c.offset()), c.offset());
                     dir = 0;
                 }
                 tag.direction = static_cast<TagDirection>(dir);
@@ -754,16 +753,16 @@ namespace jasperengine::editor::pixelart::aseprite {
                 if (tag.from > tag.to || tag.to >= doc.frameCount()) {
                     warn("corrupt_chunk", "the tag '" + tag.name + "' spans frames " + std::to_string(tag.from) + "-" + std::to_string(tag.to) +
                          " of a " + std::to_string(doc.frameCount()) + "-frame sprite", "fix the tag's range in Aseprite",
-                         chunkField(kChunkTags, c.offset()), c.offset());
+                         jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkTags, c.offset()), c.offset());
                 }
                 doc.tags.push_back(std::move(tag));
             }
         }
 
-        PropertyValue Reader::readValue(Cursor& c, uint16_t type, int depth) {
+        PropertyValue Reader::readValue(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, uint16_t type, int depth) {
             if (depth > kMaxUserDataDepth) {
-                fail("corrupt_chunk", "user data properties nest deeper than 128 levels", "flatten the properties in Aseprite",
-                     chunkField(kChunkUserData, c.offset()), c.offset());
+                jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "user data properties nest deeper than 128 levels", "flatten the properties in Aseprite",
+                     jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkUserData, c.offset()), c.offset());
             }
             PropertyValue v;
             v.type = static_cast<PropertyType>(type);
@@ -840,16 +839,16 @@ namespace jasperengine::editor::pixelart::aseprite {
                     break;
                 }
                 default:
-                    fail("corrupt_chunk", "a user data property has the unknown type " + hex16(type),
-                         "the file comes from a newer Aseprite: open it there and save it again", chunkField(kChunkUserData, c.offset()), c.offset());
+                    jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "a user data property has the unknown type " + jasperengine::editor::pixelart::aseprite::detail::hex16(type),
+                         "the file comes from a newer Aseprite: open it there and save it again", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkUserData, c.offset()), c.offset());
             }
             return v;
         }
 
-        PropertyMap Reader::readMap(Cursor& c, int depth) {
+        PropertyMap Reader::readMap(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, int depth) {
             if (depth > kMaxUserDataDepth) {
-                fail("corrupt_chunk", "user data properties nest deeper than 128 levels", "flatten the properties in Aseprite",
-                     chunkField(kChunkUserData, c.offset()), c.offset());
+                jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "user data properties nest deeper than 128 levels", "flatten the properties in Aseprite",
+                     jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkUserData, c.offset()), c.offset());
             }
             const uint32_t n = c.count(c.u32(), 4, "properties");
             PropertyMap map;
@@ -864,7 +863,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             return map;
         }
 
-        void Reader::readUserDataBody(Cursor& c, UserData& out) {
+        void Reader::readUserDataBody(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, UserData& out) {
             const uint32_t flags = c.u32();
             if (flags & 1) out.text = c.string();
             if (flags & 2) out.color = PixelRgba{c.u8(), c.u8(), c.u8(), c.u8()};
@@ -872,8 +871,8 @@ namespace jasperengine::editor::pixelart::aseprite {
                 const size_t start = c.offset();
                 const uint32_t size = c.u32();
                 if (size < 8 || size - 4 > c.remaining()) {
-                    fail("corrupt_chunk", "the user data properties declare " + std::to_string(size) + " bytes, more than the chunk holds",
-                         "the file is damaged: open it in Aseprite and save it again", chunkField(kChunkUserData, start), start);
+                    jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "the user data properties declare " + std::to_string(size) + " bytes, more than the chunk holds",
+                         "the file is damaged: open it in Aseprite and save it again", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkUserData, start), start);
                 }
                 const uint32_t maps = c.count(c.u32(), 8, "property maps");
                 for (uint32_t i = 0; i < maps; i++) {
@@ -883,7 +882,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             }
         }
 
-        ChunkRef Reader::readUserData(Cursor& c, int frame, size_t chunkStart, size_t chunkEnd) {
+        jasperengine::editor::pixelart::aseprite::detail::ChunkRef Reader::readUserData(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, int frame, size_t chunkStart, size_t chunkEnd) {
             UserData ud;
             const Owner target = owner;
             switch (target.kind) {
@@ -891,16 +890,16 @@ namespace jasperengine::editor::pixelart::aseprite {
                     // the sprite stays the owner (aseprite_decoder): a second chunk replaces the first
                     doc.spriteUserData = UserData();
                     readUserDataBody(c, doc.spriteUserData);
-                    return userDataRef(UserDataOwner::Sprite);
+                    return jasperengine::editor::pixelart::aseprite::detail::userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Sprite);
                 case Owner::Kind::Layer:
                     doc.layers[static_cast<size_t>(target.a)].userData = UserData();
                     readUserDataBody(c, doc.layers[static_cast<size_t>(target.a)].userData);
-                    return userDataRef(UserDataOwner::Layer, target.a);
+                    return userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Layer, target.a);
                 case Owner::Kind::Cel: {
                     // a link's user data stays on the link record (Aseprite writes none for links)
                     readUserDataBody(c, ud);
                     if (Cel* cel = doc.celRecord(target.a, target.b)) cel->userData = std::move(ud);
-                    return userDataRef(UserDataOwner::Cel, target.a, target.b);
+                    return userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Cel, target.a, target.b);
                 }
                 case Owner::Kind::Tag: {
                     Tag& tag = doc.tags[static_cast<size_t>(target.a)];
@@ -908,12 +907,12 @@ namespace jasperengine::editor::pixelart::aseprite {
                     readUserDataBody(c, tag.userData);
                     const int next = target.a + 1;
                     owner = next < static_cast<int>(doc.tags.size()) ? Owner{Owner::Kind::Tag, next} : Owner{Owner::Kind::None};
-                    return userDataRef(UserDataOwner::Tag, target.a);
+                    return userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Tag, target.a);
                 }
                 case Owner::Kind::Slice:
                     doc.slices[static_cast<size_t>(target.a)].userData = UserData();
                     readUserDataBody(c, doc.slices[static_cast<size_t>(target.a)].userData);
-                    return userDataRef(UserDataOwner::Slice, target.a);
+                    return userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Slice, target.a);
                 case Owner::Kind::Tileset: {
                     Tileset& ts = doc.tilesets[static_cast<size_t>(target.a)];
                     ts.userData = UserData();
@@ -921,7 +920,7 @@ namespace jasperengine::editor::pixelart::aseprite {
                     tileUserDataLeft = ts.tileCount;
                     tileUserDataTileset = target.a;
                     owner = {Owner::Kind::None};
-                    return userDataRef(UserDataOwner::Tileset, target.a);
+                    return userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Tileset, target.a);
                 }
                 case Owner::Kind::None:
                     break;
@@ -930,7 +929,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             return keepOpaque(frame, kChunkUserData, chunkStart, chunkEnd);
         }
 
-        void Reader::readSliceBody(Cursor& c, Slice& slice, size_t chunkStart) {
+        void Reader::readSliceBody(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, Slice& slice, size_t chunkStart) {
             const uint32_t keys = c.u32();
             slice.flags = c.u32();
             c.u32();
@@ -961,13 +960,13 @@ namespace jasperengine::editor::pixelart::aseprite {
                 if (key.frame >= static_cast<uint32_t>(doc.frameCount())) {
                     warn("slice_key_past_end", "the slice '" + slice.name + "' has a key on frame " + std::to_string(key.frame) + " of a " +
                          std::to_string(doc.frameCount()) + "-frame sprite (it never shows)", "remove the key in Aseprite",
-                         chunkField(kChunkSlice, chunkStart), chunkStart);
+                         jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkSlice, chunkStart), chunkStart);
                 }
                 slice.keys.push_back(key);
             }
         }
 
-        void Reader::readTileset(Cursor& c, size_t chunkStart) {
+        void Reader::readTileset(jasperengine::editor::pixelart::aseprite::detail::Cursor& c, size_t chunkStart) {
             Tileset ts;
             ts.id = c.u32();
             ts.flags = c.u32();
@@ -978,9 +977,9 @@ namespace jasperengine::editor::pixelart::aseprite {
             c.skip(14);
             ts.name = c.string();
             if (count > 0x7fffffffu || ts.tileWidth < 1 || ts.tileHeight < 1) {
-                fail("corrupt_chunk", "the tileset '" + ts.name + "' declares " + std::to_string(count) + " tiles of " + std::to_string(ts.tileWidth) +
+                jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "the tileset '" + ts.name + "' declares " + std::to_string(count) + " tiles of " + std::to_string(ts.tileWidth) +
                      "x" + std::to_string(ts.tileHeight), "the file is damaged: open it in Aseprite and save it again",
-                     chunkField(kChunkTileset, chunkStart), chunkStart);
+                     jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkTileset, chunkStart), chunkStart);
             }
             ts.tileCount = static_cast<int>(count);
             if (ts.flags & 1) {
@@ -992,22 +991,22 @@ namespace jasperengine::editor::pixelart::aseprite {
             if ((ts.flags & 2) && count > 0) {
                 const uint32_t length = c.u32();
                 if (length > c.remaining()) {
-                    fail("corrupt_chunk", "the tileset '" + ts.name + "' declares " + std::to_string(length) + " compressed bytes, more than its chunk holds",
-                         "the file is damaged: open it in Aseprite and save it again", chunkField(kChunkTileset, chunkStart), chunkStart);
+                    jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "the tileset '" + ts.name + "' declares " + std::to_string(length) + " compressed bytes, more than its chunk holds",
+                         "the file is damaged: open it in Aseprite and save it again", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkTileset, chunkStart), chunkStart);
                 }
                 const uint64_t height = static_cast<uint64_t>(ts.tileHeight) * count;
                 if (height > static_cast<uint64_t>(PixelImage::kMaxSide)) {
-                    fail("too_large", "the tileset '" + ts.name + "' holds " + std::to_string(count) + " tiles, a strip taller than 65535 pixels",
-                         "split the tileset in Aseprite", chunkField(kChunkTileset, chunkStart), chunkStart);
+                    jasperengine::editor::pixelart::aseprite::detail::fail("too_large", "the tileset '" + ts.name + "' holds " + std::to_string(count) + " tiles, a strip taller than 65535 pixels",
+                         "split the tileset in Aseprite", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkTileset, chunkStart), chunkStart);
                 }
                 if (options.pixels) {
-                    const size_t bpp = static_cast<size_t>(bytesPerPixel(doc.mode));
+                    const size_t bpp = static_cast<size_t>(jasperengine::editor::pixelart::aseprite::detail::bytesPerPixel(doc.mode));
                     const size_t expected = static_cast<size_t>(ts.tileWidth) * height * bpp;
                     budget(static_cast<uint64_t>(ts.tileWidth) * height * 4 + expected, chunkStart);
-                    Cursor sub(data, c.offset(), c.offset() + length, kChunkTileset);
+                    jasperengine::editor::pixelart::aseprite::detail::Cursor sub(data, c.offset(), c.offset() + length, kChunkTileset);
                     std::vector<uint8_t> raw = inflateInto(sub, expected, chunkStart, kChunkTileset);
                     // tileset pixels keep their indices; transparent index clear (palette applied at finish)
-                    ts.tiles = imageFromFileBytes(ts.tileWidth, static_cast<int>(height), doc.mode, raw, std::span<const uint8_t>(), -1);
+                    ts.tiles = jasperengine::editor::pixelart::aseprite::detail::imageFromFileBytes(ts.tileWidth, static_cast<int>(height), doc.mode, raw, std::span<const uint8_t>(), -1);
                 }
                 c.skip(length);
             }
@@ -1031,11 +1030,11 @@ namespace jasperengine::editor::pixelart::aseprite {
                     try {
                         std::vector<uint8_t> raw(d.expected);
                         std::string error;
-                        if (!inflateBounded(d.compressed, raw.data(), d.expected, d.produced, error)) {
+                        if (!jasperengine::editor::pixelart::aseprite::detail::inflateBounded(d.compressed, raw.data(), d.expected, d.produced, error)) {
                             d.error = error.empty() ? std::string("not a zlib stream") : error;
                             continue;
                         }
-                        *d.image = imageFromFileBytes(d.w, d.h, mode, raw, std::span<const uint8_t>(), -1);
+                        *d.image = jasperengine::editor::pixelart::aseprite::detail::imageFromFileBytes(d.w, d.h, mode, raw, std::span<const uint8_t>(), -1);
                     } catch (const std::bad_alloc&) {
                         d.error = "out of memory";
                     }
@@ -1048,13 +1047,13 @@ namespace jasperengine::editor::pixelart::aseprite {
             // what went wrong, in the file's order
             for (const DeferredCel& d : deferred) {
                 if (!d.error.empty()) {
-                    fail("corrupt_chunk", "chunk " + hex16(kChunkCel) + " at byte " + std::to_string(d.chunkStart) + " holds damaged pixels (" + d.error + ")",
-                         "the file is damaged: open it in Aseprite and save it again", chunkField(kChunkCel, d.chunkStart), d.chunkStart);
+                    jasperengine::editor::pixelart::aseprite::detail::fail("corrupt_chunk", "chunk " + jasperengine::editor::pixelart::aseprite::detail::hex16(kChunkCel) + " at byte " + std::to_string(d.chunkStart) + " holds damaged pixels (" + d.error + ")",
+                         "the file is damaged: open it in Aseprite and save it again", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkCel, d.chunkStart), d.chunkStart);
                 }
                 if (d.produced < d.expected) {
-                    warn("corrupt_chunk", "chunk " + hex16(kChunkCel) + " at byte " + std::to_string(d.chunkStart) + " holds " + std::to_string(d.produced) +
+                    warn("corrupt_chunk", "chunk " + jasperengine::editor::pixelart::aseprite::detail::hex16(kChunkCel) + " at byte " + std::to_string(d.chunkStart) + " holds " + std::to_string(d.produced) +
                          " of its " + std::to_string(d.expected) + " pixel bytes (the rest is transparent)",
-                         "save the file again from Aseprite", chunkField(kChunkCel, d.chunkStart), d.chunkStart);
+                         "save the file again from Aseprite", jasperengine::editor::pixelart::aseprite::detail::chunkField(kChunkCel, d.chunkStart), d.chunkStart);
                 }
             }
             deferred.clear();

@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace EntityPathClipTest_cpp {
+
 using namespace jasperengine;
 using editor::EntityPath;
 
@@ -197,3 +199,5 @@ TEST(EntityPathClip, UnaddressableNamesAreRejectedTheSameWay){
         EXPECT_EQ(std::count(listed.begin(), listed.end(), relative), 1) << relative;
     }
 }
+
+}  // namespace EntityPathClipTest_cpp

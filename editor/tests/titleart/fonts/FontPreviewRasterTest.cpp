@@ -16,6 +16,8 @@
 #include <atomic>
 #include <initializer_list>
 
+namespace FontPreviewRasterTest_cpp {
+
 using namespace jasperengine::editor::titlefonts;
 using namespace jasperengine::editor::titlefonts::test;
 
@@ -194,3 +196,5 @@ TEST(FontPreviewRasterTest, QueueUploadsTwoPerFrameKeepsAnLruAndDropsUnrequested
     EXPECT_EQ(raster.cachedCount(), 0u);
     raster.waitIdle();
 }
+
+}  // namespace FontPreviewRasterTest_cpp

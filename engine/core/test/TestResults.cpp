@@ -19,7 +19,8 @@
 #endif
 
 using namespace jasperengine;
-using namespace jasperengine::gametest;
+
+namespace jasperengine::gametest {
 
 namespace {
 
@@ -73,11 +74,11 @@ namespace {
 
 }
 
-const char* jasperengine::gametest::modeName(Mode mode) {
+const char* modeName(Mode mode) {
     return mode == Mode::Edit ? "edit" : "play";
 }
 
-const char* jasperengine::gametest::statusName(Status status) {
+const char* statusName(Status status) {
     switch (status) {
         case Status::Passed: return "passed";
         case Status::Failed: return "failed";
@@ -198,7 +199,7 @@ bool Settings::fromJson(const Json& json, Settings& out, std::string& error) {
     return true;
 }
 
-Json jasperengine::gametest::caseJson(const CaseResult& r, size_t maxConsole) {
+Json caseJson(const CaseResult& r, size_t maxConsole) {
     Json failures = Json::array();
     for (const Failure& f : r.failures)
         failures.push_back({{"kind", f.kind}, {"message", f.message}, {"file", f.file}, {"line", f.line}, {"frame", f.frame}});
@@ -226,12 +227,12 @@ Json jasperengine::gametest::caseJson(const CaseResult& r, size_t maxConsole) {
                 {"log", r.log}};
 }
 
-Json jasperengine::gametest::countsJson(const Counts& c) {
+Json countsJson(const Counts& c) {
     return Json{{"total", c.total},   {"passed", c.passed}, {"failed", c.failed},           {"skipped", c.skipped},
                 {"error", c.error},   {"hung", c.hung},     {"excluded_edit", c.excludedEdit}};
 }
 
-Json jasperengine::gametest::resultsJson(const RunResult& result) {
+Json resultsJson(const RunResult& result) {
     const RunInfo& run = result.run;
     Json cases = Json::array();
     for (const CaseResult& r : result.cases) cases.push_back(caseJson(r));
@@ -255,7 +256,7 @@ Json jasperengine::gametest::resultsJson(const RunResult& result) {
                 {"cases", cases}};
 }
 
-bool jasperengine::gametest::caseFromJson(const Json& j, CaseResult& out, std::string& error) {
+bool caseFromJson(const Json& j, CaseResult& out, std::string& error) {
     out = CaseResult();
     if (!j.is_object() || !j.contains("id") || !j["id"].is_string() || !j.contains("status")) {
         error = "a case without id or status";
@@ -300,7 +301,7 @@ bool jasperengine::gametest::caseFromJson(const Json& j, CaseResult& out, std::s
     return true;
 }
 
-bool jasperengine::gametest::resultsFromJson(const Json& json, RunResult& out, std::string& error) {
+bool resultsFromJson(const Json& json, RunResult& out, std::string& error) {
     out = RunResult();
     if (!json.is_object() || json.value("format", std::string()) != RESULTS_FORMAT) {
         error = "not a test results document (format \"" + std::string(RESULTS_FORMAT) + "\")";
@@ -344,7 +345,7 @@ bool jasperengine::gametest::resultsFromJson(const Json& json, RunResult& out, s
     return true;
 }
 
-Counts jasperengine::gametest::countResults(const std::vector<CaseResult>& cases, int excludedEdit) {
+Counts countResults(const std::vector<CaseResult>& cases, int excludedEdit) {
     Counts c;
     c.excludedEdit = excludedEdit;
     for (const CaseResult& r : cases) {
@@ -360,7 +361,7 @@ Counts jasperengine::gametest::countResults(const std::vector<CaseResult>& cases
     return c;
 }
 
-std::string jasperengine::gametest::junitXml(const RunResult& result) {
+std::string junitXml(const RunResult& result) {
     // one suite per file, in the order the files first appear
     std::vector<std::string> files;
     std::map<std::string, std::vector<const CaseResult*>> byFile;
@@ -418,7 +419,7 @@ std::string jasperengine::gametest::junitXml(const RunResult& result) {
     return xml;
 }
 
-bool jasperengine::gametest::matchesFilter(const CaseSpec& spec, const std::string& filter) {
+bool matchesFilter(const CaseSpec& spec, const std::string& filter) {
     if (trim(filter).empty()) return true;
     const std::string id = lower(spec.id);
     size_t start = 0;
@@ -439,7 +440,7 @@ bool jasperengine::gametest::matchesFilter(const CaseSpec& spec, const std::stri
     return false;
 }
 
-std::string jasperengine::gametest::caseIdPath(const std::string& caseId) {
+std::string caseIdPath(const std::string& caseId) {
     std::string out;
     for (char c : caseId) {
         if (c == '/' || c == '#') out += "__";
@@ -449,7 +450,7 @@ std::string jasperengine::gametest::caseIdPath(const std::string& caseId) {
     return out;
 }
 
-std::string jasperengine::gametest::isoTimeUtc() {
+std::string isoTimeUtc() {
     const std::time_t now = std::time(nullptr);
     std::tm tm{};
 #ifdef _WIN32
@@ -462,7 +463,7 @@ std::string jasperengine::gametest::isoTimeUtc() {
     return text;
 }
 
-std::string jasperengine::gametest::newRunId() {
+std::string newRunId() {
     const std::time_t now = std::time(nullptr);
     std::tm tm{};
 #ifdef _WIN32
@@ -478,11 +479,11 @@ std::string jasperengine::gametest::newRunId() {
     return std::string(text) + suffix;
 }
 
-std::string jasperengine::gametest::beginLine(int cases, const std::string& runId) {
+std::string beginLine(int cases, const std::string& runId) {
     return "begin " + Json{{"cases", cases}, {"run", runId}}.dump();
 }
 
-std::string jasperengine::gametest::caseLine(const CaseResult& result) {
+std::string caseLine(const CaseResult& result) {
     constexpr size_t MAX_LINE = 16 * 1024;
     const std::string prefix = "case ";
     Json json = caseJson(result, 20);
@@ -506,11 +507,11 @@ std::string jasperengine::gametest::caseLine(const CaseResult& result) {
     return line;
 }
 
-std::string jasperengine::gametest::summaryLine(const Counts& counts) {
+std::string summaryLine(const Counts& counts) {
     return "summary " + countsJson(counts).dump();
 }
 
-std::string jasperengine::gametest::hostPlatformName() {
+std::string hostPlatformName() {
 #if defined(__EMSCRIPTEN__)
     return "web";
 #elif defined(__ANDROID__)
@@ -528,7 +529,7 @@ std::string jasperengine::gametest::hostPlatformName() {
 #endif
 }
 
-std::string jasperengine::gametest::hostArchName() {
+std::string hostArchName() {
 #if defined(__x86_64__) || defined(_M_X64)
     return "x64";
 #elif defined(__aarch64__) || defined(_M_ARM64)
@@ -544,7 +545,7 @@ std::string jasperengine::gametest::hostArchName() {
 #endif
 }
 
-std::string jasperengine::gametest::backendName() {
+std::string backendName() {
     switch (Engine::getGraphicBackend()) {
         case GraphicBackend::GLCORE: return "glcore";
         case GraphicBackend::GLES3: return "gles3";
@@ -555,3 +556,5 @@ std::string jasperengine::gametest::backendName() {
     }
     return "unknown";
 }
+
+}  // namespace jasperengine::gametest

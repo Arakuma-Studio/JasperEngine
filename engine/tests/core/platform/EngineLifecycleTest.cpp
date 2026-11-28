@@ -15,6 +15,8 @@
 #include <cstdlib>
 #include <vector>
 
+namespace EngineLifecycleTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -88,3 +90,5 @@ TEST(EngineLifecycle, LoadingThreadScopeOnTheMainThreadNeverWaits){
         std::_Exit(mainThreadAllAlong && !Engine::isViewLoaded() ? 0 : 1);
     }, ::testing::ExitedWithCode(0), "");
 }
+
+}  // namespace EngineLifecycleTest_cpp

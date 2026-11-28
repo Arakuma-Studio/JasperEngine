@@ -26,6 +26,8 @@
     extern char** environ;
 #endif
 
+namespace AppSettingsTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -125,3 +127,5 @@ TEST(AppSettings, AutosaveIntervalClamped) {
     EXPECT_EQ(AppSettings::getAutosaveIntervalSeconds(), AppSettings::maxAutosaveInterval);
     AppSettings::setAutosaveIntervalSeconds(AppSettings::defaultAutosaveInterval);
 }
+
+}  // namespace AppSettingsTest_cpp

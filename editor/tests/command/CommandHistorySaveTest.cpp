@@ -12,6 +12,8 @@
 
 #include <vector>
 
+namespace CommandHistorySaveTest_cpp {
+
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
@@ -96,3 +98,5 @@ TEST(CommandHistorySave, AGroupHoldingASavedPartIsPastTheSave) {
     EXPECT_EQ(past.scenes, (std::vector<size_t>{5}));
     EXPECT_EQ(state.value, 0);
 }
+
+}  // namespace CommandHistorySaveTest_cpp

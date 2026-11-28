@@ -17,6 +17,8 @@
 #include <fstream>
 #include <memory>
 
+namespace ModelUsageTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -87,3 +89,5 @@ TEST(ModelUsage, ScenesMarkBlendedSubmeshesAndReaders){
     index.clear();
     closeProject(*project);
 }
+
+}  // namespace ModelUsageTest_cpp

@@ -21,7 +21,6 @@
 using namespace jasperengine;
 
 namespace je_platform_sinks {}
-using namespace je_platform_sinks;
 
 namespace je_platform_sinks {
 
@@ -58,7 +57,7 @@ void jasperengine::installPlatformLogSinks(const PlatformLogOptions& options) {
     #if !defined(__APPLE__) || !TARGET_OS_IPHONE
     if (options.fileLog && !options.userDataPath.empty()) {
         const std::string directory = options.userDataPath + "/logs";
-        makeDirectory(directory);
+        je_platform_sinks::makeDirectory(directory);
         RotatingFileSink::Options file;
         file.path = directory + "/player.log";
         file.maxBytes = options.fileBytes;

@@ -9,7 +9,9 @@
 #include <algorithm>
 
 using namespace jasperengine;
-using namespace jasperengine::player;
+
+namespace jasperengine::player {
+
 using nlohmann::json;
 
 json ContentManifest::toJson() const {
@@ -96,7 +98,7 @@ bool ContentManifest::parse(const std::string& text, ContentManifest& out, std::
     return fromJson(parsed, out, error);
 }
 
-std::vector<std::string> player::missingModules(const ContentManifest& manifest, const std::vector<std::string>& available) {
+std::vector<std::string> missingModules(const ContentManifest& manifest, const std::vector<std::string>& available) {
     const std::vector<std::string>& needed = manifest.hasModules ? manifest.modules : allModules();
     std::vector<std::string> missing;
     for (const std::string& module : needed)
@@ -104,7 +106,7 @@ std::vector<std::string> player::missingModules(const ContentManifest& manifest,
     return missing;
 }
 
-bool player::checkContent(const ContentManifest& manifest, const std::string& playerId, const ContentAccess& access, bool verifyHashes,
+bool checkContent(const ContentManifest& manifest, const std::string& playerId, const ContentAccess& access, bool verifyHashes,
                           std::vector<std::string>& problems, const std::vector<std::string>* playerModules) {
     if (!cook::playerReadsContentFormat(manifest.contentFormatVersion)) {
         problems.push_back("content format " + manifest.contentFormatVersion + ", this player reads " + cook::contentFormatVersion() +
@@ -154,10 +156,12 @@ bool player::checkContent(const ContentManifest& manifest, const std::string& pl
     return problems.empty();
 }
 
-std::string player::runtimePlayerId() {
+std::string runtimePlayerId() {
 #ifdef JASPERENGINE_PLAYER_ID
     return JASPERENGINE_PLAYER_ID;
 #else
     return "";
 #endif
 }
+
+}  // namespace jasperengine::player

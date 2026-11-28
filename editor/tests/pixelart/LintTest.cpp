@@ -21,6 +21,8 @@
 #include <thread>
 #include <vector>
 
+namespace LintTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::lint;
@@ -509,3 +511,5 @@ TEST(PixelLint, NearDuplicatesSkipsAPictureWithMoreColoursThanPixelArtHas) {
     expectStatus(r, LintStatus::Skip, "4,000 colours");
     EXPECT_NE(r.message.find("not pixel art"), std::string::npos) << r.message;
 }
+
+}  // namespace LintTest_cpp

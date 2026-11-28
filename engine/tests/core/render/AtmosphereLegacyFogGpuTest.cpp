@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+namespace AtmosphereLegacyFogGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -138,3 +140,5 @@ TEST_F(AtmosphereLegacyFogGpu, ExponentialSquaredFog){
     EXPECT_GOLDEN_OPTIONS("atmosphere_legacy_exponential_squared", exact());
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace AtmosphereLegacyFogGpuTest_cpp

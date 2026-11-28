@@ -35,6 +35,8 @@
 #include <string>
 #include <vector>
 
+namespace SpriteSkinGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -285,3 +287,5 @@ TEST_F(SpriteSkinGpu, AbsentAddsNothing) {
     SpriteSheetPool::invalidate(skinned);
     SpriteSheetPool::invalidate(plain);
 }
+
+}  // namespace SpriteSkinGpuTest_cpp

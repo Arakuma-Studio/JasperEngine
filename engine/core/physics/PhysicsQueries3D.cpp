@@ -402,7 +402,6 @@ namespace jasperengine::physicsqueries3d {
 
 }
 
-using namespace jasperengine::physicsqueries3d;
 
 const char* PhysicsQueries3D::invalidDirection(const Vector3& direction, float maxDistance){
     const float length = direction.length();
@@ -420,113 +419,113 @@ const char* PhysicsQueries3D::invalidRadius(float radius){
 }
 
 const char* PhysicsQueries3D::invalidHalfExtents(const Vector3& halfExtents){
-    return (finiteVector(halfExtents) && halfExtents.x > 0.0f && halfExtents.y > 0.0f && halfExtents.z > 0.0f)
+    return (physicsqueries3d::finiteVector(halfExtents) && halfExtents.x > 0.0f && halfExtents.y > 0.0f && halfExtents.z > 0.0f)
         ? nullptr : "halfExtents must be positive and finite on every axis";
 }
 
 const char* PhysicsQueries3D::invalidPoint(const Vector3& point){
-    return finiteVector(point) ? nullptr : "the position must be finite";
+    return physicsqueries3d::finiteVector(point) ? nullptr : "the position must be finite";
 }
 
 RayReturn PhysicsQueries3D::sphereCast(Scene* scene, Vector3 origin, float radius, Vector3 direction, float maxDistance, const QueryOptions& options){
-    if (!validSphere("Physics.sphereCast", origin, radius)){
+    if (!physicsqueries3d::validSphere("Physics.sphereCast", origin, radius)){
         return Ray::NO_HIT;
     }
     JPH::SphereShape sphere(radius);
     sphere.SetEmbedded();
-    const RayReturn hit = cast(scene, "Physics.sphereCast", sphere, poseAt(origin, Quaternion::IDENTITY), direction, maxDistance, options, NULL_ENTITY, nullptr);
+    const RayReturn hit = physicsqueries3d::cast(scene, "Physics.sphereCast", sphere, physicsqueries3d::poseAt(origin, Quaternion::IDENTITY), direction, maxDistance, options, NULL_ENTITY, nullptr);
     physics::noteCast(scene, physics::QueryShape::sphere(origin, radius), direction, maxDistance, &hit, hit.hit ? 1 : 0);
     return hit;
 }
 
 RayReturn PhysicsQueries3D::boxCast(Scene* scene, Vector3 center, Vector3 halfExtents, Vector3 direction, Quaternion orientation, float maxDistance, const QueryOptions& options){
-    if (!validBox("Physics.boxCast", center, halfExtents)){
+    if (!physicsqueries3d::validBox("Physics.boxCast", center, halfExtents)){
         return Ray::NO_HIT;
     }
     // no convex radius: the cast box has sharp corners, as Unity's
-    JPH::BoxShape box(queryToJolt(halfExtents), 0.0f);
+    JPH::BoxShape box(physicsqueries3d::queryToJolt(halfExtents), 0.0f);
     box.SetEmbedded();
-    const RayReturn hit = cast(scene, "Physics.boxCast", box, poseAt(center, orientation), direction, maxDistance, options, NULL_ENTITY, nullptr);
+    const RayReturn hit = physicsqueries3d::cast(scene, "Physics.boxCast", box, physicsqueries3d::poseAt(center, orientation), direction, maxDistance, options, NULL_ENTITY, nullptr);
     physics::noteCast(scene, physics::QueryShape::box(center, halfExtents, orientation), direction, maxDistance, &hit, hit.hit ? 1 : 0);
     return hit;
 }
 
 RayReturn PhysicsQueries3D::capsuleCast(Scene* scene, Vector3 point1, Vector3 point2, float radius, Vector3 direction, float maxDistance, const QueryOptions& options){
-    if (!validCapsule("Physics.capsuleCast", point1, point2, radius)){
+    if (!physicsqueries3d::validCapsule("Physics.capsuleCast", point1, point2, radius)){
         return Ray::NO_HIT;
     }
-    CapsuleQuery capsule(point1, point2, radius);
-    const RayReturn hit = cast(scene, "Physics.capsuleCast", *capsule.shape, capsule.pose, direction, maxDistance, options, NULL_ENTITY, nullptr);
+    physicsqueries3d::CapsuleQuery capsule(point1, point2, radius);
+    const RayReturn hit = physicsqueries3d::cast(scene, "Physics.capsuleCast", *capsule.shape, capsule.pose, direction, maxDistance, options, NULL_ENTITY, nullptr);
     physics::noteCast(scene, physics::QueryShape::capsule(point1, point2, radius), direction, maxDistance, &hit, hit.hit ? 1 : 0);
     return hit;
 }
 
 size_t PhysicsQueries3D::sphereCastAll(Scene* scene, Vector3 origin, float radius, Vector3 direction, float maxDistance, std::vector<RayReturn>& hits, const QueryOptions& options){
     hits.clear();
-    if (!validSphere("Physics.sphereCastAll", origin, radius)){
+    if (!physicsqueries3d::validSphere("Physics.sphereCastAll", origin, radius)){
         return 0;
     }
     JPH::SphereShape sphere(radius);
     sphere.SetEmbedded();
-    cast(scene, "Physics.sphereCastAll", sphere, poseAt(origin, Quaternion::IDENTITY), direction, maxDistance, options, NULL_ENTITY, &hits);
+    physicsqueries3d::cast(scene, "Physics.sphereCastAll", sphere, physicsqueries3d::poseAt(origin, Quaternion::IDENTITY), direction, maxDistance, options, NULL_ENTITY, &hits);
     physics::noteCast(scene, physics::QueryShape::sphere(origin, radius), direction, maxDistance, hits.data(), hits.size());
     return hits.size();
 }
 
 size_t PhysicsQueries3D::boxCastAll(Scene* scene, Vector3 center, Vector3 halfExtents, Vector3 direction, Quaternion orientation, float maxDistance, std::vector<RayReturn>& hits, const QueryOptions& options){
     hits.clear();
-    if (!validBox("Physics.boxCastAll", center, halfExtents)){
+    if (!physicsqueries3d::validBox("Physics.boxCastAll", center, halfExtents)){
         return 0;
     }
-    JPH::BoxShape box(queryToJolt(halfExtents), 0.0f);
+    JPH::BoxShape box(physicsqueries3d::queryToJolt(halfExtents), 0.0f);
     box.SetEmbedded();
-    cast(scene, "Physics.boxCastAll", box, poseAt(center, orientation), direction, maxDistance, options, NULL_ENTITY, &hits);
+    physicsqueries3d::cast(scene, "Physics.boxCastAll", box, physicsqueries3d::poseAt(center, orientation), direction, maxDistance, options, NULL_ENTITY, &hits);
     physics::noteCast(scene, physics::QueryShape::box(center, halfExtents, orientation), direction, maxDistance, hits.data(), hits.size());
     return hits.size();
 }
 
 size_t PhysicsQueries3D::capsuleCastAll(Scene* scene, Vector3 point1, Vector3 point2, float radius, Vector3 direction, float maxDistance, std::vector<RayReturn>& hits, const QueryOptions& options){
     hits.clear();
-    if (!validCapsule("Physics.capsuleCastAll", point1, point2, radius)){
+    if (!physicsqueries3d::validCapsule("Physics.capsuleCastAll", point1, point2, radius)){
         return 0;
     }
-    CapsuleQuery capsule(point1, point2, radius);
-    cast(scene, "Physics.capsuleCastAll", *capsule.shape, capsule.pose, direction, maxDistance, options, NULL_ENTITY, &hits);
+    physicsqueries3d::CapsuleQuery capsule(point1, point2, radius);
+    physicsqueries3d::cast(scene, "Physics.capsuleCastAll", *capsule.shape, capsule.pose, direction, maxDistance, options, NULL_ENTITY, &hits);
     physics::noteCast(scene, physics::QueryShape::capsule(point1, point2, radius), direction, maxDistance, hits.data(), hits.size());
     return hits.size();
 }
 
 size_t PhysicsQueries3D::overlapSphere(Scene* scene, Vector3 center, float radius, std::vector<ColliderRef>& colliders, const QueryOptions& options){
     colliders.clear();
-    if (!validSphere("Physics.overlapSphere", center, radius)){
+    if (!physicsqueries3d::validSphere("Physics.overlapSphere", center, radius)){
         return 0;
     }
     JPH::SphereShape sphere(radius);
     sphere.SetEmbedded();
-    const size_t count = overlap(scene, sphere, poseAt(center, Quaternion::IDENTITY), options, &colliders);
+    const size_t count = physicsqueries3d::overlap(scene, sphere, physicsqueries3d::poseAt(center, Quaternion::IDENTITY), options, &colliders);
     physics::noteOverlap(scene, physics::QueryShape::sphere(center, radius), count, colliders.data(), colliders.size());
     return count;
 }
 
 size_t PhysicsQueries3D::overlapBox(Scene* scene, Vector3 center, Vector3 halfExtents, Quaternion orientation, std::vector<ColliderRef>& colliders, const QueryOptions& options){
     colliders.clear();
-    if (!validBox("Physics.overlapBox", center, halfExtents)){
+    if (!physicsqueries3d::validBox("Physics.overlapBox", center, halfExtents)){
         return 0;
     }
-    JPH::BoxShape box(queryToJolt(halfExtents), 0.0f);
+    JPH::BoxShape box(physicsqueries3d::queryToJolt(halfExtents), 0.0f);
     box.SetEmbedded();
-    const size_t count = overlap(scene, box, poseAt(center, orientation), options, &colliders);
+    const size_t count = physicsqueries3d::overlap(scene, box, physicsqueries3d::poseAt(center, orientation), options, &colliders);
     physics::noteOverlap(scene, physics::QueryShape::box(center, halfExtents, orientation), count, colliders.data(), colliders.size());
     return count;
 }
 
 size_t PhysicsQueries3D::overlapCapsule(Scene* scene, Vector3 point1, Vector3 point2, float radius, std::vector<ColliderRef>& colliders, const QueryOptions& options){
     colliders.clear();
-    if (!validCapsule("Physics.overlapCapsule", point1, point2, radius)){
+    if (!physicsqueries3d::validCapsule("Physics.overlapCapsule", point1, point2, radius)){
         return 0;
     }
-    CapsuleQuery capsule(point1, point2, radius);
-    const size_t count = overlap(scene, *capsule.shape, capsule.pose, options, &colliders);
+    physicsqueries3d::CapsuleQuery capsule(point1, point2, radius);
+    const size_t count = physicsqueries3d::overlap(scene, *capsule.shape, capsule.pose, options, &colliders);
     physics::noteOverlap(scene, physics::QueryShape::capsule(point1, point2, radius), count, colliders.data(), colliders.size());
     return count;
 }
@@ -537,39 +536,39 @@ size_t PhysicsQueries3D::overlapPoint(Scene* scene, Vector3 point, std::vector<C
         Log::error("Physics.overlapPoint: %s", why);
         return 0;
     }
-    const size_t count = overlapAtPoint(scene, point, options, &colliders);
+    const size_t count = physicsqueries3d::overlapAtPoint(scene, point, options, &colliders);
     physics::noteOverlap(scene, physics::QueryShape::point(point), count, colliders.data(), colliders.size());
     return count;
 }
 
 bool PhysicsQueries3D::checkSphere(Scene* scene, Vector3 center, float radius, const QueryOptions& options){
-    if (!validSphere("Physics.checkSphere", center, radius)){
+    if (!physicsqueries3d::validSphere("Physics.checkSphere", center, radius)){
         return false;
     }
     JPH::SphereShape sphere(radius);
     sphere.SetEmbedded();
-    const size_t found = overlap(scene, sphere, poseAt(center, Quaternion::IDENTITY), options, nullptr);
+    const size_t found = physicsqueries3d::overlap(scene, sphere, physicsqueries3d::poseAt(center, Quaternion::IDENTITY), options, nullptr);
     physics::noteOverlap<ColliderRef>(scene, physics::QueryShape::sphere(center, radius), found, nullptr, 0);
     return found > 0;
 }
 
 bool PhysicsQueries3D::checkBox(Scene* scene, Vector3 center, Vector3 halfExtents, Quaternion orientation, const QueryOptions& options){
-    if (!validBox("Physics.checkBox", center, halfExtents)){
+    if (!physicsqueries3d::validBox("Physics.checkBox", center, halfExtents)){
         return false;
     }
-    JPH::BoxShape box(queryToJolt(halfExtents), 0.0f);
+    JPH::BoxShape box(physicsqueries3d::queryToJolt(halfExtents), 0.0f);
     box.SetEmbedded();
-    const size_t found = overlap(scene, box, poseAt(center, orientation), options, nullptr);
+    const size_t found = physicsqueries3d::overlap(scene, box, physicsqueries3d::poseAt(center, orientation), options, nullptr);
     physics::noteOverlap<ColliderRef>(scene, physics::QueryShape::box(center, halfExtents, orientation), found, nullptr, 0);
     return found > 0;
 }
 
 bool PhysicsQueries3D::checkCapsule(Scene* scene, Vector3 point1, Vector3 point2, float radius, const QueryOptions& options){
-    if (!validCapsule("Physics.checkCapsule", point1, point2, radius)){
+    if (!physicsqueries3d::validCapsule("Physics.checkCapsule", point1, point2, radius)){
         return false;
     }
-    CapsuleQuery capsule(point1, point2, radius);
-    const size_t found = overlap(scene, *capsule.shape, capsule.pose, options, nullptr);
+    physicsqueries3d::CapsuleQuery capsule(point1, point2, radius);
+    const size_t found = physicsqueries3d::overlap(scene, *capsule.shape, capsule.pose, options, nullptr);
     physics::noteOverlap<ColliderRef>(scene, physics::QueryShape::capsule(point1, point2, radius), found, nullptr, 0);
     return found > 0;
 }
@@ -579,17 +578,17 @@ bool PhysicsQueries3D::checkPoint(Scene* scene, Vector3 point, const QueryOption
         Log::error("Physics.checkPoint: %s", why);
         return false;
     }
-    const size_t found = overlapAtPoint(scene, point, options, nullptr);
+    const size_t found = physicsqueries3d::overlapAtPoint(scene, point, options, nullptr);
     physics::noteOverlap<ColliderRef>(scene, physics::QueryShape::point(point), found, nullptr, 0);
     return found > 0;
 }
 
 bool PhysicsQueries3D::closestPoint(Scene* scene, Vector3 point, const ColliderRef& collider, Vector3& closest){
     closest = point;
-    if (!finiteVector(point) || !scene || collider.index < 0){
+    if (!physicsqueries3d::finiteVector(point) || !scene || collider.index < 0){
         return false;
     }
-    std::shared_ptr<PhysicsSystem> physics = worldOf(scene);
+    std::shared_ptr<PhysicsSystem> physics = physicsqueries3d::worldOf(scene);
     // an attached child's collider is a leaf of the body it joined (S96 REQ-18)
     Entity bodyEntity = collider.entity;
     int index = collider.index;
@@ -609,7 +608,7 @@ bool PhysicsQueries3D::closestPoint(Scene* scene, Vector3 point, const ColliderR
         }
         const JPH::TransformedShape shape = lock.GetBody().GetTransformedShape();
         lock.ReleaseLock();
-        ColliderLeafCollector leaves;
+        physicsqueries3d::ColliderLeafCollector leaves;
         leaves.root = shape.mShape;
         leaves.index = (JPH::uint64)index;
         shape.CollectTransformedShapes(JPH::AABox::sBiggest(), leaves);
@@ -621,7 +620,7 @@ bool PhysicsQueries3D::closestPoint(Scene* scene, Vector3 point, const ColliderR
         }
         const JPH::ConvexShape* convex = static_cast<const JPH::ConvexShape*>(leaves.leaf.mShape.GetPtr());
         const JPH::RMat44 transform = leaves.leaf.GetCenterOfMassTransform();
-        const JPH::Vec3 local = JPH::Vec3(transform.InversedRotationTranslation() * JPH::RVec3(queryToJolt(point)));
+        const JPH::Vec3 local = JPH::Vec3(transform.InversedRotationTranslation() * JPH::RVec3(physicsqueries3d::queryToJolt(point)));
         JPH::ConvexShape::SupportBuffer buffer;
         const JPH::ConvexShape::Support* support = convex->GetSupportFunction(JPH::ConvexShape::ESupportMode::IncludeConvexRadius, buffer, leaves.leaf.GetShapeScale());
         JPH::PointConvexSupport target{local};
@@ -631,7 +630,7 @@ bool PhysicsQueries3D::closestPoint(Scene* scene, Vector3 point, const ColliderR
         const float distanceSq = gjk.GetClosestPoints(*support, target, 1.0e-5f, FLT_MAX, v, onShape, onPoint);
         // 0: the point is inside (Unity returns it unchanged)
         if (distanceSq > 0.0f){
-            closest = queryFromJolt(JPH::Vec3(transform * JPH::RVec3(onShape)));
+            closest = physicsqueries3d::queryFromJolt(JPH::Vec3(transform * JPH::RVec3(onShape)));
         }
         return true;
     }
@@ -639,7 +638,7 @@ bool PhysicsQueries3D::closestPoint(Scene* scene, Vector3 point, const ColliderR
 }
 
 RayReturn PhysicsQueries3D::sweepTest(Scene* scene, Entity body, Vector3 direction, float maxDistance, const QueryOptions& options){
-    std::shared_ptr<PhysicsSystem> physics = worldOf(scene);
+    std::shared_ptr<PhysicsSystem> physics = physicsqueries3d::worldOf(scene);
     const RigidbodyComponent* component = scene ? scene->findComponent<RigidbodyComponent>(body) : nullptr;
     if (!physics || !component || component->body.IsInvalid()){
         return Ray::NO_HIT;
@@ -654,12 +653,12 @@ RayReturn PhysicsQueries3D::sweepTest(Scene* scene, Entity body, Vector3 directi
         shape = lock.GetBody().GetShape();
         start = lock.GetBody().GetCenterOfMassTransform();
     }
-    return cast(scene, "Rigidbody.sweepTest", *shape, start, direction, maxDistance, options, body, nullptr);
+    return physicsqueries3d::cast(scene, "Rigidbody.sweepTest", *shape, start, direction, maxDistance, options, body, nullptr);
 }
 
 size_t PhysicsQueries3D::sweepTestAll(Scene* scene, Entity body, Vector3 direction, float maxDistance, std::vector<RayReturn>& hits, const QueryOptions& options){
     hits.clear();
-    std::shared_ptr<PhysicsSystem> physics = worldOf(scene);
+    std::shared_ptr<PhysicsSystem> physics = physicsqueries3d::worldOf(scene);
     const RigidbodyComponent* component = scene ? scene->findComponent<RigidbodyComponent>(body) : nullptr;
     if (!physics || !component || component->body.IsInvalid()){
         return 0;
@@ -674,7 +673,7 @@ size_t PhysicsQueries3D::sweepTestAll(Scene* scene, Entity body, Vector3 directi
         shape = lock.GetBody().GetShape();
         start = lock.GetBody().GetCenterOfMassTransform();
     }
-    cast(scene, "Rigidbody.sweepTestAll", *shape, start, direction, maxDistance, options, body, &hits);
+    physicsqueries3d::cast(scene, "Rigidbody.sweepTestAll", *shape, start, direction, maxDistance, options, body, &hits);
     return hits.size();
 }
 

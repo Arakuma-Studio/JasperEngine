@@ -18,6 +18,8 @@
 #include <cstdio>
 #include <fstream>
 
+namespace BitmapFontBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pixelart;
 
@@ -139,3 +141,5 @@ TEST(BitmapFontBench, RebuildAndCacheBudgets){
     bfbBudget("styled glyph miss (per glyph)", miss / (double)glyphs.size(), 0.01);
     BitmapTextCache::get().clear();
 }
+
+}  // namespace BitmapFontBenchTest_cpp

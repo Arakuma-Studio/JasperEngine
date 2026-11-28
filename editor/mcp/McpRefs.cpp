@@ -17,7 +17,8 @@ namespace fs = std::filesystem;
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::mcp;
+
+namespace jasperengine::editor::mcp {
 
 namespace {
 
@@ -667,3 +668,5 @@ bool McpRefs::resolveProjectWritePath(Project* project, const std::string& relat
     error = escape;
     return false;
 }
+
+}  // namespace jasperengine::editor::mcp

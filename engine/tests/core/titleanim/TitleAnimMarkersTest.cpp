@@ -13,6 +13,8 @@
 
 #include <memory>
 
+namespace TitleAnimMarkersTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleanim;
 
@@ -192,3 +194,5 @@ TEST(TitleAnimMarkersTest, RedControlWithoutPassSplit){
     setMarkerPassSplitDisabledForTesting(false);
     EXPECT_GT(naive, 3) << "the red control must fail without the split";
 }
+
+}  // namespace TitleAnimMarkersTest_cpp

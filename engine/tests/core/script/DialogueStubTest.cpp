@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+namespace DialogueStubTest_cpp {
+
 using namespace jasperengine;
 
 TEST(DialogueStubTest, LogsOnceWhenNotCompiled) {
@@ -41,3 +43,5 @@ TEST(DialogueStubTest, LogsOnceWhenNotCompiled) {
         EXPECT_NE(warnings[0].find("JASPERENGINE_DIALOGUE"), std::string::npos);
     }
 }
+
+}  // namespace DialogueStubTest_cpp

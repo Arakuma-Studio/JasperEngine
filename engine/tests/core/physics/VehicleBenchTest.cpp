@@ -31,6 +31,8 @@
 #include <memory>
 #include <vector>
 
+namespace VehicleBenchTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -196,3 +198,5 @@ TEST(VehicleBench, TwentyCarsStep){
         EXPECT_LE(cost, 0.25 * 1.5 * testsupport::perfSlack());
     }
 }
+
+}  // namespace VehicleBenchTest_cpp

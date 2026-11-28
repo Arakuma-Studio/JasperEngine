@@ -14,6 +14,8 @@
 
 #include "yaml-cpp/yaml.h"
 
+namespace SavedSearchesTest_cpp {
+
 using namespace jasperengine::editor;
 using jasperengine::editor::test::FakeAssetIndex;
 
@@ -114,3 +116,5 @@ TEST(SavedSearches, OrganisationFileRoundTrip) {
     // a newer or broken file is refused
     EXPECT_FALSE(back.parse("[1, 2]", &error));
 }
+
+}  // namespace SavedSearchesTest_cpp

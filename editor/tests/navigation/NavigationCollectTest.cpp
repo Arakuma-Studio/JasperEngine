@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+namespace NavigationCollectTest_cpp {
+
 using namespace jasperengine;
 
 TEST(NavigationCollect, EditorOverlaysNotCollected){
@@ -31,3 +33,5 @@ TEST(NavigationCollect, EditorOverlaysNotCollected){
     scene.getSystem<RenderSystem>()->setEditorOverlay(overlay.getEntity(), true);
     EXPECT_EQ(system->countDirtyTiles(floor.getEntity()), 0);
 }
+
+}  // namespace NavigationCollectTest_cpp

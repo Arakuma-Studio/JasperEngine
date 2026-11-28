@@ -21,7 +21,8 @@
 #include <sstream>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
+
+namespace jasperengine::particles {
 
 namespace {
 
@@ -578,3 +579,5 @@ void ParticleMeshes::geometry(const ParticleMeshData& mesh, MeshGeometry& out){
     }
     out.indices = mesh.indices;
 }
+
+}  // namespace jasperengine::particles

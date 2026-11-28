@@ -24,10 +24,11 @@
 #include <string>
 #include <vector>
 
+namespace lit_uniform_budget_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
-namespace lit_uniform_budget_test {
 
     size_t litStageVectors(const ShaderData& data, ShaderStageType type, std::string& blocks){
         size_t vectors = 0;
@@ -43,6 +44,8 @@ namespace lit_uniform_budget_test {
     }
 
 }
+
+namespace lit_uniform_budget_test {
 
 using namespace lit_uniform_budget_test;
 
@@ -81,3 +84,5 @@ TEST(LitUniformBudgetSlow, EveryMatrixVariantFits){
     std::printf("[lit] %zu matrix variants (%zu in heavy scenes); the most fragment uniform vectors: %zu of 224, %s\n",
                 variants.size(), heavy, worst, worstName.c_str());
 }
+
+}  // namespace lit_uniform_budget_test

@@ -46,6 +46,8 @@ namespace jasperengine::editor {
     };
 }
 
+namespace PlatformServicesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -889,3 +891,5 @@ TEST(GeneratedProject, PlatformSourcesListEveryBackendFile) {
     // what HostServicesWin links
     EXPECT_NE(cmake.find("ole32 uuid advapi32"), std::string::npos);
 }
+
+}  // namespace PlatformServicesTest_cpp

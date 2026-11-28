@@ -31,6 +31,8 @@
 #include <map>
 #include <set>
 
+namespace VertexColorOutputTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -553,3 +555,5 @@ TEST_F(VertexColorOutput, InspectorRowsAreUnityLabelsOnRealFields) {
 }
 
 } // namespace vertex_color_output_test
+
+}  // namespace VertexColorOutputTest_cpp

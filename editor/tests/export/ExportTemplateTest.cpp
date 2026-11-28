@@ -13,6 +13,8 @@
 #include <iterator>
 #include <string>
 
+namespace ExportTemplateTest_cpp {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -52,3 +54,5 @@ TEST(ExportTemplate, CookedContentReachesEveryContentRoot) {
     const std::string gradle = repoText("engine/workspaces/androidstudio/app/build.gradle");
     EXPECT_NE(gradle.find("from(projectSourceRootAbs + '/content')"), std::string::npos);
 }
+
+}  // namespace ExportTemplateTest_cpp

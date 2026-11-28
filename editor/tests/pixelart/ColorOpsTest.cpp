@@ -10,6 +10,8 @@
 #include "pixelart/draw/DrawPrimitives.h"
 #include "pixelart/draw/ShadeColor.h"
 
+namespace ColorOpsTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
 using jasperengine::editor::pixelart::s47test::json;
@@ -152,3 +154,5 @@ TEST(ColorOps, IndexedShadeSnapsAddsAndFailsWhenFull) {
     ASSERT_FALSE(rejected.ok);
     EXPECT_EQ(rejected.problem.kind, "palette_full");
 }
+
+}  // namespace ColorOpsTest_cpp

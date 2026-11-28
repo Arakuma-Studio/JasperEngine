@@ -17,6 +17,8 @@
 
 #include <string>
 
+namespace TimeAndTouchSettingsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -111,3 +113,5 @@ TEST(TimeAndTouchSettings, ReachTheGames){
     EXPECT_EQ(read.maximumDeltaTime, 0.1);
     EXPECT_TRUE(read.simulateTouchFromMouse);
 }
+
+}  // namespace TimeAndTouchSettingsTest_cpp

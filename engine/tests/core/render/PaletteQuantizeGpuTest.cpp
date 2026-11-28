@@ -28,6 +28,8 @@
 #include <string>
 #include <vector>
 
+namespace PaletteQuantizeGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 using namespace jasperengine::pixelart;
@@ -230,3 +232,5 @@ TEST_F(PaletteQuantizeGpu, CrtRunsOnTop){
     EXPECT_GT(outside, 0) << "the display emulation darkens the palette image, by design";
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace PaletteQuantizeGpuTest_cpp

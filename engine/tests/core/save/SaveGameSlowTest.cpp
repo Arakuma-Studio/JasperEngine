@@ -30,6 +30,8 @@
 extern char** environ;
 #endif
 
+namespace SaveGameSlowTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::test::LogCapture;
 using jasperengine::test::TestTempDir;
@@ -149,3 +151,5 @@ TEST(SaveGameKillSlow, KillDuringWritesLeavesAReadableSlot){
     store.setFolder({});
 }
 #endif
+
+}  // namespace SaveGameSlowTest_cpp

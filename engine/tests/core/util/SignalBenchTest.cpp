@@ -12,6 +12,8 @@
 #include <cstdio>
 #include <functional>
 
+namespace SignalBenchTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -70,3 +72,5 @@ TEST(SignalBench, CancellableEmitOverSignal) {
         EXPECT_LE(busyNs - signalNs, 5.0 * testsupport::perfSlack());
     }
 }
+
+}  // namespace SignalBenchTest_cpp

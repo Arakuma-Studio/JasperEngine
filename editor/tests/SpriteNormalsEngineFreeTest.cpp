@@ -32,6 +32,8 @@
 #include <string>
 #include <vector>
 
+namespace SpriteNormalsEngineFreeTest_cpp {
+
 namespace {
 
 namespace fs = std::filesystem;
@@ -166,3 +168,5 @@ TEST(SpriteNormalsEngineFree, GarbledIsDecidedByTheErrorsOriginNotItsText) {
     EXPECT_EQ(sn::checkStaleness(root, root / "plain.png").state, sn::Staleness::State::NoRecipe);
     fs::remove_all(root);
 }
+
+}  // namespace SpriteNormalsEngineFreeTest_cpp

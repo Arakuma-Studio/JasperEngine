@@ -20,6 +20,8 @@
 
 #include <string>
 
+namespace LuaOutlineTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -86,3 +88,5 @@ TEST(LuaOutline, NegativeWidthIsRefused){
     EXPECT_EQ(log.count(D_LOG_ERROR, "Outline width"), 1u);
     EXPECT_FLOAT_EQ(scene.getComponent<OutlineComponent>(box.getEntity()).width, 2.0f);
 }
+
+}  // namespace LuaOutlineTest_cpp

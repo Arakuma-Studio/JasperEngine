@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+namespace RectTest_cpp {
+
 using namespace jasperengine;
 
 TEST(Rect, DefaultsToTheUnitRect){
@@ -63,3 +65,5 @@ TEST(Rect, EqualityAndAssignment){
     b.setY(9);
     EXPECT_TRUE(a != b);
 }
+
+}  // namespace RectTest_cpp

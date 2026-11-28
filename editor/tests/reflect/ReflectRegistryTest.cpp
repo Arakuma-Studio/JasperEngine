@@ -15,13 +15,14 @@
 #include <fstream>
 #include <set>
 
+namespace reflect_registry_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using Json = jasperengine::editor::mcp::Json;
 
 // (a named namespace, tests included: a unity build merges the test sources)
-namespace reflect_registry_test {
 
     std::string hex(const char* text) {
         static const char* digits = "0123456789abcdef";

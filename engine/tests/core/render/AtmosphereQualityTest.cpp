@@ -16,6 +16,8 @@
 
 #include <algorithm>
 
+namespace AtmosphereQualityTest_cpp {
+
 using namespace jasperengine;
 
 TEST(AtmosphereTiers, MatchTheSpecTable){
@@ -217,3 +219,5 @@ TEST(Atmosphere, ExportsOnlyThePassesASceneUses){
     EXPECT_NE(std::find(clouds.begin(), clouds.end(), ShaderType::VOLUMETRIC_CLOUDS), clouds.end());
     EXPECT_EQ(std::find(clouds.begin(), clouds.end(), ShaderType::VOLUMETRIC_FOG), clouds.end());
 }
+
+}  // namespace AtmosphereQualityTest_cpp

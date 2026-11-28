@@ -29,6 +29,8 @@
 #include <fstream>
 #include <memory>
 
+namespace FogProfileCmdTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -346,3 +348,5 @@ TEST_F(LinkFogProfileCmdTest, TypeSwitchesToHeightInTheSameStep) {
     EXPECT_EQ(LinkFogProfileCmd::link(project, sceneProject->id, {fog}, ComponentType::FogComponent, "builtin:nope", error), nullptr);
     EXPECT_NE(error.find("builtin:"), std::string::npos) << "an unknown built-in names the valid ones: " << error;
 }
+
+}  // namespace FogProfileCmdTest_cpp

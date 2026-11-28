@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+namespace StringUtilsTest_cpp {
+
 using namespace jasperengine;
 
 TEST(StringUtils, ToUTF8EncodesOneToThreeBytes){
@@ -149,3 +151,5 @@ TEST(StringUtils, ValidatesAndRepairsUtf8){
     EXPECT_EQ(StringUtils::legacyToUtf8("Jo\xE3o"), "Jo\xEF\xBF\xBDo");
 #endif
 }
+
+}  // namespace StringUtilsTest_cpp

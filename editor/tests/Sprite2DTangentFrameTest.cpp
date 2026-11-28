@@ -56,6 +56,8 @@
 #include "reflect/Reflect.h"
 #include "support/EditorTestSupport.h"
 
+namespace Sprite2DTangentFrameTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -549,3 +551,5 @@ TEST(Sprite2DMirroredDraw, TruthTable) {
     EXPECT_FALSE(RenderSystem::isMirroredDraw(clockwise, identity));
     EXPECT_TRUE(RenderSystem::isMirroredDraw(clockwise, mirrorX));
 }
+
+}  // namespace Sprite2DTangentFrameTest_cpp

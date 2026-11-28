@@ -4,7 +4,8 @@
 #include "ShakePresets.h"
 
 using namespace jasperengine;
-using namespace jasperengine::camera;
+
+namespace jasperengine::camera {
 
 namespace{
 
@@ -34,7 +35,7 @@ namespace{
 
 }
 
-const std::vector<BuiltinShakePreset>& camera::builtinShakePresets(){
+const std::vector<BuiltinShakePreset>& builtinShakePresets(){
     static const std::vector<BuiltinShakePreset> presets = {
         // MilkShake's presets as the game ships them (Explosion.asset, LightExplosion.asset...)
         {"explosion", "A strong, short blast", make(ONE_SHOT, 0.2f, 15.0f, 0.05f, 1.0f, Vector3(1, 1, 0), Vector3(20, 20, 20))},
@@ -63,14 +64,14 @@ const std::vector<BuiltinShakePreset>& camera::builtinShakePresets(){
     return presets;
 }
 
-const ShakePreset* camera::findBuiltinShakePreset(const std::string& name){
+const ShakePreset* findBuiltinShakePreset(const std::string& name){
     for (const BuiltinShakePreset& builtin : builtinShakePresets()){
         if (name == builtin.name) return &builtin.preset;
     }
     return nullptr;
 }
 
-std::vector<std::string> camera::builtinShakePresetNames(){
+std::vector<std::string> builtinShakePresetNames(){
     std::vector<std::string> names;
     for (const BuiltinShakePreset& builtin : builtinShakePresets()){
         names.push_back(builtin.name);
@@ -78,6 +79,8 @@ std::vector<std::string> camera::builtinShakePresetNames(){
     return names;
 }
 
-const char* camera::defaultNewShakePresetName(){
+const char* defaultNewShakePresetName(){
     return "explosion";
 }
+
+}  // namespace jasperengine::camera

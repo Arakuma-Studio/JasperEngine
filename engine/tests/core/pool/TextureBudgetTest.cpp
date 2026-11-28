@@ -23,6 +23,8 @@
 #include <map>
 #include <thread>
 
+namespace TextureBudgetTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -187,3 +189,5 @@ TEST_F(TextureBudget, TheLargestStreamableDropsUntilItFits){
     settle();
     EXPECT_EQ(TextureDataPool::getResidentBytes(), full);
 }
+
+}  // namespace TextureBudgetTest_cpp

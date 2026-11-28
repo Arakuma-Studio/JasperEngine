@@ -14,6 +14,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ProfilerCompileOutTest_cpp {
+
 namespace {
     int profilerCompileOutSideEffects = 0;
     [[maybe_unused]] const char* touch(){
@@ -37,3 +39,5 @@ TEST(ProfilerCompileOut, MacrosEvaluateNothing){
     JE_GPU_ALLOC_SCOPE(PostFX, touch());
     EXPECT_EQ(profilerCompileOutSideEffects, 0);
 }
+
+}  // namespace ProfilerCompileOutTest_cpp

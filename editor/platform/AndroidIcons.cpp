@@ -15,7 +15,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::platform;
+
+namespace jasperengine::editor::platform {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -103,13 +105,13 @@ namespace {
 
 }
 
-const std::vector<AndroidIconDensity>& platform::androidIconDensities() {
+const std::vector<AndroidIconDensity>& androidIconDensities() {
     static const std::vector<AndroidIconDensity> densities = {
         {"mipmap-mdpi", 48, 108}, {"mipmap-hdpi", 72, 162}, {"mipmap-xhdpi", 96, 216}, {"mipmap-xxhdpi", 144, 324}, {"mipmap-xxxhdpi", 192, 432}};
     return densities;
 }
 
-bool platform::writeAndroidLauncherIcons(const AndroidProjectSettings& settings, const fs::path& projectPath, const fs::path& resDir,
+bool writeAndroidLauncherIcons(const AndroidProjectSettings& settings, const fs::path& projectPath, const fs::path& resDir,
                                          const std::string& name, AndroidIcons& icons, std::string& error) {
     icons = AndroidIcons();
     const bool launcher = !settings.launcherIcon.empty();
@@ -177,3 +179,5 @@ bool platform::writeAndroidLauncherIcons(const AndroidProjectSettings& settings,
     icons.roundIcon = "@mipmap/" + name + "_round";
     return true;
 }
+
+}  // namespace jasperengine::editor::platform

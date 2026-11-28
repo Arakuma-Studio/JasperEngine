@@ -11,6 +11,8 @@
 
 #include <mutex>
 
+namespace ExpectedWriteLedgerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -312,3 +314,5 @@ TEST_F(ScopedExpectedWriteTests, RenameAndDeleteAreTheEditors) {
     EXPECT_EQ(editor[1].kind, FileChangeKind::Removed);
     EXPECT_TRUE(external.empty());
 }
+
+}  // namespace ExpectedWriteLedgerTest_cpp

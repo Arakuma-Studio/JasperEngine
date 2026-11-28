@@ -34,6 +34,8 @@
 #include <xmmintrin.h>
 #endif
 
+namespace SoloudPatchesTest_cpp {
+
 namespace {
 
     namespace fs = std::filesystem;
@@ -362,3 +364,5 @@ TEST(SoloudBus, AVoiceQueuedIntoABusIsMixedInTheNextCall) {
         EXPECT_EQ(onsetAfter(first), atABlock) << "after a first call of " << first << " frames";
     }
 }
+
+}  // namespace SoloudPatchesTest_cpp

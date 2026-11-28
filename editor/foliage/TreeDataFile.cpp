@@ -15,7 +15,6 @@
 #include <utility>
 
 using namespace jasperengine;
-using namespace jasperengine::terraincore;
 namespace fs = std::filesystem;
 
 namespace {
@@ -40,7 +39,7 @@ namespace {
 
 }
 
-void editor::TreeDataFile::encode(const TreeStore& store, std::vector<uint8_t>& bytes) {
+void editor::TreeDataFile::encode(const terraincore::TreeStore& store, std::vector<uint8_t>& bytes) {
     store.encode(bytes, treeFileCompress);
 }
 
@@ -91,7 +90,7 @@ bool editor::TreeDataFile::flush(Project* project, uint32_t sceneId, Entity terr
         if (error) *error = component->treeData.str() + " was refused when it loaded (" + refusal + "); it is not overwritten";
         return false;
     }
-    std::shared_ptr<TreeStore> store = foliage->getTreeStore(terrain);
+    std::shared_ptr<terraincore::TreeStore> store = foliage->getTreeStore(terrain);
     if (!store) return true;
 
     std::vector<uint8_t> bytes;

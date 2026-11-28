@@ -14,6 +14,8 @@
 
 #include <cmath>
 
+namespace TitleFitTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -157,3 +159,5 @@ TEST_F(TitleFitTest, ExtentIncludesTheRims) {
     EXPECT_NEAR(b.x - a.x, 16.0, 1.0);
     EXPECT_NEAR(b.y - a.y, 16.0, 1.0);
 }
+
+}  // namespace TitleFitTest_cpp

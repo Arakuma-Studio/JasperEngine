@@ -12,6 +12,8 @@
 #include <mutex>
 #include <vector>
 
+namespace ProcessStreamTest_cpp {
+
 using namespace jasperengine::editor::vcs;
 namespace fs = std::filesystem;
 
@@ -126,3 +128,5 @@ TEST(ProcessExec, StreamArgumentsAndKill) {
     spec.exe = fs::relative(processStreamHelper(), fs::current_path());
     EXPECT_FALSE(relative.start(spec, {}, error));
 }
+
+}  // namespace ProcessStreamTest_cpp

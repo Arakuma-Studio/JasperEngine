@@ -35,6 +35,8 @@
 #include <memory>
 #include <vector>
 
+namespace TerrainWorldGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::terraincore;
 
@@ -340,3 +342,5 @@ TEST_F(TerrainWorldGpu, DrawsPagesUploadedWithNoPumpBetweenFrames) {
     EXPECT_EQ(differing(held, pumped), 0) << "the frames after the uploads drew the pages with no pump";
     EXPECT_EQ(magentaPixels(), 0);
 }
+
+}  // namespace TerrainWorldGpuTest_cpp

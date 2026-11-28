@@ -29,6 +29,8 @@
 #include <memory>
 #include <vector>
 
+namespace PhysicsQueriesBenchTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -150,5 +152,7 @@ TEST(PhysicsQueriesBench, SphereCastThousandBoxes){
         EXPECT_EQ(allocations.count(), 0u);
     }
 }
+
+}  // namespace PhysicsQueriesBenchTest_cpp
 
 #endif // JASPERENGINE_PHYSICS_3D

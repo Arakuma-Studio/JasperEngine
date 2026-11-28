@@ -22,6 +22,8 @@
 #include "render/ObjectRender.h"
 #include "subsystem/MeshSystem.h"
 
+namespace MeshMemoryTest_cpp {
+
 using namespace jasperengine;
 
 TEST(MeshMemory, SizeofCeilings) {
@@ -79,3 +81,5 @@ TEST(MeshMemory, SubmeshIndexPastTheMeshGrowsNothing) {
     EXPECT_EQ(mesh.getMaterial(1).name, "red");
     EXPECT_EQ(component.submeshes.stored(), stored);
 }
+
+}  // namespace MeshMemoryTest_cpp

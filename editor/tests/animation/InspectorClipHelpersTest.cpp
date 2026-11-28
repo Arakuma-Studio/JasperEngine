@@ -16,6 +16,8 @@
 #include "component/Transform.h"
 #include "window/InspectorWindowClips.h"
 
+namespace InspectorClipHelpersTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -247,3 +249,5 @@ TEST(InspectorClipHelpers, TheInspectedObjectFollowsTheLatestChoice) {
     EXPECT_FALSE(result.clearAsset);
     EXPECT_TRUE(result.changed);
 }
+
+}  // namespace InspectorClipHelpersTest_cpp

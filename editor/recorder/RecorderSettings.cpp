@@ -20,7 +20,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::recorder;
+
+namespace jasperengine::editor::recorder {
 
 namespace fs = std::filesystem;
 
@@ -82,11 +83,11 @@ bool Settings::operator==(const Settings& o) const {
            format == o.format && quality == o.quality && captureAudio == o.captureAudio;
 }
 
-fs::path recorder::settingsFile(const fs::path& projectPath) {
+fs::path settingsFile(const fs::path& projectPath) {
     return projectPath / ".jasperengine" / "user" / "recorder.yaml";
 }
 
-bool recorder::load(const fs::path& file, Settings& settings, std::string& error) {
+bool load(const fs::path& file, Settings& settings, std::string& error) {
     std::error_code ec;
     if (!fs::exists(file, ec)) return true;   // defaults
     YAML::Node root;
@@ -124,7 +125,7 @@ bool recorder::load(const fs::path& file, Settings& settings, std::string& error
     return true;
 }
 
-bool recorder::save(const fs::path& file, const Settings& s, std::string& error) {
+bool save(const fs::path& file, const Settings& s, std::string& error) {
     YAML::Emitter out;
     out << YAML::BeginMap;
     out << YAML::Key << "recorder" << YAML::Value << tokenOf(kKinds, s.kind);
@@ -156,7 +157,7 @@ bool recorder::save(const fs::path& file, const Settings& s, std::string& error)
     return true;
 }
 
-void recorder::presetSize(Resolution resolution, int& width, int& height) {
+void presetSize(Resolution resolution, int& width, int& height) {
     switch (resolution) {
         case Resolution::P480: width = 854; height = 480; return;
         case Resolution::P720: width = 1280; height = 720; return;
@@ -169,7 +170,7 @@ void recorder::presetSize(Resolution resolution, int& width, int& height) {
     width = height = 0;
 }
 
-const char* recorder::resolutionLabel(Resolution resolution) {
+const char* resolutionLabel(Resolution resolution) {
     switch (resolution) {
         case Resolution::MatchGameView: return "Match Game View";
         case Resolution::P480: return "480p (854 x 480)";
@@ -182,7 +183,7 @@ const char* recorder::resolutionLabel(Resolution resolution) {
     return "Custom";
 }
 
-void recorder::outputSize(const Settings& settings, int gameWidth, int gameHeight, int maxTextureSize, int& width, int& height) {
+void outputSize(const Settings& settings, int gameWidth, int gameHeight, int maxTextureSize, int& width, int& height) {
     if (settings.resolution == Resolution::MatchGameView) {
         width = gameWidth;
         height = gameHeight;
@@ -202,7 +203,7 @@ void recorder::outputSize(const Settings& settings, int gameWidth, int gameHeigh
     }
 }
 
-void recorder::frameRange(const Settings& settings, int64_t& first, int64_t& last) {
+void frameRange(const Settings& settings, int64_t& first, int64_t& last) {
     switch (settings.mode) {
         case Mode::Manual:
             first = 0;
@@ -227,7 +228,7 @@ void recorder::frameRange(const Settings& settings, int64_t& first, int64_t& las
     last = -1;
 }
 
-std::string recorder::expandName(const std::string& pattern, const NameContext& c) {
+std::string expandName(const std::string& pattern, const NameContext& c) {
     char take[16], frame[24], resolution[32];
     std::snprintf(take, sizeof(take), "%03d", c.take);
     std::snprintf(frame, sizeof(frame), "%04lld", (long long)std::max<int64_t>(c.frame, 0));
@@ -241,19 +242,19 @@ std::string recorder::expandName(const std::string& pattern, const NameContext& 
     return name;
 }
 
-fs::path recorder::outputFolder(const Settings& settings, const fs::path& projectPath) {
+fs::path outputFolder(const Settings& settings, const fs::path& projectPath) {
     const fs::path folder = settings.outputFolder.empty() ? fs::path("Recordings") : fs::path(settings.outputFolder);
     return folder.is_absolute() ? folder : projectPath / folder;
 }
 
-fs::path recorder::outputFile(const Settings& settings, const fs::path& projectPath, const NameContext& context) {
+fs::path outputFile(const Settings& settings, const fs::path& projectPath, const NameContext& context) {
     const bool movie = settings.kind == Kind::Movie;
     const std::string name = expandName(movie ? settings.movieName : settings.sequenceName, context);
     const char* extension = movie ? (settings.format == Format::Mov ? ".mov" : ".mp4") : ".png";
     return outputFolder(settings, projectPath) / fs::path(name + extension);
 }
 
-std::vector<std::string> recorder::parseEncoders(const std::string& output) {
+std::vector<std::string> parseEncoders(const std::string& output) {
     // lines " V....D libx264              libx264 H.264 / AVC ..." after the "------" line
     std::vector<std::string> names;
     std::istringstream lines(output);
@@ -272,18 +273,18 @@ std::vector<std::string> recorder::parseEncoders(const std::string& output) {
     return names;
 }
 
-std::string recorder::pickH264(const std::vector<std::string>& encoders) {
+std::string pickH264(const std::vector<std::string>& encoders) {
     for (const char* name : {"libx264", "h264_videotoolbox", "h264_mf", "h264_nvenc", "h264_qsv", "h264_amf", "libopenh264"}) {
         if (std::find(encoders.begin(), encoders.end(), name) != encoders.end()) return name;
     }
     return std::string();
 }
 
-bool recorder::hasProRes(const std::vector<std::string>& encoders) {
+bool hasProRes(const std::vector<std::string>& encoders) {
     return std::find(encoders.begin(), encoders.end(), "prores_ks") != encoders.end();
 }
 
-std::vector<std::string> recorder::movieArguments(const std::string& encoder, Format format, Quality quality, int width, int height,
+std::vector<std::string> movieArguments(const std::string& encoder, Format format, Quality quality, int width, int height,
                                                   int frameRate, const fs::path& output) {
     std::vector<std::string> args = {"-y", "-hide_banner", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgba",
                                      "-s", std::to_string(width) + "x" + std::to_string(height), "-framerate", std::to_string(frameRate),
@@ -310,7 +311,7 @@ std::vector<std::string> recorder::movieArguments(const std::string& encoder, Fo
     return args;
 }
 
-std::vector<std::string> recorder::muxArguments(Format format, const fs::path& video, const fs::path& audio, const fs::path& output) {
+std::vector<std::string> muxArguments(Format format, const fs::path& video, const fs::path& audio, const fs::path& output) {
     std::vector<std::string> args = {"-y", "-hide_banner", "-loglevel", "error", "-i", video.string(), "-i", audio.string(),
                                      "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy"};
     if (format == Format::Mov) {
@@ -323,16 +324,16 @@ std::vector<std::string> recorder::muxArguments(Format format, const fs::path& v
     return args;
 }
 
-uint32_t recorder::audioFramesOf(int64_t frame, int frameRate, int sampleRate) {
+uint32_t audioFramesOf(int64_t frame, int frameRate, int sampleRate) {
     const auto at = [&](int64_t k) { return (int64_t)std::llround((double)k * (double)sampleRate / (double)frameRate); };
     return (uint32_t)(at(frame + 1) - at(frame));
 }
 
-std::vector<std::string> recorder::decodeCheckArguments(const fs::path& movie) {
+std::vector<std::string> decodeCheckArguments(const fs::path& movie) {
     return {"-hide_banner", "-nostdin", "-v", "error", "-nostats", "-progress", "pipe:1", "-i", movie.string(), "-map", "0:v:0", "-f", "null", "-"};
 }
 
-int64_t recorder::parseDecodedFrames(const std::string& output) {
+int64_t parseDecodedFrames(const std::string& output) {
     int64_t frames = -1;
     std::istringstream lines(output);
     std::string line;
@@ -342,14 +343,14 @@ int64_t recorder::parseDecodedFrames(const std::string& output) {
     return frames;
 }
 
-fs::path recorder::partialPath(const fs::path& output) {
+fs::path partialPath(const fs::path& output) {
     fs::path name = output.stem();
     name += ".partial";
     name += output.extension();
     return output.parent_path() / name;
 }
 
-uint64_t recorder::estimateRecordingBytes(const Settings& settings, int width, int height, int64_t frames) {
+uint64_t estimateRecordingBytes(const Settings& settings, int width, int height, int64_t frames) {
     const double count = (double)(frames >= 0 ? frames : (int64_t)settings.frameRate * 60);
     const double pixels = (double)width * (double)height * count;
     if (settings.kind == Kind::ImageSequence) {
@@ -367,7 +368,7 @@ uint64_t recorder::estimateRecordingBytes(const Settings& settings, int width, i
     return (uint64_t)(video * 2.0 + wav + muxedAudio);
 }
 
-std::string recorder::formatSize(uint64_t bytes) {
+std::string formatSize(uint64_t bytes) {
     constexpr uint64_t kb = 1024, mb = kb * 1024, gb = mb * 1024;
     char text[32];
     if (bytes >= gb) std::snprintf(text, sizeof(text), "%.1f GB", (double)bytes / (double)gb);
@@ -376,18 +377,18 @@ std::string recorder::formatSize(uint64_t bytes) {
     return text;
 }
 
-std::string recorder::diskFullReason(uint64_t freeBytes) {
+std::string diskFullReason(uint64_t freeBytes) {
     return "disk full, " + std::to_string(freeBytes / (1024 * 1024)) + " MB free";
 }
 
-bool recorder::isDiskFullMessage(const std::string& line) {
+bool isDiskFullMessage(const std::string& line) {
     for (const char* words : {"No space left", "Disk quota exceeded", "not enough space", "ENOSPC"}) {
         if (line.find(words) != std::string::npos) return true;
     }
     return false;
 }
 
-recorder::TestFaults recorder::parseTestFaults(const char* text) {
+recorder::TestFaults parseTestFaults(const char* text) {
     TestFaults faults;
     if (!text) return faults;
     std::istringstream items(text);
@@ -408,3 +409,5 @@ recorder::TestFaults recorder::parseTestFaults(const char* text) {
     }
     return faults;
 }
+
+}  // namespace jasperengine::editor::recorder

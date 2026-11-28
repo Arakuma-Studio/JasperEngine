@@ -16,6 +16,8 @@
 #include <fstream>
 #include <string>
 
+namespace AssetRootChangeTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -215,3 +217,5 @@ TEST_F(AssetRootChangeTest, ASidecarThatCannotMoveUndoesTheWholeChange) {
     EXPECT_TRUE(exists("assets/textures/ao.png")) << "every file is back where it was";
     EXPECT_FALSE(exists("content/textures/ao.png"));
 }
+
+}  // namespace AssetRootChangeTest_cpp

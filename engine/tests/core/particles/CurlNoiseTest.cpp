@@ -17,6 +17,8 @@
 #include <random>
 #include <vector>
 
+namespace CurlNoiseTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::noise;
 
@@ -163,3 +165,5 @@ TEST(CurlNoise, WideMatchesNativeExactly){
         }
     }
 }
+
+}  // namespace CurlNoiseTest_cpp

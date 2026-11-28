@@ -8,6 +8,8 @@
 
 #include <algorithm>
 
+namespace SplineFrameTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 using namespace jasperengine::test;
@@ -175,3 +177,5 @@ TEST(SplineFrameTests, FramesAreOrthonormalOnRandomSplines){
         }
     }
 }
+
+}  // namespace SplineFrameTest_cpp

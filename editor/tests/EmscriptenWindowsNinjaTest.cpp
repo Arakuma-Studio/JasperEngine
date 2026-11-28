@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 
+namespace EmscriptenWindowsNinjaTest_cpp {
+
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
@@ -41,3 +43,5 @@ TEST(EmscriptenSdk, WindowsGeneratorFallsBackToVisualStudiosNinja) {
     EXPECT_TRUE(Exporter::emscriptenWindowsGeneratorArgs(Env{{"PATH", empty.string()}}, false, error).empty());
     EXPECT_NE(error.find("Visual Studio"), std::string::npos) << error;
 }
+
+}  // namespace EmscriptenWindowsNinjaTest_cpp

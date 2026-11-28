@@ -13,7 +13,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::platform;
+
+namespace jasperengine::editor::platform {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -166,3 +168,5 @@ bool AndroidTools::dumpBadging(const fs::path& apk, std::string& output, std::st
     }
     return true;
 }
+
+}  // namespace jasperengine::editor::platform

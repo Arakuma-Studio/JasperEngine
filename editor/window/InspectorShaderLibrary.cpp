@@ -464,7 +464,6 @@ namespace {
 }
 }
 
-using namespace jasperengine::editor::inspectorpaletterows;
 
 void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentShader, ShaderType type,
                                                      const std::function<void(const std::string&)>& setShader,
@@ -819,7 +818,7 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
                 return std::find(slot.features.begin(), slot.features.end(), feature.define) != slot.features.end();
             });
             if (enabled && paletteFeature && !palettePrefix.empty())
-                paletteAutoDetects().insert(paletteMaterialKey(sceneId, entity, palettePrefix));
+                inspectorpaletterows::paletteAutoDetects().insert(inspectorpaletterows::paletteMaterialKey(sceneId, entity, palettePrefix));
         }
         bool hovered = ImGui::IsItemHovered();
         const std::string featureTip = feature.define + (feature.defaultOn ? " (on by default)" : "");
@@ -1098,10 +1097,10 @@ void editor::InspectorWindow::drawShaderPaletteRows(ComponentType cpType, SceneP
         return true;
     };
 
-    std::map<std::string, PaletteSlotState>& states = paletteSlotStates();
+    std::map<std::string, inspectorpaletterows::PaletteSlotState>& states = inspectorpaletterows::paletteSlotStates();
     if (states.size() > 64)
         states.clear();
-    const std::string materialKey = paletteMaterialKey(sceneId, entity, materialPrefix);
+    const std::string materialKey = inspectorpaletterows::paletteMaterialKey(sceneId, entity, materialPrefix);
     bool paramsDrawn = false;
 
     for (const ShaderManifestPalette& slot : manifest.palettes) {
@@ -1109,7 +1108,7 @@ void editor::InspectorWindow::drawShaderPaletteRows(ComponentType cpType, SceneP
             continue;
         const std::string& id = slot.uniform;
         ImGui::PushID(("palette_" + id).c_str());
-        PaletteSlotState& state = states[materialKey + "/" + id];
+        inspectorpaletterows::PaletteSlotState& state = states[materialKey + "/" + id];
         pxc::PaletteBinding binding;
         for (const auto& entry : palettes) {
             if (entry.first == id) {
@@ -1120,7 +1119,7 @@ void editor::InspectorWindow::drawShaderPaletteRows(ComponentType cpType, SceneP
         const std::string suffix = manifest.palettes.size() > 1 ? " (" + rowLabel(slot.label, id) + ")" : std::string();
         std::shared_ptr<const pxc::Palette> source = binding.source.empty() ? nullptr : pxc::PaletteLibrary::get(binding.source.path);
         auto setBinding = [&](const pxc::PaletteBinding& value, bool wroteCopy) {
-            setPalettes(withPaletteBinding(palettes, id, value), wroteCopy);
+            setPalettes(inspectorpaletterows::withPaletteBinding(palettes, id, value), wroteCopy);
         };
 
         // ---- Detect (R18): a worker reads the texture against every project palette
@@ -1133,7 +1132,7 @@ void editor::InspectorWindow::drawShaderPaletteRows(ComponentType cpType, SceneP
             options.lane = jobs::Lane::Background;
             options.name = "palette-detect";
             state.detect = jobs::submit([file, candidates]() {
-                TextureFindings found;
+                inspectorpaletterows::TextureFindings found;
                 std::optional<epx::RgbaImage> image = epx::loadRgbaImage(file, &found.error);
                 if (!image)
                     return found;
@@ -1149,16 +1148,16 @@ void editor::InspectorWindow::drawShaderPaletteRows(ComponentType cpType, SceneP
             state.detectStatus.clear();
             state.detectChoices.clear();
         };
-        if (paletteAutoDetects().erase(materialKey) && binding.source.empty())
+        if (inspectorpaletterows::paletteAutoDetects().erase(materialKey) && binding.source.empty())
             startDetect(true);
         if (state.detecting && state.detect.isReady()) {
             state.detecting = false;
-            const TextureFindings found = takeFindings(state.detect);
-            const std::string name = paletteFileName(state.detectTexture);
+            const inspectorpaletterows::TextureFindings found = inspectorpaletterows::takeFindings(state.detect);
+            const std::string name = inspectorpaletterows::paletteFileName(state.detectTexture);
             if (!found.loaded) {
                 state.detectStatus = "Cannot read " + name + (found.error.empty() ? std::string() : ": " + found.error);
             } else if (found.covering.size() == 1) {
-                state.detectStatus = paletteFileName(found.covering[0]) + " holds every colour of " + name;
+                state.detectStatus = inspectorpaletterows::paletteFileName(found.covering[0]) + " holds every colour of " + name;
                 if (!state.detectAuto || binding.source.empty()) {
                     pxc::PaletteBinding changed = binding;
                     changed.source = found.covering[0];
@@ -1204,7 +1203,7 @@ void editor::InspectorWindow::drawShaderPaletteRows(ComponentType cpType, SceneP
         if (state.detecting || !state.detectStatus.empty()) {
             ImGui::PushTextWrapPos(0.0f);
             if (state.detecting)
-                ImGui::TextDisabled("Detecting the palette of %s...", paletteFileName(state.detectTexture).c_str());
+                ImGui::TextDisabled("Detecting the palette of %s...", inspectorpaletterows::paletteFileName(state.detectTexture).c_str());
             else
                 ImGui::TextDisabled("%s", state.detectStatus.c_str());
             ImGui::PopTextWrapPos();
@@ -1340,7 +1339,7 @@ void editor::InspectorWindow::drawShaderPaletteRows(ComponentType cpType, SceneP
         }
 
         // the swap textures as the renderer builds them, and the rows they name
-        const std::string buildKey = paletteBindingKey(binding);
+        const std::string buildKey = inspectorpaletterows::paletteBindingKey(binding);
         if (buildKey != state.buildKey) {
             state.buildKey = buildKey;
             state.diagnostics = epx::paletteSwapDiagnostics(binding);
@@ -1412,7 +1411,7 @@ void editor::InspectorWindow::drawShaderPaletteRows(ComponentType cpType, SceneP
         // ---- warnings: the binding's build errors (R14)
         for (const pxc::Diagnostic& diagnostic : state.diagnostics) {
             const bool error = diagnostic.severity == pxc::Diagnostic::Severity::Error;
-            paletteWarningRow(error ? Theme::Colors::ErrorText : Theme::Colors::WarningText, diagnostic.message,
+            inspectorpaletterows::paletteWarningRow(error ? Theme::Colors::ErrorText : Theme::Colors::WarningText, diagnostic.message,
                               diagnostic.fix.empty() ? diagnostic.kind : diagnostic.kind + ": " + diagnostic.fix);
         }
 
@@ -1420,19 +1419,19 @@ void editor::InspectorWindow::drawShaderPaletteRows(ComponentType cpType, SceneP
             // the texture against the source, read on a worker (decoding a large sheet is not a
             // frame's work); rerun when the image, the binding or the palette's file change
             const std::filesystem::path file = project->getAssetsPath() / FileUtils::pathFromUtf8(texture);
-            const std::string analysisKey = FileUtils::pathToUtf8(file) + "|" + paletteFileStamp(file) + "|" + binding.source.path + "|" +
+            const std::string analysisKey = FileUtils::pathToUtf8(file) + "|" + inspectorpaletterows::paletteFileStamp(file) + "|" + binding.source.path + "|" +
                                             std::to_string(binding.source.empty() ? 0u : pxc::PaletteLibrary::version(binding.source.path));
             if (analysisKey != state.analysisKey) {
                 state.analysisKey = analysisKey;
                 state.analysisReady = false;
-                state.found = TextureFindings();
+                state.found = inspectorpaletterows::TextureFindings();
                 state.analysis.reset();
                 if (source) {
                     jobs::SubmitOptions options;
                     options.lane = jobs::Lane::Background;
                     options.name = "palette-swap-usage";
                     state.analysis = jobs::submit([file, source]() {
-                        TextureFindings found;
+                        inspectorpaletterows::TextureFindings found;
                         std::optional<epx::RgbaImage> image = epx::loadRgbaImage(file, &found.error);
                         if (!image)
                             return found;
@@ -1445,7 +1444,7 @@ void editor::InspectorWindow::drawShaderPaletteRows(ComponentType cpType, SceneP
                 }
             }
             if (state.analysis.isValid() && state.analysis.isReady()) {
-                state.found = takeFindings(state.analysis);
+                state.found = inspectorpaletterows::takeFindings(state.analysis);
                 state.analysisReady = true;
             }
 
@@ -1461,7 +1460,7 @@ void editor::InspectorWindow::drawShaderPaletteRows(ComponentType cpType, SceneP
                 state.check = epx::checkPaletteSwapTexture(*project, *material, shader, state.found.width, state.found.height);
             }
             if (state.check.lossy()) {
-                paletteWarningRow(Theme::Colors::WarningText, state.check.message(),
+                inspectorpaletterows::paletteWarningRow(Theme::Colors::WarningText, state.check.message(),
                                   "Palette Swap matches exact colours: compression, mipmaps, a resize or filtering change them, "
                                   "and a changed colour draws unswapped.");
                 // the project's Texture Strategy is the one reason a texture's settings cannot remove
@@ -1497,7 +1496,7 @@ void editor::InspectorWindow::drawShaderPaletteRows(ComponentType cpType, SceneP
             // ---- the colours that will not swap
             if (state.analysisReady && state.found.offColours > 0) {
                 const long long count = (long long)state.found.offColours;
-                paletteWarningRow(Theme::Colors::WarningText,
+                inspectorpaletterows::paletteWarningRow(Theme::Colors::WarningText,
                                   count == 1 ? std::string("1 opaque colour of this sprite is not in the source palette (it will not swap)")
                                              : std::to_string(count) + " opaque colours of this sprite are not in the source palette (they will not swap)",
                                   "Anti-aliased, off-palette and filtered pixels draw unchanged. Show lists them in the Palette window's Usage.");
@@ -1509,7 +1508,7 @@ void editor::InspectorWindow::drawShaderPaletteRows(ComponentType cpType, SceneP
                 }
                 ImGui::SetItemTooltip("Open the Source in the Palette window with this texture's usage");
             } else if (state.analysisReady && !state.found.loaded && !state.found.error.empty()) {
-                paletteWarningRow(Theme::Colors::WarningText, "Cannot read " + paletteFileName(texture) + ": " + state.found.error, std::string());
+                inspectorpaletterows::paletteWarningRow(Theme::Colors::WarningText, "Cannot read " + inspectorpaletterows::paletteFileName(texture) + ": " + state.found.error, std::string());
             }
         }
         ImGui::PopID();

@@ -9,6 +9,8 @@
 
 #include <algorithm>
 
+namespace TerrainFilterTest_cpp {
+
 using namespace terraintest;
 
 namespace {
@@ -248,3 +250,5 @@ TEST(TerrainFilter, ABlendMapOfAnotherSizeSamplesTheHeightMapByPlace) {
     store.read(blend(0), TexelRect{6, 3, 1, 1}, texel);
     EXPECT_EQ(texel[0], 0.0f);
 }
+
+}  // namespace TerrainFilterTest_cpp

@@ -16,10 +16,11 @@
 #include <algorithm>
 #include <set>
 
+namespace content_manifest_test {
+
 using namespace jasperengine;
 using namespace jasperengine::player;
 
-namespace content_manifest_test {
 
     ContentManifest sample() {
         ContentManifest m;
@@ -52,6 +53,8 @@ namespace content_manifest_test {
     bool noSha(const std::string&, std::string&, uint64_t&) { return false; }
 
 }
+
+namespace content_manifest_test {
 
 using namespace content_manifest_test;
 
@@ -300,3 +303,5 @@ TEST(ContentManifest, StrippedListRoundTripsAndIsAbsentWhenEmpty) {
     ASSERT_TRUE(ContentManifest::parse(m.toJson().dump(2), back, error)) << error;
     EXPECT_EQ(back.stripped, m.stripped);
 }
+
+}  // namespace content_manifest_test

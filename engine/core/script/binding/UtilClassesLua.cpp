@@ -37,7 +37,6 @@ using namespace jasperengine;
 // timer lives until Play stops; { owner = self } ends it with the script.
 
 namespace je_lua_timer {}
-using namespace je_lua_timer;
 
 namespace je_lua_timer {
 
@@ -726,8 +725,8 @@ namespace je_lua_timer {
 void LuaBinding::registerUtilClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
 
-    registerTimer(L);
-    ScriptScheduler::setTimerAwaitable({&awaitableIs, &awaitableStatus});
+    je_lua_timer::registerTimer(L);
+    ScriptScheduler::setTimerAwaitable({&je_lua_timer::awaitableIs, &je_lua_timer::awaitableStatus});
 
     luabridge::getGlobalNamespace(L)
         .beginClass<Angle>("Angle")

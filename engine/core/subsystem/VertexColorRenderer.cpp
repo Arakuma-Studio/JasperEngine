@@ -33,7 +33,6 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::vertexcolor;
 
 // ---------------------------------------------------------------- SubmeshVertexColors
 
@@ -147,8 +146,8 @@ namespace {
         }
     }
 
-    Attribute vcColorAttribute(const std::string& buffer, Format format, unsigned int count){
-        if (format == Format::RGBA16F)
+    Attribute vcColorAttribute(const std::string& buffer, vertexcolor::Format format, unsigned int count){
+        if (format == vertexcolor::Format::RGBA16F)
             return Attribute(AttributeDataType::HALF, buffer, 4, 0, count, false, false);
         return Attribute(AttributeDataType::UNSIGNED_BYTE, buffer, 4, 0, count, true, false);
     }
@@ -160,7 +159,7 @@ namespace {
 }
 
 struct VertexColorRenderer::TargetState {
-    TargetKey key;
+    vertexcolor::TargetKey key;
     Entity meshEntity = NULL_ENTITY;
     unsigned int submesh = 0;
     uint64_t geometry = 0;              // geometryStamp the binding was made for
@@ -175,18 +174,18 @@ struct VertexColorRenderer::TargetState {
     uint64_t lastChange = 0;                // frame of the last in-place write
     bool mismatchLogged = false;
     // a split being built (R12)
-    jobs::Task<std::shared_ptr<SplitResult>> job;
+    jobs::Task<std::shared_ptr<vertexcolor::SplitResult>> job;
     uint64_t jobHash = 0;
     uint64_t jobGeometry = 0;
-    std::shared_ptr<const MeshView> jobView;
+    std::shared_ptr<const vertexcolor::MeshView> jobView;
 };
 
 struct VertexColorRenderer::OwnerState {
     uint64_t revision = ~0ull;
     uint64_t layout = 0;
     bool enabled = false;
-    Format format = Format::RGBA8;
-    InitialValue initial = InitialValue::Asset;
+    vertexcolor::Format format = vertexcolor::Format::RGBA8;
+    vertexcolor::InitialValue initial = vertexcolor::InitialValue::Asset;
     Vector4 customInitial;
     std::vector<TargetState> targets;
 };
@@ -261,19 +260,19 @@ void VertexColorRenderer::unbindOwner(OwnerState& owner){
     owner.targets.clear();
 }
 
-std::shared_ptr<SubmeshVertexColors> VertexColorRenderer::makeColorBinding(unsigned int submesh, Format format, std::vector<uint8_t>&& bytes,
+std::shared_ptr<SubmeshVertexColors> VertexColorRenderer::makeColorBinding(unsigned int submesh, vertexcolor::Format format, std::vector<uint8_t>&& bytes,
                                                                           unsigned int count, bool dynamic){
     auto binding = std::make_shared<SubmeshVertexColors>();
     const std::string name = vcBufferName(submesh, "color");
-    const unsigned int stride = format == Format::RGBA16F ? 8 : 4;
+    const unsigned int stride = format == vertexcolor::Format::RGBA16F ? 8 : 4;
     binding->color = &binding->addBuffer(name, BufferType::VERTEX_BUFFER, stride, count, std::move(bytes),
                                          dynamic ? BufferUsage::DYNAMIC : BufferUsage::IMMUTABLE);
     binding->attributes[AttributeType::COLOR] = vcColorAttribute(name, format, count);
     return binding;
 }
 
-std::shared_ptr<SubmeshVertexColors> VertexColorRenderer::makeSplitBinding(MeshComponent& mesh, unsigned int submeshIndex, Format format,
-                                                                          const SplitResult& split, std::vector<uint8_t>&& colorBytes, bool dynamic){
+std::shared_ptr<SubmeshVertexColors> VertexColorRenderer::makeSplitBinding(MeshComponent& mesh, unsigned int submeshIndex, vertexcolor::Format format,
+                                                                          const vertexcolor::SplitResult& split, std::vector<uint8_t>&& colorBytes, bool dynamic){
     const Submesh& submesh = mesh.submeshes[submeshIndex];
     ModelCpuData::ensure(mesh, "vertex colors");
     auto binding = makeColorBinding(submeshIndex, format, std::move(colorBytes), (unsigned int)split.values.size(), dynamic);
@@ -429,17 +428,17 @@ void VertexColorRenderer::syncOwner(Entity entity, VertexColorsComponent& colors
     owner.initial = colors.initialValue;
     owner.customInitial = colors.customInitial;
 
-    const std::vector<SceneTarget> targets = vertexcolor::detail::resolveTargets(scene, entity);
+    const std::vector<vertexcolor::SceneTarget> targets = vertexcolor::detail::resolveTargets(scene, entity);
     // targets that are gone (a reload that changed the model) let go of their meshes
     for (TargetState& old : owner.targets){
-        const bool kept = std::any_of(targets.begin(), targets.end(), [&](const SceneTarget& t){
+        const bool kept = std::any_of(targets.begin(), targets.end(), [&](const vertexcolor::SceneTarget& t){
             return t.key == old.key && t.meshEntity == old.meshEntity && t.submesh == old.submesh; });
         if (!kept)
             unbindTarget(old);
     }
     std::vector<TargetState> next;
     next.reserve(targets.size());
-    for (const SceneTarget& t : targets){
+    for (const vertexcolor::SceneTarget& t : targets){
         TargetState state;
         for (TargetState& old : owner.targets){
             if (old.key == t.key && old.meshEntity == t.meshEntity && old.submesh == t.submesh){
@@ -458,20 +457,20 @@ void VertexColorRenderer::syncOwner(Entity entity, VertexColorsComponent& colors
 
 void VertexColorRenderer::syncTarget(Entity entity, VertexColorsComponent& colors, TargetState& target){
     MeshComponent* mesh = scene->findComponent<MeshComponent>(target.meshEntity);
-    const TargetData* data = colors.loaded ? colors.loaded->find(target.key) : nullptr;
+    const vertexcolor::TargetData* data = colors.loaded ? colors.loaded->find(target.key) : nullptr;
     auto layerIt = colors.runtimeLayers.find(target.key);
-    RuntimeLayer* layer = layerIt != colors.runtimeLayers.end() ? layerIt->second.get() : nullptr;
+    vertexcolor::RuntimeLayer* layer = layerIt != colors.runtimeLayers.end() ? layerIt->second.get() : nullptr;
     // R2: a target the file does not hold keeps the mesh's own colors (unless gameplay paints it)
     if (!mesh || (!data && !layer)){
         unbindTarget(target);
         return;
     }
-    std::shared_ptr<const MeshView> view = getMeshView(entity, target.meshEntity, target.submesh, *mesh);
+    std::shared_ptr<const vertexcolor::MeshView> view = getMeshView(entity, target.meshEntity, target.submesh, *mesh);
     if (!view){
         unbindTarget(target);
         return;
     }
-    const Fingerprint fingerprint = view->fingerprint();
+    const vertexcolor::Fingerprint fingerprint = view->fingerprint();
     // R10, R92: a runtime never remaps: a target painted on another topology is skipped
     if (data && (!data->fingerprint.sameTopology(fingerprint) || data->base.size() != view->vertexCount())){
         if (!target.mismatchLogged){
@@ -488,7 +487,7 @@ void VertexColorRenderer::syncTarget(Entity entity, VertexColorsComponent& color
 
     uint64_t authoredHash = vcMix(0x61u, (uint64_t)colors.format);
     if (data){
-        authoredHash = vcMix(authoredHash, hashTarget(*data));
+        authoredHash = vcMix(authoredHash, vertexcolor::hashTarget(*data));
     }else{
         // a target only gameplay paints starts from the initial value (R6)
         uint32_t custom[4];
@@ -509,11 +508,11 @@ void VertexColorRenderer::syncTarget(Entity entity, VertexColorsComponent& color
             if (!target.job.isValid() || target.jobHash != authoredHash || target.jobGeometry != geometry){
                 if (target.job.isValid())
                     target.job.cancel();
-                auto copy = std::make_shared<TargetData>(*data);
+                auto copy = std::make_shared<vertexcolor::TargetData>(*data);
                 auto lods = std::make_shared<std::vector<std::vector<uint32_t>>>(vcLodLists(mesh->submeshes[target.submesh]));
-                std::shared_ptr<const MeshView> jobView = view;
+                std::shared_ptr<const vertexcolor::MeshView> jobView = view;
                 target.job = jobs::submit([copy, lods, jobView](){
-                    return std::make_shared<SplitResult>(buildSplit(*copy, *jobView, *lods));
+                    return std::make_shared<vertexcolor::SplitResult>(vertexcolor::buildSplit(*copy, *jobView, *lods));
                 }, {jobs::Lane::Normal, jobs::GateClass::Default, "vertex-color-split"});
                 target.jobHash = authoredHash;
                 target.jobGeometry = geometry;
@@ -522,7 +521,7 @@ void VertexColorRenderer::syncTarget(Entity entity, VertexColorsComponent& color
             }
             if (!target.job.isReady())
                 return;
-            std::shared_ptr<SplitResult> result;
+            std::shared_ptr<vertexcolor::SplitResult> result;
             if (target.job.status() == jobs::TaskStatus::Completed)
                 result = target.job.get();
             target.job = {};
@@ -565,7 +564,7 @@ void VertexColorRenderer::syncTarget(Entity entity, VertexColorsComponent& color
             if (data){
                 target.authored = data->base;
             }else{
-                TargetData initial;
+                vertexcolor::TargetData initial;
                 initializeTarget(initial, *view, colors.initialValue, colors.customInitial);
                 target.authored = std::move(initial.base);
             }
@@ -587,7 +586,7 @@ void VertexColorRenderer::syncTarget(Entity entity, VertexColorsComponent& color
 
     const bool sameLayout = target.binding && target.geometry == geometry && target.binding->split == splitBound &&
                             target.binding->color && target.binding->color->getSize() == bytes.size() &&
-                            target.binding->color->getStride() == (colors.format == Format::RGBA16F ? 8u : 4u);
+                            target.binding->color->getStride() == (colors.format == vertexcolor::Format::RGBA16F ? 8u : 4u);
     if (sameLayout){
         std::vector<uint8_t>& shown = target.binding->bytes.front();
         if (shown == bytes){
@@ -612,10 +611,10 @@ void VertexColorRenderer::syncTarget(Entity entity, VertexColorsComponent& color
     rebind(*mesh, target, colors.format, std::move(bytes), false);
 }
 
-void VertexColorRenderer::rebind(MeshComponent& mesh, TargetState& target, Format format, std::vector<uint8_t>&& bytes, bool dynamic){
+void VertexColorRenderer::rebind(MeshComponent& mesh, TargetState& target, vertexcolor::Format format, std::vector<uint8_t>&& bytes, bool dynamic){
     if (!target.sourceVertex.empty()){
         // the same split vertices, their colour stream DYNAMIC or not
-        SplitResult split;
+        vertexcolor::SplitResult split;
         split.split = true;
         split.sourceVertex = target.sourceVertex;
         split.values = target.authored;
@@ -637,7 +636,7 @@ void VertexColorRenderer::rebind(MeshComponent& mesh, TargetState& target, Forma
 
 // ---------------------------------------------------------------- queries
 
-std::shared_ptr<const MeshView> VertexColorRenderer::getMeshView(Entity owner, Entity meshEntity, unsigned int submesh, MeshComponent& mesh){
+std::shared_ptr<const vertexcolor::MeshView> VertexColorRenderer::getMeshView(Entity owner, Entity meshEntity, unsigned int submesh, MeshComponent& mesh){
     const uint64_t stamp = vertexcolor::detail::geometryStamp(mesh, submesh);
     auto found = views.find({meshEntity, submesh});
     if (found != views.end() && found->second.view && found->second.stamp == stamp)
@@ -662,7 +661,7 @@ std::shared_ptr<const MeshView> VertexColorRenderer::getMeshView(Entity owner, E
         }
     }
 
-    auto view = std::make_shared<MeshView>();
+    auto view = std::make_shared<vertexcolor::MeshView>();
     std::string error;
     if (!vertexcolor::detail::buildMeshView(mesh, submesh, *view, error)){
         views.erase({meshEntity, submesh});
@@ -675,7 +674,7 @@ std::shared_ptr<const MeshView> VertexColorRenderer::getMeshView(Entity owner, E
     return view;
 }
 
-uint32_t VertexColorRenderer::getBoundSplitVertices(Entity owner, const TargetKey& key) const{
+uint32_t VertexColorRenderer::getBoundSplitVertices(Entity owner, const vertexcolor::TargetKey& key) const{
     auto it = owners.find(owner);
     if (it == owners.end())
         return 0;
@@ -695,7 +694,7 @@ size_t VertexColorRenderer::getPendingSplits() const{
     return pending;
 }
 
-bool VertexColorRenderer::isBound(Entity owner, const TargetKey& key) const{
+bool VertexColorRenderer::isBound(Entity owner, const vertexcolor::TargetKey& key) const{
     auto it = owners.find(owner);
     if (it == owners.end())
         return false;

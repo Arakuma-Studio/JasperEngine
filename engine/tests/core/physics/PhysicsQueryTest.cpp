@@ -26,6 +26,8 @@
 #include <string>
 #include <vector>
 
+namespace PhysicsQueryTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -264,3 +266,5 @@ TEST(PhysicsQuery2D, OverlapsMatchReference){
 }
 
 #endif // JASPERENGINE_PHYSICS_2D
+
+}  // namespace PhysicsQueryTest_cpp

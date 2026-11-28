@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 
+namespace StreamProjectTargetPlatformsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -135,3 +137,5 @@ TEST(ProjectTargetPlatforms, DefaultBuildPlatformIsTheHostOrTheFirstTargetInTheL
     project.setTargetPlatforms(0);
     EXPECT_EQ(project.getTargetPlatforms(), Project::allTargetPlatforms) << "a project always has a target";
 }
+
+}  // namespace StreamProjectTargetPlatformsTest_cpp

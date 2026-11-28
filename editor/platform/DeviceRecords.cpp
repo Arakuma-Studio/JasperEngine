@@ -13,7 +13,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::platform;
+
+namespace jasperengine::editor::platform {
+
 namespace fs = std::filesystem;
 
 fs::path DeviceRecords::file(const fs::path& internalDir) {
@@ -117,3 +119,5 @@ const DeviceRecord* DeviceRecords::find(const std::string& deviceId) const {
     const auto it = devices.find(deviceId);
     return it == devices.end() ? nullptr : &it->second;
 }
+
+}  // namespace jasperengine::editor::platform

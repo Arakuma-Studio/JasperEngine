@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+namespace TextureFormatSelectorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -274,3 +276,5 @@ TEST(TextureFormatSelector, LabelsNameTheEncoding){
     choice = TextureFormatSelector::select(selectorInputs(TextureFamily::Mobile, TextureImportType::Default, false, false, TextureCookQuality::Normal));
     EXPECT_EQ(choice.label(), "ASTC 6x6 + Zstd");
 }
+
+}  // namespace TextureFormatSelectorTest_cpp

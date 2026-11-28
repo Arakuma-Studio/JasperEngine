@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+namespace LuaSpriteBatchTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -175,3 +177,5 @@ TEST_F(LuaSpriteBatchBench, SetPositionsOf10000FromLua){
     }
     runBatchLua(L, "benchXY = nil\n");
 }
+
+}  // namespace LuaSpriteBatchTest_cpp

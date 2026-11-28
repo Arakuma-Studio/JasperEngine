@@ -36,6 +36,8 @@
 #include <string>
 #include <vector>
 
+namespace VideoPlayerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -639,3 +641,5 @@ TEST_F(VideoPlayerSystemTest, SkipOnDropOffNeverBlocks){
     EXPECT_TRUE(player.isPlaying());
     EXPECT_GT(player.getFrame(), 0) << "the player actually consumed frames";
 }
+
+}  // namespace VideoPlayerTest_cpp

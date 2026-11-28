@@ -12,6 +12,8 @@
 
 #include <vector>
 
+namespace DrawBatcherTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -254,3 +256,5 @@ TEST_F(DrawBatcherTest, AForeignDrawIsTheNextBreak){
     EXPECT_EQ(recorder.runs[1].openedBy, BatchBreak::FOREIGN_DRAW);
     EXPECT_EQ(batcher.getStats().breaks[(size_t)BatchBreak::FOREIGN_DRAW], 1u);
 }
+
+}  // namespace DrawBatcherTest_cpp

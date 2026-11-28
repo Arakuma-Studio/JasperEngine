@@ -21,6 +21,8 @@
 #include <span>
 #include <vector>
 
+namespace MeshAssetTest_cpp {
+
 using namespace jasperengine;
 namespace fs = std::filesystem;
 
@@ -163,3 +165,5 @@ TEST(MeshAsset, ScriptsAssignOneAndReadItAtOnce) {
     mesh.setMeshAsset((dir.path / "missing.mesh").generic_string());
     EXPECT_TRUE(sameBytes(mesh.getComponent<MeshComponent>().buffer, source.getComponent<MeshComponent>().buffer));
 }
+
+}  // namespace MeshAssetTest_cpp

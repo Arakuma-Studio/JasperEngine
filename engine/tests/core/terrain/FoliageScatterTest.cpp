@@ -21,6 +21,8 @@
 #include <limits>
 #include <vector>
 
+namespace FoliageScatterTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::terraincore;
 using namespace foliagegolden;
@@ -377,3 +379,5 @@ TEST(FoliageTypes, InstanceIs32BytesAtFixedOffsets) {
     EXPECT_EQ(offsetof(FoliageInstance, densityRank), 31u);
     EXPECT_EQ(sizeof(TreeRecord), 40u);
 }
+
+}  // namespace FoliageScatterTest_cpp

@@ -20,6 +20,8 @@
 
 #include <functional>
 
+namespace TitleArtScenesGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -208,6 +210,7 @@ namespace {
             JASPER_REQUIRE_GPU();
             ensureTestEffects();
         }
+        void TearDown() override { removeTestEffects(); }
     };
 
     // over 5 min under ASan: the PR ASan lane leaves it to the nightly (docs/testing.md, Naming)
@@ -313,3 +316,5 @@ TEST_F(TitleArtScenesGpuSlow, ElementVariantsDrawTheWholeProgram) {
         }
     }
 }
+
+}  // namespace TitleArtScenesGpuTest_cpp

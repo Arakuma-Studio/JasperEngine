@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+namespace VoxelEditTest_cpp {
+
 using namespace voxeltest;
 
 namespace {
@@ -533,3 +535,5 @@ TEST(VoxelEditCmd, DeltaIsExactAndCountsMemory) {
         ASSERT_EQ(contentHash(store), hashes[i]);
     }
 }
+
+}  // namespace VoxelEditTest_cpp

@@ -36,6 +36,8 @@
 #include <string>
 #include <vector>
 
+namespace SpritePixelFxGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -597,3 +599,5 @@ TEST_F(SpritePixelFxGpu, KeyMatchesCpu){
     ShaderManifests::clearForks();
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace SpritePixelFxGpuTest_cpp

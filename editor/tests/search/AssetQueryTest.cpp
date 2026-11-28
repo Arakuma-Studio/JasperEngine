@@ -15,6 +15,8 @@
 #include <chrono>
 #include <cstdio>
 
+namespace AssetQueryTest_cpp {
+
 using namespace jasperengine::editor;
 using jasperengine::editor::test::FakeAssetIndex;
 
@@ -156,3 +158,5 @@ TEST(AssetSearchSlow, FiftyThousandUnder30ms) {
         }
     }
 }
+
+}  // namespace AssetQueryTest_cpp

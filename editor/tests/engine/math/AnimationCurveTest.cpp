@@ -14,6 +14,8 @@
 #include <cmath>
 #include <limits>
 
+namespace AnimationCurveTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -184,3 +186,5 @@ TEST(AnimationCurveTest, ValueRangeAndEquality){
     EXPECT_FLOAT_EQ(one.keys[0].time, 0.0f);
     EXPECT_FLOAT_EQ(one.keys[0].value, 1.0f);
 }
+
+}  // namespace AnimationCurveTest_cpp

@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+namespace OBBTest_cpp {
+
 using namespace jasperengine;
 
 TEST(OBB, DefaultIsNull){
@@ -86,3 +88,5 @@ TEST(OBB, TransformRotatesAnAlreadyRotatedBox){
     EXPECT_VEC_NEAR(obb.getAxisY(), both * Vector3::UNIT_Y, 1e-4f);
     EXPECT_VEC_NEAR(obb.getAxisZ(), both * Vector3::UNIT_Z, 1e-4f);
 }
+
+}  // namespace OBBTest_cpp

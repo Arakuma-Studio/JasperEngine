@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ModelTextureIdTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -38,3 +40,5 @@ TEST(ModelTextureId, OtherIdsAreKept){
               "/elsewhere/gone.gltf|gltf-image|0|s0");
     EXPECT_EQ(MeshSystem::migrateModelTextureId("/abs/models/ship.gltf|gltf-image|0|s0", ""), "/abs/models/ship.gltf|gltf-image|0|s0");
 }
+
+}  // namespace ModelTextureIdTest_cpp

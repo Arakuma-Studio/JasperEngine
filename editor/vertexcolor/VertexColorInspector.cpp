@@ -32,7 +32,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vertexcolor;
 namespace vcd = jasperengine::editor::vertexcolor::detail;
 
 namespace {
@@ -42,15 +41,15 @@ namespace {
 
     // the channels the paint holds something other than the initial value in, per file revision
     struct VcPaintedChannels {
-        const vc::Data* data = nullptr;
+        const jasperengine::vertexcolor::Data* data = nullptr;
         uint64_t revision = 0;
-        vc::ChannelMask mask = 0;
+        jasperengine::vertexcolor::ChannelMask mask = 0;
     };
 
-    vc::ChannelMask vcPaintedMask(Project* project, uint32_t sceneId, Entity entity) {
+    jasperengine::vertexcolor::ChannelMask vcPaintedMask(Project* project, uint32_t sceneId, Entity entity) {
         static std::map<std::pair<uint32_t, Entity>, VcPaintedChannels> cache;
         const VertexColorsComponent* component = vcd::componentOf(project, sceneId, entity);
-        const std::shared_ptr<vc::Data> data = vcd::resolve(project, sceneId, entity);
+        const std::shared_ptr<jasperengine::vertexcolor::Data> data = vcd::resolve(project, sceneId, entity);
         if (!component || !data) return 0;
         VcPaintedChannels& known = cache[{sceneId, entity}];
         if (known.data == data.get() && known.revision == component->revision) return known.mask;
@@ -58,19 +57,19 @@ namespace {
         known.revision = component->revision;
         known.mask = 0;
         Vector4 custom;
-        const vc::InitialValue initial = vcd::initialFor(project, sceneId, entity, &custom);
-        for (const vc::TargetData& target : data->targets) {
-            const std::shared_ptr<const vc::MeshView> mesh = meshView(project, sceneId, entity, target.key);
-            for (size_t v = 0; v < target.base.size() && known.mask != vc::CHANNELS_RGBA; v++) {
+        const jasperengine::vertexcolor::InitialValue initial = vcd::initialFor(project, sceneId, entity, &custom);
+        for (const jasperengine::vertexcolor::TargetData& target : data->targets) {
+            const std::shared_ptr<const jasperengine::vertexcolor::MeshView> mesh = jasperengine::editor::vertexcolor::meshView(project, sceneId, entity, target.key);
+            for (size_t v = 0; v < target.base.size() && known.mask != jasperengine::vertexcolor::CHANNELS_RGBA; v++) {
                 const Vector4* asset = mesh && v < mesh->assetColors.size() ? &mesh->assetColors[v] : nullptr;
-                const Vector4 start = vc::quantize(vc::initialValueFor(initial, custom, asset), data->format);
+                const Vector4 start = jasperengine::vertexcolor::quantize(jasperengine::vertexcolor::initialValueFor(initial, custom, asset), data->format);
                 const Vector4& value = target.base[v];
-                if (value.x != start.x) known.mask |= vc::CHANNEL_R;
-                if (value.y != start.y) known.mask |= vc::CHANNEL_G;
-                if (value.z != start.z) known.mask |= vc::CHANNEL_B;
-                if (value.w != start.w) known.mask |= vc::CHANNEL_A;
+                if (value.x != start.x) known.mask |= jasperengine::vertexcolor::CHANNEL_R;
+                if (value.y != start.y) known.mask |= jasperengine::vertexcolor::CHANNEL_G;
+                if (value.z != start.z) known.mask |= jasperengine::vertexcolor::CHANNEL_B;
+                if (value.w != start.w) known.mask |= jasperengine::vertexcolor::CHANNEL_A;
             }
-            if (!target.corners.empty()) known.mask |= vc::CHANNELS_RGB;
+            if (!target.corners.empty()) known.mask |= jasperengine::vertexcolor::CHANNELS_RGB;
         }
         return known.mask;
     }
@@ -84,9 +83,9 @@ namespace {
 
     void vcOpenPaint(Project* project, uint32_t sceneId, Entity entity, std::string& error) {
         error.clear();
-        ensureComponent(project, sceneId, entity, &error);
+        jasperengine::editor::vertexcolor::ensureComponent(project, sceneId, entity, &error);
         if (!error.empty()) return;
-        if (paintToolHook()) paintToolHook()(project, sceneId, entity);
+        if (jasperengine::editor::vertexcolor::paintToolHook()) jasperengine::editor::vertexcolor::paintToolHook()(project, sceneId, entity);
     }
 
 }
@@ -114,7 +113,7 @@ std::string editor::vertexColorCount(uint64_t value) {
 
 std::vector<VertexColorTargetRow> editor::vertexColorTargetRows(Project* project, uint32_t sceneId, Entity entity) {
     std::vector<VertexColorTargetRow> rows;
-    for (const TargetInfo& target : listTargets(project, sceneId, entity)) {
+    for (const jasperengine::editor::vertexcolor::TargetInfo& target : jasperengine::editor::vertexcolor::listTargets(project, sceneId, entity)) {
         VertexColorTargetRow row;
         row.name = target.name;
         row.painted = target.painted;
@@ -128,9 +127,9 @@ std::vector<VertexColorTargetRow> editor::vertexColorTargetRows(Project* project
             uint32_t split = target.splitVertices;
             if (split == 0) {
                 // the render path may not have bound it yet: count it here
-                const vc::TargetData* data = targetData(project, sceneId, entity, target.key);
-                const std::shared_ptr<const vc::MeshView> mesh = meshView(project, sceneId, entity, target.key);
-                if (data && mesh && data->hasOverrides()) split = vc::buildSplit(*data, *mesh, {}).added;
+                const jasperengine::vertexcolor::TargetData* data = jasperengine::editor::vertexcolor::targetData(project, sceneId, entity, target.key);
+                const std::shared_ptr<const jasperengine::vertexcolor::MeshView> mesh = jasperengine::editor::vertexcolor::meshView(project, sceneId, entity, target.key);
+                if (data && mesh && data->hasOverrides()) split = jasperengine::vertexcolor::buildSplit(*data, *mesh, {}).added;
             }
             if (split > 0) row.detail += ", +" + vertexColorCount(split) + " vertices for hard edges";
         }
@@ -143,7 +142,7 @@ std::vector<std::string> editor::vertexColorProblemLines(Project* project, uint3
     std::vector<std::string> lines;
     std::string error;
     if (vcd::componentOf(project, sceneId, entity) && !vcd::resolve(project, sceneId, entity, &error) && !error.empty()) lines.push_back(error);
-    for (const RemapIssue& issue : remapIssues(project, sceneId)) {
+    for (const jasperengine::editor::vertexcolor::RemapIssue& issue : jasperengine::editor::vertexcolor::remapIssues(project, sceneId)) {
         if (issue.entity != entity) continue;
         char distance[32];
         std::snprintf(distance, sizeof(distance), "%.4g", (double)issue.meanDistance);
@@ -153,14 +152,14 @@ std::vector<std::string> editor::vertexColorProblemLines(Project* project, uint3
                             : issue.key.describe() + " was transferred to its reimported mesh (vertex_colors_remapped, mean distance " + distance +
                               "): check it and save the scene to keep it.");
     }
-    for (const vc::Warning& warning : materialWarnings(project, sceneId, entity, vcPaintedMask(project, sceneId, entity))) lines.push_back(warning.message);
+    for (const jasperengine::vertexcolor::Warning& warning : jasperengine::editor::vertexcolor::materialWarnings(project, sceneId, entity, vcPaintedMask(project, sceneId, entity))) lines.push_back(warning.message);
     return lines;
 }
 
 void editor::InspectorWindow::drawPaintVertexColorsButton(SceneProject* sceneProject, const std::vector<Entity>& entities) {
     if (entities.size() != 1 || sceneProject->scene->findComponent<VertexColorsComponent>(entities[0])) return;
     const Entity entity = entities[0];
-    if (!canPaint(project, sceneProject->id, entity, nullptr)) return;
+    if (!jasperengine::editor::vertexcolor::canPaint(project, sceneProject->id, entity, nullptr)) return;
     static std::string error;
     if (ImGui::Button(ICON_FA_PAINTBRUSH " Paint Vertex Colors")) vcOpenPaint(project, sceneProject->id, entity, error);
     ImGui::SetItemTooltip("Adds Vertex Colors to this GameObject (the model is never written) and opens the Vertex Paint window");
@@ -177,19 +176,19 @@ void editor::InspectorWindow::drawVertexColorsComponent(ComponentType cpType, Sc
     if (single) {
         for (const std::string& line : vertexColorProblemLines(project, sceneId, entity)) vcErrorText(line);
         // R73: the one-click fix of the materials that ignore painted channels
-        const std::vector<vc::Warning> warnings = materialWarnings(project, sceneId, entity, vcPaintedMask(project, sceneId, entity));
+        const std::vector<jasperengine::editor::vertexcolor::vc::Warning> warnings = jasperengine::editor::vertexcolor::materialWarnings(project, sceneId, entity, vcPaintedMask(project, sceneId, entity));
         for (size_t w = 0; w < warnings.size(); w++) {
             ImGui::PushID((int)w);
             if (ImGui::Button(ICON_FA_WAND_MAGIC_SPARKLES " Fix Material")) {
                 actionError.clear();
-                fixMaterialWarning(project, sceneId, entity, warnings[w], &actionError);
+                jasperengine::editor::vertexcolor::fixMaterialWarning(project, sceneId, entity, warnings[w], &actionError);
             }
             ImGui::SetItemTooltip("%s", warnings[w].message.c_str());
             ImGui::PopID();
             if (w + 1 < warnings.size()) ImGui::SameLine();
         }
         std::string why;
-        const bool paintable = canPaint(project, sceneId, entity, &why);
+        const bool paintable = jasperengine::editor::vertexcolor::canPaint(project, sceneId, entity, &why);
         ImGui::BeginDisabled(!paintable);
         if (ImGui::Button(ICON_FA_PAINTBRUSH " Paint")) vcOpenPaint(project, sceneId, entity, actionError);
         ImGui::EndDisabled();
@@ -198,16 +197,16 @@ void editor::InspectorWindow::drawVertexColorsComponent(ComponentType cpType, Sc
         ImGui::BeginDisabled(component.data.path.empty());
         if (ImGui::Button(ICON_FA_ERASER " Clear")) {
             actionError.clear();
-            clearAll(project, sceneId, entity, &actionError);
+            jasperengine::editor::vertexcolor::clearAll(project, sceneId, entity, &actionError);
         }
         ImGui::EndDisabled();
         ImGui::SetItemTooltip("Remove the paint of every mesh: they draw their own colors again. One undo step");
-        const int users = fileUserCount(project, component.data.path);
+        const int users = jasperengine::editor::vertexcolor::fileUserCount(project, component.data.path);
         if (users > 1) {
             ImGui::SameLine();
             if (ImGui::Button(ICON_FA_CLONE " Make Unique")) {
                 actionError.clear();
-                makeUnique(project, sceneId, entity, &actionError);
+                jasperengine::editor::vertexcolor::makeUnique(project, sceneId, entity, &actionError);
             }
             ImGui::SetItemTooltip("Give this GameObject its own copy of the colors, with a new GUID (its first edit makes one anyway)");
             ImGui::SameLine();
@@ -215,7 +214,7 @@ void editor::InspectorWindow::drawVertexColorsComponent(ComponentType cpType, Sc
         }
     }
 
-    const std::array<std::string, 4> uses = single ? channelUses(project, sceneId, entity) : std::array<std::string, 4>();
+    const std::array<std::string, 4> uses = single ? jasperengine::editor::vertexcolor::channelUses(project, sceneId, entity) : std::array<std::string, 4>();
     std::vector<EnumEntry>* initialValues = InspectorWindow::enumEntries(reflect::enums::kVertexColorInitialValue);
     beginTable(cpType, getLabelSize("Custom Initial"));
     for (const VertexColorInspectorRow& row : vertexColorInspectorRows()) {
@@ -228,14 +227,14 @@ void editor::InspectorWindow::drawVertexColorsComponent(ComponentType cpType, Sc
             case VertexColorInspectorRowKind::Format: {
                 // the file's values convert with it: setFormat, not the plain field
                 propertyHeader(row.label);
-                const bool high = component.format == vc::Format::RGBA16F;
+                const bool high = component.format == jasperengine::vertexcolor::Format::RGBA16F;
                 ImGui::SetNextItemWidth(-1);
                 if (ImGui::BeginCombo("##vertexColorFormat", high ? "High Precision (RGBA16F)" : "RGBA8")) {
-                    for (const vc::Format format : {vc::Format::RGBA8, vc::Format::RGBA16F}) {
+                    for (const jasperengine::vertexcolor::Format format : {jasperengine::vertexcolor::Format::RGBA8, jasperengine::vertexcolor::Format::RGBA16F}) {
                         const bool selected = component.format == format;
-                        if (ImGui::Selectable(format == vc::Format::RGBA16F ? "High Precision (RGBA16F)" : "RGBA8", selected) && !selected) {
+                        if (ImGui::Selectable(format == jasperengine::vertexcolor::Format::RGBA16F ? "High Precision (RGBA16F)" : "RGBA8", selected) && !selected) {
                             actionError.clear();
-                            for (Entity each : entities) setFormat(project, sceneId, each, format, &actionError);
+                            for (Entity each : entities) jasperengine::editor::vertexcolor::setFormat(project, sceneId, each, format, &actionError);
                         }
                     }
                     ImGui::EndCombo();
@@ -248,7 +247,7 @@ void editor::InspectorWindow::drawVertexColorsComponent(ComponentType cpType, Sc
                 propertyRow(RowPropertyType::Enum, cpType, row.property, row.label, sceneProject, entities, settings);
                 break;
             case VertexColorInspectorRowKind::Color:
-                if (component.initialValue != vc::InitialValue::Custom) break;
+                if (component.initialValue != jasperengine::vertexcolor::InitialValue::Custom) break;
                 propertyRow(RowPropertyType::Color4L, cpType, row.property, row.label, sceneProject, entities, settings);
                 break;
             case VertexColorInspectorRowKind::ChannelName: {
@@ -319,12 +318,12 @@ void editor::InspectorWindow::drawVertexColorsComponent(ComponentType cpType, Sc
         ImGui::SetItemTooltip("The GameObject draws the new file as its Model (a Mesh becomes a Model) and loses this component, in one undo step");
         EditorModal::error(actionError);
         if (EditorModal::button("Export", "ok")) {
-            ExportModelOptions options;
+            jasperengine::editor::vertexcolor::ExportModelOptions options;
             options.path = exportPath;
             options.replaceInScene = exportReplace;
             options.splitHardEdges = exportSplit;
             actionError.clear();
-            if (exportAsModel(project, sceneId, entity, options, &actionError)) ImGui::CloseCurrentPopup();
+            if (jasperengine::editor::vertexcolor::exportAsModel(project, sceneId, entity, options, &actionError)) ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
         if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();
@@ -344,8 +343,8 @@ void editor::InspectorWindow::drawVertexColorsComponent(ComponentType cpType, Sc
         ImGui::SetItemTooltip("On for colors seen as colors; off for data channels (the values as they are)");
         EditorModal::error(actionError);
         if (EditorModal::button("Bake", "ok")) {
-            const std::vector<TargetInfo> infos = listTargets(project, sceneId, entity);
-            BakeTextureOptions options;
+            const std::vector<jasperengine::editor::vertexcolor::TargetInfo> infos = jasperengine::editor::vertexcolor::listTargets(project, sceneId, entity);
+            jasperengine::editor::vertexcolor::BakeTextureOptions options;
             if (bakeTarget >= 0 && (size_t)bakeTarget < infos.size()) options.key = infos[(size_t)bakeTarget].key;
             options.path = bakePath;
             options.size = bakeSize;
@@ -353,7 +352,7 @@ void editor::InspectorWindow::drawVertexColorsComponent(ComponentType cpType, Sc
             options.uvSet = bakeUv;
             options.srgb = bakeSrgb;
             actionError.clear();
-            if (bakeToTexture(project, sceneId, entity, options, &actionError)) ImGui::CloseCurrentPopup();
+            if (jasperengine::editor::vertexcolor::bakeToTexture(project, sceneId, entity, options, &actionError)) ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
         if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();

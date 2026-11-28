@@ -13,6 +13,8 @@
 
 #include <string>
 
+namespace Physics3DCompoundScriptsTest_cpp {
+
 using namespace jasperengine;
 
 // ---- callbacks: a script on the child and on the ancestor both hear the child's contact ---------
@@ -85,3 +87,5 @@ TEST_F(Physics3DCompoundScripts, ContactOnChildReachesChildAndAncestor) {
     EXPECT_TRUE(hasEntry("CE:Car:Floor:Wheel:Floor")) << log();
     EXPECT_TRUE(hasEntry("CE:Floor:Wheel:Floor:Car")) << log();
 }
+
+}  // namespace Physics3DCompoundScriptsTest_cpp

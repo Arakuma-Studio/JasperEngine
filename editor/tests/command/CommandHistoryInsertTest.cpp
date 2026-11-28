@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+namespace CommandHistoryInsertTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace {
@@ -169,3 +171,5 @@ TEST(CommandHistoryInsert, InsertedStepIsFoundAndIsNoPlayStep) {
     EXPECT_FALSE(history.isPlayStep(reload));
     EXPECT_EQ(history.top()->info.id, reload);
 }
+
+}  // namespace CommandHistoryInsertTest_cpp
