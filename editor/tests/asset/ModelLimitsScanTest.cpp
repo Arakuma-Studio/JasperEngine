@@ -11,6 +11,8 @@
 
 #include <string>
 
+namespace ModelLimitsScanTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -92,3 +94,5 @@ TEST(ModelLimitsScan, AnObjHasNone) {
     ASSERT_TRUE(scanModelBytes(".obj", obj, contents));
     EXPECT_TRUE(contents.limits.empty());
 }
+
+}  // namespace ModelLimitsScanTest_cpp

@@ -20,6 +20,8 @@
 #include <cstdio>
 #include <string>
 
+namespace ConsoleCommandsBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::console;
 
@@ -110,3 +112,5 @@ TEST(ConsoleCommandsBench, Complete){
     EXPECT_EQ(found, static_cast<size_t>(objects) * 20u) << "111 match Object99: the first 20";
     expectWithin(objectMs, 1.0, "ConsoleCommands gameobject completion, 10,000 GameObjects (ms)");
 }
+
+}  // namespace ConsoleCommandsBenchTest_cpp

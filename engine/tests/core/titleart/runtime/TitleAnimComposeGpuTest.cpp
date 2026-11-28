@@ -25,6 +25,8 @@
 
 #include <chrono>
 
+namespace TitleAnimComposeGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -252,3 +254,5 @@ TEST_F(TitleAnimComposeGpu, PrerenderFillsTheCacheAndPlaysWithoutRendering) {
     EXPECT_FALSE(TitleArtRuntime::prepareAnimation(bigLive, bigPlayer, "P"));
     EXPECT_FALSE(TitleArtRuntime::isPrerendering(bigLive));
 }
+
+}  // namespace TitleAnimComposeGpuTest_cpp

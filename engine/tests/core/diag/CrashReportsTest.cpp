@@ -34,6 +34,8 @@
     extern char** environ;
 #endif
 
+namespace CrashReportsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 namespace fs = std::filesystem;
@@ -466,3 +468,5 @@ TEST(CrashUserBench, CreateReportWrites) {
         EXPECT_LE(encodeMs, 60.0 * slack) << "R31";
     }
 }
+
+}  // namespace CrashReportsTest_cpp

@@ -18,10 +18,11 @@
 #include <set>
 #include <string>
 
+namespace fog_profile_test {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
-namespace fog_profile_test {
 
     // every look field away from its default, so a field the writer or the reader forgot shows
     FogProfileData everyField(){
@@ -53,6 +54,8 @@ namespace fog_profile_test {
     }
 
 }
+
+namespace fog_profile_test {
 
 using namespace fog_profile_test;
 
@@ -287,3 +290,5 @@ TEST(FogProfileTest, LibraryServesEditsOnTheNextLookUp){
     EXPECT_FALSE(FogProfileLibrary::get(key));
     FogProfileLibrary::clear();
 }
+
+}  // namespace fog_profile_test

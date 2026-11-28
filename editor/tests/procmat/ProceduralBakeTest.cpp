@@ -27,6 +27,8 @@
 #include <cmath>
 #include <filesystem>
 
+namespace ProceduralBakeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::procmat;
@@ -524,3 +526,5 @@ TEST(ProceduralBake, ARepeatCountOtherThanAScaleGetsItsFix) {
     ASSERT_EQ(report["fixes"].size(), 1u) << report.dump();
     EXPECT_EQ(report["fixes"][0]["op"], (qa::Json{{"op", "setParam"}, {"node", "b1"}, {"name", "rows"}, {"value", 7.0}}));
 }
+
+}  // namespace ProceduralBakeTest_cpp

@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+namespace CommandHistoryHookTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace {
@@ -151,3 +153,5 @@ TEST(CommandHistoryHook, ACommitFromInsideTheHookLandsFirst) {
     history.undo();
     EXPECT_EQ(model.value, 0);
 }
+
+}  // namespace CommandHistoryHookTest_cpp

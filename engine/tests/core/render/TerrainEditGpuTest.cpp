@@ -34,6 +34,8 @@
 #include <string>
 #include <vector>
 
+namespace TerrainEditGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -187,3 +189,5 @@ TEST(TerrainEditGpu, UploadMatchesFreshLoad){
     EXPECT_LT(editGpuDifference(editGpuTarget(), afterEdit), 1.0) << "what the edit drew is what a fresh load of the map draws";
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace TerrainEditGpuTest_cpp

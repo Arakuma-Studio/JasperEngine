@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ParticleQaSettingsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -49,3 +51,5 @@ TEST(ParticleQaSettings, RoundTripsAndAnOldProjectKeepsTheDefaults){
     Stream::decodeProject(&old, YAML::Load("name: Old\n"), Workspace());
     EXPECT_EQ(old.getParticleQaSettings(), ParticleQaSettings());
 }
+
+}  // namespace ParticleQaSettingsTest_cpp

@@ -49,7 +49,6 @@
 #endif
 
 namespace je_crash_posix {
-using namespace jasperengine::diag::crash::detail;
 constexpr int signals[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT, SIGTRAP};
 struct sigaction previous[sizeof(signals) / sizeof(signals[0])]{};
 struct Module { uintptr_t begin, end, base; char name[256]; };
@@ -88,7 +87,7 @@ void raw(int fd, const char* text, size_t size) {
     }
 }
 void line(int fd, const char* text) {
-    raw(fd, text, textLength(text));
+    raw(fd, text, jasperengine::diag::crash::detail::textLength(text));
     raw(fd, "\n", 1);
 #if defined(__ANDROID__)
     __android_log_write(ANDROID_LOG_FATAL, "JasperEngine", text);
@@ -166,9 +165,9 @@ __attribute__((noinline)) size_t capture(void** frames, size_t capacity) {
 }
 void frame(int fd, size_t index, uintptr_t pc) {
     char text[768];
-    size_t n = appendText(text, sizeof(text), 0, "#");
-    n = appendDecimal(text, sizeof(text), n, index);
-    n = appendText(text, sizeof(text), n, " ");
+    size_t n = jasperengine::diag::crash::detail::appendText(text, sizeof(text), 0, "#");
+    n = jasperengine::diag::crash::detail::appendDecimal(text, sizeof(text), n, index);
+    n = jasperengine::diag::crash::detail::appendText(text, sizeof(text), n, " ");
     uintptr_t base = 0;
     const char* name = "module?";
     for (size_t i = 0; i < moduleCount; i++) {
@@ -178,20 +177,20 @@ void frame(int fd, size_t index, uintptr_t pc) {
             break;
         }
     }
-    n = appendText(text, sizeof(text), n, name);
-    n = appendText(text, sizeof(text), n, "+");
-    appendHex(text, sizeof(text), n, pc - base);
+    n = jasperengine::diag::crash::detail::appendText(text, sizeof(text), n, name);
+    n = jasperengine::diag::crash::detail::appendText(text, sizeof(text), n, "+");
+    jasperengine::diag::crash::detail::appendHex(text, sizeof(text), n, pc - base);
     line(fd, text);
 }
 void number(int fd, const char* key, uint64_t value, bool hex = false) {
     char text[160];
-    const size_t n = appendText(text, sizeof(text), 0, key);
-    if (hex) appendHex(text, sizeof(text), n, value);
-    else appendDecimal(text, sizeof(text), n, value);
+    const size_t n = jasperengine::diag::crash::detail::appendText(text, sizeof(text), 0, key);
+    if (hex) jasperengine::diag::crash::detail::appendHex(text, sizeof(text), n, value);
+    else jasperengine::diag::crash::detail::appendDecimal(text, sizeof(text), n, value);
     line(fd, text);
 }
 void ring(int fd) {
-    const auto& s = state();
+    const auto& s = jasperengine::diag::crash::detail::state();
     if (!s.includeLogTail || !s.ring || !s.ringCapacity) return;
     const uint64_t cursor = s.ringCursor.load(std::memory_order_acquire);
     const size_t count = cursor < s.ringCapacity ? static_cast<size_t>(cursor) : s.ringCapacity;
@@ -203,18 +202,18 @@ void ring(int fd) {
 // journal.txt (diag/Journal.h): the header prepared at install, "dropped: N", "---", then the
 // ring's whole entries as raw bytes. Nothing when the journal holds no entry.
 void journal() {
-    const auto& s = state();
+    const auto& s = jasperengine::diag::crash::detail::state();
     if (!s.journal || !s.journalCapacity || !s.journalCursor || !s.journalFile[0]) return;
-    const JournalSpan span = journalSpan(s.journal, s.journalCapacity, s.journalCursor->load(std::memory_order_acquire));
+    const jasperengine::diag::crash::detail::JournalSpan span = jasperengine::diag::crash::detail::journalSpan(s.journal, s.journalCapacity, s.journalCursor->load(std::memory_order_acquire));
     if (span.entries == 0) return;
     const int fd = open(s.journalFile, O_CREAT | O_WRONLY | O_TRUNC, 0600);
     if (fd < 0) return;
     char head[sizeof(s.journalHeader) + 64];
-    size_t n = appendText(head, sizeof(head), 0, s.journalHeader, s.journalHeaderLength);
+    size_t n = jasperengine::diag::crash::detail::appendText(head, sizeof(head), 0, s.journalHeader, s.journalHeaderLength);
     const uint64_t written = s.journalWritten ? s.journalWritten->load(std::memory_order_acquire) : span.entries;
-    n = appendText(head, sizeof(head), n, "dropped: ");
-    n = appendDecimal(head, sizeof(head), n, written > span.entries ? written - span.entries : 0);
-    n = appendText(head, sizeof(head), n, "\n---\n");
+    n = jasperengine::diag::crash::detail::appendText(head, sizeof(head), n, "dropped: ");
+    n = jasperengine::diag::crash::detail::appendDecimal(head, sizeof(head), n, written > span.entries ? written - span.entries : 0);
+    n = jasperengine::diag::crash::detail::appendText(head, sizeof(head), n, "\n---\n");
     raw(fd, head, n);
     const size_t first = static_cast<size_t>(span.begin % s.journalCapacity);
     const size_t count = static_cast<size_t>(span.end - span.begin);
@@ -254,7 +253,7 @@ void chain(int sig, siginfo_t* info, void* context) {
     defaultAction(sig);
 }
 __attribute__((noinline)) void fatal(int sig, siginfo_t* info, void* context) {
-    auto& s = state();
+    auto& s = jasperengine::diag::crash::detail::state();
     // Test the calling thread before touching shared state: a fault in the handler itself
     // cannot wait for its own report. Restore the saved handler before calling it so
     // OS/sanitizer crash collection survives even a fault inside this reporter.
@@ -294,13 +293,13 @@ __attribute__((noinline)) void fatal(int sig, siginfo_t* info, void* context) {
 #endif
     const char* why = s.pendingReasonSet.load(std::memory_order_acquire) ? s.pendingReason : reason(sig);
     char text[1536];
-    size_t n = appendText(text, sizeof(text), 0, "reason: ");
-    appendText(text, sizeof(text), n, why);
+    size_t n = jasperengine::diag::crash::detail::appendText(text, sizeof(text), 0, "reason: ");
+    jasperengine::diag::crash::detail::appendText(text, sizeof(text), n, why);
     line(report, text);
     number(report, "signal: ", static_cast<uint64_t>(sig));
     char code[64];
-    n = appendText(code, sizeof(code), 0, "si_code: ");
-    appendSigned(code, sizeof(code), n, info ? info->si_code : 0);
+    n = jasperengine::diag::crash::detail::appendText(code, sizeof(code), 0, "si_code: ");
+    jasperengine::diag::crash::detail::appendSigned(code, sizeof(code), n, info ? info->si_code : 0);
     line(report, code);
     number(report, "fault_address: ", info ? reinterpret_cast<uintptr_t>(info->si_addr) : 0, true);
     uintptr_t pc = 0, sp = 0;
@@ -309,14 +308,14 @@ __attribute__((noinline)) void fatal(int sig, siginfo_t* info, void* context) {
     number(report, "sp: ", sp, true);
     number(report, "thread: ", static_cast<uint64_t>(threadId()));
 #if defined(__APPLE__)
-    n = appendText(text, sizeof(text), 0, "thread_name: ");
-    appendText(text, sizeof(text), n, preparedThreadName);
+    n = jasperengine::diag::crash::detail::appendText(text, sizeof(text), 0, "thread_name: ");
+    jasperengine::diag::crash::detail::appendText(text, sizeof(text), n, preparedThreadName);
     line(report, text);
 #else
     char threadName[16]{};
     prctl(PR_GET_NAME, threadName, 0, 0, 0);
-    n = appendText(text, sizeof(text), 0, "thread_name: ");
-    appendText(text, sizeof(text), n, threadName);
+    n = jasperengine::diag::crash::detail::appendText(text, sizeof(text), 0, "thread_name: ");
+    jasperengine::diag::crash::detail::appendText(text, sizeof(text), n, threadName);
     line(report, text);
 #endif
     number(report, "time_since_start_ms: ", (monotonicNs() - s.startMonotonicNs) / 1000000);
@@ -324,9 +323,9 @@ __attribute__((noinline)) void fatal(int sig, siginfo_t* info, void* context) {
     for (const auto& tag : s.tags) {
         const uint32_t seq = tag.seq.load(std::memory_order_acquire);
         if (seq & 1) continue;
-        n = appendText(text, sizeof(text), 0, tag.key);
-        n = appendText(text, sizeof(text), n, ": ");
-        appendText(text, sizeof(text), n, tag.value);
+        n = jasperengine::diag::crash::detail::appendText(text, sizeof(text), 0, tag.key);
+        n = jasperengine::diag::crash::detail::appendText(text, sizeof(text), n, ": ");
+        jasperengine::diag::crash::detail::appendText(text, sizeof(text), n, tag.value);
         if (tag.seq.load(std::memory_order_acquire) == seq && tag.key[0]) line(report, text);
     }
     void* frames[64];
@@ -343,7 +342,7 @@ __attribute__((noinline)) void fatal(int sig, siginfo_t* info, void* context) {
 #endif
     const uintptr_t handlerReturnPc = reinterpret_cast<uintptr_t>(
         __builtin_extract_return_addr(__builtin_return_address(0)));
-    const size_t callers = crashCallerStart(frames, count, pc, 2, addressMask, handlerReturnPc);
+    const size_t callers = jasperengine::diag::crash::detail::crashCallerStart(frames, count, pc, 2, addressMask, handlerReturnPc);
     line(report, "backtrace:");
     if (pc) frame(report, 0, pc);
     for (size_t i = callers; i < count; i++) frame(report, i - callers + (pc ? 1 : 0), reinterpret_cast<uintptr_t>(frames[i]));
@@ -374,18 +373,18 @@ __attribute__((noinline)) void fatal(int sig, siginfo_t* info, void* context) {
     const int log = s.logFile[0] ? open(s.logFile, O_CREAT | O_WRONLY | O_APPEND, 0600) : -1;
     if (!flushed && unwritten) number(log, "log tail incomplete: ", unwritten);
     line(log, "\n========================================================");
-    n = appendText(text, sizeof(text), 0, "FATAL: ");
-    appendText(text, sizeof(text), n, why);
+    n = jasperengine::diag::crash::detail::appendText(text, sizeof(text), 0, "FATAL: ");
+    jasperengine::diag::crash::detail::appendText(text, sizeof(text), n, why);
     line(log, text);
     line(log, s.banner);
     line(log, "backtrace:");
     if (pc) frame(log, 0, pc);
     for (size_t i = callers; i < count; i++) frame(log, i - callers + (pc ? 1 : 0), reinterpret_cast<uintptr_t>(frames[i]));
     if (log >= 0) close(log);
-    n = appendText(text, sizeof(text), 0, "JASPERENGINE CRASH: ");
-    n = appendText(text, sizeof(text), n, why);
-    n = appendText(text, sizeof(text), n, " report=");
-    appendText(text, sizeof(text), n, s.sessionDir);
+    n = jasperengine::diag::crash::detail::appendText(text, sizeof(text), 0, "JASPERENGINE CRASH: ");
+    n = jasperengine::diag::crash::detail::appendText(text, sizeof(text), n, why);
+    n = jasperengine::diag::crash::detail::appendText(text, sizeof(text), n, " report=");
+    jasperengine::diag::crash::detail::appendText(text, sizeof(text), n, s.sessionDir);
     line(STDERR_FILENO, text);
     s.reportDone.store(true, std::memory_order_release);
     chain(sig, info, context);
@@ -410,12 +409,12 @@ void addModule(uintptr_t begin, uintptr_t end, uintptr_t base, const char* name)
     module.begin = begin; module.end = end; module.base = base;
     const char* basename = name;
     for (const char* c = name; *c; c++) if (*c == '/') basename = c + 1;
-    appendText(module.name, sizeof(module.name), 0, basename);
+    jasperengine::diag::crash::detail::appendText(module.name, sizeof(module.name), 0, basename);
 #if defined(__APPLE__)
-    moduleListBytes = appendHex(moduleList, sizeof(moduleList), moduleListBytes, base);
-    moduleListBytes = appendText(moduleList, sizeof(moduleList), moduleListBytes, " ");
-    moduleListBytes = appendText(moduleList, sizeof(moduleList), moduleListBytes, name);
-    moduleListBytes = appendText(moduleList, sizeof(moduleList), moduleListBytes, "\n");
+    moduleListBytes = jasperengine::diag::crash::detail::appendHex(moduleList, sizeof(moduleList), moduleListBytes, base);
+    moduleListBytes = jasperengine::diag::crash::detail::appendText(moduleList, sizeof(moduleList), moduleListBytes, " ");
+    moduleListBytes = jasperengine::diag::crash::detail::appendText(moduleList, sizeof(moduleList), moduleListBytes, name);
+    moduleListBytes = jasperengine::diag::crash::detail::appendText(moduleList, sizeof(moduleList), moduleListBytes, "\n");
 #endif
 }
 } // namespace je_crash_posix
@@ -454,7 +453,7 @@ void prepareThreadPlatform() {
 }
 bool installPlatform(const Config&) {
     using namespace je_crash_posix;
-    state().startMonotonicNs = monotonicNs();
+    jasperengine::diag::crash::detail::state().startMonotonicNs = monotonicNs();
     prepareThreadPlatform();
     void* warm[16];
     capture(warm, 16);
@@ -478,7 +477,7 @@ bool installPlatform(const Config&) {
             command += load->cmdsize;
         }
     }
-    appendText(state().coreHint, sizeof(state().coreHint), 0, "core: see the OS .ips report");
+    jasperengine::diag::crash::detail::appendText(jasperengine::diag::crash::detail::state().coreHint, sizeof(jasperengine::diag::crash::detail::state().coreHint), 0, "core: see the OS .ips report");
 #else
     char executable[512]{};
     const ssize_t bytes = readlink("/proc/self/exe", executable, sizeof(executable) - 1);
@@ -495,8 +494,8 @@ bool installPlatform(const Config&) {
     char pattern[256]{};
     const int file = open("/proc/sys/kernel/core_pattern", O_RDONLY);
     if (file >= 0) { const ssize_t n = read(file, pattern, sizeof(pattern) - 1); if (n > 0) pattern[n] = 0; close(file); }
-    size_t n = appendText(state().coreHint, sizeof(state().coreHint), 0, "core: ");
-    appendText(state().coreHint, sizeof(state().coreHint), n, pattern[0] == '|' ? "use coredumpctl info / coredumpctl debug" : pattern);
+    size_t n = jasperengine::diag::crash::detail::appendText(jasperengine::diag::crash::detail::state().coreHint, sizeof(jasperengine::diag::crash::detail::state().coreHint), 0, "core: ");
+    jasperengine::diag::crash::detail::appendText(jasperengine::diag::crash::detail::state().coreHint, sizeof(jasperengine::diag::crash::detail::state().coreHint), n, pattern[0] == '|' ? "use coredumpctl info / coredumpctl debug" : pattern);
 #endif
     if (const char* enabled = std::getenv("JASPERENGINE_CRASH_CORE"); enabled && enabled[0] == '1') {
         rlimit limit{};

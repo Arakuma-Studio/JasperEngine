@@ -27,11 +27,10 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::terraincore;
 
 namespace {
 
-    ImU32 tileStateColour(TileState state, bool pinned) {
+    ImU32 tileStateColour(terraincore::TileState state, bool pinned) {
         // the overlay's Tile State colours (R41, R42)
         const Vector4 colour = terrainWorldStateColour(state, pinned);
         return ImGui::ColorConvertFloat4ToU32(ImVec4(colour.x, colour.y, colour.z, colour.w));
@@ -100,8 +99,8 @@ void CreateTerrainWorldDialog::show() {
     EditorModal::inputInt("Grid Length", "grid_length", &settings.gridLength, 0, 0);
     ImGui::SetNextItemWidth(width);
     EditorModal::inputFloat("Base Height", "base_height", &settings.baseHeight, 0.0f, 0.0f, "%.1f m");
-    settings.gridWidth = std::clamp(settings.gridWidth, 1, WORLD_MAX_BOX_DESKTOP);
-    settings.gridLength = std::clamp(settings.gridLength, 1, WORLD_MAX_BOX_DESKTOP);
+    settings.gridWidth = std::clamp(settings.gridWidth, 1, terraincore::WORLD_MAX_BOX_DESKTOP);
+    settings.gridLength = std::clamp(settings.gridLength, 1, terraincore::WORLD_MAX_BOX_DESKTOP);
     settings.originX = -settings.gridWidth / 2;
     settings.originZ = -settings.gridLength / 2;
     const float side = static_cast<float>(settings.tileQuads) * settings.spacing;
@@ -279,8 +278,8 @@ void ImportHeightmapDialog::show() {
     EditorModal::inputInt("Origin Tile X", "origin_x", &originX, 1, 8);
     ImGui::SetNextItemWidth(width * 0.5f);
     EditorModal::inputInt("Origin Tile Z", "origin_z", &originZ, 1, 8);
-    originX = std::clamp(originX, WORLD_TILE_MIN, WORLD_TILE_MAX);
-    originZ = std::clamp(originZ, WORLD_TILE_MIN, WORLD_TILE_MAX);
+    originX = std::clamp(originX, terraincore::WORLD_TILE_MIN, terraincore::WORLD_TILE_MAX);
+    originZ = std::clamp(originZ, terraincore::WORLD_TILE_MIN, terraincore::WORLD_TILE_MAX);
     EditorModal::checkbox("Flip Vertically", "flip_vertically", &flip);
     ImGui::SetNextItemWidth(width * 0.5f);
     EditorModal::inputInt("Raw Width", "width", &rawWidth, 1, 256);
@@ -296,7 +295,7 @@ void ImportHeightmapDialog::show() {
     request.width = rawWidth;
     request.height = rawHeight;
     request.flipVertically = flip;
-    request.origin = TileCoord(originX, originZ);
+    request.origin = terraincore::TileCoord(originX, originZ);
     TerrainWorldImportPlan plan;
     std::string planError;
     const bool possible = runtime && !path.empty() && planTerrainWorldImport(project, *runtime, request, plan, planError);
@@ -355,15 +354,15 @@ void TerrainWorldPanel::open(Project* project) {
 }
 
 const char* TerrainWorldPanel::stateHelp(int state) {
-    switch (static_cast<TileState>(state)) {
-        case TileState::Absent: return "Absent: no tile here. Nothing draws and nothing collides.";
-        case TileState::Cold: return "Cold: on disk, not in memory. Draws from the overview.";
-        case TileState::Queued: return "Queued: waiting for a read.";
-        case TileState::Loading: return "Loading: being read and decoded.";
-        case TileState::CpuReady: return "In memory: collision and queries are exact; it draws from the overview until its page is up.";
-        case TileState::Uploading: return "Uploading: its page goes to the GPU this frame.";
-        case TileState::Resident: return "Resident: drawn from its own page.";
-        case TileState::Error: return "Error: the file could not be read. Draws from the overview; a changed file clears it.";
+    switch (static_cast<terraincore::TileState>(state)) {
+        case terraincore::TileState::Absent: return "Absent: no tile here. Nothing draws and nothing collides.";
+        case terraincore::TileState::Cold: return "Cold: on disk, not in memory. Draws from the overview.";
+        case terraincore::TileState::Queued: return "Queued: waiting for a read.";
+        case terraincore::TileState::Loading: return "Loading: being read and decoded.";
+        case terraincore::TileState::CpuReady: return "In memory: collision and queries are exact; it draws from the overview until its page is up.";
+        case terraincore::TileState::Uploading: return "Uploading: its page goes to the GPU this frame.";
+        case terraincore::TileState::Resident: return "Resident: drawn from its own page.";
+        case terraincore::TileState::Error: return "Error: the file could not be read. Draws from the overview; a changed file clears it.";
     }
     return "";
 }
@@ -405,11 +404,11 @@ void TerrainWorldPanel::show() {
     tool = static_cast<Tool>(toolIndex);
 
     // R41: the minimap, the box of present tiles and a ring of one around it
-    const WorldLattice& lattice = runtime->lattice();
-    TileCoord low(-2, -2), high(1, 1);
+    const terraincore::WorldLattice& lattice = runtime->lattice();
+    terraincore::TileCoord low(-2, -2), high(1, 1);
     if (runtime->occupancy().bounds(low, high)) {
-        low = TileCoord(low.x - 1, low.z - 1);
-        high = TileCoord(high.x + 1, high.z + 1);
+        low = terraincore::TileCoord(low.x - 1, low.z - 1);
+        high = terraincore::TileCoord(high.x + 1, high.z + 1);
     }
     const int columns = high.x - low.x + 1, rows = high.z - low.z + 1;
     const float available = ImGui::GetContentRegionAvail().x;
@@ -419,11 +418,11 @@ void TerrainWorldPanel::show() {
     ImGui::InvisibleButton("minimap", ImVec2(cell * columns, cell * rows));
     const bool hovered = ImGui::IsItemHovered();
     const ImVec2 mouse = ImGui::GetIO().MousePos;
-    TileCoord hoveredTile;
+    terraincore::TileCoord hoveredTile;
     bool hasHover = false;
     for (int z = low.z; z <= high.z; z++) {
         for (int x = low.x; x <= high.x; x++) {
-            const TileCoord tile(x, z);
+            const terraincore::TileCoord tile(x, z);
             // +z up the minimap, as the Scene view seen from above
             const ImVec2 a(origin.x + (x - low.x) * cell, origin.y + (high.z - z) * cell);
             const ImVec2 b(a.x + cell - 1.0f, a.y + cell - 1.0f);
@@ -436,7 +435,7 @@ void TerrainWorldPanel::show() {
         }
     }
     // the focuses
-    for (const StreamFocus& focus : runtime->tiles().focuses()) {
+    for (const terraincore::StreamFocus& focus : runtime->tiles().focuses()) {
         const float fx = (focus.x / lattice.tileSize() - low.x) * cell, fz = (high.z + 1 - focus.z / lattice.tileSize()) * cell;
         draw->AddCircleFilled(ImVec2(origin.x + fx, origin.y + fz), std::max(2.5f, cell * 0.2f), IM_COL32(255, 255, 255, 230));
     }
@@ -458,7 +457,7 @@ void TerrainWorldPanel::show() {
         ImGui::SameLine();
         if (ImGui::Button("Repair Seams")) {
             int repaired = 0;
-            for (const TileCoord& tile : runtime->occupancy().presentTiles()) repaired += runtime->checkSeams(tile, true);
+            for (const terraincore::TileCoord& tile : runtime->occupancy().presentTiles()) repaired += runtime->checkSeams(tile, true);
             message = std::to_string(repaired) + " border samples repaired";
         }
     }
@@ -492,8 +491,8 @@ void TerrainWorldPanel::show() {
     // R41's live info
     ImGui::SeparatorText("Info");
     const TerrainWorldStats stats = runtime->stats();
-    ImGui::Text("Tiles: %i, resident %i, in memory %i, errors %i", stats.tiles, stats.states[static_cast<int>(TileState::Resident)],
-                stats.states[static_cast<int>(TileState::CpuReady)] + stats.states[static_cast<int>(TileState::Resident)], stats.states[static_cast<int>(TileState::Error)]);
+    ImGui::Text("Tiles: %i, resident %i, in memory %i, errors %i", stats.tiles, stats.states[static_cast<int>(terraincore::TileState::Resident)],
+                stats.states[static_cast<int>(terraincore::TileState::CpuReady)] + stats.states[static_cast<int>(terraincore::TileState::Resident)], stats.states[static_cast<int>(terraincore::TileState::Error)]);
     ImGui::Text("GPU %s of %s, CPU %s of %s", worldMegabytes(stats.gpuBytes).c_str(), worldMegabytes(stats.gpuCap).c_str(), worldMegabytes(stats.cpuBytes).c_str(),
                 worldMegabytes(stats.cpuCap).c_str());
     ImGui::Text("Queue %i, loading %i, uploads %s this frame", stats.queue, stats.inFlight, worldMegabytes(stats.uploadBytesLastFrame).c_str());

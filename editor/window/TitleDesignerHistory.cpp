@@ -23,7 +23,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::titledesigner;
 namespace fs = std::filesystem;
 
 namespace {
@@ -152,13 +151,13 @@ void TitleDesignerWindow::drawHistory() {
     if (hoveredNow != historyHover) {
         historyHover = hoveredNow;
         if (hoveredNow == 0) {
-            if (doc.preview() && doc.preview()->kind == PreviewItem::Kind::HistoryVersion) doc.clearPreview();
+            if (doc.preview() && doc.preview()->kind == titledesigner::PreviewItem::Kind::HistoryVersion) doc.clearPreview();
         } else {
             for (const Row& row : rows) {
                 if (row.entry->info.id != hoveredNow) continue;
                 if (const std::string* text = stepText(row.entry, file)) {
-                    PreviewItem item;
-                    item.kind = PreviewItem::Kind::HistoryVersion;
+                    titledesigner::PreviewItem item;
+                    item.kind = titledesigner::PreviewItem::Kind::HistoryVersion;
                     item.id = std::to_string(hoveredNow);
                     item.label = row.entry->name();
                     item.text = *text;

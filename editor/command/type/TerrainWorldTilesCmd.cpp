@@ -18,17 +18,16 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::terraincore;
 
 namespace {
 
-    std::string worldTileText(TileCoord tile) {
+    std::string worldTileText(terraincore::TileCoord tile) {
         return "(" + std::to_string(tile.x) + ", " + std::to_string(tile.z) + ")";
     }
 
 }
 
-editor::TerrainWorldTilesCmd::TerrainWorldTilesCmd(Project* project, uint32_t sceneId, Entity entity, std::string verb, std::vector<TileCoord> tiles,
+editor::TerrainWorldTilesCmd::TerrainWorldTilesCmd(Project* project, uint32_t sceneId, Entity entity, std::string verb, std::vector<terraincore::TileCoord> tiles,
                                                    Change change)
     : project(project), sceneId(sceneId), entity(entity), verb(std::move(verb)), tiles(std::move(tiles)), change(std::move(change)) {
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
@@ -56,12 +55,12 @@ TerrainWorldRuntime* editor::TerrainWorldTilesCmd::runtime(std::string& error) c
 }
 
 void editor::TerrainWorldTilesCmd::put(TerrainWorldRuntime& world, bool after) {
-    TiledMapStore& store = world.store();
+    terraincore::TiledMapStore& store = world.store();
     for (const Snapshot& snapshot : snapshots) {
-        const std::shared_ptr<const WorldTile>& data = after ? snapshot.after : snapshot.before;
+        const std::shared_ptr<const terraincore::WorldTile>& data = after ? snapshot.after : snapshot.before;
         if (data) {
             // the store pins and edits what it is given: the snapshot stays as it was
-            store.restoreTile(snapshot.tile, std::make_shared<WorldTile>(*data));
+            store.restoreTile(snapshot.tile, std::make_shared<terraincore::WorldTile>(*data));
         } else if (world.present(snapshot.tile)) {
             store.dropTile(snapshot.tile);
         }
@@ -80,16 +79,16 @@ bool editor::TerrainWorldTilesCmd::execute() {
         return true;
     }
     snapshots.clear();
-    for (const TileCoord& tile : tiles) {
+    for (const terraincore::TileCoord& tile : tiles) {
         Snapshot snapshot;
         snapshot.tile = tile;
         if (world->present(tile)) {
-            std::shared_ptr<const WorldTile> current = world->tile(tile);
+            std::shared_ptr<const terraincore::WorldTile> current = world->tile(tile);
             if (!current) {
                 lastError = "Tile " + worldTileText(tile) + " could not be read; nothing was changed.";
                 return false;
             }
-            snapshot.before = std::make_shared<WorldTile>(*current);
+            snapshot.before = std::make_shared<terraincore::WorldTile>(*current);
         }
         snapshots.push_back(std::move(snapshot));
     }
@@ -104,8 +103,8 @@ bool editor::TerrainWorldTilesCmd::execute() {
     bool any = false;
     for (Snapshot& snapshot : snapshots) {
         if (world->present(snapshot.tile)) {
-            std::shared_ptr<const WorldTile> current = world->tile(snapshot.tile);
-            if (current) snapshot.after = std::make_shared<WorldTile>(*current);
+            std::shared_ptr<const terraincore::WorldTile> current = world->tile(snapshot.tile);
+            if (current) snapshot.after = std::make_shared<terraincore::WorldTile>(*current);
         }
         any = any || static_cast<bool>(snapshot.before) != static_cast<bool>(snapshot.after) ||
               (snapshot.before && snapshot.after && snapshot.before->height.bytes != snapshot.after->height.bytes);
@@ -148,7 +147,7 @@ size_t editor::TerrainWorldTilesCmd::memoryBytes() const {
     return bytes;
 }
 
-bool editor::checkTerrainWorldTiles(TerrainWorldRuntime& runtime, const std::vector<TileCoord>& tiles, bool remove, std::vector<TileCoord>& changed,
+bool editor::checkTerrainWorldTiles(TerrainWorldRuntime& runtime, const std::vector<terraincore::TileCoord>& tiles, bool remove, std::vector<terraincore::TileCoord>& changed,
                                     std::string& error) {
     changed.clear();
     if (tiles.empty()) {
@@ -160,9 +159,9 @@ bool editor::checkTerrainWorldTiles(TerrainWorldRuntime& runtime, const std::vec
         return false;
     }
     std::set<uint32_t> seen;
-    TileCoord low, high;
+    terraincore::TileCoord low, high;
     bool box = runtime.bounds(low, high);
-    for (const TileCoord& tile : tiles) {
+    for (const terraincore::TileCoord& tile : tiles) {
         if (!seen.insert(tile.key()).second) continue;
         if (remove) {
             if (!runtime.present(tile)) {
@@ -180,8 +179,8 @@ bool editor::checkTerrainWorldTiles(TerrainWorldRuntime& runtime, const std::vec
         }
         // canCreate measures one tile against the present ones; the call's tiles count together
         if (box) {
-            low = TileCoord(std::min<int>(low.x, tile.x), std::min<int>(low.z, tile.z));
-            high = TileCoord(std::max<int>(high.x, tile.x), std::max<int>(high.z, tile.z));
+            low = terraincore::TileCoord(std::min<int>(low.x, tile.x), std::min<int>(low.z, tile.z));
+            high = terraincore::TileCoord(std::max<int>(high.x, tile.x), std::max<int>(high.z, tile.z));
         } else {
             low = high = tile;
             box = true;
@@ -201,8 +200,8 @@ bool editor::checkTerrainWorldTiles(TerrainWorldRuntime& runtime, const std::vec
     return true;
 }
 
-bool editor::editTerrainWorldTiles(Project* project, uint32_t sceneId, Entity world, const std::vector<TileCoord>& tiles, bool remove, std::string& error,
-                                   std::vector<TileCoord>* changedOut) {
+bool editor::editTerrainWorldTiles(Project* project, uint32_t sceneId, Entity world, const std::vector<terraincore::TileCoord>& tiles, bool remove, std::string& error,
+                                   std::vector<terraincore::TileCoord>* changedOut) {
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
     TerrainWorldSystem* system = sceneProject && sceneProject->scene ? sceneProject->scene->findSystem<TerrainWorldSystem>().get() : nullptr;
     if (!system) {
@@ -219,12 +218,12 @@ bool editor::editTerrainWorldTiles(Project* project, uint32_t sceneId, Entity wo
         error = "A Terrain World's tiles change only outside Play: stop Play first.";
         return false;
     }
-    std::vector<TileCoord> changed;
+    std::vector<terraincore::TileCoord> changed;
     if (!checkTerrainWorldTiles(*runtime, tiles, remove, changed, error)) return false;
     // the history frees a command that failed: its reason comes back through this
     auto reason = std::make_shared<std::string>();
     auto change = [changed, remove, reason](TerrainWorldRuntime& target, std::string& failure) {
-        for (const TileCoord& tile : changed) {
+        for (const terraincore::TileCoord& tile : changed) {
             if (remove) {
                 target.store().removeTile(tile);
             } else if (!target.store().addTile(tile, &failure)) {

@@ -60,6 +60,8 @@
 #include <string>
 #include <vector>
 
+namespace CpuSkinTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::cpuskin;
@@ -1618,3 +1620,5 @@ TEST_F(CpuSkin_, UnsupportedLayoutsFailWithTheReason) {
     EXPECT_FALSE(latticeInputs(latticeMesh, inputs, &error));
     EXPECT_NE(error.find("runs past the packed texels"), std::string::npos) << error;
 }
+
+}  // namespace CpuSkinTest_cpp

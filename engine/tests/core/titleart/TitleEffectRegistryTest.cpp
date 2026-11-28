@@ -7,6 +7,8 @@
 #include "titleart/TitleArtSchema.h"
 #include "titleart/TitleEffectRegistry.h"
 
+namespace TitleEffectRegistryTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -167,3 +169,5 @@ TEST_F(TitleEffectRegistryTest, ParamValuesReadTypedValues) {
     EXPECT_FLOAT_EQ(def->reach(values), 40.0f);
     EXPECT_FALSE(def->addsLight(values));
 }
+
+}  // namespace TitleEffectRegistryTest_cpp

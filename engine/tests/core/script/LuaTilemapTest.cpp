@@ -22,6 +22,8 @@
 #include <exception>
 #include <string>
 
+namespace LuaTilemapTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -148,3 +150,5 @@ TEST(LuaTilemap, CallsWithoutTheComponentAreLuaErrors){
     // the Lua state still works
     EXPECT_EQ(runTilemapLua(L, "assert(1 + 1 == 2)\n"), "");
 }
+
+}  // namespace LuaTilemapTest_cpp

@@ -27,6 +27,8 @@
 #include <cstring>
 #include <filesystem>
 
+namespace ProceduralTiersGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::procmat;
 using jasperengine::test::GpuEnvironment;
@@ -231,3 +233,5 @@ TEST(ProceduralTiersGpu, BuffersRoundToHalfOnBothTiers) {
     EXPECT_EQ(onDevice.outputs[0].rgba[0], 0);
     EXPECT_EQ(onCpu.outputs[0].rgba, onDevice.outputs[0].rgba);
 }
+
+}  // namespace ProceduralTiersGpuTest_cpp

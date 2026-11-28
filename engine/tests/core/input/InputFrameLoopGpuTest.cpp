@@ -14,6 +14,8 @@
 #include <functional>
 #include <vector>
 
+namespace InputFrameLoopGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -110,3 +112,5 @@ TEST_F(InputFrameLoopGpu, FixedStepsSeeEachEdgeOnce){
     EXPECT_GE(stepsThisFrame, 3);
     EXPECT_EQ(seenInSteps, 1);
 }
+
+}  // namespace InputFrameLoopGpuTest_cpp

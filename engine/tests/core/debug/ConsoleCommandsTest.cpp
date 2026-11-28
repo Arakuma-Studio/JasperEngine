@@ -25,6 +25,8 @@
 #include <thread>
 #include <vector>
 
+namespace ConsoleCommandsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::console;
 using jasperengine::test::LogCapture;
@@ -575,3 +577,5 @@ TEST_F(ConsoleCommands, NothingAllocatedUntilFirstUse){
     console::list();
     EXPECT_TRUE(console::isAllocated()) << "the first use builds it (the built-ins)";
 }
+
+}  // namespace ConsoleCommandsTest_cpp

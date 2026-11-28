@@ -9,6 +9,8 @@
 
 #include <set>
 
+namespace HumanBonesTest_cpp {
+
 using namespace posetest;
 
 TEST(PoseHumanBones, NamesUniqueAndRoundTrip){
@@ -99,3 +101,5 @@ TEST(PoseDofs, NamesRoundTripAndRightSideDerived){
         }
     }
 }
+
+}  // namespace HumanBonesTest_cpp

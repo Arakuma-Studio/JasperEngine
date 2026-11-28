@@ -13,6 +13,8 @@
 
 #include <set>
 
+namespace render_TitleArtShadersTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -31,3 +33,5 @@ TEST(TitleArtShadersTest, ProgramKeys) {
     std::set<std::string> names;
     for (int p = 1; p <= TITLE_PROGRAM_LAST; p++) EXPECT_TRUE(names.insert(titleProgramName((TitleProgram)p)).second);
 }
+
+}  // namespace render_TitleArtShadersTest_cpp

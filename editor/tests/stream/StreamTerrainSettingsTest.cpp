@@ -10,6 +10,8 @@
 #include <gtest/gtest.h>
 #include <yaml-cpp/yaml.h>
 
+namespace StreamTerrainSettingsTest_cpp {
+
 using namespace jasperengine::editor;
 
 TEST(StreamTerrainSettings, GenerateKeysDefault) {
@@ -48,3 +50,5 @@ TEST(StreamTerrainSettings, PressureKeysDefault) {
     EXPECT_FALSE(back.pressureStrength);
     EXPECT_TRUE(back.pressureSize);
 }
+
+}  // namespace StreamTerrainSettingsTest_cpp

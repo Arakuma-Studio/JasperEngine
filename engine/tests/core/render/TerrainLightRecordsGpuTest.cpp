@@ -34,10 +34,11 @@
 #include <string>
 #include <vector>
 
+namespace terrain_light_records_gpu_test {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
-namespace terrain_light_records_gpu_test {
 
     constexpr int TERRAIN_HEIGHT_RESOLUTION = 65;
     constexpr int TERRAIN_BLEND_RESOLUTION = 64;
@@ -158,6 +159,8 @@ namespace terrain_light_records_gpu_test {
 
 }
 
+namespace terrain_light_records_gpu_test {
+
 using namespace terrain_light_records_gpu_test;
 
 TEST_F(TerrainLightRecordsGpu, PaintedTerrainDrawsTheBlockFormsImage){
@@ -197,3 +200,5 @@ TEST_F(TerrainLightRecordsGpu, PaintedTerrainDrawsTheBlockFormsImage){
     EXPECT_TRUE(result.passed) << result.message;
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace terrain_light_records_gpu_test

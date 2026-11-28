@@ -21,6 +21,8 @@
 #include <memory>
 #include <vector>
 
+namespace PipelineDescPoolGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -87,3 +89,5 @@ TEST(PipelineDescPoolGpu, NoLoadDescriptionAfterDraw){
     GpuEnvironment::drawFrames(2);
     EXPECT_EQ(ObjectRender::getLoadingDescCount(), 0);
 }
+
+}  // namespace PipelineDescPoolGpuTest_cpp

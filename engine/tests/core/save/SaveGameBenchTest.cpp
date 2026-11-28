@@ -22,6 +22,8 @@
 #include <string>
 #include <vector>
 
+namespace SaveGameBenchTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::test::TestTempDir;
 
@@ -143,3 +145,5 @@ TEST(SaveGameBench, List50Slots){
     saveBenchBudget("list 50 slots (headers only)", ms, 5.0);
     store.setFolder({});
 }
+
+}  // namespace SaveGameBenchTest_cpp

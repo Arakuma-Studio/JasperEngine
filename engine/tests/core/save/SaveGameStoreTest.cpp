@@ -32,6 +32,8 @@
 #include <vector>
 
 
+namespace SaveGameStoreTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::test::LogCapture;
 using jasperengine::test::TestTempDir;
@@ -612,3 +614,5 @@ TEST(SaveGameStore, NothingExistsUntilFirstUse){
     const int status = std::system(command.c_str());
     EXPECT_EQ(status, 0) << command;
 }
+
+}  // namespace SaveGameStoreTest_cpp

@@ -19,6 +19,8 @@
 #include <random>
 #include <string>
 
+namespace ComponentArrayTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -569,3 +571,5 @@ TEST(ComponentArray, FindNextAfterStepsOverHolesInAnyOrder){
     EXPECT_GT(mostHoles, 100u) << "the lookups never met a long run of holes";
     EXPECT_EQ(array.size(), live.size());
 }
+
+}  // namespace ComponentArrayTest_cpp

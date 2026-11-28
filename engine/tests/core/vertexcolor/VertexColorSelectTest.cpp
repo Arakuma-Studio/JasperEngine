@@ -7,6 +7,8 @@
 
 #include "vertexcolor/VertexColorSelect.h"
 
+namespace VertexColorSelectTest_cpp {
+
 using namespace jasperengine;
 
 // (a named namespace, tests included: a unity build merges the test sources)
@@ -145,3 +147,5 @@ TEST(VertexColorSelect, AverageValueAndTarget) {
 }
 
 } // namespace vertex_color_select_test
+
+}  // namespace VertexColorSelectTest_cpp

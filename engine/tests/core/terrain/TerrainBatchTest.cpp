@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+namespace TerrainBatchTest_cpp {
+
 using namespace terraintest;
 
 namespace {
@@ -229,3 +231,5 @@ TEST(TerrainBatch, PaintByRulesUsesTheSameEncoder) {
     byRules.read(blend(0), TexelRect{1, 1, 1, 1}, texel);
     EXPECT_NEAR(texel[0], 1.0f - layer1 - layer2, TERRAIN_BATCH_BYTE) << "layer 0 took the rest";
 }
+
+}  // namespace TerrainBatchTest_cpp

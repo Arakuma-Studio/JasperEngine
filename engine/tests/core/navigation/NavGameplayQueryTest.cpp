@@ -16,6 +16,8 @@
 #include <cstring>
 #include <vector>
 
+namespace NavGameplayQueryTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 
@@ -449,3 +451,5 @@ TEST_F(NavFilterTest, PerQueryAreaCost){
     EXPECT_FLOAT_EQ(filter.getAreaCost(4), 7.0f);
     EXPECT_FLOAT_EQ(filter.getAreaCost(16), 0.0f);
 }
+
+}  // namespace NavGameplayQueryTest_cpp

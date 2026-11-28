@@ -14842,7 +14842,6 @@ namespace jasperengine::editor::inspectortilemap {
 
 }
 
-using namespace jasperengine::editor::inspectortilemap;
 
 void editor::InspectorWindow::drawGridComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities) {
     if (entities.empty()) return;
@@ -14889,7 +14888,7 @@ void editor::InspectorWindow::drawGridComponent(ComponentType cpType, SceneProje
 
     // the layer list (R68): add, remove, drag to reorder = Order in Layer
     separatorText("Tilemap Layers");
-    std::vector<Entity> layers = gridLayersByOrder(scene, gridEntity);
+    std::vector<Entity> layers = inspectortilemap::gridLayersByOrder(scene, gridEntity);
     Entity reorderSource = NULL_ENTITY, reorderTarget = NULL_ENTITY;
     Entity remove = NULL_ENTITY;
     for (size_t i = 0; i < layers.size(); i++) {
@@ -14900,12 +14899,12 @@ void editor::InspectorWindow::drawGridComponent(ComponentType cpType, SceneProje
         // the row spans the width: overlap lets its x button, drawn over it, take the click
         ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_AllowOverlap);
         if (ImGui::BeginDragDropSource()) {
-            ImGui::SetDragDropPayload(kLayerRowPayload, &layer, sizeof(layer));
+            ImGui::SetDragDropPayload(inspectortilemap::kLayerRowPayload, &layer, sizeof(layer));
             ImGui::TextUnformatted(name.c_str());
             ImGui::EndDragDropSource();
         }
         if (ImGui::BeginDragDropTarget()) {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kLayerRowPayload)) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(inspectortilemap::kLayerRowPayload)) {
                 reorderSource = *static_cast<const Entity*>(payload->Data);
                 reorderTarget = layer;
             }

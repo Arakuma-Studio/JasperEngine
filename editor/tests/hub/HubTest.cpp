@@ -34,6 +34,8 @@
     extern char** environ;
 #endif
 
+namespace HubTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::hub;
@@ -942,3 +944,5 @@ TEST(StagingFolders, TheJournalFollowsTheCopies) {
     EXPECT_FALSE(fs::exists(journal));
     staging::setJournalDirectory(fs::path());
 }
+
+}  // namespace HubTest_cpp

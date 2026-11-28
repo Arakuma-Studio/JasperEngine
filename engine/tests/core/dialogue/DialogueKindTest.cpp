@@ -12,6 +12,8 @@
 
 #include <algorithm>
 
+namespace DialogueKindTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::dialogue;
 using dialoguetest::GraphText;
@@ -251,3 +253,5 @@ TEST_F(DialogueKindTest, KeysAreStableAcrossEdits) {
 TEST_F(DialogueKindTest, MessageArgumentsSkipQuotedText) {
     EXPECT_EQ(messageArguments("{a} '{b}' {c, number} {d, plural, one {# {e}} other {x}}"), (std::vector<std::string>{"a", "c", "d", "e"}));
 }
+
+}  // namespace DialogueKindTest_cpp

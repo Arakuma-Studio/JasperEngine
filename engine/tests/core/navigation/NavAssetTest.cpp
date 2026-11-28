@@ -11,6 +11,8 @@
 
 #include <cstring>
 
+namespace NavAssetTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 
@@ -126,3 +128,5 @@ TEST_F(NavAssetTest, TileDataValidated){
     EXPECT_FALSE(error.empty());
     EXPECT_FALSE(mesh.isValid());
 }
+
+}  // namespace NavAssetTest_cpp

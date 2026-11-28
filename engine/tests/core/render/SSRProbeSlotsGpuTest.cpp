@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+namespace SSRProbeSlotsGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -144,3 +146,5 @@ TEST_F(SSRProbeSlotsGpu, CulledAndNonIBLMeshesTakeNoSlot){
     EXPECT_EQ(stats.probes[0].slot, 0);
     EXPECT_GT(stats.probes[0].coverage, 0.0f);
 }
+
+}  // namespace SSRProbeSlotsGpuTest_cpp

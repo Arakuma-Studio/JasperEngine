@@ -12,6 +12,8 @@
 
 #include <cmath>
 
+namespace AnimatorStateMachineTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::anim;
 using namespace animatortest;
@@ -312,3 +314,5 @@ TEST_F(AnimatorStateMachine, CrossFadeAndPlayFromScripts){
     for (const std::string& w : animtest::takeWarnings()) warnings += w.find("unknown state \"Nope\"") != std::string::npos;
     EXPECT_EQ(warnings, 1u);
 }
+
+}  // namespace AnimatorStateMachineTest_cpp

@@ -24,7 +24,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::ui;
+
+namespace jasperengine::editor::ui {
 
 namespace {
 
@@ -62,7 +63,7 @@ namespace {
 
 }
 
-void ui::drawGradientBar(ImDrawList* drawList, ImVec2 min, ImVec2 max, const Gradient& gradient) {
+void drawGradientBar(ImDrawList* drawList, ImVec2 min, ImVec2 max, const Gradient& gradient) {
     checker(drawList, min, max);
     for (int i = 0; i < kBarSamples; i++) {
         const float t0 = (float)i / kBarSamples, t1 = (float)(i + 1) / kBarSamples;
@@ -75,7 +76,7 @@ void ui::drawGradientBar(ImDrawList* drawList, ImVec2 min, ImVec2 max, const Gra
     drawList->AddRect(min, max, IM_COL32(0, 0, 0, 200));
 }
 
-EditPhase ui::gradientField(const char* id, Gradient& gradient, const GradientFieldOptions& options) {
+EditPhase gradientField(const char* id, Gradient& gradient, const GradientFieldOptions& options) {
     ImGui::PushID(id);
     const ImGuiID fieldId = ImGui::GetID("##gradientField");
     ImGuiContext& g = *GImGui;
@@ -99,7 +100,7 @@ EditPhase ui::gradientField(const char* id, Gradient& gradient, const GradientFi
     return phase;
 }
 
-EditPhase ui::minMaxGradientField(const char* id, particles::MinMaxGradient& value, const GradientFieldOptions& options) {
+EditPhase minMaxGradientField(const char* id, particles::MinMaxGradient& value, const GradientFieldOptions& options) {
     using particles::GradientValueMode;
     ImGui::PushID(id);
     EditPhase phase = EditPhase::None;
@@ -671,3 +672,5 @@ void GradientWindow::show() {
         else close();
     }
 }
+
+}  // namespace jasperengine::editor::ui

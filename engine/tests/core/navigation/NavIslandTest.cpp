@@ -13,6 +13,8 @@
 
 #include <cmath>
 
+namespace NavIslandTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 
@@ -172,3 +174,5 @@ TEST_F(NavIslandTest, QueriesNeverRelabel){
     EXPECT_EQ(mesh->getLabelledRevision(), labelled);
     EXPECT_EQ(mesh->getIslandOf(1), -1);
 }
+
+}  // namespace NavIslandTest_cpp

@@ -3,8 +3,8 @@
 
 // Small helpers shared by the pose core tests
 
-#ifndef POSE_TEST_UTIL_H
-#define POSE_TEST_UTIL_H
+#ifndef POSE_TESTUTIL_H
+#define POSE_TESTUTIL_H
 
 #include "TestRigs.h"
 
@@ -154,4 +154,4 @@ namespace posetest {
 
 }
 
-#endif // POSE_TEST_UTIL_H
+#endif // POSE_TESTUTIL_H

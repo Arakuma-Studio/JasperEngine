@@ -24,6 +24,8 @@
 #include <filesystem>
 #include <thread>
 
+namespace ProceduralCpuEvaluatorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::procmat;
 // its own name: another Json is in sight in some unity units
@@ -469,3 +471,5 @@ TEST(ProceduralTieredEvaluator, WhenTheCpuTierFailsTooTheSessionSaysWhatTheDevic
     EXPECT_NE(session.error().find("failed on Test GPU 9000"), std::string::npos) << session.error();
     EXPECT_NE(session.error().find("the CPU tier cannot run node k1"), std::string::npos) << session.error();
 }
+
+}  // namespace ProceduralCpuEvaluatorTest_cpp

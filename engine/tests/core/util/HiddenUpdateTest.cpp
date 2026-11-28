@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+namespace HiddenUpdateTest_cpp {
+
 using namespace jasperengine;
 
 TEST(PlatformRules, HiddenUpdateFps){
@@ -74,3 +76,5 @@ TEST(FrameLimiter, SecondsUntilDueCountsDown){
     EXPECT_DOUBLE_EQ(clock.secondsUntilDueAt(5.0 + period), 0.0);
     EXPECT_DOUBLE_EQ(clock.secondsUntilDueAt(6.0), 0.0);
 }
+
+}  // namespace HiddenUpdateTest_cpp

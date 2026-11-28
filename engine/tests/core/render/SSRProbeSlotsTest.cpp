@@ -13,6 +13,8 @@
 #include <set>
 #include <vector>
 
+namespace SSRProbeSlotsTest_cpp {
+
 using namespace jasperengine;
 
 namespace{
@@ -158,3 +160,5 @@ TEST(SSRProbeSlots, ScreenCoverageClipsBoxesReachingBehindTheEye){
     // wholly behind the eye: nothing
     EXPECT_EQ(screenCoverage(AABB(Vector3(-1.0f, -1.0f, 1.0f), Vector3(1.0f, 1.0f, 3.0f)), vp), 0.0f);
 }
+
+}  // namespace SSRProbeSlotsTest_cpp

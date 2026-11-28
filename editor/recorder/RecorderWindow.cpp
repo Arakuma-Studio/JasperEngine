@@ -19,7 +19,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::recorder;
 
 namespace fs = std::filesystem;
 
@@ -69,21 +68,21 @@ namespace {
 void RecorderWindow::setProjectPath(const fs::path& path) {
     if (path == projectPath) return;
     projectPath = path;
-    current = Settings();
+    current = recorder::Settings();
     std::string error;
-    if (!path.empty() && !load(settingsFile(path), current, error)) Out::warning("Recorder settings: %s", error.c_str());
+    if (!path.empty() && !load(recorder::settingsFile(path), current, error)) Out::warning("Recorder settings: %s", error.c_str());
     saved = current;
 }
 
 void RecorderWindow::saveSettings() {
     if (projectPath.empty() || current == saved) return;
     std::string error;
-    if (save(settingsFile(projectPath), current, error)) saved = current;
+    if (save(recorder::settingsFile(projectPath), current, error)) saved = current;
     else Out::warning("Recorder settings: %s", error.c_str());
 }
 
 void RecorderWindow::toggleRecording() {
-    RecorderSession& session = RecorderSession::get();
+    recorder::RecorderSession& session = recorder::RecorderSession::get();
     if (session.recording()) {
         session.stop();
         return;
@@ -99,7 +98,7 @@ void RecorderWindow::toggleRecording() {
 }
 
 void RecorderWindow::show() {
-    RecorderSession& session = RecorderSession::get();
+    recorder::RecorderSession& session = recorder::RecorderSession::get();
     // a finished recording: the next Take, the settings saved
     if (session.resultSerial() != seenResult) {
         seenResult = session.resultSerial();
@@ -117,7 +116,7 @@ void RecorderWindow::show() {
         return;
     }
     const bool locked = session.active();
-    const FfmpegInfo& ffmpeg = session.ffmpeg();
+    const recorder::FfmpegInfo& ffmpeg = session.ffmpeg();
     const bool movieAvailable = ffmpeg.probed && !ffmpeg.path.empty() && !ffmpeg.h264.empty();
 
     // the button first: Start Recording / Stop Recording (F10)
@@ -126,12 +125,12 @@ void RecorderWindow::show() {
         if (ImGui::Button(ICON_FA_STOP " Stop Recording", ImVec2(-FLT_MIN, Theme::dpi(32.0f)))) toggleRecording();
         ImGui::PopStyleColor();
         ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s", session.overlayText().c_str());
-    } else if (session.state() == State::Finalising) {
+    } else if (session.state() == recorder::State::Finalising) {
         ImGui::BeginDisabled();
         ImGui::Button("Finalising...", ImVec2(-FLT_MIN, Theme::dpi(32.0f)));
         ImGui::EndDisabled();
     } else {
-        const bool blocked = current.kind == Kind::Movie && !movieAvailable;
+        const bool blocked = current.kind == recorder::Kind::Movie && !movieAvailable;
         ImGui::BeginDisabled(blocked);
         if (ImGui::Button(ICON_FA_CIRCLE " Start Recording", ImVec2(-FLT_MIN, Theme::dpi(32.0f)))) toggleRecording();
         ImGui::EndDisabled();
@@ -152,22 +151,22 @@ void RecorderWindow::show() {
         ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed, Theme::dpi(130.0f));
         ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthStretch);
         row("Recorder");
-        combo("##kind", current.kind, {{Kind::ImageSequence, "Image Sequence"}, {Kind::Movie, "Movie"}});
+        combo("##kind", current.kind, {{recorder::Kind::ImageSequence, "Image Sequence"}, {recorder::Kind::Movie, "Movie"}});
         row("Capture");
         ImGui::TextUnformatted("Game View");
         row("Output Resolution");
         combo("##resolution", current.resolution,
-              {{Resolution::MatchGameView, resolutionLabel(Resolution::MatchGameView)}, {Resolution::P480, resolutionLabel(Resolution::P480)},
-               {Resolution::P720, resolutionLabel(Resolution::P720)}, {Resolution::P1080, resolutionLabel(Resolution::P1080)},
-               {Resolution::P1440, resolutionLabel(Resolution::P1440)}, {Resolution::P2160, resolutionLabel(Resolution::P2160)},
-               {Resolution::Custom, resolutionLabel(Resolution::Custom)}});
-        if (current.resolution == Resolution::Custom) {
+              {{recorder::Resolution::MatchGameView, recorder::resolutionLabel(recorder::Resolution::MatchGameView)}, {recorder::Resolution::P480, resolutionLabel(recorder::Resolution::P480)},
+               {recorder::Resolution::P720, resolutionLabel(recorder::Resolution::P720)}, {recorder::Resolution::P1080, resolutionLabel(recorder::Resolution::P1080)},
+               {recorder::Resolution::P1440, resolutionLabel(recorder::Resolution::P1440)}, {recorder::Resolution::P2160, resolutionLabel(recorder::Resolution::P2160)},
+               {recorder::Resolution::Custom, resolutionLabel(recorder::Resolution::Custom)}});
+        if (current.resolution == recorder::Resolution::Custom) {
             row("Width x Height", "16 to 8192 (even for movies)");
             int size[2] = {current.customWidth, current.customHeight};
             if (ImGui::InputInt2("##customSize", size)) {
-                current.customWidth = std::clamp(size[0], kMinSize, kMaxSize);
-                current.customHeight = std::clamp(size[1], kMinSize, kMaxSize);
-                if (current.kind == Kind::Movie) {
+                current.customWidth = std::clamp(size[0], recorder::kMinSize, recorder::kMaxSize);
+                current.customHeight = std::clamp(size[1], recorder::kMinSize, recorder::kMaxSize);
+                if (current.kind == recorder::Kind::Movie) {
                     current.customWidth -= current.customWidth % 2;
                     current.customHeight -= current.customHeight % 2;
                 }
@@ -185,22 +184,22 @@ void RecorderWindow::show() {
         if (rateChoice == 0) {
             ImGui::SameLine();
             ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::InputInt("##customRate", &current.frameRate)) current.frameRate = std::clamp(current.frameRate, kMinFrameRate, kMaxFrameRate);
+            if (ImGui::InputInt("##customRate", &current.frameRate)) current.frameRate = std::clamp(current.frameRate, recorder::kMinFrameRate, recorder::kMaxFrameRate);
         }
         row("Recording Mode");
         combo("##mode", current.mode,
-              {{Mode::Manual, "Manual"}, {Mode::SingleFrame, "Single Frame"}, {Mode::FrameInterval, "Frame Interval"}, {Mode::TimeInterval, "Time Interval"}});
-        if (current.mode == Mode::SingleFrame) {
+              {{recorder::Mode::Manual, "Manual"}, {recorder::Mode::SingleFrame, "Single Frame"}, {recorder::Mode::FrameInterval, "Frame Interval"}, {recorder::Mode::TimeInterval, "Time Interval"}});
+        if (current.mode == recorder::Mode::SingleFrame) {
             row("Frame", "Frame 0 is the first game frame after Play starts");
             if (ImGui::InputInt("##singleFrame", &current.singleFrame)) current.singleFrame = std::max(0, current.singleFrame);
-        } else if (current.mode == Mode::FrameInterval) {
+        } else if (current.mode == recorder::Mode::FrameInterval) {
             row("Frames", "First and last, both recorded");
             int frames[2] = {current.frameStart, current.frameEnd};
             if (ImGui::InputInt2("##frames", frames)) {
                 current.frameStart = std::max(0, frames[0]);
                 current.frameEnd = std::max(current.frameStart, frames[1]);
             }
-        } else if (current.mode == Mode::TimeInterval) {
+        } else if (current.mode == recorder::Mode::TimeInterval) {
             row("Seconds", "From and to, in game seconds");
             float times[2] = {current.timeStart, current.timeEnd};
             if (ImGui::InputFloat2("##times", times, "%.2f")) {
@@ -213,23 +212,23 @@ void RecorderWindow::show() {
         row("Record on Play", "Start recording whenever Play starts");
         ImGui::Checkbox("##recordOnPlay", &current.recordOnPlay);
 
-        if (current.kind == Kind::Movie) {
+        if (current.kind == recorder::Kind::Movie) {
             row("Format");
-            Format format = current.format;
-            std::initializer_list<std::pair<Format, const char*>> formats = {{Format::Mp4, "MP4 (H.264)"}, {Format::Mov, "MOV (ProRes 422 HQ)"}};
+            recorder::Format format = current.format;
+            std::initializer_list<std::pair<recorder::Format, const char*>> formats = {{recorder::Format::Mp4, "MP4 (H.264)"}, {recorder::Format::Mov, "MOV (ProRes 422 HQ)"}};
             if (combo("##format", format, formats)) {
-                if (format == Format::Mov && !ffmpeg.proRes) message = "MOV needs FFmpeg with prores_ks.";
+                if (format == recorder::Format::Mov && !ffmpeg.proRes) message = "MOV needs FFmpeg with prores_ks.";
                 else current.format = format;
             }
             row("Quality");
-            combo("##quality", current.quality, {{Quality::Low, "Low"}, {Quality::Medium, "Medium"}, {Quality::High, "High"}});
+            combo("##quality", current.quality, {{recorder::Quality::Low, "Low"}, {recorder::Quality::Medium, "Medium"}, {recorder::Quality::High, "High"}});
             row("Capture Audio", "Mixed offline in step with the frames: you hear nothing while it records; the recording must start with Play");
             ImGui::Checkbox("##captureAudio", &current.captureAudio);
             row("Encoder");
             if (!ffmpeg.probed) {
                 ImGui::TextDisabled("Looking for FFmpeg...");
             } else if (movieAvailable) {
-                ImGui::TextDisabled("%s (%s)", current.format == Format::Mov ? "prores_ks" : ffmpeg.h264.c_str(), ffmpeg.path.c_str());
+                ImGui::TextDisabled("%s (%s)", current.format == recorder::Format::Mov ? "prores_ks" : ffmpeg.h264.c_str(), ffmpeg.path.c_str());
             } else {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.3f, 1.0f));
                 ImGui::TextWrapped("Movie is not available: %s", ffmpeg.why.c_str());
@@ -250,7 +249,7 @@ void RecorderWindow::show() {
             if (!picked.empty()) current.outputFolder = picked;
         }
         row("File Name", "<Scene> <Take> <Date> <Time> <Resolution>, and <Frame> for a sequence");
-        inputText("##name", current.kind == Kind::Movie ? current.movieName : current.sequenceName);
+        inputText("##name", current.kind == recorder::Kind::Movie ? current.movieName : current.sequenceName);
         row("Take", "Goes up after each recording");
         if (ImGui::InputInt("##take", &current.take)) current.take = std::max(1, current.take);
         ImGui::EndTable();
@@ -260,14 +259,14 @@ void RecorderWindow::show() {
     // what the next recording writes
     int width = 0, height = 0;
     outputSize(current, 1920, 1080, 0, width, height);
-    NameContext context;
+    recorder::NameContext context;
     context.scene = "<Scene>";
     context.take = current.take;
     context.date = "<Date>";
     context.time = "<Time>";
     context.width = width;
     context.height = height;
-    context.frame = current.kind == Kind::ImageSequence ? 0 : -1;
+    context.frame = current.kind == recorder::Kind::ImageSequence ? 0 : -1;
     ImGui::TextDisabled("%s", FileUtils::pathToUtf8(outputFile(current, projectPath, context)).c_str());
     if (ImGui::SmallButton("Open Output Folder")) {
         std::error_code ec;

@@ -20,9 +20,10 @@
 #include <variant>
 
 using namespace jasperengine;
-using namespace jasperengine::vat;
 
 // ---- small types ----
+
+namespace jasperengine::vat {
 
 void VatBounds::extend(const Vector3& p){
     if (!valid){
@@ -66,11 +67,11 @@ int VatData::findSocket(const std::string& name) const{
     return -1;
 }
 
-const char* vat::modeName(VatMode mode){
+const char* modeName(VatMode mode){
     return mode == VatMode::Bones ? "bones" : "vertices";
 }
 
-bool vat::modeFromName(const std::string& name, VatMode& out){
+bool modeFromName(const std::string& name, VatMode& out){
     if (name == "vertices"){
         out = VatMode::Vertices;
         return true;
@@ -82,11 +83,11 @@ bool vat::modeFromName(const std::string& name, VatMode& out){
     return false;
 }
 
-const char* vat::precisionName(VatPrecision precision){
+const char* precisionName(VatPrecision precision){
     return precision == VatPrecision::Float ? "float" : "half";
 }
 
-bool vat::precisionFromName(const std::string& name, VatPrecision& out){
+bool precisionFromName(const std::string& name, VatPrecision& out){
     if (name == "half"){
         out = VatPrecision::Half;
         return true;
@@ -98,7 +99,7 @@ bool vat::precisionFromName(const std::string& name, VatPrecision& out){
     return false;
 }
 
-uint64_t vat::vatTexelIndex(VatMode mode, const VatLayout& layout, int globalFrame, int element, int k){
+uint64_t vatTexelIndex(VatMode mode, const VatLayout& layout, int globalFrame, int element, int k){
     uint64_t elements = (uint64_t)std::max(mode == VatMode::Bones ? layout.bones : layout.vertices, 0);
     uint64_t perSample = (uint64_t)layout.texelsPerSample(mode);
     return ((uint64_t)globalFrame * elements + (uint64_t)element) * perSample + (uint64_t)k;
@@ -172,11 +173,11 @@ namespace{
 
 }
 
-float vat::vatLocalTime(const VatTrack& track, float now){
+float vatLocalTime(const VatTrack& track, float now){
     return track.speed == 0.0f ? track.start : (now - track.start) * track.speed;
 }
 
-VatFrameSample vat::vatSample(const VatClip& clip, float tau){
+VatFrameSample vatSample(const VatClip& clip, float tau){
     // C++ guards (the shader gets valid data): a non-finite time or a clip without a rate
     // samples its first frame
     float x = (std::isfinite(tau) && clip.fps > 0.0f) ? tau * clip.fps : 0.0f;
@@ -184,14 +185,14 @@ VatFrameSample vat::vatSample(const VatClip& clip, float tau){
     return sampleAt(clip, x);
 }
 
-VatFrameSample vat::vatSampleNormalized(const VatClip& clip, float normalized){
+VatFrameSample vatSampleNormalized(const VatClip& clip, float normalized){
     if (!std::isfinite(normalized)) normalized = 0.0f;
     const float frames = (float)std::max(clip.frames, 1);
     const bool loop = clip.wrap == ClipWrapMode::Loop || clip.wrap == ClipWrapMode::Default;
     return sampleAt(clip, normalized * (loop ? frames : frames - 1.0f));
 }
 
-float vat::vatWeightB(const VatTrackPair& pair, float now){
+float vatWeightB(const VatTrackPair& pair, float now){
     if (pair.b.clip < 0) return 0.0f;
     if (pair.blend >= 0.0f) return std::min(std::max(pair.blend, 0.0f), 1.0f);
     if (pair.fadeEnd > pair.fadeStart){
@@ -201,7 +202,7 @@ float vat::vatWeightB(const VatTrackPair& pair, float now){
     return 1.0f;
 }
 
-void vat::vatPackInstance(const VatTrackPair& pair, Vector4& v0, Vector4& v1){
+void vatPackInstance(const VatTrackPair& pair, Vector4& v0, Vector4& v1){
     v0 = Vector4((float)pair.a.clip, pair.a.start, pair.a.speed, (float)pair.b.clip);
     // fade mode keeps w >= 0 (a fade that ended before the epoch has weight 1 at any now >= 0
     // either way), so w < 0 always means blend mode
@@ -209,7 +210,7 @@ void vat::vatPackInstance(const VatTrackPair& pair, Vector4& v0, Vector4& v1){
     v1 = Vector4(pair.b.start, pair.b.speed, pair.fadeStart, w);
 }
 
-VatTrackPair vat::vatUnpackInstance(const Vector4& v0, const Vector4& v1){
+VatTrackPair vatUnpackInstance(const Vector4& v0, const Vector4& v1){
     VatTrackPair pair;
     pair.a.clip = (int)std::lround(v0.x);
     pair.a.start = v0.y;
@@ -246,7 +247,7 @@ namespace{
 
 }
 
-std::string vat::computeLayoutHash(const VatData& data){
+std::string computeLayoutHash(const VatData& data){
     std::string text = std::string("mode=") + modeName(data.mode) +
                        ";precision=" + precisionName(data.layout.precision) +
                        ";width=" + std::to_string(data.layout.width) +
@@ -1074,7 +1075,7 @@ static VatParseResult parseVatText(const std::string& text){
     return result;
 }
 
-VatParseResult vat::parseVat(const std::string& text){
+VatParseResult parseVat(const std::string& text){
     // problems are results; anything thrown below is a bug, never a reason to take a loader down
     try{
         return parseVatText(text);
@@ -1193,7 +1194,7 @@ namespace{
 
 }
 
-std::string vat::writeVat(const VatData& data){
+std::string writeVat(const VatData& data){
     std::string text = "{\n";
     text += std::string("  \"format\": ") + quote(VAT_FORMAT) + ",\n";
     text += "  \"version\": " + std::to_string(VAT_VERSION) + ",\n";
@@ -1530,7 +1531,7 @@ namespace{
 
 }
 
-bool vat::readVatGlb(const std::vector<uint8_t>& glb, VatGlbContents& out, std::string* error){
+bool readVatGlb(const std::vector<uint8_t>& glb, VatGlbContents& out, std::string* error){
     out = VatGlbContents();
     const uint32_t MAGIC = 0x46546C67;         // "glTF"
     const uint32_t CHUNK_JSON = 0x4E4F534A;    // "JSON"
@@ -1641,3 +1642,5 @@ bool vat::readVatGlb(const std::vector<uint8_t>& glb, VatGlbContents& out, std::
     }
     return true;
 }
+
+}  // namespace jasperengine::vat

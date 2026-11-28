@@ -51,6 +51,8 @@
 #include <string>
 #include <vector>
 
+namespace AudioMixerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -1194,6 +1196,8 @@ TEST_F(AudioLuaTest, LuaDrivesTheMixerAndSources) {
     lua_setglobal(L, "sound");
 }
 
+}  // namespace AudioMixerTest_cpp
+
 // ================================================================== GeneratorAudioTest
 
 // ================================================================== BF14: audio and engine bug fixes
@@ -1207,6 +1211,8 @@ namespace jasperengine {
         }
     };
 }
+
+namespace AudioMixerTest_cpp {
 
 namespace {
     constexpr double kFrame60 = 1.0 / 60.0;
@@ -1957,3 +1963,5 @@ TEST_F(AudioSourceTest, MovedInPostUpdateIsHeardThereThatFrame) {
     Engine::pauseGameEvents(!eventsWereEnabled);
     sound.stop();
 }
+
+}  // namespace AudioMixerTest_cpp

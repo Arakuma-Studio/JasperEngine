@@ -34,6 +34,8 @@
 #include <thread>
 #include <vector>
 
+namespace SavedDataWindowTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -265,3 +267,5 @@ TEST(SavedDataWindowSlow, RestoreWhileTheGameWritesIsRefused) {
     for (const auto& file : savedFiles(env.saves())) names.push_back(file.first);
     EXPECT_EQ(names, (std::vector<std::string>{"slot1.g1.jsave", "slot1.g2.jsave", "slot1.g3.jsave"}));
 }
+
+}  // namespace SavedDataWindowTest_cpp

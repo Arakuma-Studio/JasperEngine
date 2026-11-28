@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace SystemFontsTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace {
@@ -273,3 +275,5 @@ TEST(SystemFonts, PreferenceRoundTrips) {
     EXPECT_EQ(AppSettings::getCjkFontLanguage(), "auto") << "an unknown value is auto";
     AppSettings::setCjkFontLanguage(before);
 }
+
+}  // namespace SystemFontsTest_cpp

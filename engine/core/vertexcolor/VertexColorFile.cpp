@@ -20,9 +20,8 @@ namespace jasperengine::vertexcolor {
 
     namespace {
 
-        using namespace fileformat;
         constexpr size_t VCOLORS_HEADER_BYTES = 12;
-        constexpr uint8_t VCOLORS_KNOWN_FLAGS = VCOLORS_FLAG_EDITOR | VCOLORS_FLAG_ZSTD;
+        constexpr uint8_t VCOLORS_KNOWN_FLAGS = vertexcolor::fileformat::VCOLORS_FLAG_EDITOR | vertexcolor::fileformat::VCOLORS_FLAG_ZSTD;
         // a decompressed body past this is a corrupt size field, not a file to allocate for
         constexpr unsigned long long VCOLORS_MAX_BODY = 1ull << 31;
 
@@ -184,7 +183,7 @@ namespace jasperengine::vertexcolor {
             error = "truncated: " + std::to_string(size) + " bytes, the header needs " + std::to_string(VCOLORS_HEADER_BYTES);
             return false;
         }
-        if (std::memcmp(bytes, VCOLORS_MAGIC, 4) != 0) {
+        if (std::memcmp(bytes, vertexcolor::fileformat::VCOLORS_MAGIC, 4) != 0) {
             error = "not a .vcolors file (bad magic)";
             return false;
         }
@@ -214,7 +213,7 @@ namespace jasperengine::vertexcolor {
         const uint8_t* body = bytes + VCOLORS_HEADER_BYTES;
         size_t bodySize = size - VCOLORS_HEADER_BYTES;
         std::vector<uint8_t> unpacked;
-        if (flags & VCOLORS_FLAG_ZSTD) {
+        if (flags & vertexcolor::fileformat::VCOLORS_FLAG_ZSTD) {
             const unsigned long long rawSize = ZSTD_getFrameContentSize(body, bodySize);
             if (rawSize == ZSTD_CONTENTSIZE_ERROR || rawSize == ZSTD_CONTENTSIZE_UNKNOWN || rawSize > VCOLORS_MAX_BODY) {
                 error = "corrupt: the compressed body has no valid size";
@@ -233,7 +232,7 @@ namespace jasperengine::vertexcolor {
         Data data;
         data.format = (Format)formatByte;
         VcolorsReader r(body, bodySize);
-        if (!decodeVcolorsBody(r, data.format, (flags & VCOLORS_FLAG_EDITOR) != 0, version, data, error)) return false;
+        if (!decodeVcolorsBody(r, data.format, (flags & vertexcolor::fileformat::VCOLORS_FLAG_EDITOR) != 0, version, data, error)) return false;
         out = std::move(data);
         return true;
     }

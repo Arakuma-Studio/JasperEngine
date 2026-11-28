@@ -18,6 +18,8 @@
 #include <chrono>
 #include <string>
 
+namespace CommandHistoryBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -130,3 +132,5 @@ TEST(CommandHistoryBench, YamlFootprintCostsLittleNextToTheEncode) {
         EXPECT_LE(footprintTime, encodeTime * 0.10);
     }
 }
+
+}  // namespace CommandHistoryBenchTest_cpp

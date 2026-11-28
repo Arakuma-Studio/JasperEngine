@@ -31,6 +31,8 @@
 #include <string>
 #include <vector>
 
+namespace OutlineGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -269,3 +271,5 @@ TEST_F(OutlineGpu, ModelRootOutlinesSkinnedChild){
     EXPECT_TRUE(readTarget() == before) << "nothing outlined";
     EXPECT_TRUE(log.errors().empty()) << log.describeErrors();
 }
+
+}  // namespace OutlineGpuTest_cpp

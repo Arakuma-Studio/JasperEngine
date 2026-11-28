@@ -9,6 +9,8 @@
 
 #include <cmath>
 
+namespace PhotometryTest_cpp {
+
 using namespace jasperengine;
 
 TEST(Photometry, Kelvin){
@@ -127,3 +129,5 @@ TEST(Photometry, AreaLightTakesNits){
     EXPECT_NEAR(light.resolvedIntensity, LightPhotometry::toEngineIntensity(500.0f, LightUnit::CANDELA, 9.0f), 1e-6f);
     EXPECT_NEAR(LightPhotometry::fromEngineIntensity(light.resolvedIntensity, LightUnit::NITS, 9.0f), 500.0f, 1e-2f);
 }
+
+}  // namespace PhotometryTest_cpp

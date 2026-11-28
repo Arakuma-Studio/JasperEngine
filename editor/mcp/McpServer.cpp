@@ -44,7 +44,8 @@
 #include <stdexcept>
 
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::mcp;
+
+namespace jasperengine::editor::mcp {
 
 namespace {
 
@@ -145,7 +146,7 @@ std::string shorten(const std::string& text, size_t max) {
 
 } // namespace
 
-McpLaunchOptions& jasperengine::editor::mcp::mcpLaunchOptions() {
+McpLaunchOptions& mcpLaunchOptions() {
     static McpLaunchOptions options;
     return options;
 }
@@ -1826,3 +1827,5 @@ void McpServer::tick() {
     // Keep the loop drawing frames (instead of idling) while anything waits
     if (!deferred.empty() && appPtr) appPtr->requestRedraw();
 }
+
+}  // namespace jasperengine::editor::mcp

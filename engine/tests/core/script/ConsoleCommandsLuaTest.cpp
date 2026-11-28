@@ -16,6 +16,8 @@
 
 #include <string>
 
+namespace ConsoleCommandsLuaTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -181,3 +183,5 @@ TEST_F(ConsoleCommandsLua, GetCommandsEntriesKeepNameAndDescription){
         assert(found[1] == nil, "entries are tables, not {name, description} pairs")
     )"), "");
 }
+
+}  // namespace ConsoleCommandsLuaTest_cpp

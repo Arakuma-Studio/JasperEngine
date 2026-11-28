@@ -10,6 +10,8 @@
 
 #include <memory>
 
+namespace SubscriptionOwnerIndexTest_cpp {
+
 using namespace jasperengine;
 
 TEST(OwnerIndexTest, ReleaseRemovesSubscriptionsAndTimers) {
@@ -56,3 +58,5 @@ TEST(OwnerIndexTest, RegistrationOwnerApplies) {
     SubscriptionOwnerIndex::setRegistrationOwner(previous);
     EXPECT_EQ(SubscriptionOwnerIndex::registrationOwner(), previous);
 }
+
+}  // namespace SubscriptionOwnerIndexTest_cpp

@@ -19,6 +19,8 @@
 #include <random>
 #include <vector>
 
+namespace ParticleRenderTest_cpp {
+
 using namespace particletest;
 
 TEST(ParticleRender, HalfConversion){
@@ -226,3 +228,5 @@ TEST(ParticleRender, RadixSortOfASequenceMatchesTheGeneralOne){
     ParticleRenderPrep::radixSort16Sequence(keys.data(), sequence.data(), scratch.data(), keyScratch.data(), n);
     EXPECT_EQ(general, sequence);
 }
+
+}  // namespace ParticleRenderTest_cpp

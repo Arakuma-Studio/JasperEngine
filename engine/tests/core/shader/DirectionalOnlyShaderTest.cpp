@@ -14,6 +14,8 @@
 
 #include <string>
 
+namespace DirectionalOnlyShaderTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -69,3 +71,5 @@ TEST(DirectionalOnlyShader, LeavesOutPointAndSpotResources){
         }
     }
 }
+
+}  // namespace DirectionalOnlyShaderTest_cpp

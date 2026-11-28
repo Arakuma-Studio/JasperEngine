@@ -21,6 +21,8 @@
 #include <iterator>
 #include <thread>
 
+namespace VertexColorEditingTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -523,3 +525,5 @@ TEST_F(VertexColorEditing, LiftedStrokeSweepsNoCapsuleAcrossTheGap) {
 }
 
 } // namespace vertex_color_editing_test
+
+}  // namespace VertexColorEditingTest_cpp

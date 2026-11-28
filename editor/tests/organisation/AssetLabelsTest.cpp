@@ -16,6 +16,8 @@
 
 #include "yaml-cpp/yaml.h"
 
+namespace AssetLabelsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -173,3 +175,5 @@ TEST_F(AssetLabelsProjectTest, RenameDeleteAndColorAreOneStepEach) {
     ASSERT_TRUE(history().undo());
     EXPECT_EQ(project->getAssetLabels().labelsOf(boss), (std::vector<std::string>{"Boss", "hero"}));
 }
+
+}  // namespace AssetLabelsTest_cpp

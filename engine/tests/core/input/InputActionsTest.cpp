@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace InputActionsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -732,3 +734,5 @@ TEST_F(InputActionsTest, ScriptsKeepTheirActionAcrossALiveEdit){
     frame();
     EXPECT_EQ(performed, 1);
 }
+
+}  // namespace InputActionsTest_cpp

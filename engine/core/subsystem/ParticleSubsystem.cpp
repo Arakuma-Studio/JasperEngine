@@ -43,7 +43,6 @@
 #include <cstring>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
 
 namespace {
 
@@ -90,7 +89,7 @@ ParticleSubsystem::ParticleSubsystem(Scene* scene): SubSystem(scene){
     provider2D.context = this;
     tasks.reserve(64);
     taskEntities.reserve(64);
-    fields.reserve(kMaxForceFields);
+    fields.reserve(particles::kMaxForceFields);
 }
 
 void ParticleSubsystem::load(){
@@ -101,7 +100,7 @@ void ParticleSubsystem::draw(){
 
 void ParticleSubsystem::destroy(){
     // the scene's ember emitters go with it: a later scene at the same address makes its own
-    PixelParticles::forget(scene);
+    particles::PixelParticles::forget(scene);
     auto systems = scene->getComponentArray<ParticleSystemComponent>();
     for (size_t i = 0; i < systems->size(); i++){
         ParticleSystemComponent& particles = systems->getComponentFromIndex(i);
@@ -132,22 +131,22 @@ void ParticleSubsystem::onComponentRemoved(Entity entity, ComponentId componentI
 
 // ---------------------------------------------------------------- effects
 
-const ParticleEffectDocument* ParticleSubsystem::getDocument(const ParticleSystemComponent& particles){
+const particles::ParticleEffectDocument* ParticleSubsystem::getDocument(const ParticleSystemComponent& particles){
     if (particles.effect.empty())
         return &particles.inlineEffect;
-    return ParticleEffectLibrary::get(particles.effect.path).document.get();
+    return particles::ParticleEffectLibrary::get(particles.effect.path).document.get();
 }
 
 namespace {
 
     // the sub-emitter files of an effect, down the levels EmitterRuntime binds
-    uint64_t subEmitterSignature(const ParticleEffectDocument& document, int depth){
+    uint64_t subEmitterSignature(const particles::ParticleEffectDocument& document, int depth){
         uint64_t h = 1469598103934665603ull;
-        if (depth >= kMaxSubEmitterDepth || !document.subEmittersModule.present || !document.subEmittersModule.enabled)
+        if (depth >= particles::kMaxSubEmitterDepth || !document.subEmittersModule.present || !document.subEmittersModule.enabled)
             return h;
-        for (const SubEmitterEntry& entry : document.subEmitters){
+        for (const particles::SubEmitterEntry& entry : document.subEmitters){
             for (unsigned char c : entry.effect) h = (h ^ c) * 1099511628211ull;
-            const EffectAsset& asset = ParticleEffectLibrary::get(entry.effect);
+            const particles::EffectAsset& asset = particles::ParticleEffectLibrary::get(entry.effect);
             h = (h ^ asset.version) * 1099511628211ull;
             if (asset.document)
                 h = (h ^ subEmitterSignature(*asset.document, depth + 1)) * 1099511628211ull;
@@ -157,46 +156,46 @@ namespace {
 
 }
 
-CompileEnvironment ParticleSubsystem::compileEnvironment(Entity entity){
-    CompileEnvironment environment;
-    environment.mesh = [this, entity](const MeshSource& source, MeshGeometry& out){
-        ParticleMeshData data;
+particles::CompileEnvironment ParticleSubsystem::compileEnvironment(Entity entity){
+    particles::CompileEnvironment environment;
+    environment.mesh = [this, entity](const particles::MeshSource& source, particles::MeshGeometry& out){
+        particles::ParticleMeshData data;
         switch (source.type){
-            case MeshSourceType::Primitive:
-                ParticleMeshes::primitive(source.primitive, data);
+            case particles::MeshSourceType::Primitive:
+                particles::ParticleMeshes::primitive(source.primitive, data);
                 break;
-            case MeshSourceType::Model:
-                if (!ParticleMeshes::model(source.model, source.submesh, data))
+            case particles::MeshSourceType::Model:
+                if (!particles::ParticleMeshes::model(source.model, source.submesh, data))
                     return false;
                 break;
-            case MeshSourceType::GameObject: {
+            case particles::MeshSourceType::GameObject: {
                 MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-                if (!mesh || !ParticleMeshes::meshComponent(*mesh, source.submesh, data))
+                if (!mesh || !particles::ParticleMeshes::meshComponent(*mesh, source.submesh, data))
                     return false;
                 break;
             }
         }
-        ParticleMeshes::geometry(data, out);
+        particles::ParticleMeshes::geometry(data, out);
         return true;
     };
     return environment;
 }
 
 bool ParticleSubsystem::subEmittersOutOfDate(const ParticleSystemComponent& particles) const{
-    const ParticleSystemState* state = particles.state.get();
-    return state && state->effect && state->effect->program.subEmitters && state->subEmitterGeneration != ParticleEffectLibrary::generation();
+    const particles::ParticleSystemState* state = particles.state.get();
+    return state && state->effect && state->effect->program.subEmitters && state->subEmitterGeneration != particles::ParticleEffectLibrary::generation();
 }
 
 bool ParticleSubsystem::ensureEffect(Entity entity, ParticleSystemComponent& particles){
     if (!particles.state)
-        particles.state = std::make_shared<ParticleSystemState>();
-    ParticleSystemState& state = *particles.state;
+        particles.state = std::make_shared<particles::ParticleSystemState>();
+    particles::ParticleSystemState& state = *particles.state;
 
     const std::string path = particles.effect.empty() ? std::string() : particles.effect.path;
-    const ParticleEffectDocument* document = nullptr;
+    const particles::ParticleEffectDocument* document = nullptr;
     uint64_t version = 0;
     if (!path.empty()){
-        const EffectAsset& asset = ParticleEffectLibrary::get(path);
+        const particles::EffectAsset& asset = particles::ParticleEffectLibrary::get(path);
         document = asset.document.get();
         version = asset.version;
         if (!document){
@@ -221,24 +220,24 @@ bool ParticleSubsystem::ensureEffect(Entity entity, ParticleSystemComponent& par
     if (sameEffect && !compileAgain && !subEmittersOutOfDate(particles))
         return true;
 
-    CompileEnvironment environment = compileEnvironment(entity);
-    const auto resolver = [&environment](const SubEmitterEntry& entry) -> std::shared_ptr<const CompiledEffect> {
-        const EffectAsset& asset = ParticleEffectLibrary::get(entry.effect);
+    particles::CompileEnvironment environment = compileEnvironment(entity);
+    const auto resolver = [&environment](const particles::SubEmitterEntry& entry) -> std::shared_ptr<const particles::CompiledEffect> {
+        const particles::EffectAsset& asset = particles::ParticleEffectLibrary::get(entry.effect);
         if (!asset.document)
             return nullptr;
-        CompileEnvironment childEnvironment = environment;
+        particles::CompileEnvironment childEnvironment = environment;
         childEnvironment.inheritsRotation = entry.inheritRotation;
         childEnvironment.followsParent = entry.followParent;
         childEnvironment.followsRotation = entry.followRotation;
         childEnvironment.followsScale = entry.followScale;
-        std::shared_ptr<CompiledEffect> child = ParticleCompiler::compile(*asset.document, childEnvironment);
+        std::shared_ptr<particles::CompiledEffect> child = particles::ParticleCompiler::compile(*asset.document, childEnvironment);
         return child->valid ? child : nullptr;
     };
 
     bool bindAgain = false;
     if (sameEffect && !compileAgain){
         // the library moved on: only a change in this tree's files costs anything more
-        state.subEmitterGeneration = ParticleEffectLibrary::generation();
+        state.subEmitterGeneration = particles::ParticleEffectLibrary::generation();
         const uint64_t signature = subEmitterSignature(state.effect->document, 1);
         if (signature == state.subEmitterSignature)
             return true;
@@ -252,27 +251,27 @@ bool ParticleSubsystem::ensureEffect(Entity entity, ParticleSystemComponent& par
     }
 
     // the document with the component's exposed values written into it
-    ParticleEffectDocument values = *document;
+    particles::ParticleEffectDocument values = *document;
     for (const ParticleExposedValue& v : particles.exposedValues){
-        if (!ParticleModules::setExposed(values, v.name, v.value))
+        if (!particles::ParticleModules::setExposed(values, v.name, v.value))
             Log::warn("[Particles] %s: no exposed parameter '%s'", path.empty() ? "inline effect" : path.c_str(), v.name.c_str());
     }
 
-    std::shared_ptr<CompiledEffect> compiled = ParticleCompiler::compile(values, environment);
+    std::shared_ptr<particles::CompiledEffect> compiled = particles::ParticleCompiler::compile(values, environment);
     particles.needReload = false;
     particles.exposedChanged = false;
     state.effectPath = path;
     state.effectVersion = version;
     state.diagnostics = compiled->diagnostics;
     if (!compiled->valid){
-        Log::error("[Particles] %s: %s", path.empty() ? "inline effect" : path.c_str(), ParticleEffectCodec::format(compiled->diagnostics).c_str());
+        Log::error("[Particles] %s: %s", path.empty() ? "inline effect" : path.c_str(), particles::ParticleEffectCodec::format(compiled->diagnostics).c_str());
         return state.effect != nullptr;
     }
 
     const uint64_t signature = subEmitterSignature(compiled->document, 1);
     const bool sameFiles = signature == state.subEmitterSignature;
     state.subEmitterSignature = signature;
-    state.subEmitterGeneration = ParticleEffectLibrary::generation();
+    state.subEmitterGeneration = particles::ParticleEffectLibrary::generation();
 
     // a parameter edit keeps the live particles; another structure starts over, and so does another
     // seed: the run the stats name is the one that runs
@@ -298,14 +297,14 @@ bool ParticleSubsystem::ensureEffect(Entity entity, ParticleSystemComponent& par
     return true;
 }
 
-bool ParticleSubsystem::applyExposedValues(ParticleSystemComponent& particles, ParticleSystemState& state){
+bool ParticleSubsystem::applyExposedValues(ParticleSystemComponent& particles, particles::ParticleSystemState& state){
     // its own copy of the effect, made once: the first values copy the shared program
-    std::shared_ptr<CompiledEffect> own = state.ownEffect && state.ownEffect == state.effect ? state.ownEffect : nullptr;
+    std::shared_ptr<particles::CompiledEffect> own = state.ownEffect && state.ownEffect == state.effect ? state.ownEffect : nullptr;
     const bool copied = !own;
     if (copied){
         if (state.effect->exposedBindings.empty())
             return false;
-        own = std::make_shared<CompiledEffect>(*state.effect);
+        own = std::make_shared<particles::CompiledEffect>(*state.effect);
     }
     for (const ParticleExposedValue& value : particles.exposedValues){
         bool same = false;
@@ -318,7 +317,7 @@ bool ParticleSubsystem::applyExposedValues(ParticleSystemComponent& particles, P
             if (own->document.exposed[i].name == value.name)
                 parameter = i;
         }
-        if (!ParticleCompiler::applyExposed(*own, parameter, value.value))
+        if (!particles::ParticleCompiler::applyExposed(*own, parameter, value.value))
             return false;
     }
     if (copied && !state.runtime.rebind(own))
@@ -329,7 +328,7 @@ bool ParticleSubsystem::applyExposedValues(ParticleSystemComponent& particles, P
     return true;
 }
 
-ParticleSystemState* ParticleSubsystem::stateOf(Entity entity, bool load){
+particles::ParticleSystemState* ParticleSubsystem::stateOf(Entity entity, bool load){
     ParticleSystemComponent* particles = scene->findComponent<ParticleSystemComponent>(entity);
     if (!particles)
         return nullptr;
@@ -340,7 +339,7 @@ ParticleSystemState* ParticleSubsystem::stateOf(Entity entity, bool load){
     return particles->state && particles->state->effect ? particles->state.get() : nullptr;
 }
 
-ParticleSystemState* ParticleSubsystem::getState(Entity entity){
+particles::ParticleSystemState* ParticleSubsystem::getState(Entity entity){
     return stateOf(entity, true);
 }
 
@@ -356,8 +355,8 @@ void ParticleSubsystem::reloadEffect(const std::string& path){
 // ---------------------------------------------------------------- playback
 
 void ParticleSubsystem::play(Entity entity){
-    if (ParticleSystemState* state = getState(entity)){
-        if (state->runtime.state() == PlayState::Stopped && !state->runtime.isAlive()){
+    if (particles::ParticleSystemState* state = getState(entity)){
+        if (state->runtime.state() == particles::PlayState::Stopped && !state->runtime.isAlive()){
             ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
             if (particles.seed == 0 && state->effect->document.seed == 0){
                 state->seed = nextSeed();
@@ -371,12 +370,12 @@ void ParticleSubsystem::play(Entity entity){
 }
 
 void ParticleSubsystem::pause(Entity entity){
-    if (ParticleSystemState* state = getState(entity))
+    if (particles::ParticleSystemState* state = getState(entity))
         state->runtime.pause();
 }
 
 void ParticleSubsystem::stop(Entity entity, bool clear){
-    if (ParticleSystemState* state = getState(entity)){
+    if (particles::ParticleSystemState* state = getState(entity)){
         state->runtime.stop(clear);
         state->started = true;
     }
@@ -384,7 +383,7 @@ void ParticleSubsystem::stop(Entity entity, bool clear){
 
 void ParticleSubsystem::clear(Entity entity){
     // the particles (and trails) go; playing or stopped as it was
-    if (ParticleSystemState* state = getState(entity))
+    if (particles::ParticleSystemState* state = getState(entity))
         state->runtime.clear();
 }
 
@@ -398,20 +397,20 @@ void ParticleSubsystem::resetForPlay(){
         particles.state->started = false;
         particles.state->running = false;
         particles.state->hasBounds = false;
-        particles.state->cull = CullState();
+        particles.state->cull = particles::CullState();
     }
     stopActions.clear();
 }
 
 void ParticleSubsystem::restart(Entity entity){
-    if (ParticleSystemState* state = getState(entity)){
+    if (particles::ParticleSystemState* state = getState(entity)){
         state->runtime.restart();
         state->started = true;
     }
 }
 
-void ParticleSubsystem::emit(Entity entity, uint32_t count, const EmitOverrides* overrides){
-    if (ParticleSystemState* state = getState(entity)){
+void ParticleSubsystem::emit(Entity entity, uint32_t count, const particles::EmitOverrides* overrides){
+    if (particles::ParticleSystemState* state = getState(entity)){
         // a stopped system plays only what is emitted (EmitterRuntime::emit), not its own emission
         state->runtime.emit(count, overrides);
         state->started = true;
@@ -419,11 +418,11 @@ void ParticleSubsystem::emit(Entity entity, uint32_t count, const EmitOverrides*
 }
 
 void ParticleSubsystem::seek(Entity entity, double time){
-    ParticleSystemState* state = getState(entity);
+    particles::ParticleSystemState* state = getState(entity);
     if (!state)
         return;
     ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
-    EmitterInput input;
+    particles::EmitterInput input;
     refreshTransform(scene, entity);
     prepareInput(entity, particles, scene->getComponent<Transform>(entity), input);
     state->runtime.seek(input, time);
@@ -431,14 +430,14 @@ void ParticleSubsystem::seek(Entity entity, double time){
 }
 
 void ParticleSubsystem::step(Entity entity, uint32_t ticks){
-    ParticleSystemState* state = getState(entity);
+    particles::ParticleSystemState* state = getState(entity);
     if (!state)
         return;
     ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
-    EmitterInput input;
+    particles::EmitterInput input;
     refreshTransform(scene, entity);
     prepareInput(entity, particles, scene->getComponent<Transform>(entity), input);
-    if (state->runtime.state() != PlayState::Playing)
+    if (state->runtime.state() != particles::PlayState::Playing)
         state->runtime.play();
     for (uint32_t t = 0; t < ticks; t++) state->runtime.step(input);
     state->started = true;
@@ -446,44 +445,44 @@ void ParticleSubsystem::step(Entity entity, uint32_t ticks){
 }
 
 void ParticleSubsystem::sendTrigger(Entity entity, const std::string& name){
-    ParticleSystemState* state = getState(entity);
+    particles::ParticleSystemState* state = getState(entity);
     if (!state)
         return;
     // a trigger that plays a stopped system plays it as play() does: a seedless effect draws a
     // new seed, and the system counts as started
     bool plays = false;
-    for (const EffectTrigger& trigger : state->effect->document.triggers)
-        plays = plays || (trigger.action == TriggerAction::Play && trigger.name == name);
+    for (const particles::EffectTrigger& trigger : state->effect->document.triggers)
+        plays = plays || (trigger.action == particles::TriggerAction::Play && trigger.name == name);
     ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
-    if (plays && state->runtime.state() == PlayState::Stopped && !state->runtime.isAlive() &&
+    if (plays && state->runtime.state() == particles::PlayState::Stopped && !state->runtime.isAlive() &&
             particles.seed == 0 && state->effect->document.seed == 0){
         state->seed = nextSeed();
         state->runtime.reset(state->seed);
     }
-    state->runtime.sendTrigger(nameHash(name));
-    if (state->runtime.state() != PlayState::Stopped){
+    state->runtime.sendTrigger(particles::nameHash(name));
+    if (state->runtime.state() != particles::PlayState::Stopped){
         state->started = true;
         state->running = true;
     }
 }
 
 bool ParticleSubsystem::isPlaying(Entity entity){
-    ParticleSystemState* state = getState(entity);
+    particles::ParticleSystemState* state = getState(entity);
     return state && state->runtime.isPlaying();
 }
 
 bool ParticleSubsystem::isPaused(Entity entity){
-    ParticleSystemState* state = getState(entity);
+    particles::ParticleSystemState* state = getState(entity);
     return state && state->runtime.isPaused();
 }
 
 bool ParticleSubsystem::isEmitting(Entity entity){
-    ParticleSystemState* state = getState(entity);
+    particles::ParticleSystemState* state = getState(entity);
     return state && state->runtime.isEmitting();
 }
 
 uint32_t ParticleSubsystem::getParticleCount(Entity entity){
-    ParticleSystemState* state = getState(entity);
+    particles::ParticleSystemState* state = getState(entity);
     if (!state)
         return 0u;
     // an Analytic system's live particles are counted on demand (O(slots), S49 R19), its children's added
@@ -492,20 +491,20 @@ uint32_t ParticleSubsystem::getParticleCount(Entity entity){
 }
 
 double ParticleSubsystem::getTime(Entity entity){
-    ParticleSystemState* state = getState(entity);
+    particles::ParticleSystemState* state = getState(entity);
     return state ? state->runtime.time() : 0.0;
 }
 
 // ---------------------------------------------------------------- preview
 
 void ParticleSubsystem::previewSeek(Entity entity, double time){
-    ParticleSystemState* state = getState(entity);
+    particles::ParticleSystemState* state = getState(entity);
     if (!state)
         return;
     if (!state->preview)
-        state->preview = std::make_unique<ParticlePreview>();
+        state->preview = std::make_unique<particles::ParticlePreview>();
     ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
-    EmitterInput input;
+    particles::EmitterInput input;
     refreshTransform(scene, entity);
     prepareInput(entity, particles, scene->getComponent<Transform>(entity), input);
     if (state->runtime.isAnalytic()){
@@ -519,11 +518,11 @@ void ParticleSubsystem::previewSeek(Entity entity, double time){
 }
 
 bool ParticleSubsystem::previewUpdate(Entity entity, double budgetMs){
-    ParticleSystemState* state = getState(entity);
+    particles::ParticleSystemState* state = getState(entity);
     if (!state || !state->preview)
         return true;
     ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
-    EmitterInput input;
+    particles::EmitterInput input;
     refreshTransform(scene, entity);
     prepareInput(entity, particles, scene->getComponent<Transform>(entity), input);
     const bool done = state->preview->update(state->runtime, input, budgetMs);
@@ -532,7 +531,7 @@ bool ParticleSubsystem::previewUpdate(Entity entity, double budgetMs){
 }
 
 void ParticleSubsystem::previewAdvance(Entity entity, double dt){
-    ParticleSystemState* state = getState(entity);
+    particles::ParticleSystemState* state = getState(entity);
     if (!state)
         return;
     ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
@@ -540,7 +539,7 @@ void ParticleSubsystem::previewAdvance(Entity entity, double dt){
         state->runtime.play();
         state->started = true;
     }
-    EmitterInput input;
+    particles::EmitterInput input;
     refreshTransform(scene, entity);
     prepareInput(entity, particles, scene->getComponent<Transform>(entity), input);
     const auto start = std::chrono::steady_clock::now();
@@ -554,10 +553,10 @@ void ParticleSubsystem::previewAdvance(Entity entity, double dt){
 
 ParticleSystemStats ParticleSubsystem::getStats(Entity entity){
     ParticleSystemStats stats;
-    ParticleSystemState* state = getState(entity);
+    particles::ParticleSystemState* state = getState(entity);
     if (!state)
         return stats;
-    const EmitterRuntime& r = state->runtime;
+    const particles::EmitterRuntime& r = state->runtime;
     stats.valid = true;
     // an Analytic system's live particles are counted on demand (O(slots), S49 R19)
     stats.live = r.isAnalytic() ? r.analyticAlive() + (r.totalCount() - r.count()) : r.totalCount();
@@ -586,7 +585,7 @@ ParticleSystemStats ParticleSubsystem::getStats(Entity entity){
 }
 
 uint64_t ParticleSubsystem::getStateHash(Entity entity){
-    ParticleSystemState* state = getState(entity);
+    particles::ParticleSystemState* state = getState(entity);
     if (!state)
         return 0;
     // the particles alone say nothing while none is alive: the seed and the tick name the run
@@ -624,28 +623,28 @@ bool ParticleSubsystem::bodyVelocity(Entity entity, Vector3& velocity){
     return false;
 }
 
-void ParticleSubsystem::prepareInput(Entity entity, ParticleSystemComponent& particles, Transform& transform, EmitterInput& input){
-    ParticleSystemState& state = *particles.state;
+void ParticleSubsystem::prepareInput(Entity entity, ParticleSystemComponent& particles, Transform& transform, particles::EmitterInput& input){
+    particles::ParticleSystemState& state = *particles.state;
     copyMatrix(transform.modelMatrix, state.transform);
     input.transform = state.transform;
     input.seed = state.seed;
     input.speed = std::max(0.0f, particles.playbackSpeed);
     input.jobs = &jobs::system();
 
-    const ParticleProgram* prog = state.runtime.program();
+    const particles::ParticleProgram* prog = state.runtime.program();
     // the scaling mode's factor on start sizes: Hierarchy the world scale, Local the GameObject's own
     float sizeScale = 1.0f;
     if (prog){
-        if (prog->scalingMode == ScalingMode::Hierarchy)
+        if (prog->scalingMode == particles::ScalingMode::Hierarchy)
             sizeScale = (std::fabs(transform.worldScale.x) + std::fabs(transform.worldScale.y) + std::fabs(transform.worldScale.z)) / 3.0f;
-        else if (prog->scalingMode == ScalingMode::Local)
+        else if (prog->scalingMode == particles::ScalingMode::Local)
             sizeScale = (std::fabs(transform.scale.x) + std::fabs(transform.scale.y) + std::fabs(transform.scale.z)) / 3.0f;
     }
     input.sizeScale = sizeScale;
     // the gravity the Gravity Modifier scales: the 3D world's, or the 2D world's in the scene's
     // units (its meters times the points per meter)
     Vector3 gravity = scene->getGravity3D();
-    if (prog && prog->gravitySource == GravitySource::Physics2D){
+    if (prog && prog->gravitySource == particles::GravitySource::Physics2D){
         const Vector2 g2 = scene->getGravity2D();
         float pointsPerMeter = 64.0f;
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -659,7 +658,7 @@ void ParticleSubsystem::prepareInput(Entity entity, ParticleSystemComponent& par
     input.gravity[2] = gravity.z;
     // Emitter Velocity Rigidbody: the body's velocity (one that is made already), else the motion
     input.hasVelocity = false;
-    if (prog && prog->emitterVelocityMode == EmitterVelocityMode::Rigidbody){
+    if (prog && prog->emitterVelocityMode == particles::EmitterVelocityMode::Rigidbody){
         Vector3 v;
         if (bodyVelocity(entity, v)){
             input.hasVelocity = true;
@@ -670,13 +669,13 @@ void ParticleSubsystem::prepareInput(Entity entity, ParticleSystemComponent& par
     // the force fields that overlap it (its bounds, or everywhere before it has any)
     state.fields.clear();
     if (prog && !fields.empty() && state.effect->document.externalForces.present && state.effect->document.externalForces.enabled){
-        if (state.fields.capacity() < kMaxForceFields)
-            state.fields.reserve(kMaxForceFields);
-        state.fields.resize(kMaxForceFields);
+        if (state.fields.capacity() < particles::kMaxForceFields)
+            state.fields.reserve(particles::kMaxForceFields);
+        state.fields.resize(particles::kMaxForceFields);
         const float everywhereMin[3] = {-3.0e38f, -3.0e38f, -3.0e38f}, everywhereMax[3] = {3.0e38f, 3.0e38f, 3.0e38f};
-        const uint32_t n = ParticleWorld::cullFields(fields.data(), (uint32_t)fields.size(), state.hasBounds ? state.boundsMin : everywhereMin,
+        const uint32_t n = particles::ParticleWorld::cullFields(fields.data(), (uint32_t)fields.size(), state.hasBounds ? state.boundsMin : everywhereMin,
                                                      state.hasBounds ? state.boundsMax : everywhereMax,
-                                                     state.effect->document.externalForces.layerMask, state.fields.data(), kMaxForceFields);
+                                                     state.effect->document.externalForces.layerMask, state.fields.data(), particles::kMaxForceFields);
         state.fields.resize(n);
     }
     input.fields = state.fields.data();
@@ -685,14 +684,14 @@ void ParticleSubsystem::prepareInput(Entity entity, ParticleSystemComponent& par
     // world collisions and the component's plane GameObjects
     input.collision = nullptr;
     if (prog && prog->hasCollision){
-        if (prog->collisionKind == CollisionKind::World2D)
+        if (prog->collisionKind == particles::CollisionKind::World2D)
             input.collision = &provider2D;
-        else if (prog->collisionKind == CollisionKind::World || prog->collisionKind == CollisionKind::Terrain)
+        else if (prog->collisionKind == particles::CollisionKind::World || prog->collisionKind == particles::CollisionKind::Terrain)
             input.collision = &provider3D;
     }
     state.planeCount = 0;
     for (Entity planeEntity : particles.collisionPlanes){
-        if (state.planeCount >= kMaxCollisionPlanes)
+        if (state.planeCount >= particles::kMaxCollisionPlanes)
             break;
         Transform* planeTransform = scene->findComponent<Transform>(planeEntity);
         if (!planeTransform)
@@ -714,7 +713,7 @@ void ParticleSubsystem::gatherFields(){
     fields.clear();
     fieldTime += Engine::getDeltatime();
     auto components = scene->getComponentArray<ForceFieldComponent>();
-    for (size_t i = 0; i < components->size() && fields.size() < kMaxForceFields; i++){
+    for (size_t i = 0; i < components->size() && fields.size() < particles::kMaxForceFields; i++){
         const ForceFieldComponent& f = components->getComponentFromIndex(i);
         const Entity entity = components->getEntity(i);
         if (!f.enabled || !scene->isEntityActiveInHierarchy(entity))
@@ -722,9 +721,9 @@ void ParticleSubsystem::gatherFields(){
         Transform* transform = scene->findComponent<Transform>(entity);
         if (!transform)
             continue;
-        ForceFieldSample s;
-        s.shape = (ForceFieldShape)f.shape;
-        s.type = (ForceFieldType)f.kind;
+        particles::ForceFieldSample s;
+        s.shape = (particles::ForceFieldShape)f.shape;
+        s.type = (particles::ForceFieldType)f.kind;
         s.layers = f.layers;
         Vector3 size(1.0f, 1.0f, 1.0f);
         switch (f.shape){
@@ -815,7 +814,7 @@ bool ParticleSubsystem::sampleTerrain(const void* context, const float p[3], flo
     return false;
 }
 
-bool ParticleSubsystem::castWorldRay(const void* context, const float from[3], const float to[3], float radius, uint32_t layers, CollisionHit& hit){
+bool ParticleSubsystem::castWorldRay(const void* context, const float from[3], const float to[3], float radius, uint32_t layers, particles::CollisionHit& hit){
 #ifdef JASPERENGINE_PHYSICS_3D
     const ParticleSubsystem* self = static_cast<const ParticleSubsystem*>(context);
     Vector3 direction = point(to) - point(from);
@@ -841,7 +840,7 @@ bool ParticleSubsystem::castWorldRay(const void* context, const float from[3], c
 #endif
 }
 
-bool ParticleSubsystem::castWorldRay2D(const void* context, const float from[3], const float to[3], float radius, uint32_t layers, CollisionHit& hit){
+bool ParticleSubsystem::castWorldRay2D(const void* context, const float from[3], const float to[3], float radius, uint32_t layers, particles::CollisionHit& hit){
 #ifdef JASPERENGINE_PHYSICS_2D
     const ParticleSubsystem* self = static_cast<const ParticleSubsystem*>(context);
     Vector3 direction = point(to) - point(from);
@@ -865,7 +864,7 @@ bool ParticleSubsystem::castWorldRay2D(const void* context, const float from[3],
 namespace {
 
     // an emitter's particles and its children's, each in its own simulation space, into a world box
-    void addEmitterBounds(const EmitterRuntime& emitter, bool withSelf, float lo[3], float hi[3], bool& any){
+    void addEmitterBounds(const particles::EmitterRuntime& emitter, bool withSelf, float lo[3], float hi[3], bool& any){
         if (withSelf && emitter.hasBounds()){
             float simLo[3], simHi[3];
             emitter.bounds(simLo, simHi);
@@ -881,19 +880,19 @@ namespace {
             any = true;
         }
         for (size_t c = 0; c < emitter.childCount(); c++){
-            if (const EmitterRuntime* child = emitter.child(c))
+            if (const particles::EmitterRuntime* child = emitter.child(c))
                 addEmitterBounds(*child, true, lo, hi, any);
         }
     }
 
 }
 
-void ParticleSubsystem::updateBounds(ParticleSystemState& state){
-    const ParticleEffectDocument& d = state.effect->document;
+void ParticleSubsystem::updateBounds(particles::ParticleSystemState& state){
+    const particles::ParticleEffectDocument& d = state.effect->document;
     float lo[3], hi[3];
     for (int k = 0; k < 3; k++){ lo[k] = 3.0e38f; hi[k] = -3.0e38f; }
     bool any = false;
-    if (d.boundsMode == BoundsMode::Authored){
+    if (d.boundsMode == particles::BoundsMode::Authored){
         // the authored box, in the emitter's space
         const float c[3] = {d.boundsCenter.x, d.boundsCenter.y, d.boundsCenter.z};
         const float h[3] = {d.boundsSize.x * 0.5f, d.boundsSize.y * 0.5f, d.boundsSize.z * 0.5f};
@@ -909,7 +908,7 @@ void ParticleSubsystem::updateBounds(ParticleSystemState& state){
         any = true;
     }
     // the authored box answers for this emitter only: its children keep their own particles' box
-    addEmitterBounds(state.runtime, d.boundsMode != BoundsMode::Authored, lo, hi, any);
+    addEmitterBounds(state.runtime, d.boundsMode != particles::BoundsMode::Authored, lo, hi, any);
     if (!any){
         state.hasBounds = false;
         return;
@@ -919,7 +918,7 @@ void ParticleSubsystem::updateBounds(ParticleSystemState& state){
     state.hasBounds = true;
 }
 
-float ParticleSubsystem::significanceOf(const ParticleSystemState& state, float& cameraDistance) const{
+float ParticleSubsystem::significanceOf(const particles::ParticleSystemState& state, float& cameraDistance) const{
     cameraDistance = 0.0f;
     const Entity cameraEntity = scene->getCamera();
     const Transform* cameraTransform = scene->findComponent<Transform>(cameraEntity);
@@ -940,29 +939,29 @@ float ParticleSubsystem::significanceOf(const ParticleSystemState& state, float&
     return std::clamp(2.0f * radius / std::max(view, 0.001f), 0.0f, 1.0f);
 }
 
-void ParticleSubsystem::playSounds(EmitterRuntime& runtime, const Vector3& emitterPosition){
+void ParticleSubsystem::playSounds(particles::EmitterRuntime& runtime, const Vector3& emitterPosition){
     // the tree's: a child's bursts are in its own document, its entries' in its parent's
     for (size_t c = 0; c < runtime.childCount(); c++){
-        if (EmitterRuntime* child = runtime.child(c))
+        if (particles::EmitterRuntime* child = runtime.child(c))
             playSounds(*child, emitterPosition);
     }
 #if JASPERENGINE_SOUND_LAYER
     // free voices live in the sound layer (S34's soundlayer module): a build without it drops the events
-    const CompiledEffect* effect = runtime.effect();
+    const particles::CompiledEffect* effect = runtime.effect();
     if (runtime.soundEvents().empty() || !effect)
         return;
-    const ParticleEffectDocument& d = effect->document;
-    for (const ParticleSoundEvent& event : runtime.soundEvents()){
+    const particles::ParticleEffectDocument& d = effect->document;
+    for (const particles::ParticleSoundEvent& event : runtime.soundEvents()){
         const std::string* path = nullptr;
         const std::string* guid = nullptr;
         switch (event.source){
-            case ParticleSoundEvent::Source::Burst:
+            case particles::ParticleSoundEvent::Source::Burst:
                 if (event.index < d.emission.bursts.size()){ path = &d.emission.bursts[event.index].soundEvent; guid = &d.emission.bursts[event.index].soundEventGuid; }
                 break;
-            case ParticleSoundEvent::Source::SubEmitter:
+            case particles::ParticleSoundEvent::Source::SubEmitter:
                 if (event.index < d.subEmitters.size()){ path = &d.subEmitters[event.index].soundEvent; guid = &d.subEmitters[event.index].soundEventGuid; }
                 break;
-            case ParticleSoundEvent::Source::Trigger:
+            case particles::ParticleSoundEvent::Source::Trigger:
                 if (event.index < d.triggers.size()){ path = &d.triggers[event.index].soundEvent; guid = &d.triggers[event.index].soundEventGuid; }
                 break;
         }
@@ -978,12 +977,12 @@ void ParticleSubsystem::playSounds(EmitterRuntime& runtime, const Vector3& emitt
 }
 
 void ParticleSubsystem::dispatchEvents(ParticleSystemComponent& particles){
-    ParticleSystemState& state = *particles.state;
+    particles::ParticleSystemState& state = *particles.state;
     if (particles.onCollision.hasSubscribers()){
         const auto events = state.runtime.collisionEvents();
         if (!events.empty()){
             collisionBatch.clear();
-            for (const CollisionEvent& e : events)
+            for (const particles::CollisionEvent& e : events)
                 collisionBatch.push_back({point(e.position), point(e.normal), point(e.velocity), e.particleId, e.killed});
             particles.onCollision.call(collisionBatch);
         }
@@ -992,7 +991,7 @@ void ParticleSubsystem::dispatchEvents(ParticleSystemComponent& particles){
         const auto events = state.runtime.deathEvents();
         if (!events.empty()){
             deathBatch.clear();
-            for (const ParticleDeathEvent& e : events)
+            for (const particles::ParticleDeathEvent& e : events)
                 deathBatch.push_back({point(e.position), point(e.velocity), e.particleId});
             particles.onParticleDeath.call(deathBatch);
         }
@@ -1002,7 +1001,7 @@ void ParticleSubsystem::dispatchEvents(ParticleSystemComponent& particles){
         if (!events.empty()){
             static const char* const triggers[] = {"birth", "death", "collision", "trigger"};
             subEmitBatch.clear();
-            for (const SubEmitEvent& e : events)
+            for (const particles::SubEmitEvent& e : events)
                 subEmitBatch.push_back({point(e.position), (int)e.entry, (int)e.count, triggers[(int)e.trigger]});
             particles.onSubEmit.call(subEmitBatch);
         }
@@ -1078,7 +1077,7 @@ void ParticleSubsystem::update(double dt){
             continue;
         if (!ensureEffect(entity, particles))
             continue;
-        ParticleSystemState& state = *particles.state;
+        particles::ParticleSystemState& state = *particles.state;
         if (!state.started){
             state.started = true;
             if (particles.playOnAwake){
@@ -1086,10 +1085,10 @@ void ParticleSubsystem::update(double dt){
                 state.running = true;
             }
         }
-        EmitterTask task;
+        particles::EmitterTask task;
         task.runtime = &state.runtime;
 
-        const ParticleEffectDocument& d = state.effect->document;
+        const particles::ParticleEffectDocument& d = state.effect->document;
         float cameraDistance = 0.0f;
         state.significance = significanceOf(state, cameraDistance);
         task.priority = d.priority;
@@ -1105,12 +1104,12 @@ void ParticleSubsystem::update(double dt){
         // an empty one: nothing of it is drawn to be seen, and its old bounds would hold it
         // paused for good once stopped and cleared)
         const bool visible = inRange && (!state.hasBounds || (state.runtime.totalCount() == 0 && !state.runtime.isAnalytic()) || frame <= state.visibleFrame + 1);
-        uint32_t maxTicks = kMaxTicksPerFrame;
+        uint32_t maxTicks = particles::kMaxTicksPerFrame;
         // Unscaled Time (the effect's or the component's): Time.timeScale does not slow it (UI,
         // pause menus)
         // (a hit-stop freezes the scaled ones, except a Hit Stop Exempt GameObject's, S48)
         const double frameDt = (d.useUnscaledTime || particles.useUnscaledTime) ? unscaledDt : pixelart::HitStop::deltaFor(scene, entity, dt);
-        task.dt = cullingStep(d.cullingMode, d.looping, visible, frameDt, d.tickRate, state.cull, maxTicks);
+        task.dt = particles::cullingStep(d.cullingMode, d.looping, visible, frameDt, d.tickRate, state.cull, maxTicks);
         task.maxTicks = maxTicks;
         state.culled = !visible;
         if (task.dt <= 0.0){
@@ -1148,7 +1147,7 @@ void ParticleSubsystem::update(double dt){
     for (size_t t = 0; t < tasks.size(); t++){
         const Entity entity = taskEntities[t];
         ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
-        ParticleSystemState& state = *particles.state;
+        particles::ParticleSystemState& state = *particles.state;
         state.ticks = tasks[t].ticks;
         state.budget = tasks[t].budget;
         state.emissionScale = tasks[t].emissionScale;
@@ -1169,8 +1168,8 @@ void ParticleSubsystem::checkStopActions(){
         ParticleSystemComponent& particles = systems->getComponentFromIndex(i);
         if (!particles.state || !particles.state->effect)
             continue;
-        ParticleSystemState& state = *particles.state;
-        const bool runningNow = state.runtime.state() != PlayState::Stopped || state.runtime.isAlive();
+        particles::ParticleSystemState& state = *particles.state;
+        const bool runningNow = state.runtime.state() != particles::PlayState::Stopped || state.runtime.isAlive();
         if (state.running && !runningNow)
             queueStopAction(systems->getEntity(i), state);
         state.running = runningNow;
@@ -1178,8 +1177,8 @@ void ParticleSubsystem::checkStopActions(){
     runStopActions();
 }
 
-void ParticleSubsystem::queueStopAction(Entity entity, ParticleSystemState& state){
-    if (state.effect->program.stopAction == StopAction::None)
+void ParticleSubsystem::queueStopAction(Entity entity, particles::ParticleSystemState& state){
+    if (state.effect->program.stopAction == particles::StopAction::None)
         return;
     if (std::find(stopActions.begin(), stopActions.end(), entity) == stopActions.end())
         stopActions.push_back(entity);
@@ -1198,18 +1197,18 @@ void ParticleSubsystem::runStopActions(){
         if (!particles || !particles->state || !particles->state->effect)
             continue;
         // played again meanwhile: nothing has stopped any more
-        if (particles->state->runtime.state() != PlayState::Stopped)
+        if (particles->state->runtime.state() != particles::PlayState::Stopped)
             continue;
         switch (particles->state->effect->program.stopAction){
-            case StopAction::None:
+            case particles::StopAction::None:
                 break;
-            case StopAction::Disable:
+            case particles::StopAction::Disable:
                 scene->setEntityActive(entity, false);
                 break;
-            case StopAction::Destroy:
+            case particles::StopAction::Destroy:
                 ObjectManager::destroy(scene, entity, 0.0f);
                 break;
-            case StopAction::Callback:
+            case particles::StopAction::Callback:
                 ScriptMessages::send(scene, entity, ScriptMessage::ParticleSystemStopped, nullptr,
                                      [](ScriptBase& script){ script.onParticleSystemStopped(); });
                 break;

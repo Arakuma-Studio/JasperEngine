@@ -13,6 +13,8 @@
 
 #include <string>
 
+namespace SceneMaxValuesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -53,3 +55,5 @@ TEST(SceneMaxValues, NewSceneWritesNone) {
     ASSERT_TRUE(decoded.scene);
     EXPECT_FALSE(jasperengine::editor::test::encodeScene(decoded)["maxValues"]) << "no capacities to write";
 }
+
+}  // namespace SceneMaxValuesTest_cpp

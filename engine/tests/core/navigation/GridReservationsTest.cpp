@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+namespace GridReservationsTest_cpp {
+
 using namespace jasperengine::nav;
 
 TEST(GridReservations, ReplacesClaimsAndKeepsLongerReservations){
@@ -80,3 +82,5 @@ TEST(GridReservations, ReusesStorageForSteadyStateUpdates){
     EXPECT_EQ(reservations.holder(0, 101), 1u);
     EXPECT_EQ(reservations.holder(3, 101), 2u);
 }
+
+}  // namespace GridReservationsTest_cpp

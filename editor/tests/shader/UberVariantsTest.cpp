@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+namespace UberVariantsTest_cpp {
+
 using namespace jasperengine;
 
 TEST(UberVariants, CompileForEveryBackend) {
@@ -37,3 +39,5 @@ TEST(UberVariants, CompileForEveryBackend) {
         }
     }
 }
+
+}  // namespace UberVariantsTest_cpp

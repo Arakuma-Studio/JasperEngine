@@ -108,7 +108,8 @@ namespace fs = std::filesystem;
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::mcp;
+
+namespace jasperengine::editor::mcp {
 
 namespace {
 
@@ -4772,10 +4773,12 @@ bool runCommand(CommandHistory* history, Command* cmd, std::string& error, const
 
 } // namespace
 
-bool jasperengine::editor::mcp::runSceneCommand(uint32_t sceneId, Command* cmd, std::string& error, const std::string& fallback) {
+bool runSceneCommand(uint32_t sceneId, Command* cmd, std::string& error, const std::string& fallback) {
     return runCommand(CommandHandle::get(sceneId), cmd, error, fallback);
 }
 
-bool jasperengine::editor::mcp::runProjectCommand(Project* project, Command* cmd, std::string& error, const std::string& fallback) {
+bool runProjectCommand(Project* project, Command* cmd, std::string& error, const std::string& fallback) {
     return runCommand(project->getProjectCommandHistory(), cmd, error, fallback);
 }
+
+}  // namespace jasperengine::editor::mcp

@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+namespace TitleRenderJobTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -266,3 +268,5 @@ TEST_F(TitleRenderJobTest, GatedStepsAndPredictedSplits) {
     tile.label = probe.label + " tile 1/8 tile 2/2";
     EXPECT_EQ(TitleStepCosts::kindOf(tile), TitleStepCosts::kindOf(probe)) << "a tile split again keeps its kind";
 }
+
+}  // namespace TitleRenderJobTest_cpp

@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+namespace BuildDiagnosticsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -91,3 +93,5 @@ TEST(BuildDiagnostics, RepeatsPastTheKeptOnesCountOnce) {
     EXPECT_EQ(log.errorCount(), 25u);
     EXPECT_EQ(log.errors().size(), BuildErrorLog::kMaxKept);
 }
+
+}  // namespace BuildDiagnosticsTest_cpp

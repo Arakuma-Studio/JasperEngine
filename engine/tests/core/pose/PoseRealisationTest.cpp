@@ -12,6 +12,8 @@
 
 #include <cmath>
 
+namespace PoseRealisationTest_cpp {
+
 using namespace posetest;
 
 namespace {
@@ -82,3 +84,5 @@ TEST(PoseRealisation, EmptyAnimation){
     EXPECT_TRUE(realised->metrics.empty());
     EXPECT_TRUE(realised->frames.empty());
 }
+
+}  // namespace PoseRealisationTest_cpp

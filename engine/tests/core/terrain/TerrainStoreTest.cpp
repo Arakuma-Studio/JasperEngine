@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+namespace TerrainStoreTest_cpp {
+
 using namespace terraintest;
 
 TEST(TerrainStore, RawAndOverlayAgree) {
@@ -378,3 +380,5 @@ TEST(TerrainStore, OverlayForwardsUndoHookAndRefusesLargeEdits) {
     EXPECT_NE(overlay.takeUndoHook(), nullptr);
     EXPECT_EQ(overlay.preferredBlock(HEIGHT).w, 16);
 }
+
+}  // namespace TerrainStoreTest_cpp

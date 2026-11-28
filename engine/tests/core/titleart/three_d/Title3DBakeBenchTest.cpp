@@ -20,6 +20,8 @@
 #include <cstdlib>
 #include <fstream>
 
+namespace Title3DBakeBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -134,3 +136,5 @@ TEST(Title3DBakeBenchGpu, RealtimeTiers) {
         EXPECT_LE(passes, (uint64_t)t.maxPasses) << t.name << ": §6.7's pass budget";
     }
 }
+
+}  // namespace Title3DBakeBenchTest_cpp

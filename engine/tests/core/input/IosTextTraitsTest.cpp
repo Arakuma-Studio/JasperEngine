@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+namespace IosTextTraitsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -68,3 +70,5 @@ TEST(IosTextTraits, MapOfTraits){
         EXPECT_EQ(out.emptyInputView, row.emptyInputView) << row.name;
     }
 }
+
+}  // namespace IosTextTraitsTest_cpp

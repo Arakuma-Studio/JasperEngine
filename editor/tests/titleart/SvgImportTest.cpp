@@ -18,6 +18,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace SvgImportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using SvgImportJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
@@ -249,3 +251,5 @@ TEST_F(SvgImportTest, CreateFromMakesADocument) {
     svgImportWriteText(file, "{\"format\": \"something\"}");
     EXPECT_FALSE(TitleArtOps::createFrom(request, out, code, error));
 }
+
+}  // namespace SvgImportTest_cpp

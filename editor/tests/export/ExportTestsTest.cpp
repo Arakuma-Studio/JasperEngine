@@ -14,6 +14,8 @@
 
 #include <fstream>
 
+namespace ExportTestsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
@@ -59,3 +61,5 @@ TEST(ExportTests, IncludeTestsOnlyInDevelopmentBuilds) {
     EXPECT_EQ(index["settings"]["fixed_fps"], 30);
     EXPECT_EQ(index["files"], (gametest::Json::array({"menu.test.lua", "shop/buy.test.lua"})));
 }
+
+}  // namespace ExportTestsTest_cpp

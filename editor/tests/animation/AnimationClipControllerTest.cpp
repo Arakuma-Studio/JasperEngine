@@ -91,6 +91,8 @@
 #include <string>
 #include <vector>
 
+namespace AnimationClipControllerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -2459,3 +2461,5 @@ TEST_F(AnimationClipControllerTest, MeshResetDuringAPreviewEditsTheSubmeshRest) 
     ASSERT_TRUE(history->undo());
     EXPECT_FLOAT_EQ(colour().y, restColour.y) << "undo writes the rest, not the previewed black";
 }
+
+}  // namespace AnimationClipControllerTest_cpp

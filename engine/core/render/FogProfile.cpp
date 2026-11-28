@@ -347,12 +347,11 @@ namespace {
 }
 }
 
-using namespace jasperengine::fogprofile;
 
 // ---- FogFields ----
 
 const FogFieldInfo& FogFields::info(FogField field){
-    return kFogFieldTable[std::min(static_cast<size_t>(field), FOG_FIELD_COUNT - 1)];
+    return fogprofile::kFogFieldTable[std::min(static_cast<size_t>(field), FOG_FIELD_COUNT - 1)];
 }
 
 const char* FogFields::name(FogField field){
@@ -360,7 +359,7 @@ const char* FogFields::name(FogField field){
 }
 
 bool FogFields::find(std::string_view name, FogField& field){
-    for (const FogFieldInfo& entry : kFogFieldTable){
+    for (const FogFieldInfo& entry : fogprofile::kFogFieldTable){
         if (name == entry.name){
             field = entry.field;
             return true;
@@ -370,10 +369,10 @@ bool FogFields::find(std::string_view name, FogField& field){
 }
 
 void FogFields::copy(FogComponent& to, const FogComponent& from, FogField field){
-    if (float* value = fogFloatMember(to, field)){
-        *value = *fogFloatMember(from, field);
-    }else if (Vector3* vector = fogVectorMember(to, field)){
-        *vector = *fogVectorMember(from, field);
+    if (float* value = fogprofile::fogFloatMember(to, field)){
+        *value = *fogprofile::fogFloatMember(from, field);
+    }else if (Vector3* vector = fogprofile::fogVectorMember(to, field)){
+        *vector = *fogprofile::fogVectorMember(from, field);
     }else if (field == FogField::SkyFill){
         to.skyFill = from.skyFill;
     }else if (field == FogField::ColorMode){
@@ -382,11 +381,11 @@ void FogFields::copy(FogComponent& to, const FogComponent& from, FogField field)
 }
 
 bool FogFields::equal(const FogComponent& a, const FogComponent& b, FogField field){
-    if (const float* value = fogFloatMember(a, field))
-        return fogSameBits(*value, *fogFloatMember(b, field));
-    if (const Vector3* vector = fogVectorMember(a, field)){
-        const Vector3& other = *fogVectorMember(b, field);
-        return fogSameBits(vector->x, other.x) && fogSameBits(vector->y, other.y) && fogSameBits(vector->z, other.z);
+    if (const float* value = fogprofile::fogFloatMember(a, field))
+        return fogprofile::fogSameBits(*value, *fogprofile::fogFloatMember(b, field));
+    if (const Vector3* vector = fogprofile::fogVectorMember(a, field)){
+        const Vector3& other = *fogprofile::fogVectorMember(b, field);
+        return fogprofile::fogSameBits(vector->x, other.x) && fogprofile::fogSameBits(vector->y, other.y) && fogprofile::fogSameBits(vector->z, other.z);
     }
     if (field == FogField::SkyFill)
         return a.skyFill == b.skyFill;
@@ -404,23 +403,23 @@ void FogFields::blend(FogComponent& value, const FogComponent& target, FogField 
     }
     switch (info(field).kind){
         case FogFieldKind::Float: {
-            float& v = *fogFloatMember(value, field);
-            v = fogLerp(v, *fogFloatMember(target, field), w);
+            float& v = *fogprofile::fogFloatMember(value, field);
+            v = fogprofile::fogLerp(v, *fogprofile::fogFloatMember(target, field), w);
             break;
         }
         case FogFieldKind::Extinction: {
             // blended as extinction (1/d): fog thickens evenly, not all at the thin end (R8)
-            float& v = *fogFloatMember(value, field);
-            const float a = 1.0f / std::max(v, kFogMinAttenuation);
-            const float b = 1.0f / std::max(*fogFloatMember(target, field), kFogMinAttenuation);
-            v = 1.0f / fogLerp(a, b, w);
+            float& v = *fogprofile::fogFloatMember(value, field);
+            const float a = 1.0f / std::max(v, fogprofile::kFogMinAttenuation);
+            const float b = 1.0f / std::max(*fogprofile::fogFloatMember(target, field), fogprofile::kFogMinAttenuation);
+            v = 1.0f / fogprofile::fogLerp(a, b, w);
             break;
         }
         case FogFieldKind::Color:
         case FogFieldKind::Vector3: {
-            Vector3& v = *fogVectorMember(value, field);
-            const Vector3& t = *fogVectorMember(target, field);
-            v = Vector3(fogLerp(v.x, t.x, w), fogLerp(v.y, t.y, w), fogLerp(v.z, t.z, w));
+            Vector3& v = *fogprofile::fogVectorMember(value, field);
+            const Vector3& t = *fogprofile::fogVectorMember(target, field);
+            v = Vector3(fogprofile::fogLerp(v.x, t.x, w), fogprofile::fogLerp(v.y, t.y, w), fogprofile::fogLerp(v.z, t.z, w));
             break;
         }
         case FogFieldKind::Bool:
@@ -437,9 +436,9 @@ int FogFields::width(FogField field){
 }
 
 void FogFields::read(const FogComponent& fog, FogField field, float* out){
-    if (const float* value = fogFloatMember(fog, field)){
+    if (const float* value = fogprofile::fogFloatMember(fog, field)){
         out[0] = *value;
-    }else if (const Vector3* vector = fogVectorMember(fog, field)){
+    }else if (const Vector3* vector = fogprofile::fogVectorMember(fog, field)){
         out[0] = vector->x;
         out[1] = vector->y;
         out[2] = vector->z;
@@ -451,9 +450,9 @@ void FogFields::read(const FogComponent& fog, FogField field, float* out){
 }
 
 void FogFields::write(FogComponent& fog, FogField field, const float* in){
-    if (float* value = fogFloatMember(fog, field)){
+    if (float* value = fogprofile::fogFloatMember(fog, field)){
         *value = in[0];
-    }else if (Vector3* vector = fogVectorMember(fog, field)){
+    }else if (Vector3* vector = fogprofile::fogVectorMember(fog, field)){
         *vector = Vector3(in[0], in[1], in[2]);
     }else if (field == FogField::SkyFill){
         fog.skyFill = in[0] > 0.5f;
@@ -578,10 +577,10 @@ bool FogProfileIO::parse(const std::string& json, FogProfileData& out, std::stri
                     unknown->push_back("fields." + it.key());
                 continue;
             }
-            if (!fogReadValue(it.value(), data.values, field)){
+            if (!fogprofile::fogReadValue(it.value(), data.values, field)){
                 FogFields::copy(data.values, FogComponent(), field);
                 if (problems)
-                    problems->push_back("fields." + it.key() + ": expected " + fogExpectedText(field) + "; the field is left unset");
+                    problems->push_back("fields." + it.key() + ": expected " + fogprofile::fogExpectedText(field) + "; the field is left unset");
                 continue;
             }
             data.set.set(static_cast<size_t>(field));
@@ -594,9 +593,9 @@ bool FogProfileIO::parse(const std::string& json, FogProfileData& out, std::stri
 std::string FogProfileIO::write(const FogProfileData& data){
     std::string text = "{\n";
     text += "  \"version\": " + std::to_string(VERSION) + ",\n";
-    text += "  \"name\": " + fogStringText(data.name) + ",\n";
+    text += "  \"name\": " + fogprofile::fogStringText(data.name) + ",\n";
     if (!data.description.empty())
-        text += "  \"description\": " + fogStringText(data.description) + ",\n";
+        text += "  \"description\": " + fogprofile::fogStringText(data.description) + ",\n";
     if (data.set.none()){
         text += "  \"fields\": {}\n";
     }else{
@@ -607,7 +606,7 @@ std::string FogProfileIO::write(const FogProfileData& data){
                 continue;
             const FogField field = static_cast<FogField>(i);
             text += first ? "" : ",\n";
-            text += "    \"" + std::string(kFogFieldTable[i].name) + "\": " + fogValueText(data.values, field);
+            text += "    \"" + std::string(fogprofile::kFogFieldTable[i].name) + "\": " + fogprofile::fogValueText(data.values, field);
             first = false;
         }
         text += "\n  }\n";
@@ -643,27 +642,27 @@ bool FogProfileIO::isProfilePath(std::string_view path){
 const std::vector<FogProfileBuiltin>& FogProfiles::builtins(){
     static const std::vector<FogProfileBuiltin> all = {
         // AtmospherePresets' five, field for field (FogProfileTest.BuiltinsMatchLegacyPresets)
-        {"morning_haze", legacyFogLook("Morning Haze", "A thin warm haze lit by a low sun, the sky's colour at the horizon",
+        {"morning_haze", fogprofile::legacyFogLook("Morning Haze", "A thin warm haze lit by a low sun, the sky's colour at the horizon",
                                 Vector3(0.86f, 0.80f, 0.72f), 600.0f, 0.0f, 120.0f, 0.0f, 5000.0f, 0.9f, 0.6f, 0.7f, 6.0f)},
-        {"ground_mist", legacyFogLook("Ground Mist", "A dense white layer a few meters deep, clear above",
+        {"ground_mist", fogprofile::legacyFogLook("Ground Mist", "A dense white layer a few meters deep, clear above",
                                Vector3(0.82f, 0.84f, 0.87f), 40.0f, 0.0f, 6.0f, 0.0f, 1000.0f, 1.0f, 0.2f, 0.5f, 2.0f)},
-        {"mountain_valley", legacyFogLook("Mountain Valley", "Fog filling the valleys, peaks above it, long views",
+        {"mountain_valley", fogprofile::legacyFogLook("Mountain Valley", "Fog filling the valleys, peaks above it, long views",
                                    Vector3(0.74f, 0.79f, 0.86f), 250.0f, 20.0f, 300.0f, 0.0f, 4000.0f, 1.0f, 0.4f, 0.6f, 3.0f)},
-        {"horizon_haze", legacyFogLook("Horizon Haze", "Clear nearby, the distance fading into the sky",
+        {"horizon_haze", fogprofile::legacyFogLook("Horizon Haze", "Clear nearby, the distance fading into the sky",
                                 Vector3(0.72f, 0.80f, 0.90f), 3000.0f, 0.0f, 1500.0f, 200.0f, 20000.0f, 1.0f, 0.3f, 0.75f, 8.0f)},
-        {"night", legacyFogLook("Night", "A dark blue fog close to the ground, little sun scattering",
+        {"night", fogprofile::legacyFogLook("Night", "A dark blue fog close to the ground, little sun scattering",
                          Vector3(0.06f, 0.07f, 0.11f), 200.0f, 0.0f, 60.0f, 0.0f, 2000.0f, 0.95f, 0.05f, 0.3f, 4.0f)},
         // Lit looks, after Vapor's Bright, Murky, Hell and Poison
-        {"bright_haze", litFogLook({"Bright Haze", "A thin sky-blue haze that takes the daylight, drifting slowly",
+        {"bright_haze", fogprofile::litFogLook({"Bright Haze", "A thin sky-blue haze that takes the daylight, drifting slowly",
                              Vector3(0.70f, 0.80f, 0.93f), Vector3(0.50f, 0.70f, 1.00f), 4.0f, Vector3(0.0f, 0.0f, 0.0f),
                              280.0f, 0.0f, 250.0f, 6000.0f, 0.85f, 0.35f, 0.7f, 6.0f, 0.25f, 60.0f, Vector3(1.2f, 0.0f, 0.4f)})},
-        {"murky", litFogLook({"Murky", "Dark, soupy fog that drinks the light",
+        {"murky", fogprofile::litFogLook({"Murky", "Dark, soupy fog that drinks the light",
                        Vector3(0.33f, 0.32f, 0.27f), Vector3(0.09f, 0.085f, 0.06f), 4.0f, Vector3(0.0f, 0.0f, 0.0f),
                        25.0f, 12.0f, 60.0f, 1500.0f, 1.0f, 0.15f, 0.2f, 12.0f, 0.5f, 12.0f, Vector3(0.5f, 0.0f, 0.2f)})},
-        {"infernal", litFogLook({"Infernal", "Dense red fog glowing from within, rising like heat",
+        {"infernal", fogprofile::litFogLook({"Infernal", "Dense red fog glowing from within, rising like heat",
                           Vector3(0.80f, 0.22f, 0.10f), Vector3(0.25f, 0.03f, 0.01f), 0.5f, Vector3(0.55f, 0.025f, 0.0f),
                           25.0f, 8.0f, 60.0f, 1500.0f, 1.0f, 0.3f, 0.4f, 4.0f, 0.6f, 10.0f, Vector3(0.0f, 1.5f, 0.0f)})},
-        {"toxic", litFogLook({"Toxic", "A green glowing gas pooling on the ground, thinning fast with height",
+        {"toxic", fogprofile::litFogLook({"Toxic", "A green glowing gas pooling on the ground, thinning fast with height",
                        Vector3(0.42f, 0.80f, 0.24f), Vector3(0.22f, 0.55f, 0.07f), 0.6f, Vector3(0.07f, 0.45f, 0.02f),
                        8.0f, 1.0f, 7.0f, 1500.0f, 1.0f, 0.2f, 0.3f, 2.0f, 0.35f, 8.0f, Vector3(0.4f, 0.0f, 0.4f)})},
     };
@@ -707,7 +706,7 @@ std::string FogProfileLibrary::normalizeKey(const std::string& key){
 std::shared_ptr<const FogProfileData> FogProfileLibrary::get(const std::string& key){
     if (key.empty())
         return nullptr;
-    FogLibraryState& state = fogLibraryState();
+    fogprofile::FogLibraryState& state = fogprofile::fogLibraryState();
     if (isRuntimeKey(key)){
         auto found = state.runtime.find(key);
         return found != state.runtime.end() ? found->second : nullptr;
@@ -720,7 +719,7 @@ std::shared_ptr<const FogProfileData> FogProfileLibrary::get(const std::string& 
             return get(path);
         return nullptr;
     }
-    FogLibraryEntry& entry = *fogEntryOf(state, key);
+    fogprofile::FogLibraryEntry& entry = *fogprofile::fogEntryOf(state, key);
     if (!entry.tried){
         entry.tried = true;
         if (FogProfiles::isBuiltinKey(key)){
@@ -729,9 +728,9 @@ std::shared_ptr<const FogProfileData> FogProfileLibrary::get(const std::string& 
             else
                 entry.reason = "no built-in fog profile '" + key + "'";
         }else{
-            readFogProfileFile(normalizeKey(key), entry);
+            fogprofile::readFogProfileFile(normalizeKey(key), entry);
         }
-        fogTouched(state, entry);
+        fogprofile::fogTouched(state, entry);
     }
     return entry.data;
 }
@@ -760,7 +759,7 @@ bool FogProfileLibrary::isMissing(const std::string& key, std::string* reason){
             *reason = "no fog profile has the GUID " + key;
         return true;
     }
-    const FogLibraryEntry& entry = *fogEntryOf(fogLibraryState(), key);
+    const fogprofile::FogLibraryEntry& entry = *fogprofile::fogEntryOf(fogprofile::fogLibraryState(), key);
     if (entry.data)
         return false;
     if (reason)
@@ -769,22 +768,22 @@ bool FogProfileLibrary::isMissing(const std::string& key, std::string* reason){
 }
 
 void FogProfileLibrary::reload(const std::string& path){
-    FogLibraryState& state = fogLibraryState();
+    fogprofile::FogLibraryState& state = fogprofile::fogLibraryState();
     auto found = state.entries.find(normalizeKey(path));
     // never read: its first use reads it
     if (found == state.entries.end() || !found->second.tried)
         return;
-    readFogProfileFile(found->first, found->second);
-    fogTouched(state, found->second);
+    fogprofile::readFogProfileFile(found->first, found->second);
+    fogprofile::fogTouched(state, found->second);
 }
 
 void FogProfileLibrary::set(const std::string& path, const FogProfileData& data){
-    FogLibraryState& state = fogLibraryState();
-    FogLibraryEntry& entry = *fogEntryOf(state, path);
+    fogprofile::FogLibraryState& state = fogprofile::fogLibraryState();
+    fogprofile::FogLibraryEntry& entry = *fogprofile::fogEntryOf(state, path);
     entry.tried = true;
     entry.reason.clear();
     entry.data = std::make_shared<const FogProfileData>(data);
-    fogTouched(state, entry);
+    fogprofile::fogTouched(state, entry);
 }
 
 bool FogProfileLibrary::load(const std::string& path, const std::string& json, std::string* error){
@@ -796,7 +795,7 @@ bool FogProfileLibrary::load(const std::string& path, const std::string& json, s
 }
 
 void FogProfileLibrary::clear(){
-    FogLibraryState& state = fogLibraryState();
+    fogprofile::FogLibraryState& state = fogprofile::fogLibraryState();
     state.entries.clear();
     state.alias.clear();
     state.runtime.clear();
@@ -804,7 +803,7 @@ void FogProfileLibrary::clear(){
 }
 
 std::string FogProfileLibrary::addRuntime(std::shared_ptr<FogProfileData> profile){
-    FogLibraryState& state = fogLibraryState();
+    fogprofile::FogLibraryState& state = fogprofile::fogLibraryState();
     const std::string key = "runtime:" + std::to_string(state.nextRuntime++);
     state.runtime[key] = std::move(profile);
     state.generation++;
@@ -812,7 +811,7 @@ std::string FogProfileLibrary::addRuntime(std::shared_ptr<FogProfileData> profil
 }
 
 std::shared_ptr<FogProfileData> FogProfileLibrary::getRuntime(const std::string& key){
-    FogLibraryState& state = fogLibraryState();
+    fogprofile::FogLibraryState& state = fogprofile::fogLibraryState();
     auto found = state.runtime.find(key);
     return found != state.runtime.end() ? found->second : nullptr;
 }
@@ -822,7 +821,7 @@ bool FogProfileLibrary::isRuntimeKey(std::string_view key){
 }
 
 void FogProfileLibrary::resetRuntime(){
-    FogLibraryState& state = fogLibraryState();
+    fogprofile::FogLibraryState& state = fogprofile::fogLibraryState();
     if (state.runtime.empty())
         return;
     state.runtime.clear();
@@ -830,11 +829,11 @@ void FogProfileLibrary::resetRuntime(){
 }
 
 uint32_t FogProfileLibrary::version(const std::string& key){
-    FogLibraryState& state = fogLibraryState();
+    fogprofile::FogLibraryState& state = fogprofile::fogLibraryState();
     auto found = state.entries.find(normalizeKey(key));
     return found != state.entries.end() ? found->second.version : 0;
 }
 
 uint32_t FogProfileLibrary::generation(){
-    return fogLibraryState().generation;
+    return fogprofile::fogLibraryState().generation;
 }

@@ -25,7 +25,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::titledesigner;
 namespace ta = jasperengine::titleart;
 
 namespace {
@@ -97,22 +96,22 @@ void TitleDesignerWindow::drawLayerHeader() {
         ImGui::TextDisabled("No layer selected");
         return;
     }
-    RowContext ctx;
+    titledesigner::RowContext ctx;
     ctx.host = this;
     ctx.state = &doc;
-    ctx.node = {NodeKind::Layer, layers.back(), {}, {}};
+    ctx.node = {titledesigner::NodeKind::Layer, layers.back(), {}, {}};
     ctx.nodeKind = "layers-header";
     ctx.countNoun = "Layers";
     ctx.readOnly = !doc.editable();
     ctx.readOnlyReason = doc.readOnlyReason();
     // the same two rows head the Properties page: one op each, two places (R13)
-    fieldRow(ctx, [&] {
-        std::vector<FieldRef> out;
+    titledesigner::fieldRow(ctx, [&] {
+        std::vector<titledesigner::FieldRef> out;
         for (const std::string& id : layers) out.push_back({id, "blend"});
         return out;
     }(), {.label = "Blend"});
     fieldRow(ctx, [&] {
-        std::vector<FieldRef> out;
+        std::vector<titledesigner::FieldRef> out;
         for (const std::string& id : layers) out.push_back({id, "opacity"});
         return out;
     }(), {.label = "Opacity"});
@@ -141,11 +140,11 @@ void TitleDesignerWindow::drawLayerFooter() {
 
 void TitleDesignerWindow::layerContextMenu(const std::string& layerId) {
     if (!ImGui::BeginPopupContextItem("##layermenu")) return;
-    if (!doc.isSelected({NodeKind::Layer, layerId, {}, {}})) doc.selectOne({NodeKind::Layer, layerId, {}, {}});
+    if (!doc.isSelected({titledesigner::NodeKind::Layer, layerId, {}, {}})) doc.selectOne({titledesigner::NodeKind::Layer, layerId, {}, {}});
     const bool editable = doc.editable();
-    const ta::Json* layer = layerById(doc.committed(), layerId);
+    const ta::Json* layer = titledesigner::layerById(doc.committed(), layerId);
     // an item that edits replaces the committed document: read the layer again before the next one
-    const auto refresh = [&] { layer = layerById(doc.committed(), layerId); };
+    const auto refresh = [&] { layer = titledesigner::layerById(doc.committed(), layerId); };
     const ta::LayerType type = layer ? ta::layerTypeOf(*layer) : ta::LayerType::Unknown;
     // the texts are the catalog's, so a rebound key shows its new binding
     auto keys = [](std::string_view id) { return CommandCatalog::editor().menuShortcutText(id); };
@@ -187,7 +186,7 @@ void TitleDesignerWindow::layerContextMenu(const std::string& layerId) {
     }
     ImGui::Separator();
     // Looks (S84): copy / paste / save / revert through its ops
-    const bool library = libraryProvider() != nullptr;
+    const bool library = titledesigner::libraryProvider() != nullptr;
     if (ImGui::MenuItem("Copy Look", nullptr, false, layer != nullptr)) {
         ta::Json look = ta::Json::object();
         if (layer) {
@@ -207,16 +206,16 @@ void TitleDesignerWindow::layerContextMenu(const std::string& layerId) {
             for (const char* key : {"style", "effects", "part_effects"}) {
                 if (look.contains(key)) values[key] = look[key];
             }
-            std::vector<FieldEdit> edits;
+            std::vector<titledesigner::FieldEdit> edits;
             for (const std::string& id : doc.selectedLayers()) {
                 for (auto it = values.begin(); it != values.end(); ++it) edits.push_back({id, it.key(), it.value()});
             }
-            commitNamed(editsToOps(edits), "Paste Look");
+            commitNamed(titledesigner::editsToOps(edits), "Paste Look");
             refresh();
         }
     }
     if (ImGui::MenuItem("Save As Look...", nullptr, false, library)) {
-        saveAsTab = LibraryTab::Looks;
+        saveAsTab = titledesigner::LibraryTab::Looks;
         saveAsOpen = true;
     }
     if (ImGui::MenuItem("Revert to Look", nullptr, false, library && editable && layer && !str(layer->value("look", ta::Json::object()), "id").empty())) {
@@ -228,12 +227,12 @@ void TitleDesignerWindow::layerContextMenu(const std::string& layerId) {
     if (ImGui::MenuItem("Expose Text as Parameter...", nullptr, false, editable && type == ta::LayerType::Text)) exposeField({layerId, "text"}, "Text");
     if (ImGui::MenuItem("Select Layers Using This Material Link", nullptr, false, layer && !str(layer->value("style", ta::Json::object()).value("face", ta::Json::object()), "link").empty())) {
         const std::string link = str(layer->value("style", ta::Json::object()).value("face", ta::Json::object()), "link");
-        std::vector<NodeRef> using_;
+        std::vector<titledesigner::NodeRef> using_;
         ta::forEachLayer(doc.committed().root, [&](const ta::Json& l, const ta::Json*, int) {
             const ta::Json style = l.value("style", ta::Json::object());
             bool uses = str(style.value("face", ta::Json::object()), "link") == link;
             for (const ta::Json& rim : style.value("rims", ta::Json::array())) uses = uses || str(rim.value("material", ta::Json::object()), "link") == link;
-            if (uses) using_.push_back({NodeKind::Layer, str(l, "id"), {}, {}});
+            if (uses) using_.push_back({titledesigner::NodeKind::Layer, str(l, "id"), {}, {}});
             return true;
         });
         doc.select(using_);
@@ -255,7 +254,7 @@ void TitleDesignerWindow::drawLayers() {
     drawLayerHeader();
     ImGui::Separator();
     const ta::TitleArtDoc& shown = doc.shown();
-    DocumentView& v = view();
+    titledesigner::DocumentView& v = view();
     const std::shared_ptr<const ta::TitleArtDoc> snapshot = doc.shownSnapshot();
     const ta::TitleArtHashes& hashes = shownHashes();
     if (followMissingDoc != &shown || followMissingChange != doc.changeCount()) {
@@ -397,10 +396,10 @@ void TitleDesignerWindow::drawLayers() {
         shownRows.clear();
         for (const Row& row : rows) {
             switch (row.kind) {
-                case Row::Kind::Layer: shownRows.push_back({NodeKind::Layer, row.layerId, {}, {}}); break;
-                case Row::Kind::Part: shownRows.push_back({NodeKind::Part, row.layerId, row.part, {}}); break;
-                case Row::Kind::Effect: shownRows.push_back({NodeKind::Effect, row.layerId, row.part, row.item}); break;
-                case Row::Kind::Mask: shownRows.push_back({NodeKind::Mask, row.layerId, {}, row.item}); break;
+                case Row::Kind::Layer: shownRows.push_back({titledesigner::NodeKind::Layer, row.layerId, {}, {}}); break;
+                case Row::Kind::Part: shownRows.push_back({titledesigner::NodeKind::Part, row.layerId, row.part, {}}); break;
+                case Row::Kind::Effect: shownRows.push_back({titledesigner::NodeKind::Effect, row.layerId, row.part, row.item}); break;
+                case Row::Kind::Mask: shownRows.push_back({titledesigner::NodeKind::Mask, row.layerId, {}, row.item}); break;
                 default: shownRows.push_back({}); break;
             }
         }
@@ -417,7 +416,7 @@ void TitleDesignerWindow::drawLayers() {
     const bool treeFocused = ImGui::IsWindowFocused();
 
     // selecting elsewhere opens the rows that show it and scrolls to it (R11)
-    const NodeRef primary = doc.primary();
+    const titledesigner::NodeRef primary = doc.primary();
 
     ImGuiListClipper clipper;
     clipper.Begin((int)rows.size(), rowHeight);
@@ -428,8 +427,8 @@ void TitleDesignerWindow::drawLayers() {
             const ImVec2 start = ImGui::GetCursorScreenPos();
             const float width = ImGui::GetContentRegionAvail().x;
             ImDrawList* dl = ImGui::GetWindowDrawList();
-            const NodeRef node = shownRows[(size_t)r];
-            const bool selected = node.kind != NodeKind::Document && doc.isSelected(node);
+            const titledesigner::NodeRef node = shownRows[(size_t)r];
+            const bool selected = node.kind != titledesigner::NodeKind::Document && doc.isSelected(node);
 
             if (row.kind == Row::Kind::Layer) {
                 const ta::Json& layer = *row.layer;
@@ -441,12 +440,12 @@ void TitleDesignerWindow::drawLayers() {
                 if (!editable) ImGui::BeginDisabled();
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
                 if (ImGui::SmallButton(visible ? ICON_FA_EYE "##eye" : ICON_FA_EYE_SLASH "##eye")) {
-                    commitNamed(editsToOps({{row.layerId, "visible", !visible}}), visible ? "Hide Layer" : "Show Layer");
+                    commitNamed(titledesigner::editsToOps({{row.layerId, "visible", !visible}}), visible ? "Hide Layer" : "Show Layer");
                 }
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip(visible ? "Hide (H)" : "Show (H)");
                 ImGui::SameLine(0, 1);
                 if (ImGui::SmallButton(locked ? ICON_FA_LOCK "##lock" : ICON_FA_LOCK_OPEN "##lock")) {
-                    commitNamed(editsToOps({{row.layerId, "locked", !locked}}), locked ? "Unlock Layer" : "Lock Layer");
+                    commitNamed(titledesigner::editsToOps({{row.layerId, "locked", !locked}}), locked ? "Unlock Layer" : "Lock Layer");
                 }
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip(locked ? "Unlock (L)" : "Lock (L)");
                 ImGui::PopStyleColor();
@@ -477,7 +476,7 @@ void TitleDesignerWindow::drawLayers() {
                 dl->AddRectFilled(tp, ImVec2(tp.x + thumb, tp.y + thumb), IM_COL32(60, 60, 64, 255), 3.0f);
                 if (thumbnails && type != ta::LayerType::Unknown) {
                     auto hash = hashes.layers.find(row.layerId);
-                    const TitleRect bounds = layerBounds(row.layerId);
+                    const titledesigner::TitleRect bounds = layerBounds(row.layerId);
                     const int pixels = (int)std::round(thumb * std::min(2.0f, displayScale));
                     ImTextureID texture = thumbnails->thumbnail(snapshot, row.layerId, bounds, hash != hashes.layers.end() ? hash->second.content : 0, pixels, true);
                     if (texture) dl->AddImage(texture, tp, ImVec2(tp.x + thumb, tp.y + thumb));
@@ -504,7 +503,7 @@ void TitleDesignerWindow::drawLayers() {
                     renameBuffer = buffer;
                     if (ImGui::IsKeyPressed(ImGuiKey_Escape)) renaming.clear();
                     else if (enter || ImGui::IsItemDeactivated()) {
-                        if (renameBuffer != name && !renameBuffer.empty()) commitNamed(editsToOps({{row.layerId, "name", renameBuffer}}), "Rename Layer");
+                        if (renameBuffer != name && !renameBuffer.empty()) commitNamed(titledesigner::editsToOps({{row.layerId, "name", renameBuffer}}), "Rename Layer");
                         renaming.clear();
                     }
                 } else {
@@ -523,12 +522,12 @@ void TitleDesignerWindow::drawLayers() {
                             // the range of shown rows (R12)
                             int a = -1, b = r;
                             for (size_t k = 0; k < shownRows.size(); k++) {
-                                if (shownRows[k].kind == NodeKind::Layer && shownRows[k].layer == rangeAnchor) a = (int)k;
+                                if (shownRows[k].kind == titledesigner::NodeKind::Layer && shownRows[k].layer == rangeAnchor) a = (int)k;
                             }
                             if (a < 0) a = r;
-                            std::vector<NodeRef> range;
+                            std::vector<titledesigner::NodeRef> range;
                             for (int k = std::min(a, b); k <= std::max(a, b); k++) {
-                                if (shownRows[(size_t)k].kind == NodeKind::Layer) range.push_back(shownRows[(size_t)k]);
+                                if (shownRows[(size_t)k].kind == titledesigner::NodeKind::Layer) range.push_back(shownRows[(size_t)k]);
                             }
                             doc.select(range);
                         } else {
@@ -562,7 +561,7 @@ void TitleDesignerWindow::drawLayers() {
                             std::string walkId = row.layerId;
                             while (!walkId.empty()) {
                                 if (walkId == id) refused = true;
-                                walkId = parentLayerOf(shown, walkId);
+                                walkId = titledesigner::parentLayerOf(shown, walkId);
                             }
                         }
                         if (refused) {
@@ -577,7 +576,7 @@ void TitleDesignerWindow::drawLayers() {
                                 // the list is front first: "above" is after in S80's order
                                 std::string target = row.layerId;
                                 for (int s = 0; s < stepsOut && zone != Zone::Into; s++) {
-                                    const std::string parent = parentLayerOf(shown, target);
+                                    const std::string parent = titledesigner::parentLayerOf(shown, target);
                                     if (parent.empty()) break;
                                     target = parent;
                                 }
@@ -625,13 +624,13 @@ void TitleDesignerWindow::drawLayers() {
                     dl->AddText(ImVec2(start.x + width - badgeSize.x - 6.0f, y), ImGui::GetColorU32(ImGuiCol_TextDisabled), badges.c_str());
                     // the generator's or the stack's cost class (S83 R41), left of the badges
                     float warnX = start.x + width - badgeSize.x - 24.0f;
-                    CostBadge cost;
+                    titledesigner::CostBadge cost;
                     const bool hasEffects = !layer.value("effects", ta::Json::array()).empty();
                     if ((type == ta::LayerType::Generator || hasEffects) && effectCost(row.layerId, std::string(), -1, cost)) {
                         const std::string text = cost.amber ? cost.cls + "!" : cost.cls;
                         const float cw = ImGui::CalcTextSize(text.c_str()).x;
                         const float cx = start.x + width - badgeSize.x - cw - 12.0f;
-                        dl->AddText(ImVec2(cx, y), ImGui::ColorConvertFloat4ToU32(costBadgeColor(cost)), text.c_str());
+                        dl->AddText(ImVec2(cx, y), ImGui::ColorConvertFloat4ToU32(titledesigner::costBadgeColor(cost)), text.c_str());
                         if (ImGui::IsMouseHoveringRect(ImVec2(cx, start.y), ImVec2(cx + cw, start.y + rowHeight))) ImGui::SetTooltip("%s", cost.tooltip.c_str());
                         warnX = cx - 18.0f;
                     }
@@ -644,7 +643,7 @@ void TitleDesignerWindow::drawLayers() {
                         dl->AddText(ImVec2(warnX, y), IM_COL32(240, 170, 50, 255), ICON_FA_TRIANGLE_EXCLAMATION);
                         if (hovered) ImGui::SetTooltip("Follows a deleted layer: it draws nothing. Pick Layer on its Properties page");
                     }
-                    if (row.layerId == primary.layer && primary.kind == NodeKind::Layer && pendingScrollRow == "layer:" + row.layerId) {
+                    if (row.layerId == primary.layer && primary.kind == titledesigner::NodeKind::Layer && pendingScrollRow == "layer:" + row.layerId) {
                         ImGui::SetScrollHereY(0.5f);
                         pendingScrollRow.clear();
                     }
@@ -656,7 +655,7 @@ void TitleDesignerWindow::drawLayers() {
                 std::string label;
                 if (row.kind == Row::Kind::PartsHeader) label = "Parts";
                 else if (row.kind == Row::Kind::EffectsHeader) label = "Effects (applied top to bottom)";
-                else if (row.kind == Row::Kind::Part) label = partLabel(*row.layer, row.part);
+                else if (row.kind == Row::Kind::Part) label = titledesigner::partLabel(*row.layer, row.part);
                 else if (row.kind == Row::Kind::Effect) {
                     const ta::EffectDef* def = ta::findEffect(str(*row.entry, "type"));
                     label = std::string(ICON_FA_WAND_SPARKLES " ") + (def ? def->label : str(*row.entry, "type"));
@@ -673,7 +672,7 @@ void TitleDesignerWindow::drawLayers() {
                     if (ImGui::Selectable("##child", selected, ImGuiSelectableFlags_AllowOverlap, ImVec2(width - gutter, rowHeight))) {
                         // parts multi-select inside one layer; effects one at a time (R12)
                         if (row.kind == Row::Kind::Part && (ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper) && doc.primary().layer == row.layerId &&
-                            doc.primary().kind == NodeKind::Part) {
+                            doc.primary().kind == titledesigner::NodeKind::Part) {
                             doc.toggle(node);
                         } else {
                             selectNode(node);
@@ -688,24 +687,24 @@ void TitleDesignerWindow::drawLayers() {
                         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("titleart_effect")) {
                             // an effect dropped on another effect of the stack, or on a part / layer (R14)
                             const std::string effectId((const char*)payload->Data);
-                            NodeRef source;
+                            titledesigner::NodeRef source;
                             ta::forEachLayer(shown.root, [&](const ta::Json& l, const ta::Json*, int) {
-                                NodeRef probe{NodeKind::Effect, str(l, "id"), {}, effectId};
-                                if (effectOf(l, probe)) source = probe;
+                                titledesigner::NodeRef probe{titledesigner::NodeKind::Effect, str(l, "id"), {}, effectId};
+                                if (titledesigner::effectOf(l, probe)) source = probe;
                                 for (auto it = l.value("part_effects", ta::Json::object()).begin(); it != l.value("part_effects", ta::Json::object()).end(); ++it) {
-                                    NodeRef p{NodeKind::Effect, str(l, "id"), it.key(), effectId};
-                                    if (effectOf(l, p)) source = p;
+                                    titledesigner::NodeRef p{titledesigner::NodeKind::Effect, str(l, "id"), it.key(), effectId};
+                                    if (titledesigner::effectOf(l, p)) source = p;
                                 }
                                 return true;
                             });
-                            const ta::Json* sourceLayer = layerById(shown, source.layer);
-                            const ta::Json* effect = sourceLayer ? effectOf(*sourceLayer, source) : nullptr;
+                            const ta::Json* sourceLayer = titledesigner::layerById(shown, source.layer);
+                            const ta::Json* effect = sourceLayer ? titledesigner::effectOf(*sourceLayer, source) : nullptr;
                             if (effect) {
                                 const bool copy = ImGui::GetIO().KeyCtrl;
                                 const std::string targetPart = row.kind == Row::Kind::Part ? row.part : row.part;
                                 ta::Json ops = ta::Json::array();
-                                const std::string sourcePath = nodePath(shown, source);
-                                const std::string sourceEffect = sourcePath.substr(layerPathOf(shown, source.layer).size() + 1);
+                                const std::string sourcePath = titledesigner::nodePath(shown, source);
+                                const std::string sourceEffect = sourcePath.substr(titledesigner::layerPathOf(shown, source.layer).size() + 1);
                                 if (source.layer == row.layerId && source.part == targetPart && row.kind == Row::Kind::Effect && !copy) {
                                     // within the stack: to the target's index
                                     int index = 0;
@@ -734,7 +733,7 @@ void TitleDesignerWindow::drawLayers() {
                                 }
                             } else if (row.part.rfind("rim:", 0) == 0) {
                                 if (ImGui::MenuItem("Remove Rim", nullptr, false, editable)) {
-                                    const std::string rimPath = nodePath(shown, node);
+                                    const std::string rimPath = titledesigner::nodePath(shown, node);
                                     commitNamed(ta::Json::array({ta::Json{{"op", "remove_rim"}, {"layer", "id:" + row.layerId}, {"rim", rimPath.substr(rimPath.rfind('/') + 1)}}}),
                                                 "Remove Rim");
                                 }
@@ -792,8 +791,8 @@ void TitleDesignerWindow::drawLayers() {
                         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
                         if (!editable) ImGui::BeginDisabled();
                         if (ImGui::SmallButton(enabled ? ICON_FA_EYE "##fxeye" : ICON_FA_EYE_SLASH "##fxeye")) {
-                            const std::string path = effectPathOf(*row.layer, node);
-                            commitNamed(editsToOps({{row.layerId, path + ".enabled", !enabled}}), enabled ? "Disable Effect" : "Enable Effect");
+                            const std::string path = titledesigner::effectPathOf(*row.layer, node);
+                            commitNamed(titledesigner::editsToOps({{row.layerId, path + ".enabled", !enabled}}), enabled ? "Disable Effect" : "Enable Effect");
                         }
                         if (!editable) ImGui::EndDisabled();
                         ImGui::PopStyleColor();
@@ -806,11 +805,11 @@ void TitleDesignerWindow::drawLayers() {
                         for (size_t k = 0; k < stack.size(); k++) {
                             if (str(stack[k], "id") == row.item) index = (int)k;
                         }
-                        CostBadge badge;
+                        titledesigner::CostBadge badge;
                         if (index >= 0 && effectCost(row.layerId, row.part, index, badge)) {
                             const std::string text = badge.amber ? badge.cls + " Baked on mobile" : badge.cls;
                             const float bx = start.x + width - ImGui::CalcTextSize(text.c_str()).x - 6.0f;
-                            dl->AddText(ImVec2(bx, y), ImGui::ColorConvertFloat4ToU32(costBadgeColor(badge)), text.c_str());
+                            dl->AddText(ImVec2(bx, y), ImGui::ColorConvertFloat4ToU32(titledesigner::costBadgeColor(badge)), text.c_str());
                             if (ImGui::IsMouseHoveringRect(ImVec2(bx, start.y), ImVec2(start.x + width, start.y + rowHeight))) ImGui::SetTooltip("%s", badge.tooltip.c_str());
                         }
                     }
@@ -838,14 +837,14 @@ void TitleDesignerWindow::drawLayers() {
             if (shownRows[k] == primary) at = (int)k;
         }
         auto selectRow = [&](int k) {
-            while (k >= 0 && k < (int)shownRows.size() && shownRows[(size_t)k].kind == NodeKind::Document) k += (k > at ? 1 : -1);
+            while (k >= 0 && k < (int)shownRows.size() && shownRows[(size_t)k].kind == titledesigner::NodeKind::Document) k += (k > at ? 1 : -1);
             if (k >= 0 && k < (int)shownRows.size()) selectNode(shownRows[(size_t)k]);
         };
         if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) selectRow(at + 1);
         if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) selectRow(std::max(0, at - 1));
-        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow) && primary.kind == NodeKind::Layer) v.twirls[primary.layer] = true;
+        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow) && primary.kind == titledesigner::NodeKind::Layer) v.twirls[primary.layer] = true;
         if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
-            if (primary.kind == NodeKind::Layer && v.twirls[primary.layer]) v.twirls[primary.layer] = false;
+            if (primary.kind == titledesigner::NodeKind::Layer && v.twirls[primary.layer]) v.twirls[primary.layer] = false;
             else doc.selectParent();
         }
     }

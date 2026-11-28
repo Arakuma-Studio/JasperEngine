@@ -18,17 +18,16 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vertexcolor;
 namespace vcd = jasperengine::editor::vertexcolor::detail;
 
 namespace {
 
-    std::map<uint32_t, std::vector<ElementSelection>>& vcElementSelections() {
-        static std::map<uint32_t, std::vector<ElementSelection>> selections;
+    std::map<uint32_t, std::vector<jasperengine::editor::vertexcolor::ElementSelection>>& vcElementSelections() {
+        static std::map<uint32_t, std::vector<jasperengine::editor::vertexcolor::ElementSelection>> selections;
         return selections;
     }
 
-    bool vcSameSelection(const std::vector<ElementSelection>& a, const std::vector<ElementSelection>& b) {
+    bool vcSameSelection(const std::vector<jasperengine::editor::vertexcolor::ElementSelection>& a, const std::vector<jasperengine::editor::vertexcolor::ElementSelection>& b) {
         if (a.size() != b.size()) return false;
         for (size_t i = 0; i < a.size(); i++) {
             if (a[i].entity != b[i].entity || a[i].key != b[i].key || a[i].selection.kind != b[i].selection.kind || a[i].selection.ids != b[i].selection.ids) {
@@ -40,7 +39,7 @@ namespace {
 
     class VertexColorSelectionCmd : public Command {
     public:
-        VertexColorSelectionCmd(uint32_t sceneId, std::vector<ElementSelection> before, std::vector<ElementSelection> after, std::string name):
+        VertexColorSelectionCmd(uint32_t sceneId, std::vector<jasperengine::editor::vertexcolor::ElementSelection> before, std::vector<jasperengine::editor::vertexcolor::ElementSelection> after, std::string name):
             sceneId(sceneId), before(std::move(before)), after(std::move(after)), name(std::move(name)) {}
 
         bool execute() override {
@@ -53,17 +52,17 @@ namespace {
         std::string describe() const override { return name; }
         const char* typeName() const override { return "VertexColorSelectionCmd"; }
         size_t memoryBytes() const override {
-            size_t bytes = sizeof(*this) + name.capacity() + (before.capacity() + after.capacity()) * sizeof(ElementSelection);
-            for (const ElementSelection& item : before) bytes += item.selection.ids.capacity() * sizeof(uint32_t);
-            for (const ElementSelection& item : after) bytes += item.selection.ids.capacity() * sizeof(uint32_t);
+            size_t bytes = sizeof(*this) + name.capacity() + (before.capacity() + after.capacity()) * sizeof(jasperengine::editor::vertexcolor::ElementSelection);
+            for (const jasperengine::editor::vertexcolor::ElementSelection& item : before) bytes += item.selection.ids.capacity() * sizeof(uint32_t);
+            for (const jasperengine::editor::vertexcolor::ElementSelection& item : after) bytes += item.selection.ids.capacity() * sizeof(uint32_t);
             return bytes;
         }
         bool releaseOffThread() const override { return true; }
 
     private:
         uint32_t sceneId;
-        std::vector<ElementSelection> before;
-        std::vector<ElementSelection> after;
+        std::vector<jasperengine::editor::vertexcolor::ElementSelection> before;
+        std::vector<jasperengine::editor::vertexcolor::ElementSelection> after;
         std::string name;
     };
 
@@ -73,7 +72,7 @@ void vcd::resetSelections() {
     vcElementSelections().clear();
 }
 
-const std::vector<ElementSelection>& editor::vertexcolor::elementSelection(uint32_t sceneId) {
+const std::vector<jasperengine::editor::vertexcolor::ElementSelection>& editor::vertexcolor::elementSelection(uint32_t sceneId) {
     return vcElementSelections()[sceneId];
 }
 

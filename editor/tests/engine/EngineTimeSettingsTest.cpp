@@ -11,6 +11,8 @@
 
 #include <cstdio>
 
+namespace EngineTimeSettingsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::scripttest;
 
@@ -114,3 +116,5 @@ TEST_F(EngineTimeSettingsTest, ProjectStepKeepsTheExactDefault) {
     Engine::onFixedUpdate.remove("timesettings");
     EXPECT_EQ(steps, 10);
 }
+
+}  // namespace EngineTimeSettingsTest_cpp

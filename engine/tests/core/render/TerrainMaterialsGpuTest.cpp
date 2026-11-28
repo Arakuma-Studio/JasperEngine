@@ -27,6 +27,8 @@
 #include <filesystem>
 #include <fstream>
 
+namespace TerrainMaterialsGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -886,3 +888,5 @@ TEST_P(TerrainVariantGpu, Draws){
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryVariant, TerrainVariantGpu, ::testing::ValuesIn(allVariantCases()), variantName);
+
+}  // namespace TerrainMaterialsGpuTest_cpp

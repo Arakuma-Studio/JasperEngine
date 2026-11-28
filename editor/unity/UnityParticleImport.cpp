@@ -46,7 +46,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::unity;
+
+namespace jasperengine::editor::unity {
+
 namespace fs = std::filesystem;
 using Json = nlohmann::json;
 using UnityProject = jasperengine::editor::unity::Project;
@@ -699,7 +701,7 @@ namespace {
 
 }
 
-void jasperengine::editor::unity::convertShapeRotation(const float unityEuler[3], bool edge, float engineEuler[3]){
+void convertShapeRotation(const float unityEuler[3], bool edge, float engineEuler[3]){
     // Unity's Euler: Z, then X, then Y (q = qy * qx * qz)
     const Quaternion qx = axisAngle(Vector3(1, 0, 0), unityEuler[0]);
     const Quaternion qy = axisAngle(Vector3(0, 1, 0), unityEuler[1]);
@@ -1682,7 +1684,7 @@ namespace {
     ImportResult importParticlesUnchecked(const ImportOptions& options);
 }
 
-ImportResult jasperengine::editor::unity::importParticles(const ImportOptions& options){
+ImportResult importParticles(const ImportOptions& options){
     // a malformed file (yaml-cpp's errors past the document split) fails the import, never the caller
     try {
         return importParticlesUnchecked(options);
@@ -1860,7 +1862,7 @@ ImportResult importParticlesUnchecked(const ImportOptions& options){
 
 }
 
-ImportResult jasperengine::editor::unity::importParticlesIntoProject(jasperengine::editor::Project* project, ImportOptions options){
+ImportResult importParticlesIntoProject(jasperengine::editor::Project* project, ImportOptions options){
     if (!project || project->getProjectPath().empty()){
         ImportResult result;
         result.error = "no project is open";
@@ -1883,3 +1885,5 @@ ImportResult jasperengine::editor::unity::importParticlesIntoProject(jasperengin
     }
     return result;
 }
+
+}  // namespace jasperengine::editor::unity

@@ -20,6 +20,8 @@
 #include <cstdio>
 #include <fstream>
 
+namespace SpriteSheetIOTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -317,3 +319,5 @@ TEST(SpriteSheetIO, SkinWeightsNormalize){
     EXPECT_FLOAT_EQ(skin->weights[2].weights[0], 1.0f);
     EXPECT_EQ(skin->weights[2].bones[0], 1);
 }
+
+}  // namespace SpriteSheetIOTest_cpp

@@ -17,6 +17,8 @@
 #include <array>
 #include <limits>
 
+namespace SplineEvaluatorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 using namespace jasperengine::test;
@@ -884,3 +886,5 @@ TEST(SplineEvaluatorTests, SimplifyIndicesMatchesThePositionForm){
         EXPECT_LE(std::sqrt(best), 0.25f + 1e-5f);
     }
 }
+
+}  // namespace SplineEvaluatorTest_cpp

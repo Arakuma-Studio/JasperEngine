@@ -19,6 +19,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace ObjDedupTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -111,3 +113,5 @@ TEST(ObjDedupTest, WeldsTheCornersOfTheFaces){
     exact.normalDot = 0.99999;
     EXPECT_EQ(compareSoups(expected, meshTriangles(mesh), exact), "");
 }
+
+}  // namespace ObjDedupTest_cpp

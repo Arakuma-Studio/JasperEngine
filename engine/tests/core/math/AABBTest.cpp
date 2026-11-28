@@ -12,6 +12,8 @@
 
 #include <limits>
 
+namespace AABBTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -152,3 +154,5 @@ TEST(AABB, GetOBBKeepsCenterAndHalfSize){
     EXPECT_EQ(obb.getHalfExtents(), Vector3(1, 2, 3));
     EXPECT_TRUE(AABB().getOBB().isNull());
 }
+
+}  // namespace AABBTest_cpp

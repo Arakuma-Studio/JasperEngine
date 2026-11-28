@@ -41,6 +41,8 @@
 #include <algorithm>
 #include <string>
 
+namespace MeshRaycastTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -587,12 +589,16 @@ TEST(MeshRaycast, TerrainHoleMisses){
     }
 }
 
+}  // namespace MeshRaycastTest_cpp
+
 namespace jasperengine {
     // the engine's frame counter, advanced as the run loop does each frame
     struct EngineTestAccess {
         static void nextFrame(){ Engine::frameIndex++; }
     };
 }
+
+namespace MeshRaycastTest_cpp {
 
 // spatial-queries AC11: within a frame overlaps see the bounds of its first overlap (current =
 // true refits now), the next frame the new ones; overlaps without a rebuild allocate nothing
@@ -817,3 +823,5 @@ TEST(MeshRaycast, OverlapTreesMatchAScanOnATurnedTerrain){
     }
     EXPECT_GT(total, 200u) << "the queries reach trees";
 }
+
+}  // namespace MeshRaycastTest_cpp

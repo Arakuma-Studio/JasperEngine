@@ -22,6 +22,8 @@
 #include <limits>
 #include <memory>
 
+namespace PoseModelRigTest_cpp {
+
 using namespace posetest;
 
 namespace {
@@ -191,3 +193,5 @@ TEST(PoseModelRig, NonFiniteInputIsIgnored){
         EXPECT_TRUE(std::isfinite(q.w) && std::isfinite(q.x) && std::isfinite(q.y) && std::isfinite(q.z)) << b;
     }
 }
+
+}  // namespace PoseModelRigTest_cpp

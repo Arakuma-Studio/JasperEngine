@@ -12,6 +12,8 @@
 
 #include <tuple>
 
+namespace SvnProviderTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::test;
 
@@ -279,3 +281,5 @@ TEST(SvnProvider, AddedMovedAndCopiedFiles) {
     ASSERT_NE(unscheduled, nullptr);
     EXPECT_EQ(unscheduled->worktree, FileState::Untracked);
 }
+
+}  // namespace SvnProviderTest_cpp

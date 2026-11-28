@@ -21,6 +21,8 @@
 #include <thread>
 #include <vector>
 
+namespace HangWatchdogTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::diag;
 
@@ -436,3 +438,5 @@ TEST(HangWatchdog, WalkerDeadlineResumesMainThread) {
     EXPECT_NE(failure.find("timed out"), std::string::npos);
 }
 #endif
+
+}  // namespace HangWatchdogTest_cpp

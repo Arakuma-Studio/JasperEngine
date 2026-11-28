@@ -29,6 +29,8 @@
 #include <string>
 #include <vector>
 
+namespace TitleElementVariantGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -202,3 +204,5 @@ TEST_F(TitleElementVariantGpu, CompileCostIsBounded) {
     const std::string device = SystemRender::getDeviceName();
     if (device.find("llvmpipe") != std::string::npos) { EXPECT_GT(whole, bound) << "the bound tells the whole program from its variants"; }
 }
+
+}  // namespace TitleElementVariantGpuTest_cpp

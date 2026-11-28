@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+namespace ShadowPcssGlesTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -184,3 +186,5 @@ TEST(ShadowPcssGles, GeneralVariantsTakeItWhereTheTexturesLeaveAUnit){
         expectWithinGles3Limits(terrain, false);
     }
 }
+
+}  // namespace ShadowPcssGlesTest_cpp

@@ -27,6 +27,8 @@
 #include <memory>
 #include <vector>
 
+namespace Physics2DWorldSettingsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -374,3 +376,5 @@ TEST_F(Physics2DWorldSettingsTest, WorldTuning){
     scene->setPhysics3DCollisionSteps(9);
     EXPECT_EQ(scene->getPhysics3DCollisionSteps(), 4);
 }
+
+}  // namespace Physics2DWorldSettingsTest_cpp

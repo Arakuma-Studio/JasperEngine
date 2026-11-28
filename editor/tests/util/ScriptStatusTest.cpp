@@ -14,6 +14,8 @@
 
 #include <string>
 
+namespace ScriptStatusTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace {
@@ -63,3 +65,5 @@ TEST(ScriptStatus, ReportsWhatABuildPostedBeforeTheFrameApplies) {
 
     status.setCpp(CppScriptState::None);
 }
+
+}  // namespace ScriptStatusTest_cpp

@@ -48,6 +48,8 @@
 #include <windows.h>    // GetThreadTimes: the thread's CPU time (POSIX: CLOCK_THREAD_CPUTIME_ID)
 #endif
 
+namespace AnimationPlayerTest_cpp {
+
 using namespace jasperengine;
 using namespace animatortest;
 
@@ -1364,3 +1366,5 @@ TEST_F(Player, PerformanceBudget){
     ASSERT_TRUE(any.runtime);
     EXPECT_EQ(any.runtime->states[0].bindings.resolvedCount, 61u);
 }
+
+}  // namespace AnimationPlayerTest_cpp

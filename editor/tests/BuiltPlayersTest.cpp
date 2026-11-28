@@ -26,6 +26,8 @@
 #include <fstream>
 #include <string>
 
+namespace BuiltPlayersTest_cpp {
+
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 namespace bp = jasperengine::editor::builtplayers;
@@ -184,3 +186,5 @@ TEST(BuiltPlayers, SymbolicLinkIsRefused) {
     ASSERT_TRUE(bp::record(d.internal, link, "desktop"));
     EXPECT_TRUE(builtPlayersContains(bp::verify(d.internal, link), "symbolic link"));
 }
+
+}  // namespace BuiltPlayersTest_cpp

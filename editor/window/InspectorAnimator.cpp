@@ -50,7 +50,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::anim;
 namespace fs = std::filesystem;
 
 namespace{
@@ -58,8 +57,8 @@ namespace{
     // an asset edit in progress (a drag): shown at once, written as one step when it ends
     struct PendingAssetEdit{
         std::shared_ptr<AnimatorAssetDocument> document;
-        std::optional<AvatarMaskDef> mask;
-        std::optional<MontageDef> montage;
+        std::optional<anim::AvatarMaskDef> mask;
+        std::optional<anim::MontageDef> montage;
         std::string undo;
     };
     PendingAssetEdit& pendingEdit(){
@@ -78,19 +77,19 @@ namespace{
         edit = PendingAssetEdit();
     }
 
-    AvatarMaskDef maskOf(const std::shared_ptr<AnimatorAssetDocument>& document){
+    anim::AvatarMaskDef maskOf(const std::shared_ptr<AnimatorAssetDocument>& document){
         const PendingAssetEdit& edit = pendingEdit();
         if (edit.document == document && edit.mask) return *edit.mask;
         return document->mask();
     }
 
-    MontageDef montageOf(const std::shared_ptr<AnimatorAssetDocument>& document){
+    anim::MontageDef montageOf(const std::shared_ptr<AnimatorAssetDocument>& document){
         const PendingAssetEdit& edit = pendingEdit();
         if (edit.document == document && edit.montage) return *edit.montage;
         return document->montage();
     }
 
-    void stageMask(const std::shared_ptr<AnimatorAssetDocument>& document, const AvatarMaskDef& mask, const std::string& undo){
+    void stageMask(const std::shared_ptr<AnimatorAssetDocument>& document, const anim::AvatarMaskDef& mask, const std::string& undo){
         PendingAssetEdit& edit = pendingEdit();
         if (edit.document && edit.document != document) flushPending();
         edit.document = document;
@@ -99,7 +98,7 @@ namespace{
         edit.undo = undo;
     }
 
-    void stageMontage(const std::shared_ptr<AnimatorAssetDocument>& document, const MontageDef& montage, const std::string& undo){
+    void stageMontage(const std::shared_ptr<AnimatorAssetDocument>& document, const anim::MontageDef& montage, const std::string& undo){
         PendingAssetEdit& edit = pendingEdit();
         if (edit.document && edit.document != document) flushPending();
         edit.document = document;
@@ -169,7 +168,7 @@ namespace{
 
 // IK (live) and the Root Motion line (S77 R49): what makeSnapshot says, formatted by its field table.
 // Each value is a selectable named "##ik_<column>_<i>" / "##rm_<field>", so a test reads what is drawn.
-void editor::InspectorWindow::drawAnimatorLive(const AnimatorDebugSnapshot& snapshot){
+void editor::InspectorWindow::drawAnimatorLive(const anim::AnimatorDebugSnapshot& snapshot){
     auto cell = [](const std::string& text, const std::string& id, const ImVec4* color = nullptr){
         if (color) ImGui::PushStyleColor(ImGuiCol_Text, *color);
         ImGui::Selectable((text + "##" + id).c_str(), false);
@@ -180,29 +179,29 @@ void editor::InspectorWindow::drawAnimatorLive(const AnimatorDebugSnapshot& snap
         ImGui::SeparatorText("IK (live)");
         if (ImGui::BeginTable("##animator_ik_live", 5, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg)){
             ImGui::TableSetupColumn("Constraint");
-            ImGui::TableSetupColumn(findAnimatorDebugField("weight")->label);
-            ImGui::TableSetupColumn(findAnimatorDebugField("reach_error_mm")->label);
+            ImGui::TableSetupColumn(anim::findAnimatorDebugField("weight")->label);
+            ImGui::TableSetupColumn(anim::findAnimatorDebugField("reach_error_mm")->label);
             ImGui::TableSetupColumn("State");
             ImGui::TableSetupColumn("");
             ImGui::TableHeadersRow();
             for (size_t i = 0; i < snapshot.ik.size(); i++){
-                const AnimatorDebugIK& ik = snapshot.ik[i];
+                const anim::AnimatorDebugIK& ik = snapshot.ik[i];
                 const std::string n = std::to_string(i);
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
-                cell(ik.name + "  " + animatorIKTypeLabel(ik.type), "ik_name_" + n);
+                cell(ik.name + "  " + anim::animatorIKTypeLabel(ik.type), "ik_name_" + n);
                 ImGui::TableSetColumnIndex(1);
-                cell(formatAnimatorDebugField("weight", ik.weight), "ik_weight_" + n);
+                cell(anim::formatAnimatorDebugField("weight", ik.weight), "ik_weight_" + n);
                 ImGui::TableSetColumnIndex(2);
                 const bool missed = ik.weight > 0.0f && !ik.reached;
-                cell(formatAnimatorDebugField("reach_error_mm", ik.reachErrorMm), "ik_reach_" + n, missed ? &warning : nullptr);
+                cell(anim::formatAnimatorDebugField("reach_error_mm", ik.reachErrorMm), "ik_reach_" + n, missed ? &warning : nullptr);
                 ImGui::TableSetColumnIndex(3);
-                cell(animatorIKStateLabel(ik), "ik_state_" + n);
+                cell(anim::animatorIKStateLabel(ik), "ik_state_" + n);
                 ImGui::TableSetColumnIndex(4);
                 if (ik.type == AnimatorIKType::FootIK){
-                    cell(std::string(findAnimatorDebugField("pelvis_offset_mm")->label) + " " + formatAnimatorDebugField("pelvis_offset_mm", ik.pelvisOffsetMm), "ik_detail_" + n);
+                    cell(std::string(anim::findAnimatorDebugField("pelvis_offset_mm")->label) + " " + anim::formatAnimatorDebugField("pelvis_offset_mm", ik.pelvisOffsetMm), "ik_detail_" + n);
                 }else if (ik.type == AnimatorIKType::FootLock && ik.locked){
-                    cell(std::string(findAnimatorDebugField("lock_drift_mm")->label) + " " + formatAnimatorDebugField("lock_drift_mm", ik.lockDriftMm), "ik_detail_" + n);
+                    cell(std::string(anim::findAnimatorDebugField("lock_drift_mm")->label) + " " + anim::formatAnimatorDebugField("lock_drift_mm", ik.lockDriftMm), "ik_detail_" + n);
                 }
             }
             ImGui::EndTable();
@@ -210,16 +209,16 @@ void editor::InspectorWindow::drawAnimatorLive(const AnimatorDebugSnapshot& snap
     }
     if (snapshot.rootMotion.active){
         ImGui::SeparatorText("Root Motion (live)");
-        const AnimatorDebugRootMotion& rm = snapshot.rootMotion;
+        const anim::AnimatorDebugRootMotion& rm = snapshot.rootMotion;
         auto field = [&](const char* key, double value, const char* id, const ImVec4* color = nullptr){
-            cell(std::string(findAnimatorDebugField(key)->label) + " " + formatAnimatorDebugField(key, value), id, color);
+            cell(std::string(anim::findAnimatorDebugField(key)->label) + " " + anim::formatAnimatorDebugField(key, value), id, color);
         };
         field("speed_mps", rm.speedMps, "rm_speed");
         field("yaw_deg_s", rm.yawDegS, "rm_yaw");
         if (std::string(snapshot.contactSource) != "none"){
             field("foot_speed_mps", snapshot.footSpeedMps, "rm_foot_speed");
             field("slide_mm_s", snapshot.slideMmS, "rm_slide", snapshot.sliding ? &warning : nullptr);
-            if (snapshot.sliding) ImGui::SetItemTooltip("A foot in contact moves faster than %.0f mm/s: match the move speed to Foot Speed, or add a Foot Lock", kAnimatorSlideWarningMmS);
+            if (snapshot.sliding) ImGui::SetItemTooltip("A foot in contact moves faster than %.0f mm/s: match the move speed to Foot Speed, or add a Foot Lock", anim::kAnimatorSlideWarningMmS);
         }else{
             ImGui::TextDisabled("Foot contact: none (no Foot IK or Foot Lock constraint)");
         }
@@ -259,7 +258,7 @@ void editor::InspectorWindow::drawAnimatorComponent(ComponentType cpType, SceneP
         std::shared_ptr<AnimatorAssetDocument> document =
             AnimatorAssetDocument::create(project, path, AnimatorAssetDocument::Kind::Controller, "Create Animator Controller", &error);
         if (document && player && !player->clips.empty()){
-            ControllerDef def = document->controller();
+            anim::ControllerDef def = document->controller();
             appendPlayerStates(def, *player);
             if (!document->commit(def, "States from Animation Player", std::string(), &error)) document.reset();
         }
@@ -305,7 +304,7 @@ void editor::InspectorWindow::drawAnimatorComponent(ComponentType cpType, SceneP
 
     // problems and the running states
     if (animator->runtime){
-        const AnimatorInstance& runtime = *animator->runtime;
+        const anim::AnimatorInstance& runtime = *animator->runtime;
         if (!runtime.controllerError.empty()) warningText(runtime.controllerError);
         if (!runtime.bindError.empty()) warningText(runtime.bindError);
         if (runtime.controller){
@@ -316,14 +315,14 @@ void editor::InspectorWindow::drawAnimatorComponent(ComponentType cpType, SceneP
         if (runtime.controller && runtime.bound && runtime.controller->layers.size() > 1){
             std::string error;
             std::shared_ptr<AnimatorAssetDocument> document = AnimatorAssetDocument::open(project, animator->controller.path, &error);
-            const std::vector<MeshSpaceWarning> meshSpace = document && document->loadError().empty() ?
-                                                            meshSpaceWarnings(document->controller(), runtime) : std::vector<MeshSpaceWarning>();
-            for (const MeshSpaceWarning& warning : meshSpace){
+            const std::vector<anim::MeshSpaceWarning> meshSpace = document && document->loadError().empty() ?
+                                                            meshSpaceWarnings(document->controller(), runtime) : std::vector<anim::MeshSpaceWarning>();
+            for (const anim::MeshSpaceWarning& warning : meshSpace){
                 ImGui::PushID(warning.layer);
                 warningText(warning.message);
                 if (ImGui::Button("Fix")){
-                    ControllerDef def = document->controller();
-                    LayerDef& layer = def.layers[(size_t)warning.layer];
+                    anim::ControllerDef def = document->controller();
+                    anim::LayerDef& layer = def.layers[(size_t)warning.layer];
                     layer.meshSpaceRotation = true;
                     if (!document->commit(def, "Edit Layer " + layer.name, std::string(), &error)) Out::error("%s", error.c_str());
                 }
@@ -335,14 +334,14 @@ void editor::InspectorWindow::drawAnimatorComponent(ComponentType cpType, SceneP
         if (!stopped && runtime.controller && runtime.bound){
             ImGui::SeparatorText("State");
             for (size_t l = 0; l < runtime.layers.size() && l < runtime.controller->layers.size(); l++){
-                const AnimatorInstance::StateInfo current = runtime.currentState((int)l);
+                const anim::AnimatorInstance::StateInfo current = runtime.currentState((int)l);
                 std::string line = current.fullPath + "  " + std::to_string((int)std::lround(current.normalizedTime * 100.0f)) + "%";
                 if (runtime.isInTransition((int)l)){
                     line += "  " ICON_FA_ARROW_RIGHT " " + runtime.nextState((int)l).fullPath;
                 }
                 ImGui::TextUnformatted(line.c_str());
             }
-            if (const AnimatorMontageRun* montage = runtime.activeMontage()){
+            if (const anim::AnimatorMontageRun* montage = runtime.activeMontage()){
                 ImGui::Text(ICON_FA_FILM " %s  %.2f s", fs::path(montage->path).filename().string().c_str(), montage->time);
             }
         }
@@ -354,7 +353,7 @@ void editor::InspectorWindow::drawAnimatorComponent(ComponentType cpType, SceneP
         }
     }else if (!animator->controller.path.empty() && stopped){
         std::string error;
-        std::shared_ptr<const CompiledController> compiled = AnimatorAssetPool::controller(animator->controller.path, &error);
+        std::shared_ptr<const anim::CompiledController> compiled = AnimatorAssetPool::controller(animator->controller.path, &error);
         if (!compiled) warningText(error);
         else for (const ClipWarning& warning : compiled->diagnostics) warningText(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
     }
@@ -389,9 +388,9 @@ bool editor::InspectorWindow::drawAnimatorAsset(const fs::path& asset){
 }
 
 void editor::InspectorWindow::drawControllerAsset(const std::shared_ptr<AnimatorAssetDocument>& document){
-    const ControllerDef& def = document->controller();
+    const anim::ControllerDef& def = document->controller();
     if (document->converted()){
-        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_CIRCLE_INFO " %s", document->dialect() == AnimatorFileDialect::UpstreamVersion1 ?
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_CIRCLE_INFO " %s", document->dialect() == anim::AnimatorFileDialect::UpstreamVersion1 ?
                            "Upstream's version 1 controller: read converted, the next edit saves it as version 2" :
                            "A version 1 controller: read converted, the next edit saves it as version 2");
     }
@@ -405,23 +404,23 @@ void editor::InspectorWindow::drawControllerAsset(const std::shared_ptr<Animator
 
     ImGui::SeparatorText("Parameters");
     if (def.parameters.empty()) ImGui::TextDisabled("(none)");
-    for (const ParameterDef& p : def.parameters){
-        ImGui::BulletText("%s  %s", p.name.c_str(), parameterTypeName(p.type));
+    for (const anim::ParameterDef& p : def.parameters){
+        ImGui::BulletText("%s  %s", p.name.c_str(), anim::parameterTypeName(p.type));
     }
     ImGui::SeparatorText("Layers");
-    std::function<size_t(const StateMachineDef&)> count = [&](const StateMachineDef& m){
+    std::function<size_t(const anim::StateMachineDef&)> count = [&](const anim::StateMachineDef& m){
         size_t n = m.states.size();
-        for (const StateMachineDef& sub : m.subMachines) n += count(sub);
+        for (const anim::StateMachineDef& sub : m.subMachines) n += count(sub);
         return n;
     };
-    for (const LayerDef& layer : def.layers){
-        ImGui::BulletText("%s  %zu state(s)  %s%s%s", layer.name.c_str(), count(layer.machine), layerBlendingName(layer.blending),
+    for (const anim::LayerDef& layer : def.layers){
+        ImGui::BulletText("%s  %zu state(s)  %s%s%s", layer.name.c_str(), count(layer.machine), anim::layerBlendingName(layer.blending),
                           layer.mask.path.empty() ? "" : "  mask ", layer.mask.path.c_str());
     }
     // the validation (unknown or mistyped parameters, missing targets, clips that do not load,
     // unreachable and dead-end states, transitions never taken, unused parameters)
-    const std::vector<ClipWarning> problems = validateController(def, [this](const std::string& clip){
-        ControllerClipInfo info;
+    const std::vector<ClipWarning> problems = anim::validateController(def, [this](const std::string& clip){
+        anim::ControllerClipInfo info;
         std::string error;
         std::shared_ptr<AnimationClipDocument> clipDocument = AnimationClipDocument::open(project, clip, &error);
         info.loads = clipDocument != nullptr;
@@ -440,11 +439,11 @@ void editor::InspectorWindow::drawControllerAsset(const std::shared_ptr<Animator
 }
 
 void editor::InspectorWindow::drawMaskAsset(const std::shared_ptr<AnimatorAssetDocument>& document){
-    AvatarMaskDef mask = maskOf(document);
+    anim::AvatarMaskDef mask = maskOf(document);
     bool changed = false;
     std::string undo = "Edit Avatar Mask";
     if (document->converted()){
-        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_CIRCLE_INFO " %s", document->dialect() == AnimatorFileDialect::UpstreamVersion1 ?
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_CIRCLE_INFO " %s", document->dialect() == anim::AnimatorFileDialect::UpstreamVersion1 ?
                            "Upstream's version 1 mask: read converted, the next edit saves it as version 2" :
                            "A version 1 mask: read converted, the next edit saves it as version 2");
     }
@@ -485,7 +484,7 @@ void editor::InspectorWindow::drawMaskAsset(const std::shared_ptr<AnimatorAssetD
         float cx = 0.0f, cy = 0.0f;
         animlayersui::figurePartCenter((AvatarBodyPart)part, cx, cy);
         const ImVec2 c(origin.x + cx * side, origin.y + cy * side);
-        UIProbe::rect(std::string("asset.mask.part.") + bodyPartName((AvatarBodyPart)part), c.x - 2.0f, c.y - 2.0f, c.x + 2.0f, c.y + 2.0f);
+        UIProbe::rect(std::string("asset.mask.part.") + anim::bodyPartName((AvatarBodyPart)part), c.x - 2.0f, c.y - 2.0f, c.x + 2.0f, c.y + 2.0f);
     }
     ImGui::SetCursorScreenPos(origin);
     ImGui::InvisibleButton("##mask_figure", ImVec2(side, side));
@@ -568,7 +567,7 @@ void editor::InspectorWindow::drawMaskAsset(const std::shared_ptr<AnimatorAssetD
         ImGui::EndDragDropTarget();
     }
     std::vector<std::string> paths;
-    for (const MaskPathDef& entry : mask.paths) paths.push_back(entry.path);
+    for (const anim::MaskPathDef& entry : mask.paths) paths.push_back(entry.path);
     if (!mask.previewModel.empty()){
         animlayersui::PreviewHierarchy preview;
         if (animlayersui::previewHierarchyFromModel(project, mask.previewModel, preview)){
@@ -634,7 +633,7 @@ void editor::InspectorWindow::drawMaskAsset(const std::shared_ptr<AnimatorAssetD
 }
 
 void editor::InspectorWindow::drawMontageAsset(const std::shared_ptr<AnimatorAssetDocument>& document){
-    MontageDef montage = montageOf(document);
+    anim::MontageDef montage = montageOf(document);
     bool changed = false;
     std::string undo = "Edit Animation Montage";
     const float label = getLabelSize("Blend Out Ease");
@@ -656,7 +655,7 @@ void editor::InspectorWindow::drawMontageAsset(const std::shared_ptr<AnimatorAss
             if (!dropped.empty() && Util::isAnimationClipFile(dropped[0]) && project->isInsideAssetsPath(dropped[0])){
                 montage.clip.path = project->normalizeToAssetsRelative(dropped[0]).generic_string();
                 std::string text;
-                montage.clip.guid = ProjectChecks::readFile(dropped[0], text) ? readClipGuid(text) : std::string();
+                montage.clip.guid = ProjectChecks::readFile(dropped[0], text) ? anim::readClipGuid(text) : std::string();
                 changed = true;
                 undo = "Set Montage Clip";
             }
@@ -683,7 +682,7 @@ void editor::InspectorWindow::drawMontageAsset(const std::shared_ptr<AnimatorAss
         "quart_in", "quart_out", "quart_in_out", "quint_in", "quint_out", "quint_in_out", "sine_in", "sine_out", "sine_in_out",
         "expo_in", "expo_out", "expo_in_out", "circ_in", "circ_out", "circ_in_out", "elastic_in", "elastic_out", "elastic_in_out",
         "back_in", "back_out", "back_in_out", "bounce_in", "bounce_out", "bounce_in_out"};
-    auto blendRows = [&](const char* title, MontageBlendDef& blend){
+    auto blendRows = [&](const char* title, anim::MontageBlendDef& blend){
         propertyHeader(std::string(title) + " Time");
         ImGui::SetNextItemWidth(-1);
         if (ImGui::DragFloat((std::string("##") + title + "_time").c_str(), &blend.time, 0.01f, 0.0f, 10.0f, "%.2f s")){
@@ -732,7 +731,7 @@ void editor::InspectorWindow::drawMontageAsset(const std::shared_ptr<AnimatorAss
             list->AddText(ImVec2(a.x + 4.0f, a.y + ImGui::GetStyle().FramePadding.y), IM_COL32(235, 235, 235, 255), montage.sections[i].name.c_str());
             list->PopClipRect();
         }
-        for (const MontageEventDef& event : montage.events){
+        for (const anim::MontageEventDef& event : montage.events){
             const float x = origin.x + std::clamp(event.time / length, 0.0f, 1.0f) * barWidth;
             list->AddTriangleFilled(ImVec2(x - 4.0f, origin.y + barHeight + 7.0f), ImVec2(x + 4.0f, origin.y + barHeight + 7.0f),
                                     ImVec2(x, origin.y + barHeight), IM_COL32(230, 200, 80, 255));
@@ -741,14 +740,14 @@ void editor::InspectorWindow::drawMontageAsset(const std::shared_ptr<AnimatorAss
         ImGui::SetItemTooltip("%.2f s", length);
     }
     for (size_t i = 0; i < montage.sections.size(); i++){
-        MontageSectionDef& section = montage.sections[i];
+        anim::MontageSectionDef& section = montage.sections[i];
         ImGui::PushID((int)i);
         char name[128];
         std::snprintf(name, sizeof(name), "%s", section.name.c_str());
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.35f);
         if (ImGui::InputText("##name", name, sizeof(name), ImGuiInputTextFlags_EnterReturnsTrue) && name[0] && montage.findSection(name) < 0){
             const std::string from = section.name;
-            for (MontageSectionDef& other : montage.sections) if (other.next == from) other.next = name;
+            for (anim::MontageSectionDef& other : montage.sections) if (other.next == from) other.next = name;
             section.name = name;
             changed = true;
             undo = "Rename Section " + from;
@@ -765,7 +764,7 @@ void editor::InspectorWindow::drawMontageAsset(const std::shared_ptr<AnimatorAss
         ImGui::SetNextItemWidth(-ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x);
         if (ImGui::BeginCombo("##next", section.next.empty() ? "(end)" : section.next.c_str())){
             if (ImGui::Selectable("(end)", section.next.empty())){ section.next.clear(); changed = true; undo = "Set Next Section"; }
-            for (const MontageSectionDef& other : montage.sections){
+            for (const anim::MontageSectionDef& other : montage.sections){
                 if (ImGui::Selectable(other.name.c_str(), section.next == other.name)){
                     section.next = other.name;
                     changed = true;
@@ -781,7 +780,7 @@ void editor::InspectorWindow::drawMontageAsset(const std::shared_ptr<AnimatorAss
             const std::string removed = section.name;
             const std::string next = section.next == removed ? std::string() : section.next;
             montage.sections.erase(montage.sections.begin() + (long)i);
-            for (MontageSectionDef& other : montage.sections) if (other.next == removed) other.next = next;
+            for (anim::MontageSectionDef& other : montage.sections) if (other.next == removed) other.next = next;
             if (!montage.sections.empty()) montage.sections.front().start = 0.0f;
             changed = true;
             undo = "Delete Section " + removed;
@@ -793,7 +792,7 @@ void editor::InspectorWindow::drawMontageAsset(const std::shared_ptr<AnimatorAss
         ImGui::PopID();
     }
     if (ImGui::Button(ICON_FA_PLUS " Section")){
-        MontageSectionDef section;
+        anim::MontageSectionDef section;
         int n = (int)montage.sections.size();
         do { section.name = "Section " + std::to_string(++n); } while (montage.findSection(section.name) >= 0);
         const float last = montage.sections.empty() ? 0.0f : montage.sections.back().start;
@@ -806,7 +805,7 @@ void editor::InspectorWindow::drawMontageAsset(const std::shared_ptr<AnimatorAss
 
     ImGui::SeparatorText("Events");
     for (size_t i = 0; i < montage.events.size(); i++){
-        MontageEventDef& event = montage.events[i];
+        anim::MontageEventDef& event = montage.events[i];
         ImGui::PushID((int)(1000 + i));
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.3f);
         if (ImGui::DragFloat("##time", &event.time, 0.01f, 0.0f, length > 0.0f ? length : 600.0f, "%.2f s")){
@@ -834,7 +833,7 @@ void editor::InspectorWindow::drawMontageAsset(const std::shared_ptr<AnimatorAss
         ImGui::PopID();
     }
     if (ImGui::Button(ICON_FA_PLUS " Event")){
-        MontageEventDef event;
+        anim::MontageEventDef event;
         event.function = "onMontageEvent";
         montage.events.push_back(event);
         changed = true;

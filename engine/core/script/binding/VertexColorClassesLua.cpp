@@ -24,7 +24,6 @@
 #include <vector>
 
 using namespace jasperengine;
-using namespace jasperengine::vertexcolor;
 
 namespace {
 
@@ -43,10 +42,10 @@ namespace {
     }
 
     // a target argument: an index into `targets` (1-based) or {node =, primitive =} / {submesh =}
-    bool vertexColorsTarget(lua_State* L, int index, VertexColors* self, TargetKey& key, std::string& error){
+    bool vertexColorsTarget(lua_State* L, int index, VertexColors* self, vertexcolor::TargetKey& key, std::string& error){
         if (lua_isinteger(L, index)){
             const lua_Integer n = lua_tointeger(L, index);
-            const std::vector<SceneTarget> targets = self->getTargets();
+            const std::vector<vertexcolor::SceneTarget> targets = self->getTargets();
             if (n < 1 || n > (lua_Integer)targets.size()){
                 error = "target " + std::to_string((long long)n) + " is not one of the " + std::to_string(targets.size()) + " targets (1-based)";
                 return false;
@@ -63,7 +62,7 @@ namespace {
                 lua_pop(L, 1);
                 return present;
             };
-            key = TargetKey();
+            key = vertexcolor::TargetKey();
             const bool node = field("node", key.node);
             const bool primitive = field("primitive", key.primitive);
             const bool submesh = field("submesh", key.submesh);
@@ -130,7 +129,7 @@ namespace {
         std::string error;
         if (!LuaJson::toJson(L, 2, list, LuaJson::EncodeOptions(), error))
             return vertexColorsFail(L, "applyOps", error);
-        TargetKey key;
+        vertexcolor::TargetKey key;
         const bool one = !lua_isnoneornil(L, 3);
         if (one && !vertexColorsTarget(L, 3, self, key, error))
             return vertexColorsFail(L, "applyOps", error);
@@ -147,7 +146,7 @@ namespace {
         VertexColors* self = vertexColorsSelf(L, function);
         if (!self)
             return false;
-        TargetKey key;
+        vertexcolor::TargetKey key;
         std::string error;
         if (!vertexColorsTarget(L, 2, self, key, error))
             return vertexColorsFail(L, function, error);
@@ -183,7 +182,7 @@ namespace {
         VertexColors* self = vertexColorsSelf(L, "setValues");
         if (!self)
             return false;
-        TargetKey key;
+        vertexcolor::TargetKey key;
         std::string error;
         if (!vertexColorsTarget(L, 2, self, key, error))
             return vertexColorsFail(L, "setValues", error);
@@ -215,7 +214,7 @@ namespace {
         VertexColors* self = vertexColorsSelf(L, "stats");
         if (!self)
             return false;
-        TargetKey key;
+        vertexcolor::TargetKey key;
         std::string error;
         if (!vertexColorsTarget(L, 2, self, key, error))
             return vertexColorsFail(L, "stats", error);
@@ -257,7 +256,7 @@ namespace {
         VertexColors* self = vertexColorsSelf(L, "paint");
         if (!self)
             return false;
-        RuntimePaint paint;
+        vertexcolor::RuntimePaint paint;
         std::string error;
         if (lua_istable(L, 3)){
             nlohmann::json options;
@@ -285,15 +284,15 @@ namespace {
                 if (v.is_object() && v.contains("x"))
                     v = nlohmann::json::array({v.value("x", 0.0), v.value("y", 0.0), v.value("z", 0.0), v.value("w", 1.0)});
                 rgb = v.is_array() && v.size() == 3;
-                if (!parseValue(v, paint.value, error))
+                if (!vertexcolor::parseValue(v, paint.value, error))
                     return vertexColorsFail(L, "paint", "opts.value: " + error);
             }
             auto channels = options.find("channels");
             if (channels != options.end()){
-                if (!parseChannels(*channels, paint.channels, error))
+                if (!vertexcolor::parseChannels(*channels, paint.channels, error))
                     return vertexColorsFail(L, "paint", "opts.channels: " + error);
             }else{
-                paint.channels = rgb ? CHANNELS_RGB : CHANNELS_RGBA;
+                paint.channels = rgb ? vertexcolor::CHANNELS_RGB : vertexcolor::CHANNELS_RGBA;
             }
         }else if (!lua_isnoneornil(L, 3)){
             return vertexColorsFail(L, "paint", "opts must be a table");
@@ -325,7 +324,7 @@ namespace {
     luabridge::LuaRef vertexColorsTargets(const VertexColors* self, lua_State* L){
         luabridge::LuaRef list = luabridge::newTable(L);
         int i = 1;
-        for (const SceneTarget& target : self->getTargets()){
+        for (const vertexcolor::SceneTarget& target : self->getTargets()){
             luabridge::LuaRef entry = luabridge::newTable(L);
             if (target.key.submesh >= 0){
                 entry["submesh"] = target.key.submesh;

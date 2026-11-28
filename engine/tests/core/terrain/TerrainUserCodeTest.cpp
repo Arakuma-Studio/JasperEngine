@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+namespace TerrainUserCodeTest_cpp {
+
 using namespace jasperengine;
 
 static Terrain* terrain = nullptr;
@@ -17,3 +19,5 @@ static Terrain* terrain = nullptr;
 TEST(TerrainUserCode, AFileScopeTerrainNamedTerrainIsNotAmbiguous) {
     EXPECT_EQ(terrain, nullptr);
 }
+
+}  // namespace TerrainUserCodeTest_cpp

@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+namespace VertexColorLuaTest_cpp {
+
 using namespace jasperengine;
 
 // (a named namespace, tests included: a unity build merges the test sources)
@@ -269,3 +271,5 @@ TEST(VertexColorRuntimeBench, PaintOnTenThousandVertices) {
 }
 
 } // namespace vertex_color_lua_test
+
+}  // namespace VertexColorLuaTest_cpp

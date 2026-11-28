@@ -15,6 +15,8 @@
 #include <set>
 #include <vector>
 
+namespace ParticleBudgetTest_cpp {
+
 using namespace particletest;
 
 TEST(ParticleBudget, ManyEmittersConvergeUnderTheBudget){
@@ -114,21 +116,21 @@ TEST(ParticleBudget, CullingModes){
     CullState state;
     uint32_t maxTicks = 0;
     // Always Simulate: every frame
-    EXPECT_DOUBLE_EQ(cullingStep(CullingMode::AlwaysSimulate, true, false, 0.1, 30, state, maxTicks), 0.1);
+    EXPECT_DOUBLE_EQ(cullingStep(particles::CullingMode::AlwaysSimulate, true, false, 0.1, 30, state, maxTicks), 0.1);
     // Pause: nothing off screen, nothing made up
-    EXPECT_DOUBLE_EQ(cullingStep(CullingMode::Pause, true, false, 0.1, 30, state, maxTicks), 0.0);
-    EXPECT_DOUBLE_EQ(cullingStep(CullingMode::Pause, true, true, 0.1, 30, state, maxTicks), 0.1);
+    EXPECT_DOUBLE_EQ(cullingStep(particles::CullingMode::Pause, true, false, 0.1, 30, state, maxTicks), 0.0);
+    EXPECT_DOUBLE_EQ(cullingStep(particles::CullingMode::Pause, true, true, 0.1, 30, state, maxTicks), 0.1);
     // Pause and Catch-up: the missed time on view, at most 0.5 s, with the ticks for it
     state = CullState();
     for (int i = 0; i < 10; i++)
-        EXPECT_DOUBLE_EQ(cullingStep(CullingMode::PauseAndCatchUp, true, false, 0.1, 30, state, maxTicks), 0.0);
-    EXPECT_DOUBLE_EQ(cullingStep(CullingMode::PauseAndCatchUp, true, true, 0.1, 30, state, maxTicks), 0.1 + 0.5);
+        EXPECT_DOUBLE_EQ(cullingStep(particles::CullingMode::PauseAndCatchUp, true, false, 0.1, 30, state, maxTicks), 0.0);
+    EXPECT_DOUBLE_EQ(cullingStep(particles::CullingMode::PauseAndCatchUp, true, true, 0.1, 30, state, maxTicks), 0.1 + 0.5);
     EXPECT_EQ(maxTicks, kMaxTicksPerFrame + 15u);
-    EXPECT_DOUBLE_EQ(cullingStep(CullingMode::PauseAndCatchUp, true, true, 0.1, 30, state, maxTicks), 0.1);
+    EXPECT_DOUBLE_EQ(cullingStep(particles::CullingMode::PauseAndCatchUp, true, true, 0.1, 30, state, maxTicks), 0.1);
     // Automatic: a looping effect pauses, a one-shot keeps simulating
     state = CullState();
-    EXPECT_DOUBLE_EQ(cullingStep(CullingMode::Automatic, true, false, 0.1, 30, state, maxTicks), 0.0);
-    EXPECT_DOUBLE_EQ(cullingStep(CullingMode::Automatic, false, false, 0.1, 30, state, maxTicks), 0.1);
+    EXPECT_DOUBLE_EQ(cullingStep(particles::CullingMode::Automatic, true, false, 0.1, 30, state, maxTicks), 0.0);
+    EXPECT_DOUBLE_EQ(cullingStep(particles::CullingMode::Automatic, false, false, 0.1, 30, state, maxTicks), 0.1);
 }
 
 TEST(ParticleBudget, CatchUpRunsTheMissedTicks){
@@ -144,11 +146,11 @@ TEST(ParticleBudget, CatchUpRunsTheMissedTicks){
     CullState state;
     uint32_t maxTicks = 0;
     for (int f = 0; f < 30; f++){
-        const double dt = cullingStep(CullingMode::PauseAndCatchUp, true, false, 1.0 / 30.0, 30, state, maxTicks);
+        const double dt = cullingStep(particles::CullingMode::PauseAndCatchUp, true, false, 1.0 / 30.0, 30, state, maxTicks);
         runtime.planFrame(input, dt, maxTicks);
     }
     EXPECT_EQ(runtime.tickCount(), 0u);
-    const double dt = cullingStep(CullingMode::PauseAndCatchUp, true, true, 1.0 / 30.0, 30, state, maxTicks);
+    const double dt = cullingStep(particles::CullingMode::PauseAndCatchUp, true, true, 1.0 / 30.0, 30, state, maxTicks);
     const uint32_t ticks = runtime.planFrame(input, dt, maxTicks);
     for (uint32_t k = 0; k < ticks; k++){
         runtime.beginTick(input, k);
@@ -279,3 +281,5 @@ TEST(ParticleBudget, OneSystemOverTheBudgetIsThinnedEvenly){
     EXPECT_GT(tasks[0].emissionScale, 0.4f);
     EXPECT_EQ(tasks[0].budget, 65536u);
 }
+
+}  // namespace ParticleBudgetTest_cpp

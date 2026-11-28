@@ -23,7 +23,6 @@
 #include <random>
 
 using namespace jasperengine;
-using namespace jasperengine::voxel;
 using namespace jasperengine::editor;
 
 namespace {
@@ -71,14 +70,14 @@ namespace {
 
     // R37's worm tunnels, at least 2.5 voxels in radius, wandering under a height. Deterministic by seed:
     // mt19937_64's bits are specified, and no std:: distribution decides the shape.
-    std::vector<CarveCapsule> wormTunnels(uint64_t seed, const Int3& dim, double sizeScale) {
-        std::vector<CarveCapsule> capsules;
+    std::vector<voxel::CarveCapsule> wormTunnels(uint64_t seed, const voxel::Int3& dim, double sizeScale) {
+        std::vector<voxel::CarveCapsule> capsules;
         std::mt19937_64 random(seed * 0x9E3779B97F4A7C15ull + 1);
         const auto unit = [&random] { return static_cast<double>(random() >> 12) / 4503599627370496.0; };
         const int worms = std::max(2, static_cast<int>(std::floor(static_cast<double>(dim.x * dim.z) / (64.0 * 64.0) * 3.0 * sizeScale)));
         const double ceiling = dim.y * 0.45;
         for (int w = 0; w < worms; w++) {
-            Vec3d at{unit() * dim.x, 8.0 + unit() * std::max(1.0, ceiling - 8.0), unit() * dim.z};
+            voxel::Vec3d at{unit() * dim.x, 8.0 + unit() * std::max(1.0, ceiling - 8.0), unit() * dim.z};
             double heading = unit() * 6.283185307179586;
             const double radius = 2.5 + unit() * 1.5 * sizeScale;
             const int segments = 6 + static_cast<int>(unit() * 10.0);
@@ -88,8 +87,8 @@ namespace {
                 const double t = heading * 0.5 - 1.5707963267948966;
                 const double cx = (1.0 - t * t) / (1.0 + t * t), cz = 2.0 * t / (1.0 + t * t);
                 const double step = 6.0 + unit() * 8.0;
-                Vec3d next{at.x + cx * step, std::clamp(at.y + (unit() - 0.5) * 4.0, 6.0, ceiling), at.z + cz * step};
-                capsules.push_back(CarveCapsule{at, next, radius});
+                voxel::Vec3d next{at.x + cx * step, std::clamp(at.y + (unit() - 0.5) * 4.0, 6.0, ceiling), at.z + cz * step};
+                capsules.push_back(voxel::CarveCapsule{at, next, radius});
                 at = next;
             }
         }
@@ -97,26 +96,26 @@ namespace {
     }
 
     // R37's cave_entrance: by construction the chamber connects to the sky (AC30)
-    std::vector<CarveCapsule> entranceChain(uint64_t seed, const Int3& dim, double surfaceVoxels, double sizeScale) {
+    std::vector<voxel::CarveCapsule> entranceChain(uint64_t seed, const voxel::Int3& dim, double surfaceVoxels, double sizeScale) {
         std::mt19937_64 random(seed * 0x9E3779B97F4A7C15ull + 2);
         const auto unit = [&random] { return static_cast<double>(random() >> 12) / 4503599627370496.0; };
-        std::vector<CarveCapsule> capsules;
+        std::vector<voxel::CarveCapsule> capsules;
         const double radius = 3.5 * sizeScale;
-        Vec3d at{dim.x * (0.35 + unit() * 0.3), surfaceVoxels + radius, dim.z * (0.35 + unit() * 0.3)};
+        voxel::Vec3d at{dim.x * (0.35 + unit() * 0.3), surfaceVoxels + radius, dim.z * (0.35 + unit() * 0.3)};
         const double chamberY = std::max(radius + 6.0, surfaceVoxels - 18.0 * sizeScale);
         const int segments = 4;
         for (int s = 1; s <= segments; s++) {
             const double f = static_cast<double>(s) / segments;
-            Vec3d next{at.x + (unit() - 0.5) * 10.0 * sizeScale, surfaceVoxels + radius + (chamberY - surfaceVoxels - radius) * f, at.z + (unit() - 0.5) * 10.0 * sizeScale};
-            capsules.push_back(CarveCapsule{at, next, radius});
+            voxel::Vec3d next{at.x + (unit() - 0.5) * 10.0 * sizeScale, surfaceVoxels + radius + (chamberY - surfaceVoxels - radius) * f, at.z + (unit() - 0.5) * 10.0 * sizeScale};
+            capsules.push_back(voxel::CarveCapsule{at, next, radius});
             at = next;
         }
-        capsules.push_back(CarveCapsule{at, Vec3d{at.x + 1.0, at.y, at.z}, radius * 2.2});
+        capsules.push_back(voxel::CarveCapsule{at, voxel::Vec3d{at.x + 1.0, at.y, at.z}, radius * 2.2});
         return capsules;
     }
 
     uint64_t hashString(const std::string& text) {
-        return fnv1a(text.data(), text.size());
+        return voxel::fnv1a(text.data(), text.size());
     }
 
     // V10: the terrain's height over everything, which is what the base reads
@@ -125,7 +124,7 @@ namespace {
         if (!terrain) return 0;
         const terraincore::SurfaceView view = terrainSurfaceView(*terrain);
         if (!view.pixels) return 0;
-        return fnv1a(view.pixels, static_cast<size_t>(view.width) * view.height * view.channels * view.bytesPerChannel);
+        return voxel::fnv1a(view.pixels, static_cast<size_t>(view.width) * view.height * view.channels * view.bytesPerChannel);
     }
 
 }
@@ -133,23 +132,23 @@ namespace {
 namespace {
 
     // A Noise Graph's base on the volume's lattice; the seed a generation records, plus one
-    std::shared_ptr<const BaseSource> graphBase(const std::string& json, uint64_t seed, double voxelSize, std::string& error) {
-        const std::shared_ptr<const noise::CompiledGraph> compiled = compileVoxelGraph(json, error);
+    std::shared_ptr<const voxel::BaseSource> graphBase(const std::string& json, uint64_t seed, double voxelSize, std::string& error) {
+        const std::shared_ptr<const noise::CompiledGraph> compiled = voxel::compileVoxelGraph(json, error);
         if (!compiled) return nullptr;
-        NoiseBaseOptions options;
+        voxel::NoiseBaseOptions options;
         options.graph = compiled;
         options.seed = static_cast<uint32_t>(seed) + 1;
         options.voxelSize = voxelSize;
         options.graphScale = 1.0;
-        return makeNoiseBase(options);
+        return voxel::makeNoiseBase(options);
     }
 
     // The presets made of ops and graphs, from what a generation records (R37): caves and overhangs
-    std::shared_ptr<const BaseSource> presetBase(const std::string& preset, uint64_t seed, const VolumeDesc& desc, double sizeScale, std::string& error) {
+    std::shared_ptr<const voxel::BaseSource> presetBase(const std::string& preset, uint64_t seed, const voxel::VolumeDesc& desc, double sizeScale, std::string& error) {
         const double voxelSize = desc.voxelSize;
         const double height = desc.dimensions.y * 0.5 * voxelSize;
         if (preset == "caves") {
-            return makeCarvedBase(makeSolidGroundBase(height, voxelSize, 0), wormTunnels(seed, desc.dimensions, sizeScale));
+            return voxel::makeCarvedBase(voxel::makeSolidGroundBase(height, voxelSize, 0), wormTunnels(seed, desc.dimensions, sizeScale));
         }
         if (preset == "overhangs") {
             std::string json = OVERHANGS_GRAPH;
@@ -165,10 +164,10 @@ namespace {
 
 }
 
-std::shared_ptr<const BaseSource> jasperengine::editor::resolveVoxelBase(const GeneratorDesc& generator, const VolumeDesc& desc) {
+std::shared_ptr<const voxel::BaseSource> jasperengine::editor::resolveVoxelBase(const voxel::GeneratorDesc& generator, const voxel::VolumeDesc& desc) {
     std::string error;
     // what no description rebuilds is in the file's blocks, every one of them (prepare's bake)
-    if (generator.kind == "baked") return makeEmptyBase();
+    if (generator.kind == "baked") return voxel::makeEmptyBase();
     if (generator.kind == "preset") return presetBase(generator.preset, generator.seed, desc, generator.graphScale, error);
     if (generator.kind == "noise_graph") {
         std::string json;
@@ -183,9 +182,9 @@ struct VoxelGeneration::State {
     Entity owner = NULL_ENTITY;
     VoxelGenerateRequest request;
     std::shared_ptr<VoxelAsset> asset;
-    std::shared_ptr<const BaseSource> base;
-    GeneratorDesc generator;
-    std::unique_ptr<Store> working;
+    std::shared_ptr<const voxel::BaseSource> base;
+    voxel::GeneratorDesc generator;
+    std::unique_ptr<voxel::Store> working;
     VoxelGenerateResult result;
     std::atomic<bool> cancelled{false};
     // the base cannot be rebuilt from the file's description: every block goes in the file
@@ -232,12 +231,12 @@ std::shared_ptr<VoxelGeneration> VoxelGeneration::prepare(Scene* scene, Entity o
     std::shared_ptr<VoxelAsset> asset = system->getAsset(owner);
     if (!asset || !asset->store) return fail("not_loaded", "the volume's file did not load: fix it first");
 
-    const VolumeDesc& desc = asset->store->desc();
+    const voxel::VolumeDesc& desc = asset->store->desc();
     const double voxelSize = desc.voxelSize;
-    GeneratorDesc generator;
+    voxel::GeneratorDesc generator;
     generator.seed = request.seed;
     generator.blendWidth = request.blendWidth;
-    std::shared_ptr<const BaseSource> base;
+    std::shared_ptr<const voxel::BaseSource> base;
     bool nonWatertight = false;
 
     const auto noiseBase = [&](const std::string& json, std::string& error) { return graphBase(json, request.seed, voxelSize, error); };
@@ -274,27 +273,27 @@ std::shared_ptr<VoxelGeneration> VoxelGeneration::prepare(Scene* scene, Entity o
             positions.push_back(v.y);
             positions.push_back(v.z);
         }
-        VoxelizeOptions options;
+        voxel::VoxelizeOptions options;
         options.voxelSize = voxelSize;
         options.transform = request.meshTransform;
-        const std::shared_ptr<StampField> field = voxelizeMesh(positions, indices, options);
+        const std::shared_ptr<voxel::StampField> field = voxel::voxelizeMesh(positions, indices, options);
         // A base's field is on the volume's lattice: its offset is where the mesh's origin went
         field->originOffset[0] = field->originOffset[1] = field->originOffset[2] = 0.0;
         nonWatertight = field->nonWatertight;
-        base = makeFieldBase(field, voxelSize, 0);
+        base = voxel::makeFieldBase(field, voxelSize, 0);
         generator.kind = "mesh";
-        generator.sourceHash = fnv1a(positions.data(), positions.size() * sizeof(float));
+        generator.sourceHash = voxel::fnv1a(positions.data(), positions.size() * sizeof(float));
     } else if (request.source == "preset") {
         generator.kind = "preset";
         generator.preset = request.preset;
         const double height = desc.dimensions.y * 0.5 * voxelSize;
         if (request.preset == "empty") {
             generator.kind = "empty";
-            base = makeEmptyBase();
+            base = voxel::makeEmptyBase();
         } else if (request.preset == "solid_ground") {
             generator.kind = "solid_ground";
             generator.height = height;
-            base = makeSolidGroundBase(height, voxelSize, 0);
+            base = voxel::makeSolidGroundBase(height, voxelSize, 0);
         } else if (request.preset == "caves" || request.preset == "overhangs") {
             std::string error;
             base = presetBase(request.preset, request.seed, desc, request.sizeScale, error);
@@ -302,25 +301,25 @@ std::shared_ptr<VoxelGeneration> VoxelGeneration::prepare(Scene* scene, Entity o
             // what rebuilds it when the file is opened again (resolveVoxelBase)
             generator.graphScale = request.sizeScale;
         } else if (request.preset == "cave_entrance") {
-            const std::shared_ptr<const BaseSource> ground = terrainBase(terrain);
+            const std::shared_ptr<const voxel::BaseSource> ground = terrainBase(terrain);
             if (!ground) return fail("missing_asset", "cave_entrance digs from a Terrain: pass terrain");
             // Where the terrain's surface is at the footprint's centre, in voxels
-            int16_t probe[BLOCK_SAMPLES];
-            uint16_t probeMaterial[BLOCK_SAMPLES];
+            int16_t probe[voxel::BLOCK_SAMPLES];
+            uint16_t probeMaterial[voxel::BLOCK_SAMPLES];
             double surface = desc.dimensions.y * 0.5;
-            for (int by = 0; by * BLOCK_SIZE < desc.dimensions.y; by++) {
-                ground->evaluate(Int3{(desc.dimensions.x / 2) & ~15, by * BLOCK_SIZE, (desc.dimensions.z / 2) & ~15}, 1, probe, probeMaterial);
+            for (int by = 0; by * voxel::BLOCK_SIZE < desc.dimensions.y; by++) {
+                ground->evaluate(voxel::Int3{(desc.dimensions.x / 2) & ~15, by * voxel::BLOCK_SIZE, (desc.dimensions.z / 2) & ~15}, 1, probe, probeMaterial);
                 bool found = false;
-                for (int y = 0; y < BLOCK_SIZE; y++) {
-                    if (probe[sampleIndex(0, y, 0)] >= 0) {
-                        surface = by * BLOCK_SIZE + y;
+                for (int y = 0; y < voxel::BLOCK_SIZE; y++) {
+                    if (probe[voxel::sampleIndex(0, y, 0)] >= 0) {
+                        surface = by * voxel::BLOCK_SIZE + y;
                         found = true;
                         break;
                     }
                 }
                 if (found) break;
             }
-            base = makeCarvedBase(ground, entranceChain(request.seed, desc.dimensions, surface, request.sizeScale));
+            base = voxel::makeCarvedBase(ground, entranceChain(request.seed, desc.dimensions, surface, request.sizeScale));
         } else {
             return fail("invalid_source", "no preset named '" + request.preset + "': use caves, overhangs, cave_entrance, empty or solid_ground");
         }
@@ -330,11 +329,11 @@ std::shared_ptr<VoxelGeneration> VoxelGeneration::prepare(Scene* scene, Entity o
 
     // R35: with a blend, another base fades to exact terrain before the box ends
     if (request.blendWidth > 0.0 && request.source != "terrain") {
-        const std::shared_ptr<const BaseSource> ground = terrainBase(terrain);
+        const std::shared_ptr<const voxel::BaseSource> ground = terrainBase(terrain);
         if (ground) {
             generator.otherKind = generator.kind;
             generator.otherPath = generator.sourcePath;
-            base = makeBlendedBase(base, ground, desc.dimensions, request.blendWidth / voxelSize);
+            base = voxel::makeBlendedBase(base, ground, desc.dimensions, request.blendWidth / voxelSize);
         }
     }
 
@@ -372,7 +371,7 @@ std::shared_ptr<VoxelGeneration> VoxelGeneration::prepare(Scene* scene, Entity o
 
 void VoxelGeneration::run(const std::function<bool()>& cancelled, const std::function<void(float)>& progress) {
     State& data = *state;
-    Store& store = *data.working;
+    voxel::Store& store = *data.working;
     int64_t triangles = 0;
     int64_t nonUniform = 0;
     // A dry run looks at the coarsest level only, and says it is an estimate (R71)
@@ -380,12 +379,12 @@ void VoxelGeneration::run(const std::function<bool()>& cancelled, const std::fun
     const int lastLevel = store.levels() - 1;
     int64_t total = 0, done = 0;
     for (int level = firstLevel; level <= lastLevel; level++) {
-        const Int3 count = store.blockCount(level);
+        const voxel::Int3 count = store.blockCount(level);
         total += static_cast<int64_t>(count.x) * count.y * count.z;
     }
     for (int level = lastLevel; level >= firstLevel; level--) {
-        const Int3 count = store.blockCount(level);
-        const int span = BLOCK_SIZE << level;
+        const voxel::Int3 count = store.blockCount(level);
+        const int span = voxel::BLOCK_SIZE << level;
         for (int z = 0; z < count.z; z++) {
             for (int y = 0; y < count.y; y++) {
                 for (int x = 0; x < count.x; x++) {
@@ -395,21 +394,21 @@ void VoxelGeneration::run(const std::function<bool()>& cancelled, const std::fun
                     }
                     done++;
                     if (data.request.hasRegion) {
-                        const IntBox block{Int3{x * span, y * span, z * span}, Int3{(x + 1) * span - 1, (y + 1) * span - 1, (z + 1) * span - 1}};
+                        const voxel::IntBox block{voxel::Int3{x * span, y * span, z * span}, voxel::Int3{(x + 1) * span - 1, (y + 1) * span - 1, (z + 1) * span - 1}};
                         if (!block.intersects(data.request.region)) continue;
                     }
-                    const BlockKey key{level, x, y, z};
-                    const BlockContent content = store.content(key);
+                    const voxel::BlockKey key{level, x, y, z};
+                    const voxel::BlockContent content = store.content(key);
                     if (!content.isFullyUniform()) nonUniform++;
                     if (data.bake && !data.request.dryRun) store.setLoadedSlot(key, content, true);
                     // Triangles from the coarsest level, which is cheap and scales by area
                     if (level == lastLevel) {
                         const auto view = store.readView(key, 0);
-                        MeshRequest request;
+                        voxel::MeshRequest request;
                         request.key = key;
-                        request.mode = MeshMode::CollisionOnly;
-                        MeshOut mesh;
-                        meshBlock(*view, request, mesh);
+                        request.mode = voxel::MeshMode::CollisionOnly;
+                        voxel::MeshOut mesh;
+                        voxel::meshBlock(*view, request, mesh);
                         store.publish(view->takeResolved());
                         triangles += mesh.triangleCount;
                     }
@@ -421,7 +420,7 @@ void VoxelGeneration::run(const std::function<bool()>& cancelled, const std::fun
     data.result.blocksNonUniform = nonUniform;
     data.result.memory = store.memory().hotBytes;
     data.result.trianglesEstimate = triangles << (2 * lastLevel);
-    if (!data.request.dryRun) data.result.contentHash = contentHash(store);
+    if (!data.request.dryRun) data.result.contentHash = voxel::contentHash(store);
 }
 
 VoxelGenerateResult VoxelGeneration::finish(Scene* scene, VoxelGenerateUndo* undo) {
@@ -434,20 +433,20 @@ VoxelGenerateResult VoxelGeneration::finish(Scene* scene, VoxelGenerateUndo* und
         return out;
     }
     if (data.request.dryRun) return out;
-    Store& target = *data.asset->store;
-    Store& source = *data.working;
+    voxel::Store& target = *data.asset->store;
+    voxel::Store& source = *data.working;
     if (undo) {
         undo->oldGenerator = data.asset->generator;
         undo->oldBase = target.base();
     }
     for (int level = 0; level < target.levels(); level++) {
-        const Int3 count = target.blockCount(level);
+        const voxel::Int3 count = target.blockCount(level);
         for (int z = 0; z < count.z; z++) {
             for (int y = 0; y < count.y; y++) {
                 for (int x = 0; x < count.x; x++) {
-                    const BlockKey key{level, x, y, z};
+                    const voxel::BlockKey key{level, x, y, z};
                     if (undo) {
-                        SlotChange change;
+                        voxel::SlotChange change;
                         change.key = key;
                         change.before = target.slot(key);
                         change.after = source.slot(key);
@@ -458,14 +457,14 @@ VoxelGenerateResult VoxelGeneration::finish(Scene* scene, VoxelGenerateUndo* und
             }
         }
     }
-    target.replaceBase(data.bake ? makeEmptyBase() : data.base);
+    target.replaceBase(data.bake ? voxel::makeEmptyBase() : data.base);
     target.bumpVersion();
     data.asset->generator = data.generator;
     data.asset->baseResolved = true;
     data.asset->dirty = true;
     if (std::shared_ptr<VoxelSystem> system = scene->findSystem<VoxelSystem>()) {
-        const Int3 dim = target.desc().dimensions;
-        system->notifyChanged(&target, IntBox{Int3{0, 0, 0}, Int3{dim.x - 1, dim.y - 1, dim.z - 1}});
+        const voxel::Int3 dim = target.desc().dimensions;
+        system->notifyChanged(&target, voxel::IntBox{voxel::Int3{0, 0, 0}, voxel::Int3{dim.x - 1, dim.y - 1, dim.z - 1}});
     }
     return out;
 }
@@ -475,14 +474,14 @@ void VoxelGeneration::applyUndo(Scene* scene, Entity owner, const VoxelGenerateU
     if (!system) return;
     std::shared_ptr<VoxelAsset> asset = system->getAsset(owner);
     if (!asset || !asset->store) return;
-    Store& target = *asset->store;
-    for (const SlotChange& change : undo.slots) target.applySlot(change.key, undoing ? change.before : change.after);
+    voxel::Store& target = *asset->store;
+    for (const voxel::SlotChange& change : undo.slots) target.applySlot(change.key, undoing ? change.before : change.after);
     if (undoing) {
         target.replaceBase(undo.oldBase);
         asset->generator = undo.oldGenerator;
     }
     target.bumpVersion();
     asset->dirty = true;
-    const Int3 dim = target.desc().dimensions;
-    system->notifyChanged(&target, IntBox{Int3{0, 0, 0}, Int3{dim.x - 1, dim.y - 1, dim.z - 1}});
+    const voxel::Int3 dim = target.desc().dimensions;
+    system->notifyChanged(&target, voxel::IntBox{voxel::Int3{0, 0, 0}, voxel::Int3{dim.x - 1, dim.y - 1, dim.z - 1}});
 }

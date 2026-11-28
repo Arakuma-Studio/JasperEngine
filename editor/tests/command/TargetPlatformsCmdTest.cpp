@@ -17,6 +17,8 @@
 #include <sstream>
 #include <string>
 
+namespace TargetPlatformsCmdTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -76,3 +78,5 @@ TEST(TargetPlatformsCmd, UndoRedo) {
     EXPECT_NE(empty.failure().find("non-empty list of windows, linux, macos, android, ios, web"), std::string::npos) << empty.failure();
     EXPECT_EQ(project.getTargetPlatforms(), targetPlatformsCmdTargetBit(BuildPlatform::Android) | targetPlatformsCmdTargetBit(BuildPlatform::IOS));
 }
+
+}  // namespace TargetPlatformsCmdTest_cpp

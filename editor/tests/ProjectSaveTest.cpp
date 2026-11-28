@@ -31,6 +31,8 @@
 #include <string>
 #include <memory>
 
+namespace ProjectSaveTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -367,3 +369,5 @@ TEST(ProjectSaveTest, SizeBudgetKeysOptional) {
     EXPECT_EQ(reloaded.getSizeBudgets(), expected);
     EXPECT_TRUE(reloaded.isSizeBudgetFail());
 }
+
+}  // namespace ProjectSaveTest_cpp

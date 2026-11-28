@@ -25,6 +25,8 @@
 #include <utility>
 #include <vector>
 
+namespace JournalTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 namespace journal = jasperengine::diag::journal;
@@ -247,3 +249,5 @@ TEST(JournalBench, LuaLogWithFourFields) {
     lua_pushnil(L);
     lua_setglobal(L, "__journalBenchSame");
 }
+
+}  // namespace JournalTest_cpp

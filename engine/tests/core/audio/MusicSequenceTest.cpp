@@ -25,6 +25,8 @@
 #include <memory>
 #include <vector>
 
+namespace MusicSequenceTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -316,3 +318,5 @@ TEST(MusicSequenceBudget, DISABLED_AddsAtMostTwoPercentToAStreamedVoice){
                 (music / plain - 1.0) * 100.0);
     EXPECT_LE(music, plain * 1.02);
 }
+
+}  // namespace MusicSequenceTest_cpp

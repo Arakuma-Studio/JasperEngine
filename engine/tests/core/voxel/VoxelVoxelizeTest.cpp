@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+namespace VoxelVoxelizeTest_cpp {
+
 using namespace voxeltest;
 
 namespace {
@@ -97,3 +99,5 @@ TEST(VoxelVoxelize, UsedAsAStampMatchesThePrimitive) {
         }
     }
 }
+
+}  // namespace VoxelVoxelizeTest_cpp

@@ -27,6 +27,8 @@
 #include <cmath>
 #include <cstdlib>
 
+namespace DerivedTransformTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -319,3 +321,5 @@ TEST(Stream, SubmeshVertexCountNotTheLastDraws) {
     while (differs < std::min(drawnCooked.size(), undrawnCooked.size()) && drawnCooked[differs] == undrawnCooked[differs]) differs++;
     EXPECT_EQ(undrawnCooked, drawnCooked) << "a build's cooked scene depends on whether the meshes were drawn (from byte " << differs << ")";
 }
+
+}  // namespace DerivedTransformTest_cpp

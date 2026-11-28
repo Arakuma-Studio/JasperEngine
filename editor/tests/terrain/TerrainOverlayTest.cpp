@@ -20,6 +20,8 @@
 #include <string>
 #include <vector>
 
+namespace TerrainOverlayTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -160,3 +162,5 @@ TEST(TerrainOverlay, OffHasNoEntities) {
     EXPECT_EQ(overlay.getSheetCount(), 0u);
     EXPECT_EQ(scene.getComponentArray<MeshComponent>()->size(), meshes) << "turned off, the sheet's entity goes";
 }
+
+}  // namespace TerrainOverlayTest_cpp

@@ -13,7 +13,8 @@
 #include <map>
 
 using namespace jasperengine;
-using namespace jasperengine::dialogue;
+
+namespace jasperengine::dialogue {
 
 FunctionSubscribe<void(const std::string&, const Value&)> Variables::onChanged;
 
@@ -324,3 +325,5 @@ savegame::SaveError SaveHooks::load(std::string_view slot, std::string_view name
     }
     return {};
 }
+
+}  // namespace jasperengine::dialogue

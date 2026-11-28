@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+namespace PostColorGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -140,3 +142,5 @@ TEST_F(PostColorGpu, VignetteSmoothnessKeepsItsMaths){
     expectRow(vignette(VignetteFalloff::SMOOTHNESS), darkening, 1, "smoothness");
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace PostColorGpuTest_cpp

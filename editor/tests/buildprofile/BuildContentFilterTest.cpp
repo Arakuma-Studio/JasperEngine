@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 
+namespace BuildContentFilterTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -82,3 +84,5 @@ TEST(BuildContentFilter, RejectsEscapingPaths) {
     EXPECT_NE(BuildContentFilter::pathRefusal("build/").find("holds no assets"), std::string::npos);
     EXPECT_NE(BuildContentFilter::pathRefusal(""), "");
 }
+
+}  // namespace BuildContentFilterTest_cpp

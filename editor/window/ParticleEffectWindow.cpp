@@ -33,7 +33,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::particles;
 
 namespace {
 
@@ -54,14 +53,14 @@ namespace {
 
     // the Overdraw view's copy: every particle a constant additive heat, untextured, unlit (the
     // simulation keeps its random streams: they are per module, and only colour modules go)
-    void overdrawCopy(ParticleEffectDocument& d) {
-        d.renderer.blend = ParticleBlend::Additive;
-        d.renderer.lighting = LightingMode::Unlit;
+    void overdrawCopy(particles::ParticleEffectDocument& d) {
+        d.renderer.blend = particles::ParticleBlend::Additive;
+        d.renderer.lighting = particles::LightingMode::Unlit;
         d.renderer.texture.clear();
         d.renderer.textureGuid.clear();
-        d.renderer.untexturedShape = UntexturedShape::Square;
+        d.renderer.untexturedShape = particles::UntexturedShape::Square;
         d.renderer.emissionIntensity = 0.0f;
-        d.main.startColor = MinMaxGradient();
+        d.main.startColor = particles::MinMaxGradient();
         d.main.startColor.color = kOverdrawHeat;
         d.colorOverLifetime.enabled = false;
         d.colorBySpeed.enabled = false;
@@ -69,8 +68,8 @@ namespace {
     }
 
     // the eye's copy: simulated as before (its children's events too), nothing drawn
-    void hiddenCopy(ParticleEffectDocument& d) {
-        d.renderer.renderMode = RenderMode::None;
+    void hiddenCopy(particles::ParticleEffectDocument& d) {
+        d.renderer.renderMode = particles::RenderMode::None;
         d.trails.enabled = false;
     }
 
@@ -129,7 +128,7 @@ void ParticleEffectWindow::openEffect(const std::string& assetPath) {
         close();
         effectPath = assetPath;
         // the effect's own pinned seed, else 1
-        const EffectAsset& asset = ParticleEffectLibrary::get(assetPath);
+        const particles::EffectAsset& asset = particles::ParticleEffectLibrary::get(assetPath);
         seed = asset.document && asset.document->seed != 0 ? asset.document->seed : 1u;
         stage.setSeed(seed);
         collectNodes();
@@ -209,7 +208,7 @@ bool ParticleEffectWindow::collectNodes() {
     std::vector<ParticleTimingSystem> systems;
     std::vector<Entity> entities;
     if (!effectPath.empty()) {
-        const EffectAsset& asset = ParticleEffectLibrary::get(effectPath);
+        const particles::EffectAsset& asset = particles::ParticleEffectLibrary::get(effectPath);
         if (asset.document) {
             systems.push_back({std::filesystem::path(effectPath).stem().string(), effectPath, asset.document.get()});
             entities.push_back(NULL_ENTITY);
@@ -227,8 +226,8 @@ bool ParticleEffectWindow::collectNodes() {
                     inside = object->getEntity() == subtreeRoot;
                 }
                 if (!inside) continue;
-                const ParticleEffectDocument* document = &particles->inlineEffect;
-                if (!particles->effect.empty()) document = ParticleEffectLibrary::get(particles->effect.path).document.get();
+                const particles::ParticleEffectDocument* document = &particles->inlineEffect;
+                if (!particles->effect.empty()) document = particles::ParticleEffectLibrary::get(particles->effect.path).document.get();
                 if (!document) continue;
                 systems.push_back({scene->getEntityName(entity), particles->effect.empty() ? std::string() : particles->effect.path, document});
                 entities.push_back(entity);
@@ -265,12 +264,12 @@ bool ParticleEffectWindow::collectNodes() {
     return !nodes.empty();
 }
 
-const ParticleEffectDocument* ParticleEffectWindow::sourceDocument(int node, ParticleEffectDocument& scratch) const {
+const particles::ParticleEffectDocument* ParticleEffectWindow::sourceDocument(int node, particles::ParticleEffectDocument& scratch) const {
     (void)scratch;
     if (node < 0 || node >= (int)nodes.size()) return nullptr;
     const Node& n = nodes[(size_t)node];
     if (n.missing) return nullptr;
-    if (!n.effect.empty()) return ParticleEffectLibrary::get(n.effect).document.get();
+    if (!n.effect.empty()) return particles::ParticleEffectLibrary::get(n.effect).document.get();
     SceneProject* sceneProject = project->getScene(n.sceneId);
     if (!sceneProject || !sceneProject->scene) return nullptr;
     const ParticleSystemComponent* particles = sceneProject->scene->findComponent<ParticleSystemComponent>(n.entity);
@@ -286,10 +285,10 @@ uint64_t ParticleEffectWindow::sourceSignature() const {
         h = mixHash(h, textHash(n.effect));
         h = mixHash(h, isHidden((int)i) ? 7u : 3u);
         if (!n.effect.empty()) {
-            h = mixHash(h, ParticleEffectLibrary::version(n.effect));
+            h = mixHash(h, particles::ParticleEffectLibrary::version(n.effect));
         } else {
-            ParticleEffectDocument scratch;
-            if (const ParticleEffectDocument* document = sourceDocument((int)i, scratch)) h = mixHash(h, textHash(ParticleEffectCodec::write(*document)));
+            particles::ParticleEffectDocument scratch;
+            if (const particles::ParticleEffectDocument* document = sourceDocument((int)i, scratch)) h = mixHash(h, textHash(particles::ParticleEffectCodec::write(*document)));
         }
         // a subtree system's place under the root (the root moving changes nothing on the stage)
         Vector3 position, scale;
@@ -322,10 +321,10 @@ bool ParticleEffectWindow::placement(const Node& node, Vector3& position, Quater
 void ParticleEffectWindow::restage() {
     // the copies: each node's sub-emitters name its children's copies, the eye and Overdraw applied
     for (size_t i = 0; i < nodes.size(); i++) {
-        ParticleEffectDocument scratch;
-        const ParticleEffectDocument* source = sourceDocument((int)i, scratch);
+        particles::ParticleEffectDocument scratch;
+        const particles::ParticleEffectDocument* source = sourceDocument((int)i, scratch);
         if (!source) continue;
-        ParticleEffectDocument copy = *source;
+        particles::ParticleEffectDocument copy = *source;
         for (size_t c = 0; c < nodes.size(); c++) {
             const Node& child = nodes[c];
             if (child.parent != (int)i || child.subEmitter < 0 || child.subEmitter >= (int)copy.subEmitters.size()) continue;
@@ -335,7 +334,7 @@ void ParticleEffectWindow::restage() {
         }
         if (overdraw) overdrawCopy(copy);
         if (isHidden((int)i)) hiddenCopy(copy);
-        ParticleEffectLibrary::set(stageKey((int)i), copy);
+        particles::ParticleEffectLibrary::set(stageKey((int)i), copy);
     }
 
     std::vector<ParticlePreviewRender::StageSystem> list;
@@ -487,8 +486,8 @@ bool ParticleEffectWindow::loopingClock(double& duration, double& steady) const 
         // the longest a particle anywhere in the tree can still be alive for
         life = std::max(life, (double)row.startMax + (double)row.lifetimeMax);
         if (row.depth != 0 || !row.looping) continue;
-        ParticleEffectDocument scratch;
-        if (const ParticleEffectDocument* document = sourceDocument((int)i, scratch)) duration = std::max(duration, (double)document->duration);
+        particles::ParticleEffectDocument scratch;
+        if (const particles::ParticleEffectDocument* document = sourceDocument((int)i, scratch)) duration = std::max(duration, (double)document->duration);
     }
     if (!looping || duration <= 0.0) return false;
     steady = std::ceil((life + duration) / duration - 1e-9) * duration;
@@ -543,12 +542,12 @@ void ParticleEffectWindow::select(int node) {
 
 // ---------------------------------------------------------------- edits
 
-bool ParticleEffectWindow::readSelected(ParticleEffectDocument& document, std::vector<Diagnostic>* diagnostics) const {
+bool ParticleEffectWindow::readSelected(particles::ParticleEffectDocument& document, std::vector<particles::Diagnostic>* diagnostics) const {
     if (selected < 0 || selected >= (int)nodes.size()) return false;
     const Node& n = nodes[(size_t)selected];
     if (!n.effect.empty()) return ParticleEffectEdit::readAsset(n.effect, document, diagnostics);
-    ParticleEffectDocument scratch;
-    const ParticleEffectDocument* source = sourceDocument(selected, scratch);
+    particles::ParticleEffectDocument scratch;
+    const particles::ParticleEffectDocument* source = sourceDocument(selected, scratch);
     if (!source) return false;
     document = *source;
     return true;
@@ -573,16 +572,16 @@ void ParticleEffectWindow::pushEdit(CommandHistory* history, Command* command, b
     }
 }
 
-bool ParticleEffectWindow::editSelected(const std::function<bool(ParticleEffectDocument&)>& edit, bool commit) {
-    ParticleEffectDocument document;
+bool ParticleEffectWindow::editSelected(const std::function<bool(particles::ParticleEffectDocument&)>& edit, bool commit) {
+    particles::ParticleEffectDocument document;
     if (!readSelected(document)) return false;
-    ParticleEffectDocument edited = document;
-    if (!edit(edited) || ParticleEffectCodec::write(edited) == ParticleEffectCodec::write(document)) {
+    particles::ParticleEffectDocument edited = document;
+    if (!edit(edited) || particles::ParticleEffectCodec::write(edited) == particles::ParticleEffectCodec::write(document)) {
         if (commit) pushEdit(nullptr, nullptr, true);
         return false;
     }
     const Node& n = nodes[(size_t)selected];
-    const auto assign = [&edited](ParticleEffectDocument& target) {
+    const auto assign = [&edited](particles::ParticleEffectDocument& target) {
         target = edited;
         return true;
     };
@@ -606,15 +605,15 @@ std::vector<ParticleEffectWindow::ExposedRow> ParticleEffectWindow::exposedRows(
     std::vector<ExposedRow> list;
     for (size_t i = 0; i < nodes.size(); i++) {
         if (nodes[i].depth != 0) continue;
-        ParticleEffectDocument scratch;
-        const ParticleEffectDocument* document = sourceDocument((int)i, scratch);
+        particles::ParticleEffectDocument scratch;
+        const particles::ParticleEffectDocument* document = sourceDocument((int)i, scratch);
         if (!document) continue;
-        for (const ExposedParameter& parameter : document->exposed) {
+        for (const particles::ExposedParameter& parameter : document->exposed) {
             if (std::any_of(list.begin(), list.end(), [&](const ExposedRow& r) { return r.name == parameter.name; })) continue;
             ExposedRow row;
             row.name = parameter.name;
             row.type = parameter.type;
-            ParticleModules::getExposed(*document, parameter.name, row.value);
+            particles::ParticleModules::getExposed(*document, parameter.name, row.value);
             for (const ExposedRow& set : exposedOverrides) {
                 if (set.name == parameter.name) row.value = set.value;
             }
@@ -642,11 +641,11 @@ void ParticleEffectWindow::setExposedValue(const std::string& name, const Vector
 std::vector<std::string> ParticleEffectWindow::triggerNames() const {
     std::vector<std::string> names;
     for (size_t i = 0; i < nodes.size(); i++) {
-        ParticleEffectDocument scratch;
-        const ParticleEffectDocument* document = sourceDocument((int)i, scratch);
+        particles::ParticleEffectDocument scratch;
+        const particles::ParticleEffectDocument* document = sourceDocument((int)i, scratch);
         if (!document) continue;
-        for (const SubEmitterEntry& entry : document->subEmitters) {
-            if (entry.trigger != SubEmitterTrigger::Trigger || entry.triggerName.empty()) continue;
+        for (const particles::SubEmitterEntry& entry : document->subEmitters) {
+            if (entry.trigger != particles::SubEmitterTrigger::Trigger || entry.triggerName.empty()) continue;
             if (std::find(names.begin(), names.end(), entry.triggerName) == names.end()) names.push_back(entry.triggerName);
         }
     }
@@ -715,7 +714,7 @@ void ParticleEffectWindow::show() {
     if (nodes.empty()) {
         ImGui::TextDisabled("%s", effectPath.empty() ? "No Particle System at or below this GameObject." : "The effect cannot be read:");
         if (!effectPath.empty()) {
-            const EffectAsset& asset = ParticleEffectLibrary::get(effectPath);
+            const particles::EffectAsset& asset = particles::ParticleEffectLibrary::get(effectPath);
             particlerows::drawDiagnostics(asset.diagnostics);
         }
         ImGui::End();
@@ -726,8 +725,8 @@ void ParticleEffectWindow::show() {
     // system's emitter time, a fraction of its Duration (lifetime curves have no such time)
     ui::CurveWindow& curveWindow = ui::CurveWindow::get();
     if (curveWindow.openedFrom(WINDOW_NAME) && curvePlayhead && selected >= 0 && selected < (int)rows.size()) {
-        ParticleEffectDocument scratch;
-        const ParticleEffectDocument* document = sourceDocument(selected, scratch);
+        particles::ParticleEffectDocument scratch;
+        const particles::ParticleEffectDocument* document = sourceDocument(selected, scratch);
         const double duration = document ? std::max(0.001, (double)document->duration) : 1.0;
         const double local = std::max(0.0, clock - (double)rows[(size_t)selected].start);
         const double fraction = rows[(size_t)selected].looping ? std::fmod(local, duration) / duration : std::min(local / duration, 1.0);
@@ -1027,14 +1026,14 @@ void ParticleEffectWindow::drawInspector() {
         ImGui::TextDisabled("The file does not read.");
         return;
     }
-    ParticleEffectDocument document;
-    std::vector<Diagnostic> diagnostics;
+    particles::ParticleEffectDocument document;
+    std::vector<particles::Diagnostic> diagnostics;
     const bool readable = readSelected(document, &diagnostics);
     particlerows::drawDiagnostics(diagnostics);
     if (!readable) return;
 
     CommandHistory* history = n.effect.empty() ? CommandHandle::get(n.sceneId) : project->getProjectCommandHistory();
-    ParticleEffectDocument edited = document;
+    particles::ParticleEffectDocument edited = document;
     particlerows::EffectRows ui;
     ui.project = project;
     ui.history = history;
@@ -1043,7 +1042,7 @@ void ParticleEffectWindow::drawInspector() {
     particlerows::drawEffect(ui, edited);
     if (ui.curveOpened) curvePlayhead = particlerows::curveOverEmitterTime(ui.curveField, ui.curveDriver);
     if (ui.changed) {
-        editSelected([&edited](ParticleEffectDocument& target) {
+        editSelected([&edited](particles::ParticleEffectDocument& target) {
             target = edited;
             return true;
         }, ui.commit);
@@ -1070,9 +1069,9 @@ void ParticleEffectWindow::drawExposed() {
         Vector4 value = row.value;
         bool edited = false;
         switch (row.type) {
-            case ExposedType::Float: edited = ImGui::DragFloat("##value", &value.x, 0.01f); break;
-            case ExposedType::Vector3: edited = ImGui::DragFloat3("##value", &value.x, 0.01f); break;
-            case ExposedType::Color: {
+            case particles::ExposedType::Float: edited = ImGui::DragFloat("##value", &value.x, 0.01f); break;
+            case particles::ExposedType::Vector3: edited = ImGui::DragFloat3("##value", &value.x, 0.01f); break;
+            case particles::ExposedType::Color: {
                 ui::ColorFieldOptions options;
                 options.linearStorage = false;
                 options.label = row.name.c_str();

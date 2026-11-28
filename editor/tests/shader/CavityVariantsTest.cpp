@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+namespace CavityVariantsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -341,3 +343,5 @@ TEST(CavityVariants, ForkWithoutVersionBuildsAsWithoutCavity){
         EXPECT_EQ(withError, withoutError) << ShaderPool::getShaderLangStr(backend);
     }
 }
+
+}  // namespace CavityVariantsTest_cpp

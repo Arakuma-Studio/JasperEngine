@@ -18,6 +18,8 @@
 #include <cstring>
 #include <random>
 
+namespace CascadeFitTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -299,3 +301,5 @@ TEST(Freeze, AtMostOneRequestedRefitPerFrame){
     }
     EXPECT_GT(requestedRefits, 0);
 }
+
+}  // namespace CascadeFitTest_cpp

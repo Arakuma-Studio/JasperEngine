@@ -18,6 +18,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ObjDedupGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -48,3 +50,5 @@ TEST(ObjDedupGpu, WeldedSphereDrawsAsBefore){
     }
     Engine::removeScene(&scene);
 }
+
+}  // namespace ObjDedupGpuTest_cpp

@@ -11,6 +11,8 @@
 #include "object/ParticleSystem.h"
 #include "subsystem/ParticleSubsystem.h"
 
+namespace EmitterRuntimeTest_cpp {
+
 using namespace particletest;
 
 namespace {
@@ -82,3 +84,5 @@ TEST(EmitterRuntimeTest, LegacyStopResetStartFiresTheBurstAtZero){
         frames(30);
     }
 }
+
+}  // namespace EmitterRuntimeTest_cpp

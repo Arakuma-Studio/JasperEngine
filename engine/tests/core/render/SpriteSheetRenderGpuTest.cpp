@@ -34,6 +34,8 @@
 #include <string>
 #include <vector>
 
+namespace SpriteSheetRenderGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -336,3 +338,5 @@ TEST_F(SpriteSheetRenderGpu, SheetSpritesOfOnePageBatchAsTheyDrawUnbatched) {
     SpriteSheetPool::invalidate(path);
     SpriteSheetPool::invalidate(untrimmedPath);
 }
+
+}  // namespace SpriteSheetRenderGpuTest_cpp

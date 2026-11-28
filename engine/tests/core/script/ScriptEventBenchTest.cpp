@@ -20,6 +20,8 @@
 #include <string>
 #include <vector>
 
+namespace ScriptEventBenchTest_cpp {
+
 namespace {
 
     struct InvokeCost {
@@ -121,3 +123,5 @@ TEST(ScriptEventBench, InvokeCosts) {
         EXPECT_LE(cancellable8.ns, event8.ns * 1.15 * testsupport::perfSlack());
     }
 }
+
+}  // namespace ScriptEventBenchTest_cpp

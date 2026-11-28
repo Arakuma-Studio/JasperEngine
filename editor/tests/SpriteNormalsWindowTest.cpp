@@ -61,11 +61,15 @@
 #include <thread>
 #include <vector>
 
+namespace SpriteNormalsWindowTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace sn = jasperengine::editor::spritenormals;
 namespace ts = jasperengine::editor::texsynth;
 namespace fs = std::filesystem;
+
+}  // namespace SpriteNormalsWindowTest_cpp
 
 namespace jasperengine::editor {
 
@@ -78,14 +82,14 @@ namespace jasperengine::editor {
             w.tick();
         }
         static void tick(W& w) { w.tick(); }
-        static std::shared_ptr<sn::SpriteNormalsRun> worker(W& w) { return w.run; }
+        static std::shared_ptr<spritenormals::SpriteNormalsRun> worker(W& w) { return w.run; }
         static bool debouncePending(W& w) { return w.changedAt >= 0.0; }
         static bool busy(W& w) { return w.isRunning() || w.changedAt >= 0.0 || w.saveAll.active || !w.quickJobs.empty(); }
-        static const sn::Image& lit(W& w) {
+        static const spritenormals::Image& lit(W& w) {
             w.renderLit();
             return w.litRgba;
         }
-        static sn::LightSetup lightSetup(W& w) { return w.lightSetup(); }
+        static spritenormals::LightSetup lightSetup(W& w) { return w.lightSetup(); }
         static bool gpuValid(W& w) { return w.colorGpu.valid() || w.normalGpu.valid() || w.litGpu.valid(); }
         static void light(W& w, float& x, float& y, float& height) {
             w.ensureLight();
@@ -99,12 +103,12 @@ namespace jasperengine::editor {
         static std::function<void()> lastConfirm(W& w) { return w.lastConfirm; }
         static void requestSave(W& w) { w.requestSave(); }
         static void setAdvancedOpen(W& w, bool open) { w.advancedOpen = open; }
-        static std::shared_ptr<sn::SpriteNormalsRun> shown(W& w) { return w.shown(); }
+        static std::shared_ptr<spritenormals::SpriteNormalsRun> shown(W& w) { return w.shown(); }
         static bool setSource(W& w, const std::string& path, std::string& error) { return w.setSourcePath(path, error); }
         static size_t quickJobs(W& w) { return w.quickJobs.size(); }
         // the jobs' workers to their end, without a tick (nothing written yet)
         static void waitWorkers(W& w) { w.waitJobWorkers(); }
-        static const std::vector<sn::Problem>& problems(W& w) { return w.items[w.current].problems; }
+        static const std::vector<spritenormals::Problem>& problems(W& w) { return w.items[w.current].problems; }
         static double orbitTime(W& w) { return w.orbitTime; }
         static bool itemHasResult(W& w, size_t i) { return i < w.items.size() && w.items[i].result != nullptr; }
         // one headless ImGui frame of show()
@@ -116,6 +120,8 @@ namespace jasperengine::editor {
     };
 
 }
+
+namespace SpriteNormalsWindowTest_cpp {
 
 namespace {
 
@@ -1839,6 +1845,8 @@ TEST(SpriteNormalsWindowDeathTest, AnOutputThroughALinkOutOfTheAssetsIsRefused) 
         EXPECT_EQ(spriteNormalsWindowReadAll(w.file("assets/hero.png")), source);
     });
 }
+
+}  // namespace SpriteNormalsWindowTest_cpp
 
 // not for the sources after this one in a unity build
 #undef IN_EDITOR

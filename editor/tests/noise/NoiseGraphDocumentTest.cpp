@@ -33,6 +33,8 @@
 #include <string>
 #include <thread>
 
+namespace NoiseGraphDocumentTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -576,3 +578,5 @@ TEST(NoiseGraphDocument, ABurstOfPreviewsRunsOnlyTheNewest) {
     jobs::initialize(jobs::Config{});
     AssetIOService::instance().start();
 }
+
+}  // namespace NoiseGraphDocumentTest_cpp

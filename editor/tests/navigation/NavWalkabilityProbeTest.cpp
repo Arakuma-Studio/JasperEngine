@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+namespace NavWalkabilityProbeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -259,3 +261,5 @@ TEST(NavWalkabilityProbe, ExplainsEachReason){
     nav::QueryFilter all;
     EXPECT_TRUE(hasReason(NavWalkabilityProbe::explain(&scene, *system, level.surface, Vector3(20.0f, 0.0f, 20.0f), all), "not_walkable_area"));
 }
+
+}  // namespace NavWalkabilityProbeTest_cpp

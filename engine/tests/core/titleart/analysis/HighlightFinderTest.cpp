@@ -15,6 +15,8 @@
 #include <numbers>
 #include <vector>
 
+namespace HighlightFinderTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::analysis;
@@ -282,3 +284,5 @@ TEST(HighlightFinderTest, SidecarAnchorsAreFrameNormalised) {
     ASSERT_EQ(json.size(), SIDECAR_ANCHORS_MAX);
     EXPECT_TRUE(json[0].contains("x") && json[0].contains("y") && json[0].contains("size") && json[0].contains("strength") && json[0].contains("fade"));
 }
+
+}  // namespace HighlightFinderTest_cpp

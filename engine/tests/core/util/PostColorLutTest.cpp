@@ -22,6 +22,8 @@
 #include <string>
 #include <vector>
 
+namespace PostColorLutTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -403,3 +405,5 @@ TEST(PostColorLut, FlipGreenReadsTopRowFirst){
     EXPECT_GE(maxIdentityError(*cachedUnity), 0.9f);
     invalidateColorLutCache(path);
 }
+
+}  // namespace PostColorLutTest_cpp

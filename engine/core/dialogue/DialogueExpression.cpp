@@ -8,9 +8,10 @@
 #include <cstdio>
 
 using namespace jasperengine;
-using namespace jasperengine::dialogue;
 
 // ------------------------------------------------------------------ Value
+
+namespace jasperengine::dialogue {
 
 bool Value::truthy() const {
     switch (index()) {
@@ -657,7 +658,7 @@ namespace {
 
 }
 
-bool jasperengine::dialogue::compileExpr(std::string_view source, ExprMode mode, ExprPool& pool, Expr& out, ParseError* error) {
+bool compileExpr(std::string_view source, ExprMode mode, ExprPool& pool, Expr& out, ParseError* error) {
     out = Expr();
     const size_t names = pool.names.size();
     const size_t constants = pool.constants.size();
@@ -679,7 +680,7 @@ bool jasperengine::dialogue::compileExpr(std::string_view source, ExprMode mode,
     return true;
 }
 
-ExprUse jasperengine::dialogue::exprUse(const ExprPool& pool, const Expr& expr) {
+ExprUse exprUse(const ExprPool& pool, const Expr& expr) {
     ExprUse use;
     auto add = [](std::vector<std::string>& list, const std::string& text) {
         if (std::find(list.begin(), list.end(), text) == list.end()) list.push_back(text);
@@ -717,7 +718,7 @@ namespace {
 
 }
 
-bool jasperengine::dialogue::evaluate(const ExprPool& pool, const Expr& expr, ExprEnv& env, std::vector<Value>& stack, Value& out,
+bool evaluate(const ExprPool& pool, const Expr& expr, ExprEnv& env, std::vector<Value>& stack, Value& out,
                                       std::string* error) {
     stack.clear();
     const Instr* code = pool.code.data() + expr.first;
@@ -818,3 +819,5 @@ bool jasperengine::dialogue::evaluate(const ExprPool& pool, const Expr& expr, Ex
     stack.clear();
     return true;
 }
+
+}  // namespace jasperengine::dialogue

@@ -17,6 +17,8 @@
 #include <limits>
 #include <string>
 
+namespace Physics3DSerializationTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::physics3dtest;
@@ -174,3 +176,5 @@ TEST(Physics3DSerialization, RagdollRoundTrips) {
     EXPECT_FLOAT_EQ(decoded.totalMass, 70.0f);
     EXPECT_FALSE(decoded.enabled);
 }
+
+}  // namespace Physics3DSerializationTest_cpp

@@ -13,6 +13,8 @@
 
 #include <string>
 
+namespace ResolveAppendTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -59,3 +61,5 @@ TEST(ReflectResolve, AReadAtTheCountGrowsNothing){
     EXPECT_EQ(sprite.framesRect.stored(), 128u);
     EXPECT_EQ(sprite.numFramesRect, 128u);
 }
+
+}  // namespace ResolveAppendTest_cpp

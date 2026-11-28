@@ -7,7 +7,8 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::anim;
+
+namespace jasperengine::anim {
 
 namespace{
 
@@ -42,32 +43,32 @@ bool anim::HumanBodyPoints::usable() const{
            has.test((size_t)pose::HumanBone::RightUpperLeg);
 }
 
-bool anim::rootMotionNeedsBody(const ClipRootMotion& rootMotion){
+bool rootMotionNeedsBody(const ClipRootMotion& rootMotion){
     return rootMotion.rotationBasedUpon != RootRotationBasis::Original || rootMotion.positionYBasedUpon != RootPositionYBasis::Original ||
            rootMotion.positionXZBasedUpon != RootPositionXZBasis::Original;
 }
 
-float anim::rootWrapAngle(float a){
+float rootWrapAngle(float a){
     while (a > kRootPi) a -= 2.0f * kRootPi;
     while (a <= -kRootPi) a += 2.0f * kRootPi;
     return a;
 }
 
-float anim::rootYawOf(const Quaternion& q){
+float rootYawOf(const Quaternion& q){
     const Vector3 f = q * Vector3(0, 0, 1);
     return std::atan2(f.x, f.z);
 }
 
-Vector3 anim::rootRotateYaw(const Vector3& v, float yaw){
+Vector3 rootRotateYaw(const Vector3& v, float yaw){
     const float c = std::cos(yaw), s = std::sin(yaw);
     return Vector3(c * v.x + s * v.z, v.y, -s * v.x + c * v.z);
 }
 
-Quaternion anim::rootYawRotation(float yaw){
+Quaternion rootYawRotation(float yaw){
     return Quaternion(std::cos(0.5f * yaw), 0.0f, std::sin(0.5f * yaw), 0.0f);
 }
 
-float anim::bodyHeading(const HumanBodyPoints& body){
+float bodyHeading(const HumanBodyPoints& body){
     using pose::HumanBone;
     // the body's right: the hips line, plus the shoulders line when both arms are mapped
     Vector3 right = at(body, HumanBone::RightUpperLeg) - at(body, HumanBone::LeftUpperLeg);
@@ -78,7 +79,7 @@ float anim::bodyHeading(const HumanBodyPoints& body){
     return std::atan2(right.z, -right.x);
 }
 
-Vector3 anim::bodyCenterOfMass(const HumanBodyPoints& body){
+Vector3 bodyCenterOfMass(const HumanBodyPoints& body){
     Vector3 sum(0, 0, 0);
     float mass = 0.0f;
     for (size_t s = 0; s < (size_t)pose::HUMAN_BONE_COUNT; s++){
@@ -89,7 +90,7 @@ Vector3 anim::bodyCenterOfMass(const HumanBodyPoints& body){
     return mass > 0.0f ? sum / mass : Vector3(0, 0, 0);
 }
 
-float anim::bodyFeetHeight(const HumanBodyPoints& body){
+float bodyFeetHeight(const HumanBodyPoints& body){
     using pose::HumanBone;
     const bool left = has(body, HumanBone::LeftFoot), right = has(body, HumanBone::RightFoot);
     if (left && right) return std::min(at(body, HumanBone::LeftFoot).y, at(body, HumanBone::RightFoot).y);
@@ -98,7 +99,7 @@ float anim::bodyFeetHeight(const HumanBodyPoints& body){
     return std::min(at(body, HumanBone::LeftUpperLeg).y, at(body, HumanBone::RightUpperLeg).y);
 }
 
-RootBasisSample anim::rootBasis(const ClipRootMotion& rm, const Vector3& rootPosition, const Quaternion& rootRotation,
+RootBasisSample rootBasis(const ClipRootMotion& rm, const Vector3& rootPosition, const Quaternion& rootRotation,
                                 const HumanBodyPoints* body){
     RootBasisSample out;
     out.point = rootPosition;
@@ -119,7 +120,7 @@ RootBasisSample anim::rootBasis(const ClipRootMotion& rm, const Vector3& rootPos
     return out;
 }
 
-RootMotionFrame anim::rootMotionFrame(const ClipRootMotion& rm, const RootBasisSample& start, const HumanBodyPoints* startBody,
+RootMotionFrame rootMotionFrame(const ClipRootMotion& rm, const RootBasisSample& start, const HumanBodyPoints* startBody,
                                       const HumanBodyPoints* restBody){
     RootMotionFrame frame;
     frame.startPoint = start.point;
@@ -145,7 +146,7 @@ RootMotionFrame anim::rootMotionFrame(const ClipRootMotion& rm, const RootBasisS
     return frame;
 }
 
-void anim::rootMotionPoint(const ClipRootMotion& rm, const RootMotionFrame& frame, const RootBasisSample& now, Vector3& point, float& heading){
+void rootMotionPoint(const ClipRootMotion& rm, const RootMotionFrame& frame, const RootBasisSample& now, Vector3& point, float& heading){
     point = now.point;
     heading = rm.bakeRotation ? 0.0f : rootWrapAngle(now.heading - frame.startHeading);
     if (rm.bakePositionY) point.y = frame.startPoint.y;
@@ -155,7 +156,7 @@ void anim::rootMotionPoint(const ClipRootMotion& rm, const RootMotionFrame& fram
     }
 }
 
-void anim::removeRootMotion(const ClipRootMotion& rm, const RootMotionFrame& frame, const RootBasisSample& now, Vector3& p, Quaternion& q){
+void removeRootMotion(const ClipRootMotion& rm, const RootMotionFrame& frame, const RootBasisSample& now, Vector3& p, Quaternion& q){
     const Vector3 pivot = frame.startPoint;
     Vector3 basis = now.point;
     if (!rm.bakeRotation){
@@ -176,3 +177,5 @@ void anim::removeRootMotion(const ClipRootMotion& rm, const RootMotionFrame& fra
     }
     p = p + frame.shift;
 }
+
+}  // namespace jasperengine::anim

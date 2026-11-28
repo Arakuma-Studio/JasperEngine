@@ -37,7 +37,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::platform;
+
+namespace jasperengine::editor::platform {
+
 namespace fs = std::filesystem;
 namespace net = jasperengine::editor::mcp::net;
 
@@ -425,7 +427,7 @@ void WebServe::serveConnection(intptr_t clientFd) {
     answer(200, contentType(file), bytes);
 }
 
-const std::string& platform::webDevelopmentReporter() {
+const std::string& webDevelopmentReporter() {
     static const std::string script = R"JS(<script>
 // Build And Run's log channel (docs/specs/build-and-run-on-device.md R11): a development page served
 // by the editor posts its console lines, its crash report and requested screenshots back to it
@@ -484,3 +486,5 @@ const std::string& platform::webDevelopmentReporter() {
 </script>)JS";
     return script;
 }
+
+}  // namespace jasperengine::editor::platform

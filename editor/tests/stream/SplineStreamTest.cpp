@@ -24,6 +24,8 @@
 
 #include <string>
 
+namespace SplineStreamTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -186,3 +188,5 @@ TEST(SplineStream, APreSplineSceneLoadsUnchanged){
     DecodedScene again = decodeSceneText(first, "pre-s18.scene");
     EXPECT_EQ(encodeSceneText(again), first);
 }
+
+}  // namespace SplineStreamTest_cpp

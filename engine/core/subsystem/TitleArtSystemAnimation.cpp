@@ -34,7 +34,6 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::titleart;
 namespace ta = jasperengine::titleanim;
 
 namespace {
@@ -51,7 +50,7 @@ namespace {
     }
 
     // the still's frame as the companion shows it (S81's sidecar)
-    ta::TitleFrameGeometry frameOf(const TitleArtInstance& instance){
+    ta::TitleFrameGeometry frameOf(const titleart::TitleArtInstance& instance){
         ta::TitleFrameGeometry g;
         const TitleArtBakeInfo& bake = instance.lendingRealtime ? instance.liveStatus.frame : instance.bake;
         g.frameX = bake.frame.x;
@@ -88,7 +87,7 @@ namespace {
 
 // ==================================================================== the library
 
-void TitleArtSystem::loadAnimations(EntityRegistry* scene, Entity entity, TitleArtRendererComponent& title, TitleArtInstance& instance){
+void TitleArtSystem::loadAnimations(EntityRegistry* scene, Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance){
     if (instance.animationLoaded) return;
     instance.animationLoaded = true;
     instance.flipbookPages.clear();
@@ -100,9 +99,9 @@ void TitleArtSystem::loadAnimations(EntityRegistry* scene, Entity entity, TitleA
     const std::string name = scene ? scene->getEntityName(entity) : std::string();
     // Realtime and Glyph Atlas read the shipped document (every track); a Baked title, or a build
     // without the module, reads what its bake wrote (R60)
-    if (title.renderMode != TitleArtRenderMode::BAKED && TitleArtRuntime::isBuilt()){
+    if (title.renderMode != TitleArtRenderMode::BAKED && titleart::TitleArtRuntime::isBuilt()){
         std::string error;
-        std::shared_ptr<ta::TitleAnimLibrary> library = TitleArtRuntime::compileAnimations(title.title.path, &error);
+        std::shared_ptr<ta::TitleAnimLibrary> library = titleart::TitleArtRuntime::compileAnimations(title.title.path, &error);
         if (library){
             instance.animationSource = "document";
             instance.animation.setLibrary(std::move(library));
@@ -146,7 +145,7 @@ void TitleArtSystem::loadAnimations(EntityRegistry* scene, Entity entity, TitleA
 titleanim::TitleAnimPlayer* TitleArtSystem::animationPlayer(EntityRegistry* scene, Entity entity){
     TitleArtRendererComponent* title = titleComponent(scene, entity);
     if (!title) return nullptr;
-    TitleArtInstance& instance = instanceOf(*title);
+    titleart::TitleArtInstance& instance = instanceOf(*title);
     if (!instance.resolved || instance.resolvedTitle != title->title.path || instance.resolvedMode != title->renderMode){
         // a script asks before the system's first frame: what the document and bake hold now
         instance.animationLoaded = false;
@@ -170,7 +169,7 @@ double TitleArtSystem::animationDuration(EntityRegistry* scene, Entity entity, c
 bool TitleArtSystem::playAnimation(EntityRegistry* scene, Entity entity, const std::string& name, const ta::TitleAnimPlayOptions& options, bool overlay){
     ta::TitleAnimPlayer* player = animationPlayer(scene, entity);
     if (!player) return false;
-    TitleArtInstance& instance = instanceOf(*titleComponent(scene, entity));
+    titleart::TitleArtInstance& instance = instanceOf(*titleComponent(scene, entity));
     const bool ok = overlay || (player->find(name) && player->find(name)->overlay) ? player->playOverlay(name, options) : player->play(name, options);
     if (!ok){
         // R30: once per name per component
@@ -192,7 +191,7 @@ bool TitleArtSystem::stopAnimation(EntityRegistry* scene, Entity entity, const s
         return true;
     }
     if (!player->find(name)){
-        TitleArtInstance& instance = instanceOf(*titleComponent(scene, entity));
+        titleart::TitleArtInstance& instance = instanceOf(*titleComponent(scene, entity));
         if (instance.sayOnce("anim_unknown|" + name))
             Log::warn("Title Art '%s' has no animation '%s' (it has: %s)", scene->getEntityName(entity).c_str(), name.c_str(),
                       joined(animationNames(scene, entity)).c_str());
@@ -243,7 +242,7 @@ bool TitleArtSystem::sampleAnimation(EntityRegistry* scene, Entity entity, const
     ta::TitleAnimPlayer* player = animationPlayer(scene, entity);
     if (!player) return false;
     if (!player->sample(name, time)){
-        TitleArtInstance& instance = instanceOf(*titleComponent(scene, entity));
+        titleart::TitleArtInstance& instance = instanceOf(*titleComponent(scene, entity));
         if (instance.sayOnce("anim_unknown|" + name))
             Log::warn("Title Art '%s' has no animation '%s' (it has: %s)", scene->getEntityName(entity).c_str(), name.c_str(),
                       joined(animationNames(scene, entity)).c_str());
@@ -258,8 +257,8 @@ bool TitleArtSystem::isAnimationReady(EntityRegistry* scene, Entity entity, cons
     if (!player) return false;
     const ta::CompiledTitleAnimation* animation = player->find(name);
     if (!animation) return false;
-    TitleArtInstance& instance = instanceOf(*titleComponent(scene, entity));
-    if (animation->rerender == ta::RerenderPolicy::Prerender && instance.live && TitleArtRuntime::isPrerendering(*instance.live)) return false;
+    titleart::TitleArtInstance& instance = instanceOf(*titleComponent(scene, entity));
+    if (animation->rerender == ta::RerenderPolicy::Prerender && instance.live && titleart::TitleArtRuntime::isPrerendering(*instance.live)) return false;
     // a Baked flipbook is ready when its pages are on the GPU; everything else plays at once
     auto pages = instance.flipbookPages.find(animation->id);
     if (pages == instance.flipbookPages.end()) return true;
@@ -274,21 +273,21 @@ bool TitleArtSystem::prepareAnimation(EntityRegistry* scene, Entity entity, cons
     ta::TitleAnimPlayer* player = animationPlayer(scene, entity);
     if (!player) return false;
     if (!player->find(name)){
-        TitleArtInstance& instance = instanceOf(*titleComponent(scene, entity));
+        titleart::TitleArtInstance& instance = instanceOf(*titleComponent(scene, entity));
         if (instance.sayOnce("anim_unknown|" + name))
             Log::warn("Title Art '%s' has no animation '%s' (it has: %s)", scene->getEntityName(entity).c_str(), name.c_str(),
                       joined(animationNames(scene, entity)).c_str());
         return false;
     }
     // R18: a prerender animation's frames render ahead; the pages' loads start on first use
-    TitleArtInstance& instance = instanceOf(*titleComponent(scene, entity));
-    if (instance.live) TitleArtRuntime::prepareAnimation(*instance.live, *player, name);
+    titleart::TitleArtInstance& instance = instanceOf(*titleComponent(scene, entity));
+    if (instance.live) titleart::TitleArtRuntime::prepareAnimation(*instance.live, *player, name);
     return isAnimationReady(scene, entity, name);
 }
 
 // ==================================================================== the frame
 
-void TitleArtSystem::updateAnimation(Entity entity, TitleArtRendererComponent& title, TitleArtInstance& instance, double dt){
+void TitleArtSystem::updateAnimation(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance, double dt){
     loadAnimations(scene, entity, title, instance);
     ta::TitleAnimPlayer& player = instance.animation;
     instance.firedMarkers.clear();
@@ -375,7 +374,7 @@ void TitleArtSystem::updateAnimation(Entity entity, TitleArtRendererComponent& t
                           frame >= 0 ? flipbook : nullptr, frame, next, blend, instance.animationUniforms);
     // the frame in the companion's own space: an Image spans its rect (y down), a Sprite its
     // size about its pivot (y up)
-    if (instance.space == TitleArtSpace::UI){
+    if (instance.space == titleart::TitleArtSpace::UI){
         const RectTransformComponent* rect = scene->findComponent<RectTransformComponent>(entity);
         instance.animationSpace[0] = 0.0f;
         instance.animationSpace[1] = 0.0f;
@@ -403,7 +402,7 @@ void TitleArtSystem::updateAnimation(Entity entity, TitleArtRendererComponent& t
     }
 }
 
-void TitleArtSystem::dispatchAnimationEvents(Entity entity, TitleArtRendererComponent& title, TitleArtInstance& instance, double dt){
+void TitleArtSystem::dispatchAnimationEvents(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance, double dt){
     (void)title;
     if (instance.firedMarkers.empty() && instance.finishedAnimations.empty()) return;
     // R28: in time order: C++ and Lua subscribers, then the script method of that name; then the
@@ -432,7 +431,7 @@ void TitleArtSystem::dispatchAnimationEvents(Entity entity, TitleArtRendererComp
 void TitleArtSystem::playMarkerSound(Entity entity, const ta::CompiledMarker& marker, float fraction, double dt){
     const std::string path = soundPath(marker.sound);
     TitleArtRendererComponent* title = titleComponent(scene, entity);
-    TitleArtInstance* instance = title ? &instanceOf(*title) : nullptr;
+    titleart::TitleArtInstance* instance = title ? &instanceOf(*title) : nullptr;
     auto unresolved = [&](){
         // R29: once per marker per Play
         if (instance && instance->sayOnce("marker_sound|" + marker.name + "|" + path))

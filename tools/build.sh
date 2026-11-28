@@ -38,7 +38,8 @@
 # runs the core tests' GPU suites on Vulkan (lavapipe) for unit-tests; GRAPHIC_BACKEND=gles3 runs them
 # in an OpenGL ES 3.2 context (llvmpipe, in the linux-backends image) for unit-tests (UNIT_SUITE=core).
 # SANITIZE=address,undefined or SANITIZE=thread (linux, unit-tests, htmlui-tests, mcp-tests) builds with
-# those sanitizers into build/linux/<dir>-<sanitizers>; UNITY=1 unity-builds (<dir>-unity);
+# those sanitizers into build/linux/<dir>-<sanitizers>; UNITY=1 unity-builds (<dir>-unity; UNITY_BATCH=<n>:
+# n sources a unit, <dir>-unity<n>);
 # WERROR=1 makes warnings of our targets errors. JASPER_DOCKER_IMAGE=<id|tag> runs that image
 # instead of building docker/<target>.Dockerfile (CI pulls ghcr.io/<owner>/jasperengine-<target>-build:
 # <image-tag> and passes it, .github/actions/image).
@@ -257,6 +258,11 @@ if [[ ",${SANITIZE:-}," == *,thread,* ]]; then
 fi
 UNITY_SUFFIX=""
 [[ "${UNITY:-0}" == 1 ]] && UNITY_SUFFIX="-unity"
+# UNITY_BATCH=<n> (with UNITY=1): n sources a unit instead of 16, in a tree of its own (<dir>-unity<n>)
+if [[ -n "${UNITY_BATCH:-}" ]]; then
+    [[ "${UNITY:-0}" == 1 && "$UNITY_BATCH" =~ ^[1-9][0-9]*$ ]] || { echo "UNITY_BATCH=<n> needs UNITY=1 and a positive number" >&2; exit 1; }
+    UNITY_SUFFIX="-unity$UNITY_BATCH"
+fi
 # COVERAGE=1 (linux): GCC's --coverage, next to the default tree (build/linux/editor-coverage): the
 # MCP suite's coverage map (tools/mcp/coverage_map.py) is recorded with it
 COVERAGE_SUFFIX=""
@@ -268,7 +274,7 @@ WERROR_VALUE=OFF
 [[ "${WERROR:-0}" == 1 ]] && WERROR_VALUE=ON
 # what every CMake configure of a build gets on top of its preset
 OPTION_FLAGS="-DJASPERENGINE_SANITIZE='$SANITIZE_LIST'"
-[[ "${UNITY:-0}" == 1 ]] && OPTION_FLAGS="$OPTION_FLAGS -DJASPERENGINE_UNITY_BUILD=ON" || OPTION_FLAGS="$OPTION_FLAGS -DJASPERENGINE_UNITY_BUILD=OFF"
+[[ "${UNITY:-0}" == 1 ]] && OPTION_FLAGS="$OPTION_FLAGS -DJASPERENGINE_UNITY_BUILD=ON -DJASPERENGINE_UNITY_BATCH_SIZE=${UNITY_BATCH:-16}" || OPTION_FLAGS="$OPTION_FLAGS -DJASPERENGINE_UNITY_BUILD=OFF"
 # (WERROR needs WARNINGS, which the standalone engine tree has off by default)
 ENGINE_WARNING_FLAGS="-DJASPERENGINE_WERROR=$WERROR_VALUE"
 [[ "$WERROR_VALUE" == ON ]] && ENGINE_WARNING_FLAGS="$ENGINE_WARNING_FLAGS -DJASPERENGINE_WARNINGS=ON"

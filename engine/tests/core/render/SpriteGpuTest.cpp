@@ -27,6 +27,8 @@
 #include <memory>
 #include <vector>
 
+namespace SpriteGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -158,3 +160,5 @@ TEST_F(SpriteGpu, FlipXAddsNothing){
     EXPECT_EQ(on, off);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace SpriteGpuTest_cpp

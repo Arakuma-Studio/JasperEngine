@@ -18,6 +18,8 @@
 
 #include <string>
 
+namespace LuaMathBindingTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -241,3 +243,5 @@ TEST(LuaMath, WrongCallsRaise){
         assert(calls > 5000, "the sweep ran: " .. calls)
     )lua"), "");
 }
+
+}  // namespace LuaMathBindingTest_cpp

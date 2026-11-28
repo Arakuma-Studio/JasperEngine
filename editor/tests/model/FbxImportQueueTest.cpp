@@ -20,6 +20,8 @@
 #include <mutex>
 #include <string>
 
+namespace FbxImportQueueTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -198,3 +200,5 @@ TEST(FbxImportQueue, TheJobConvertsTheQueue) {
     EXPECT_EQ(queue.progress().done, 2u);
     EXPECT_GE(changes.load(), 2) << "the main thread is woken after each conversion";
 }
+
+}  // namespace FbxImportQueueTest_cpp

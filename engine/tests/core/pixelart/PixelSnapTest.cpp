@@ -11,10 +11,9 @@
 
 #include <cmath>
 
-using namespace jasperengine;
 // the tests in Pixel Art's namespace: a file-scope using-directive would reach the next source of a
 // unity unit (docs/testing.md, Unity build)
-namespace jasperengine::pixelart {
+namespace jasperengine::pixelart::PixelSnapTest_cpp {
 
 namespace {
 
@@ -188,4 +187,4 @@ TEST(PixelSnapTest, SnapWorld){
     EXPECT_FLOAT_EQ(snapWorld(2.6f, 0), 3.0f);
 }
 
-}
+}  // namespace jasperengine::pixelart::PixelSnapTest_cpp

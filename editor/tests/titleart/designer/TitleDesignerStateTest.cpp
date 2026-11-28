@@ -32,6 +32,8 @@
 #include <set>
 #include <string>
 
+namespace TitleDesignerStateTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::titledesigner;
@@ -447,3 +449,5 @@ TEST_F(TitleDesignerStateTest, SettingsAndWorkspaceRoundTrip) {
     EXPECT_EQ(loaded.zoom, 2.0f);
     EXPECT_EQ(loaded.backdrop.kind, "black");
 }
+
+}  // namespace TitleDesignerStateTest_cpp

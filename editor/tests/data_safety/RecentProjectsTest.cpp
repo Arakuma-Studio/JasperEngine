@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace RecentProjectsTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -128,3 +130,5 @@ TEST(RecentProjects, InteractiveEditorRecords) {
     EXPECT_TRUE(sameRecentPath(root["last_project_path"].as<std::string>(""), setup.project)) << YAML::Dump(root);
     EXPECT_TRUE(listsRecentProject(recentProjectPaths(root), setup.project)) << YAML::Dump(root);
 }
+
+}  // namespace RecentProjectsTest_cpp

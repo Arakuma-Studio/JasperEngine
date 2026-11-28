@@ -13,6 +13,8 @@
 #include <cmath>
 #include <vector>
 
+namespace ParticleCollisionTest_cpp {
+
 using namespace particletest;
 
 namespace {
@@ -249,3 +251,5 @@ TEST(ParticleCollision, WorldMediumCapsQueriesWithoutTunnelling){
     EXPECT_LE(worstQueries, 256u);
     EXPECT_LE(worstShare, 0.005);
 }
+
+}  // namespace ParticleCollisionTest_cpp

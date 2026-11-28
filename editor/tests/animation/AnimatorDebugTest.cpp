@@ -32,6 +32,8 @@
 #include <string>
 #include <vector>
 
+namespace AnimatorDebugTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::anim;
 using Json = nlohmann::json;
@@ -597,3 +599,5 @@ TEST(AnimatorMeshSpaceWarning, OnlyWhereTheMaskSplitsTheTorso){
     EXPECT_EQ(warned(human, {0, 0, 0, 1}), "") << "an arm mask";
     EXPECT_EQ(warned(human, {0, 0, 1, 1}), "Spine");
 }
+
+}  // namespace AnimatorDebugTest_cpp

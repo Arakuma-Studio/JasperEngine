@@ -10,6 +10,8 @@
 
 #include <string>
 
+namespace VersionControlFilesTest_cpp {
+
 using namespace jasperengine::editor;
 using vcsfiles::FileKind;
 using vcsfiles::Refresh;
@@ -84,3 +86,5 @@ TEST(VersionControlFiles, EveryVariantsLinesAreKnown) {
     EXPECT_TRUE(vcsfiles::knownGeneratedLines(FileKind::Ignore).count("build/"));
     EXPECT_TRUE(vcsfiles::knownGeneratedLines(FileKind::Attributes).count("*.png binary"));
 }
+
+}  // namespace VersionControlFilesTest_cpp

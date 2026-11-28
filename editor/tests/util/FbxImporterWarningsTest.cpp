@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+namespace FbxImporterWarningsTest_cpp {
+
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
@@ -194,3 +196,5 @@ TEST(FbxImporterWarnings, ProjectMaterialCreationModeIsTheDefault) {
     decodeModelProjectSettings(encoded, decoded);
     EXPECT_EQ(decoded.materialCreationMode, MaterialCreationMode::None);
 }
+
+}  // namespace FbxImporterWarningsTest_cpp

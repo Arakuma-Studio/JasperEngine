@@ -15,6 +15,8 @@
 
 #include <string>
 
+namespace ScriptEventTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::test::LogCapture;
 
@@ -273,3 +275,5 @@ TEST_F(ScriptEventTest, InspectionNames) {
     EXPECT_EQ(lua("local e = Event(); e:addListener(function() end); return tostring(e)"), "Event(1 listeners)");
     lua("lock = nil; door = nil");
 }
+
+}  // namespace ScriptEventTest_cpp

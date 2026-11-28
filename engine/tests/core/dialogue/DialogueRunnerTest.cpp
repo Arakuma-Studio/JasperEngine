@@ -21,6 +21,8 @@
 #include <functional>
 #include <sstream>
 
+namespace DialogueRunnerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::dialogue;
 using dialoguetest::GraphText;
@@ -560,3 +562,5 @@ TEST_F(DialogueRunnerTest, CookedFileRefusesDamage) {
         }
     }
 }
+
+}  // namespace DialogueRunnerTest_cpp

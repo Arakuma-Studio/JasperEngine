@@ -10,6 +10,8 @@
 
 #include "sprite/SpriteFrameGeometry.h"
 
+namespace SpriteFrameGeometryTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -130,3 +132,5 @@ TEST(SpriteFrameGeometryTest, SameGeometrySwapsOnlyTheRect){
     empty.rect = Rect(0, 0, 0, 0);
     EXPECT_TRUE(spriteFrameQuad(empty, in).empty);
 }
+
+}  // namespace SpriteFrameGeometryTest_cpp

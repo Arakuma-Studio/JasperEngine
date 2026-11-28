@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+namespace StreamProjectLoggingTest_cpp {
+
 using namespace jasperengine::editor;
 
 // project.yaml "playerLogging" (Project Settings > Player > Logging)
@@ -37,3 +39,5 @@ TEST(StreamProjectLogging, RoundTrips) {
     Stream::decodeProject(&loaded, odd, Workspace());
     EXPECT_EQ(loaded.getPlayerLogging().level, "info") << "an unknown level falls back to the default";
 }
+
+}  // namespace StreamProjectLoggingTest_cpp

@@ -31,6 +31,8 @@
 #include <thread>
 #include <vector>
 
+namespace PlacementWorldTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::physicstest;
 
@@ -1959,3 +1961,5 @@ TEST(PlacementWorldReview, LargeTerrainsAreResampled) {
 }
 
 #endif
+
+}  // namespace PlacementWorldTest_cpp

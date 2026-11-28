@@ -10,6 +10,8 @@
 
 #include <filesystem>
 
+namespace PixelImageTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 
 namespace {
@@ -165,3 +167,5 @@ TEST(PixelImageTest, PngRoundTripIsLossless) {
     EXPECT_EQ(*loaded, image);
     EXPECT_FALSE(PixelImage::decodePng(std::span<const uint8_t>(), &error).has_value());
 }
+
+}  // namespace PixelImageTest_cpp

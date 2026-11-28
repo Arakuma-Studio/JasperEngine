@@ -19,7 +19,6 @@
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vertexcolor;
 namespace vcd = jasperengine::editor::vertexcolor::detail;
 
 std::set<std::string> editor::livePaintedModels(Project& project) {
@@ -55,14 +54,14 @@ std::vector<std::string> editor::vertexColorExportProblems(Project& project) {
             const Entity entity = array->getEntity(i);
             const std::string where = "Vertex Colors of '" + scene->getEntityName(entity) + "' in scene '" + sceneProject.name + "'";
             // what ships is the file on disk (the scenes were saved before this check)
-            vc::Data shipped;
+            jasperengine::vertexcolor::Data shipped;
             std::string error;
-            if (!vc::readFile(vcd::absoluteAssetPath(project, component.data.path), shipped, error)) {
+            if (!jasperengine::vertexcolor::readFile(vcd::absoluteAssetPath(project, component.data.path), shipped, error)) {
                 problems.push_back(where + ": " + error + ". Fix or replace the file, or clear the component's Data.");
                 continue;
             }
-            for (const vc::TargetData& target : shipped.targets) {
-                const std::shared_ptr<const vc::MeshView> mesh = vc::sceneMeshView(scene, entity, target.key);
+            for (const jasperengine::vertexcolor::TargetData& target : shipped.targets) {
+                const std::shared_ptr<const jasperengine::vertexcolor::MeshView> mesh = jasperengine::vertexcolor::sceneMeshView(scene, entity, target.key);
                 // a mesh not loaded is checked by the game, which draws such a target without its colors
                 if (!mesh) continue;
                 if (mesh->fingerprint().sameTopology(target.fingerprint)) continue;
@@ -75,12 +74,12 @@ std::vector<std::string> editor::vertexColorExportProblems(Project& project) {
 }
 
 bool editor::isVertexColorsFile(const fs::path& path) {
-    return path.extension() == vc::VCOLORS_EXTENSION;
+    return path.extension() == jasperengine::vertexcolor::VCOLORS_EXTENSION;
 }
 
 bool editor::cookVertexColorsFile(const fs::path& source, const fs::path& destination, std::string& error) {
-    vc::Data data;
-    if (!vc::readFile(source, data, error)) return false;
+    jasperengine::vertexcolor::Data data;
+    if (!jasperengine::vertexcolor::readFile(source, data, error)) return false;
     // R92: the snapshot is the editor's (a reimport's transfer), no game reads it
-    return vc::writeFile(destination, data, false, error);
+    return jasperengine::vertexcolor::writeFile(destination, data, false, error);
 }

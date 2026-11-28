@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <filesystem>
 
+namespace GraphProcMatTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::procmat;
 // its own name: another Json is in sight in some unity units
@@ -332,3 +334,5 @@ TEST_F(GraphProcMatTest, ShapesAndImagesHaveBounds) {
     ASSERT_TRUE(blend && blend->dynamicPorts);
     EXPECT_FALSE(blend->dynamicPorts(graph::Json{{"generic_size", 1e300}}).empty());
 }
+
+}  // namespace GraphProcMatTest_cpp

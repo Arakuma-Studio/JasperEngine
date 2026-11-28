@@ -19,7 +19,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::pixelart;
+
+namespace jasperengine::editor::pixelart {
 
 namespace {
     constexpr const char* kSummaryPrefix = "Pixel Art Check:";
@@ -190,3 +191,5 @@ void PixelArtMode::setupNewScene(Project& project, uint32_t sceneId){
             ppc->upscaleMode = project.getPixelArtSettings().upscaleMode;
     }
 }
+
+}  // namespace jasperengine::editor::pixelart

@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 
+namespace CleanupSpecksTest_cpp {
+
 using namespace jasperengine::editor::pixelart::cleanup;
 using jasperengine::pixelart::packRgb;
 
@@ -118,3 +120,5 @@ TEST(CleanupSpecks, DoesNothingWhenOff) {
     EXPECT_EQ(cleaned.art, scene.art);
     EXPECT_TRUE(cleaned.specks.empty());
 }
+
+}  // namespace CleanupSpecksTest_cpp

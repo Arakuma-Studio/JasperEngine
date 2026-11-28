@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+namespace TreeStoreTest_cpp {
+
 using namespace jasperengine::terraincore;
 
 namespace {
@@ -242,3 +244,5 @@ TEST(TreeStore, XXHash64MatchesThePublishedVectors) {
     const std::string quick = "Nobody inspects the spammish repetition";
     EXPECT_EQ(treeXXHash64(quick.data(), quick.size()), 0xFBCEA83C8A378BF1ull);
 }
+
+}  // namespace TreeStoreTest_cpp

@@ -22,7 +22,6 @@
 #include <unordered_map>
 
 using namespace jasperengine;
-using namespace jasperengine::cook;
 
 namespace {
 
@@ -67,7 +66,7 @@ namespace {
     void bindTextureLinks(Scene* scene, const std::vector<Entity>& entities, const std::function<Entity(Entity)>& map) {
         for (Entity entity : entities) {
             if (entity == NULL_ENTITY || !scene->isEntityCreated(entity)) continue;
-            for (const ComponentTable& table : componentTables()) {
+            for (const cook::ComponentTable& table : cook::componentTables()) {
                 void* component = const_cast<void*>(table.find(scene, entity));
                 if (!component) continue;
                 visitStructTextures(*table.body, component, [&](Texture& texture) {
@@ -98,7 +97,7 @@ namespace {
         int layer = 0;
     };
 
-    EntityState readState(Reader& r) {
+    EntityState readState(cook::Reader& r) {
         EntityState state;
         state.name = r.string();
         state.active = r.boolean();
@@ -115,15 +114,15 @@ namespace {
     }
 
     // the component records of one entity; `onlyMissing`: a component the entity has is kept
-    bool readComponents(Reader& r, Scene* scene, Entity entity, bool onlyMissing, std::string* error) {
+    bool readComponents(cook::Reader& r, Scene* scene, Entity entity, bool onlyMissing, std::string* error) {
         const uint64_t count = r.varint();
-        LoadContext ctx{scene, scene, entity};
+        cook::LoadContext ctx{scene, scene, entity};
         for (uint64_t c = 0; c < count && !r.failed(); c++) {
             if (onlyMissing) {
                 // peek the key: a component the root has already stays as it is
-                Reader probe = r;
+                cook::Reader probe = r;
                 const uint32_t keyHash = probe.u32();
-                const ComponentTable* table = findComponentTable(keyHash);
+                const cook::ComponentTable* table = cook::findComponentTable(keyHash);
                 if (table && table->find(scene, entity)) {
                     r.u32();
                     r.record();
@@ -188,14 +187,14 @@ bool cook::playerReadsContentFormat(std::string_view content) {
     return true;
 }
 
-bool CookedFile::parse(std::span<const uint8_t> bytes, const char expectedMagic[4], std::string& error) {
-    if (bytes.size() < HEADER_BYTES) {
+bool cook::CookedFile::parse(std::span<const uint8_t> bytes, const char expectedMagic[4], std::string& error) {
+    if (bytes.size() < cook::HEADER_BYTES) {
         error = "too small to be a cooked file";
         return false;
     }
     std::memcpy(header.magic, bytes.data(), 4);
     if (std::memcmp(header.magic, expectedMagic, 4) != 0) {
-        error = std::string("not a cooked ") + (std::memcmp(expectedMagic, SCENE_MAGIC, 4) == 0 ? "scene (.jscn)" : "prefab (.jpfb)");
+        error = std::string("not a cooked ") + (std::memcmp(expectedMagic, cook::SCENE_MAGIC, 4) == 0 ? "scene (.jscn)" : "prefab (.jpfb)");
         return false;
     }
     header.major = le16(bytes.data() + 4);
@@ -204,17 +203,17 @@ bool CookedFile::parse(std::span<const uint8_t> bytes, const char expectedMagic[
     header.entityCount = le32(bytes.data() + 12);
     header.flags = le32(bytes.data() + 16);
     header.stringsOffset = le64(bytes.data() + 20);
-    if (!playerReadsContentFormat(std::to_string(header.major) + "." + std::to_string(header.minor))) {
+    if (!cook::playerReadsContentFormat(std::to_string(header.major) + "." + std::to_string(header.minor))) {
         error = "content format " + std::to_string(header.major) + "." + std::to_string(header.minor) + "; this player reads " +
-                contentFormatVersion() + " (build the game with the editor of this player's version)";
+                cook::contentFormatVersion() + " (build the game with the editor of this player's version)";
         return false;
     }
-    if (header.stringsOffset < HEADER_BYTES || header.stringsOffset > bytes.size()) {
+    if (header.stringsOffset < cook::HEADER_BYTES || header.stringsOffset > bytes.size()) {
         error = "corrupt string table offset";
         return false;
     }
     static const std::vector<std::string> none;
-    Reader strings(bytes.subspan(static_cast<size_t>(header.stringsOffset)), none, [](uint32_t) { return NULL_ENTITY; });
+    cook::Reader strings(bytes.subspan(static_cast<size_t>(header.stringsOffset)), none, [](uint32_t) { return NULL_ENTITY; });
     const uint64_t count = strings.varint();
     if (count > bytes.size()) {
         error = "corrupt string table";
@@ -230,7 +229,7 @@ bool CookedFile::parse(std::span<const uint8_t> bytes, const char expectedMagic[
         error = "corrupt string table: " + strings.error();
         return false;
     }
-    body = bytes.subspan(HEADER_BYTES, static_cast<size_t>(header.stringsOffset) - HEADER_BYTES);
+    body = bytes.subspan(cook::HEADER_BYTES, static_cast<size_t>(header.stringsOffset) - HEADER_BYTES);
     return true;
 }
 
@@ -269,9 +268,9 @@ bool CookedSceneLoader::loadScene(Scene* scene, const std::string& path, std::st
 }
 
 bool CookedSceneLoader::loadScene(Scene* scene, std::span<const uint8_t> bytes, std::string* error) {
-    CookedFile file;
+    cook::CookedFile file;
     std::string why;
-    if (!file.parse(bytes, SCENE_MAGIC, why)) {
+    if (!file.parse(bytes, cook::SCENE_MAGIC, why)) {
         setError(error, why);
         return false;
     }
@@ -281,11 +280,11 @@ bool CookedSceneLoader::loadScene(Scene* scene, std::span<const uint8_t> bytes, 
         auto it = systemEntities.find(ref);
         return it != systemEntities.end() ? it->second : static_cast<Entity>(ref);
     };
-    Reader r(file.body, file.strings, entityOf);
+    cook::Reader r(file.body, file.strings, entityOf);
 
-    Reader settings = r.record();
-    Reader entityList = r.record();
-    Reader camera = r.record();
+    cook::Reader settings = r.record();
+    cook::Reader entityList = r.record();
+    cook::Reader camera = r.record();
     if (r.failed()) {
         setError(error, "corrupt scene: " + r.error());
         return false;
@@ -295,17 +294,17 @@ bool CookedSceneLoader::loadScene(Scene* scene, std::span<const uint8_t> bytes, 
     struct Record {
         uint32_t ref;
         uint8_t flags;
-        Reader body;
+        cook::Reader body;
     };
     std::vector<Record> records;
     const uint64_t count = entityList.varint();
     Entity lastEntity = NULL_ENTITY;
     for (uint64_t i = 0; i < count && !entityList.failed(); i++) {
-        Reader record = entityList.record();
+        cook::Reader record = entityList.record();
         const uint32_t ref = record.u32();
         const uint8_t flags = record.u8();
         records.push_back({ref, flags, record});
-        if (flags & ENTITY_SYSTEM) {
+        if (flags & cook::ENTITY_SYSTEM) {
             systemEntities[ref] = scene->createSystemEntity();
         } else {
             scene->recreateEntity(static_cast<Entity>(ref));
@@ -323,7 +322,7 @@ bool CookedSceneLoader::loadScene(Scene* scene, std::span<const uint8_t> bytes, 
         const Entity entity = entityOf(record.ref);
         made.push_back(entity);
         const EntityState state = readState(record.body);
-        if (!(record.flags & ENTITY_SYSTEM)) applyState(scene, entity, state);
+        if (!(record.flags & cook::ENTITY_SYSTEM)) applyState(scene, entity, state);
         if (!readComponents(record.body, scene, entity, false, error)) return false;
     }
 
@@ -331,7 +330,7 @@ bool CookedSceneLoader::loadScene(Scene* scene, std::span<const uint8_t> bytes, 
     // a later minor's records follow this one)
     if (file.header.minor >= 6) {
         r.record();   // the resources
-        Reader hierarchy = r.record();
+        cook::Reader hierarchy = r.record();
         const uint64_t links = hierarchy.varint();
         for (uint64_t i = 0; i < links && !hierarchy.failed(); i++) {
             const Entity child = hierarchy.entity();
@@ -363,7 +362,7 @@ bool CookedSceneLoader::loadScene(Scene* scene, std::span<const uint8_t> bytes, 
     const Entity cameraEntity = camera.entity();
     if (cameraEntity != NULL_ENTITY) scene->setCamera(cameraEntity);
 
-    readSceneSettings(settings, *scene);
+    cook::readSceneSettings(settings, *scene);
     if (settings.failed()) {
         setError(error, "corrupt scene settings: " + settings.error());
         return false;
@@ -386,17 +385,17 @@ SceneResources CookedSceneLoader::sceneResources(const std::string& path) {
 
 SceneResources CookedSceneLoader::sceneResources(std::span<const uint8_t> bytes) {
     SceneResources resources;
-    CookedFile file;
+    cook::CookedFile file;
     std::string error;
-    if (!file.parse(bytes, SCENE_MAGIC, error)) {
+    if (!file.parse(bytes, cook::SCENE_MAGIC, error)) {
         Log::error("Scene resources: %s", error.c_str());
         return resources;
     }
-    Reader r(file.body, file.strings, [](uint32_t ref) { return static_cast<Entity>(ref); });
+    cook::Reader r(file.body, file.strings, [](uint32_t ref) { return static_cast<Entity>(ref); });
     r.record();   // settings
     r.record();   // entities
     r.record();   // camera
-    Reader list = r.record();
+    cook::Reader list = r.record();
     read(list, resources.textures);
     read(list, resources.sounds);
     read(list, resources.models);
@@ -424,9 +423,9 @@ bool CookedSceneLoader::instantiatePrefab(Scene* scene, Entity root, const std::
 
 bool CookedSceneLoader::instantiatePrefab(Scene* scene, Entity root, std::span<const uint8_t> bytes, std::vector<Entity>* members,
                                           std::string* error) {
-    CookedFile file;
+    cook::CookedFile file;
     std::string why;
-    if (!file.parse(bytes, PREFAB_MAGIC, why)) {
+    if (!file.parse(bytes, cook::PREFAB_MAGIC, why)) {
         setError(error, why);
         return false;
     }
@@ -437,12 +436,12 @@ bool CookedSceneLoader::instantiatePrefab(Scene* scene, Entity root, std::span<c
         if (ref >= 2 && ref - 2 < slots.size()) return slots[ref - 2];
         return NULL_ENTITY;
     };
-    Reader r(file.body, file.strings, entityOf);
-    Reader link = r.record();
-    Reader rootRecord = r.record();
-    Reader slotList = r.record();
-    Reader components = r.record();
-    Reader hierarchy = r.record();
+    cook::Reader r(file.body, file.strings, entityOf);
+    cook::Reader link = r.record();
+    cook::Reader rootRecord = r.record();
+    cook::Reader slotList = r.record();
+    cook::Reader components = r.record();
+    cook::Reader hierarchy = r.record();
     if (r.failed()) {
         setError(error, "corrupt prefab: " + r.error());
         return false;
@@ -477,7 +476,7 @@ bool CookedSceneLoader::instantiatePrefab(Scene* scene, Entity root, std::span<c
     const uint64_t slotCount = slotList.varint();
     for (uint64_t i = 0; i < slotCount && !slotList.failed(); i++) {
         const uint8_t flags = slotList.u8();
-        if (!(flags & ENTITY_PRESENT)) {
+        if (!(flags & cook::ENTITY_PRESENT)) {
             slots.push_back(NULL_ENTITY);
             continue;
         }
@@ -504,7 +503,7 @@ bool CookedSceneLoader::instantiatePrefab(Scene* scene, Entity root, std::span<c
     if (hasRoot && !readComponents(rootRecord, scene, root, true, error)) return false;
     const uint64_t withComponents = components.varint();
     for (uint64_t i = 0; i < withComponents && !components.failed(); i++) {
-        Reader entityRecord = components.record();
+        cook::Reader entityRecord = components.record();
         const Entity entity = entityRecord.entity();
         if (entity == NULL_ENTITY) continue;
         if (!readComponents(entityRecord, scene, entity, false, error)) return false;

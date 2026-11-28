@@ -18,6 +18,8 @@
 #include <utility>
 #include <vector>
 
+namespace InputSchemeTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -349,3 +351,5 @@ TEST_F(InputSchemeTest, ZeroAllocations){
     EXPECT_EQ(InputSchemeTracker::getChangeCount() - before, 40u);
     EXPECT_EQ(subscribed, 40);
 }
+
+}  // namespace InputSchemeTest_cpp

@@ -43,6 +43,8 @@
 #include <mutex>
 #include <thread>
 
+namespace ModelSubClipsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -1099,3 +1101,5 @@ TEST(ModelSubClips, MergedFlagOnASingleMeshModelStillSwitches){
     ASSERT_TRUE(scene.getSystem<MeshSystem>()->getLegacyRootTransform(root, sceneRoot)) << "a skinned lone mesh";
     EXPECT_EQ(sceneRoot, Matrix4()) << "the fixture's Hero node is identity";
 }
+
+}  // namespace ModelSubClipsTest_cpp

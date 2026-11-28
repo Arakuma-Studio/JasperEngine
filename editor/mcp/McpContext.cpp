@@ -11,7 +11,8 @@
 #include "App.h"
 
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::mcp;
+
+namespace jasperengine::editor::mcp {
 
 McpContext::McpContext(App& app, McpServer& server)
     : appRef(app)
@@ -55,3 +56,5 @@ PlayInput* McpContext::playInput() const { return appRef.getPlayInput(); }
 bool McpContext::isPlaying() const {
     return appRef.getProject()->isAnyScenePlaying();
 }
+
+}  // namespace jasperengine::editor::mcp

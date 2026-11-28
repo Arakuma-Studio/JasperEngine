@@ -17,6 +17,8 @@
 #include <cmath>
 #include <string>
 
+namespace TitleAnimTimelineOpsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace tanim = jasperengine::titleanim;
@@ -164,3 +166,5 @@ TEST(TitleAnimTimelineOpsTest, RecordKeysAtThePlayheadFromRest){
     const TitleRecordResult second = titleRecordRewrite(doc, b, 0.5, Json::array({Json{{"op", "set"}, {"layer", "id:00000001"}, {"values", {{"opacity", 0.25}}}}}));
     EXPECT_EQ(second.ops.size(), 1u);
 }
+
+}  // namespace TitleAnimTimelineOpsTest_cpp

@@ -14,6 +14,8 @@
 
 #include <gtest/gtest.h>
 
+namespace BookmarksTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -109,3 +111,5 @@ TEST_F(BookmarksProjectTest, EditsAreUndoSteps) {
     history().addCommand(new SetBookmarksCmd(project.get(), "Move Bookmark", {b, a}));
     EXPECT_EQ(history().appliedCount(), steps);
 }
+
+}  // namespace BookmarksTest_cpp

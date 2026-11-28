@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+namespace Physics2DCompoundTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::physics2dtest;
 
@@ -114,3 +116,5 @@ TEST(Physics2DCompound, AnimatedChildWarnsOnce) {
     }
     EXPECT_EQ(log.count("moved on"), 1u);
 }
+
+}  // namespace Physics2DCompoundTest_cpp

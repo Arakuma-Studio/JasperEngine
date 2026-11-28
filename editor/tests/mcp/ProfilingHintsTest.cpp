@@ -9,6 +9,8 @@
 
 #include "mcp/tools/ProfilingHints.h"
 
+namespace ProfilingHintsTest_cpp {
+
 using namespace jasperengine::editor::mcp;
 
 TEST(ProfilingHints, WaitingWhenThreadCpuIsUnder60Percent){
@@ -19,3 +21,5 @@ TEST(ProfilingHints, WaitingWhenThreadCpuIsUnder60Percent){
     // the web has no thread clock
     EXPECT_EQ(frameTimesHint(30.0, -1.0), "");
 }
+
+}  // namespace ProfilingHintsTest_cpp

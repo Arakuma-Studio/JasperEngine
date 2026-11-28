@@ -32,7 +32,11 @@
 #include <memory>
 #include <vector>
 
+namespace VehicleTest_cpp {
+
 using namespace jasperengine;
+
+}  // namespace VehicleTest_cpp
 
 namespace jasperengine {
     // VehicleSystem.h befriends it
@@ -40,6 +44,8 @@ namespace jasperengine {
         static size_t scratchBodies(const VehicleSystem& vehicles) { return vehicles.groupScratch.size(); }
     };
 }
+
+namespace VehicleTest_cpp {
 
 namespace {
 
@@ -504,3 +510,5 @@ TEST_F(VehicleTest, ReplayIsBitIdentical){
     // it went somewhere
     EXPECT_GT(std::fabs(first[first.size() - 5]), 1.0f);
 }
+
+}  // namespace VehicleTest_cpp

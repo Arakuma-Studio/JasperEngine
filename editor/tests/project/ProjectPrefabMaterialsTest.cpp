@@ -33,9 +33,13 @@
 #include <string>
 #include <vector>
 
+namespace ProjectPrefabMaterialsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
+
+}  // namespace ProjectPrefabMaterialsTest_cpp
 
 namespace jasperengine::editor {
 
@@ -57,6 +61,8 @@ namespace jasperengine::editor {
     };
 
 }
+
+namespace ProjectPrefabMaterialsTest_cpp {
 
 namespace prefab_materials_test {
 
@@ -262,3 +268,5 @@ TEST(ProjectPrefabMaterials, AnOlderPrefabKeepsItsEmbeddedCopies) {
     check(*project, "saved");
     jasperengine::editor::test::closeProject(*project);
 }
+
+}  // namespace ProjectPrefabMaterialsTest_cpp

@@ -32,7 +32,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::publish;
+
+namespace jasperengine::editor::publish {
+
 namespace fs = std::filesystem;
 using nlohmann::ordered_json;
 
@@ -213,7 +215,7 @@ namespace {
 
 // ---------------------------------------------------------------- publishing.json
 
-bool publish::isIdentifier(const std::string& value) {
+bool isIdentifier(const std::string& value) {
     static const std::regex identifier(R"(^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$)");
     return std::regex_match(value, identifier);
 }
@@ -331,7 +333,7 @@ std::vector<std::string> PublishingConfig::check() const {
     return problems;
 }
 
-PublishingConfig publish::defaultPublishingConfig(const std::map<std::string, std::string>& builtDirs) {
+PublishingConfig defaultPublishingConfig(const std::map<std::string, std::string>& builtDirs) {
     PublishingConfig config;
     for (const auto& [platformName, dir] : builtDirs) {
         BuildPlatform platform;
@@ -437,7 +439,7 @@ bool ReleaseInfo::load(const fs::path& releaseDir, ReleaseInfo& out, std::string
     return true;
 }
 
-std::string publish::treeGlibcFloor(const fs::path& root) {
+std::string treeGlibcFloor(const fs::path& root) {
     std::string floor;
     std::error_code ec;
     for (fs::recursive_directory_iterator it(root, fs::directory_options::none, ec), end; it != end; it.increment(ec)) {
@@ -615,7 +617,7 @@ namespace {
 
 }
 
-bool publish::prepareRelease(const PrepareRequest& request, const PublishTools& tools, PrepareResult& result, std::vector<std::string>& problems) {
+bool prepareRelease(const PrepareRequest& request, const PublishTools& tools, PrepareResult& result, std::vector<std::string>& problems) {
     if (!isIdentifier(request.release)) {
         problems.push_back("release name '" + request.release + "' must be letters, digits, '.', '_' or '-' (e.g. 1.0.0)");
         return false;
@@ -736,7 +738,7 @@ bool publish::prepareRelease(const PrepareRequest& request, const PublishTools& 
     return true;
 }
 
-bool publish::verifyRelease(const fs::path& releaseDir, std::vector<std::string>& problems, ReleaseInfo* infoOut) {
+bool verifyRelease(const fs::path& releaseDir, std::vector<std::string>& problems, ReleaseInfo* infoOut) {
     ReleaseInfo info;
     std::string error;
     if (!ReleaseInfo::load(releaseDir, info, error)) {
@@ -772,7 +774,7 @@ bool publish::verifyRelease(const fs::path& releaseDir, std::vector<std::string>
 
 // ---------------------------------------------------------------- Steam
 
-std::string publish::vdfString(const std::string& value, std::string& error) {
+std::string vdfString(const std::string& value, std::string& error) {
     for (char c : value) {
         if (static_cast<unsigned char>(c) < 32) {
             error = "SteamPipe values cannot hold control characters";
@@ -787,7 +789,7 @@ std::string publish::vdfString(const std::string& value, std::string& error) {
     return out + "\"";
 }
 
-bool publish::writeSteamScripts(const fs::path& releaseDir, bool preview, const std::string& branch, fs::path& appScript,
+bool writeSteamScripts(const fs::path& releaseDir, bool preview, const std::string& branch, fs::path& appScript,
                                 std::vector<fs::path>& depotScripts, std::string& error) {
     // vdfString reports through `error`: an earlier call's message must not read as this one's
     error.clear();
@@ -850,7 +852,7 @@ bool publish::writeSteamScripts(const fs::path& releaseDir, bool preview, const 
     return writeText(appScript, app, error);
 }
 
-bool publish::steamUpload(const fs::path& releaseDir, const std::string& user, const std::string& branch, const fs::path& steamcmd,
+bool steamUpload(const fs::path& releaseDir, const std::string& user, const std::string& branch, const fs::path& steamcmd,
                           const PublishTools& tools, std::string& error) {
     if (steamcmd.empty()) {
         error = "steamcmd was not found (Preferences > External Tools, STEAMCMD or PATH): install SteamCMD";
@@ -880,7 +882,7 @@ bool publish::steamUpload(const fs::path& releaseDir, const std::string& user, c
 
 // ---------------------------------------------------------------- Steam Deck
 
-bool publish::deckDeploy(const fs::path& releaseDir, const std::string& targetName, const DeckSettings& deck, const PublishTools& tools,
+bool deckDeploy(const fs::path& releaseDir, const std::string& targetName, const DeckSettings& deck, const PublishTools& tools,
                          std::string& output, std::string& error) {
     if (!checkDeck(deck, error)) return false;
     std::vector<std::string> problems;
@@ -977,7 +979,7 @@ bool publish::deckDeploy(const fs::path& releaseDir, const std::string& targetNa
     return true;
 }
 
-bool publish::deckRollback(const DeckSettings& deck, const PublishTools& tools, std::string& output, std::string& error) {
+bool deckRollback(const DeckSettings& deck, const PublishTools& tools, std::string& output, std::string& error) {
     if (!checkDeck(deck, error)) return false;
     const platform::ToolLocation ssh = platform::ExternalTools::ssh();
     if (!ssh.found()) {
@@ -996,7 +998,7 @@ bool publish::deckRollback(const DeckSettings& deck, const PublishTools& tools, 
     return true;
 }
 
-bool publish::deckSmoke(const DeckSettings& deck, const std::string& executable, const PublishTools& tools, int& exitCode,
+bool deckSmoke(const DeckSettings& deck, const std::string& executable, const PublishTools& tools, int& exitCode,
                         std::string& output, std::string& error) {
     if (!checkDeck(deck, error)) return false;
     if (!isRemotePath(executable)) {
@@ -1019,3 +1021,5 @@ bool publish::deckSmoke(const DeckSettings& deck, const std::string& executable,
     }
     return true;
 }
+
+}  // namespace jasperengine::editor::publish

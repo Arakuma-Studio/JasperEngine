@@ -24,7 +24,6 @@
 #include <string>
 
 using namespace jasperengine;
-using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -35,7 +34,7 @@ namespace {
     }
 
     // A hole map is R8 (T3 R52). Any other pixels draw no holes, as a map that fails to load does.
-    void fillHoles(SurfaceView& view, TerrainComponent& terrain) {
+    void fillHoles(terraincore::SurfaceView& view, TerrainComponent& terrain) {
         if (terrain.holeMap.empty()) return;
         TextureData* pixels = loadedPixels(terrain.holeMap);
         if (!pixels || pixels->getChannels() != 1 || TextureData::getBytesPerChannel(pixels->getColorFormat()) != 1) return;
@@ -59,23 +58,23 @@ namespace {
                                         "import it as a 16-bit PNG or RAW (import_terrain_raw)";
 
     // A map made or removed is a structural change: the terrain builds again (T1 R23)
-    void markMapRebuilt(TerrainComponent& terrain, MapId map) {
+    void markMapRebuilt(TerrainComponent& terrain, terraincore::MapId map) {
         switch (map.kind) {
-            case MapKind::Height:
+            case terraincore::MapKind::Height:
                 terrain.heightMapLoaded = false;
                 terrain.needUpdateTerrain = true;
                 terrain.needUpdateTexture = true;
                 break;
-            case MapKind::Blend:
-            case MapKind::Hole:
+            case terraincore::MapKind::Blend:
+            case terraincore::MapKind::Hole:
                 terrain.needUpdateTexture = true;
                 // T3 R26: a hole takes its foliage with it, and a filled one gives it back
-                if (map.kind == MapKind::Hole) {
+                if (map.kind == terraincore::MapKind::Hole) {
                     terrain.needUpdateFoliage = true;
                     terrain.holeMapRevision++;
                 }
                 break;
-            case MapKind::Density:
+            case terraincore::MapKind::Density:
                 break;
         }
         if (Texture* texture = terrainMapTexture(terrain, map)) {
@@ -85,13 +84,13 @@ namespace {
 
     // ---------------------------------------------------------------- the events
 
-    using EventSignal = Signal<const Scene*, Entity, MapId, TexelRect>;
+    using EventSignal = Signal<const Scene*, Entity, terraincore::MapId, terraincore::TexelRect>;
 
     struct PendingEvent {
         const Scene* scene;
         Entity terrain;
-        MapId map;
-        TexelRect rect;
+        terraincore::MapId map;
+        terraincore::TexelRect rect;
     };
 
     struct EventState {
@@ -115,7 +114,7 @@ namespace {
 
     // T4 R28, D12: a World's maps are its tiles, through its TiledMapStore; every store route (brush,
     // edit_terrain, Lua, bakes, generation) reaches them by the entity, unchanged
-    TerrainMapStore* worldStoreOf(const TerrainComponent& terrain) {
+    terraincore::TerrainMapStore* worldStoreOf(const TerrainComponent& terrain) {
 #if JASPERENGINE_TERRAIN_WORLD
         return terrain.world && terrain.world->started() ? &terrain.world->store() : nullptr;
 #else
@@ -126,8 +125,8 @@ namespace {
 
 }
 
-SurfaceView jasperengine::terrainSurfaceView(TerrainComponent& terrain) {
-    SurfaceView view;
+terraincore::SurfaceView jasperengine::terrainSurfaceView(TerrainComponent& terrain) {
+    terraincore::SurfaceView view;
     view.size = terrain.terrainSize;
     view.maxHeight = terrain.maxHeight;
     if (TextureData* pixels = loadedPixels(terrain.heightMap)) {
@@ -152,7 +151,7 @@ ResourceLoadState jasperengine::prepareTerrainHoleMap(TerrainComponent& terrain)
     return map.load().state;
 }
 
-SurfaceSample jasperengine::querySurface(TerrainComponent& terrain, float localX, float localZ) {
+terraincore::SurfaceSample jasperengine::querySurface(TerrainComponent& terrain, float localX, float localZ) {
 #if JASPERENGINE_TERRAIN_WORLD
     // T4 R24: the tile's own samples; a job or the editor may wait for a cold tile, the game's main
     // thread answers from the overview (exact false)
@@ -182,7 +181,7 @@ bool jasperengine::raycastTerrain(TerrainComponent& terrain, const Transform& tr
         terrain.heightMap.load();
     }
     prepareTerrainHoleMap(terrain);
-    const SurfaceView view = terrainSurfaceView(terrain);
+    const terraincore::SurfaceView view = terrainSurfaceView(terrain);
 
     const Matrix4 inverseModel = transform.modelMatrix.inverse();
     const Vector3 localOrigin = inverseModel * ray.getOrigin();
@@ -190,14 +189,14 @@ bool jasperengine::raycastTerrain(TerrainComponent& terrain, const Transform& tr
 
     Vector3 localPoint;
     float t = 0.0f;
-    if (!raycastSurface(view, localOrigin, localEnd - localOrigin, 1.0f, skipHoles, localPoint, t)) {
+    if (!terraincore::raycastSurface(view, localOrigin, localEnd - localOrigin, 1.0f, skipHoles, localPoint, t)) {
         return false;
     }
     worldPoint = transform.modelMatrix * localPoint;
     return true;
 }
 
-SurfaceSample TerrainComponentQuery::sample(float localX, float localZ) const {
+terraincore::SurfaceSample TerrainComponentQuery::sample(float localX, float localZ) const {
     return querySurface(*component, localX, localZ);
 }
 
@@ -218,7 +217,7 @@ bool TerrainComponentQuery::raycast(const Vector3& origin, const Vector3& direct
 }
 
 void jasperengine::snapshotTerrainSurface(TerrainComponent& terrain, TerrainSurfaceSnapshot& out) {
-    const SurfaceView live = terrainSurfaceView(terrain);
+    const terraincore::SurfaceView live = terrainSurfaceView(terrain);
     out.view = live;
     out.pixels.clear();
     out.holes.clear();
@@ -252,18 +251,18 @@ void jasperengine::applyLayerOrder(TerrainComponent& terrain, std::span<const in
 }
 
 Subscription TerrainEditEvents::subscribe(Handler handler) {
-    return ensureEventState().signal.subscribe([handler = std::move(handler)](const Scene*, Entity terrain, MapId map, TexelRect rect) {
+    return ensureEventState().signal.subscribe([handler = std::move(handler)](const Scene*, Entity terrain, terraincore::MapId map, terraincore::TexelRect rect) {
         handler(terrain, map, rect);
     });
 }
 
 Subscription TerrainEditEvents::subscribe(const Scene* scene, Handler handler) {
-    return ensureEventState().signal.subscribe([scene, handler = std::move(handler)](const Scene* from, Entity terrain, MapId map, TexelRect rect) {
+    return ensureEventState().signal.subscribe([scene, handler = std::move(handler)](const Scene* from, Entity terrain, terraincore::MapId map, terraincore::TexelRect rect) {
         if (from == scene) handler(terrain, map, rect);
     });
 }
 
-void TerrainEditEvents::publish(const Scene* scene, Entity terrain, MapId map, TexelRect rect) {
+void TerrainEditEvents::publish(const Scene* scene, Entity terrain, terraincore::MapId map, terraincore::TexelRect rect) {
     if (!eventState || rect.empty() || eventState->signal.empty()) return;
     for (PendingEvent& pending : eventState->pending) {
         if (pending.scene == scene && pending.terrain == terrain && pending.map == map) {
@@ -305,15 +304,15 @@ void TerrainEditEvents::forgetScene(const Scene* scene) {
     eventsPending = !pending.empty();
 }
 
-Texture* jasperengine::terrainMapTexture(TerrainComponent& terrain, MapId map) {
+Texture* jasperengine::terrainMapTexture(TerrainComponent& terrain, terraincore::MapId map) {
     switch (map.kind) {
-        case MapKind::Height:
+        case terraincore::MapKind::Height:
             return &terrain.heightMap;
-        case MapKind::Hole:
+        case terraincore::MapKind::Hole:
             return &terrain.holeMap;
-        case MapKind::Blend:
+        case terraincore::MapKind::Blend:
             return map.index >= 0 && map.index < static_cast<int>(terrain.blendMaps.size()) ? &terrain.blendMaps[map.index] : nullptr;
-        case MapKind::Density:
+        case terraincore::MapKind::Density:
             return map.index >= 0 && map.index < static_cast<int>(terrain.foliageLayers.size()) ? &terrain.foliageLayers[map.index].densityMap : nullptr;
     }
     return nullptr;
@@ -323,14 +322,14 @@ namespace {
 
     // The terrain-local rectangle a map's texels reach: a height texel is read bilinearly up to a
     // texel away, a hole texel only where it lies (T3 R19). A map gone (the last fill) reaches it all.
-    void markCollision(TerrainComponent& terrain, MapId map, TexelRect rect) {
+    void markCollision(TerrainComponent& terrain, terraincore::MapId map, terraincore::TexelRect rect) {
         const float half = terrain.terrainSize * 0.5f;
         float minX = -half, minZ = -half, maxX = half, maxZ = half;
         Texture* texture = terrainMapTexture(terrain, map);
         if (texture && !texture->empty() && texture->hasData() && texture->getData().getWidth() > 0 && texture->getData().getHeight() > 0) {
             const float width = static_cast<float>(texture->getData().getWidth());
             const float height = static_cast<float>(texture->getData().getHeight());
-            const int reach = map.kind == MapKind::Height ? 1 : 0;
+            const int reach = map.kind == terraincore::MapKind::Height ? 1 : 0;
             minX = static_cast<float>(rect.x - reach) / width * terrain.terrainSize - half;
             maxX = static_cast<float>(rect.right() + reach) / width * terrain.terrainSize - half;
             minZ = static_cast<float>(rect.y - reach) / height * terrain.terrainSize - half;
@@ -354,9 +353,9 @@ namespace {
 
 }
 
-void jasperengine::noteTerrainMapEdited(const Scene* scene, Entity entity, TerrainComponent& terrain, MapId map, TexelRect rect) {
+void jasperengine::noteTerrainMapEdited(const Scene* scene, Entity entity, TerrainComponent& terrain, terraincore::MapId map, terraincore::TexelRect rect) {
     switch (map.kind) {
-        case MapKind::Height: {
+        case terraincore::MapKind::Height: {
             if (!terrain.editState) terrain.editState = std::make_shared<TerrainEditState>();
             terrain.editState->refit = unite(terrain.editState->refit, rect);
             terrain.editState->surfaceMoved = true;
@@ -364,17 +363,17 @@ void jasperengine::noteTerrainMapEdited(const Scene* scene, Entity entity, Terra
             markCollision(terrain, map, rect);
             break;
         }
-        case MapKind::Hole:
+        case terraincore::MapKind::Hole:
             terrain.needUpdateTexture = true;
             // T3 R26: a hole takes its foliage with it, and a filled one gives it back
             terrain.needUpdateFoliage = true;
             terrain.holeMapRevision++;
             markCollision(terrain, map, rect);
             break;
-        case MapKind::Blend:
+        case terraincore::MapKind::Blend:
             terrain.needUpdateTexture = true;
             break;
-        case MapKind::Density:
+        case terraincore::MapKind::Density:
             terrain.needUpdateFoliage = true;
             break;
     }
@@ -401,7 +400,7 @@ void jasperengine::noteTerrainMapEdited(const Scene* scene, Entity entity, Terra
     TerrainEditEvents::publish(scene, entity, map, rect);
 }
 
-void jasperengine::convertTerrainHeightRect(const uint16_t* source, int width, TexelRect rect, TerrainUploadFormat format, uint8_t* shadow) {
+void jasperengine::convertTerrainHeightRect(const uint16_t* source, int width, terraincore::TexelRect rect, TerrainUploadFormat format, uint8_t* shadow) {
     for (int y = rect.y; y < rect.y + rect.h; y++) {
         for (int x = rect.x; x < rect.x + rect.w; x++) {
             const size_t i = static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x);
@@ -468,11 +467,11 @@ bool jasperengine::detachTerrainMapsForRuntime(TerrainComponent& terrain, Entity
 
     static std::atomic<uint32_t> nextId{0};
     const std::string prefix = "__terrain_runtime_" + std::to_string(nextId.fetch_add(1)) + "_" + std::to_string(entity) + "_";
-    std::vector<MapId> maps = {MapId{MapKind::Height, 0}, MapId{MapKind::Hole, 0}};
-    for (size_t i = 0; i < terrain.blendMaps.size(); i++) maps.push_back(MapId{MapKind::Blend, static_cast<int>(i)});
-    for (size_t i = 0; i < terrain.foliageLayers.size(); i++) maps.push_back(MapId{MapKind::Density, static_cast<int>(i)});
+    std::vector<terraincore::MapId> maps = {terraincore::MapId{terraincore::MapKind::Height, 0}, terraincore::MapId{terraincore::MapKind::Hole, 0}};
+    for (size_t i = 0; i < terrain.blendMaps.size(); i++) maps.push_back(terraincore::MapId{terraincore::MapKind::Blend, static_cast<int>(i)});
+    for (size_t i = 0; i < terrain.foliageLayers.size(); i++) maps.push_back(terraincore::MapId{terraincore::MapKind::Density, static_cast<int>(i)});
 
-    for (const MapId& map : maps) {
+    for (const terraincore::MapId& map : maps) {
         Texture* texture = terrainMapTexture(terrain, map);
         if (!texture || texture->empty() || texture->isFramebuffer()) continue;
         if (!texture->hasData()) {
@@ -487,7 +486,7 @@ bool jasperengine::detachTerrainMapsForRuntime(TerrainComponent& terrain, Entity
         std::memcpy(raw, source.getData(), size);
         TextureData copy(source.getWidth(), source.getHeight(), static_cast<unsigned int>(size), source.getColorFormat(), source.getChannels(), raw);
         copy.setDataOwned(false);
-        const char* kind = map.kind == MapKind::Height ? "height" : map.kind == MapKind::Hole ? "hole" : map.kind == MapKind::Blend ? "blend" : "density";
+        const char* kind = map.kind == terraincore::MapKind::Height ? "height" : map.kind == terraincore::MapKind::Hole ? "hole" : map.kind == terraincore::MapKind::Blend ? "blend" : "density";
         texture->setData(prefix + kind + std::to_string(map.index), copy);
         texture->setReleaseDataAfterLoad(false);
         if (texture->hasData() && texture->getData().getData() == raw) {
@@ -514,7 +513,7 @@ void jasperengine::endTerrainStroke(TerrainComponent& terrain) {
 TerrainComponentStore::TerrainComponentStore(Scene* scene, Entity entity, TerrainComponent& terrain)
     : scene(scene), entity(entity), terrainPtr(&terrain), bytes(terrain.terrainSize, terrain.maxHeight) {}
 
-bool TerrainComponentStore::sync(MapId map) const {
+bool TerrainComponentStore::sync(terraincore::MapId map) const {
     Texture* texture = terrainMapTexture(*terrainPtr, map);
     if (!texture || texture->empty() || texture->isFramebuffer()) return false;
     if (!texture->hasData()) {
@@ -530,7 +529,7 @@ bool TerrainComponentStore::sync(MapId map) const {
 }
 
 void TerrainComponentStore::afterWrite() {
-    std::vector<std::pair<MapId, TexelRect>> changed;
+    std::vector<std::pair<terraincore::MapId, terraincore::TexelRect>> changed;
     bytes.takeDirty(changed);
     for (const auto& [id, rect] : changed) {
         bool merged = false;
@@ -545,45 +544,45 @@ void TerrainComponentStore::afterWrite() {
     }
 }
 
-TerrainFrame TerrainComponentStore::frame() const {
+terraincore::TerrainFrame TerrainComponentStore::frame() const {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->frame();
-    return TerrainFrame{terrainPtr->maxHeight};
+    return terraincore::TerrainFrame{terrainPtr->maxHeight};
 }
 
-MapFormat TerrainComponentStore::format(MapId map) const {
+terraincore::MapFormat TerrainComponentStore::format(terraincore::MapId map) const {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->format(map);
-    return sync(map) ? bytes.format(map) : MapFormat{};
+    return sync(map) ? bytes.format(map) : terraincore::MapFormat{};
 }
 
-bool TerrainComponentStore::read(MapId map, TexelRect rect, std::span<float> out) const {
+bool TerrainComponentStore::read(terraincore::MapId map, terraincore::TexelRect rect, std::span<float> out) const {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->read(map, rect, out);
     return sync(map) && bytes.read(map, rect, out);
 }
 
-WriteResult TerrainComponentStore::write(MapId map, TexelRect rect, std::span<const float> in) {
+terraincore::WriteResult TerrainComponentStore::write(terraincore::MapId map, terraincore::TexelRect rect, std::span<const float> in) {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->write(map, rect, in);
-    if (!sync(map)) return WriteResult{false, "the terrain has no such map loaded", 0};
-    if (bytes.format(map).bitsPerChannel >= 32) return WriteResult{false, FLOAT_MAP_ERROR, 0};
-    const WriteResult result = bytes.write(map, rect, in);
+    if (!sync(map)) return terraincore::WriteResult{false, "the terrain has no such map loaded", 0};
+    if (bytes.format(map).bitsPerChannel >= 32) return terraincore::WriteResult{false, FLOAT_MAP_ERROR, 0};
+    const terraincore::WriteResult result = bytes.write(map, rect, in);
     afterWrite();
     return result;
 }
 
-bool TerrainComponentStore::readBytes(MapId map, TexelRect rect, std::span<uint8_t> out) const {
+bool TerrainComponentStore::readBytes(terraincore::MapId map, terraincore::TexelRect rect, std::span<uint8_t> out) const {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->readBytes(map, rect, out);
     return sync(map) && bytes.readBytes(map, rect, out);
 }
 
-WriteResult TerrainComponentStore::writeBytes(MapId map, TexelRect rect, std::span<const uint8_t> in) {
+terraincore::WriteResult TerrainComponentStore::writeBytes(terraincore::MapId map, terraincore::TexelRect rect, std::span<const uint8_t> in) {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->writeBytes(map, rect, in);
-    if (!sync(map)) return WriteResult{false, "the terrain has no such map loaded", 0};
-    if (bytes.format(map).bitsPerChannel >= 32) return WriteResult{false, FLOAT_MAP_ERROR, 0};
-    const WriteResult result = bytes.writeBytes(map, rect, in);
+    if (!sync(map)) return terraincore::WriteResult{false, "the terrain has no such map loaded", 0};
+    if (bytes.format(map).bitsPerChannel >= 32) return terraincore::WriteResult{false, FLOAT_MAP_ERROR, 0};
+    const terraincore::WriteResult result = bytes.writeBytes(map, rect, in);
     afterWrite();
     return result;
 }
 
-bool TerrainComponentStore::canWrite(MapId map, TexelRect rect, std::string* why) const {
+bool TerrainComponentStore::canWrite(terraincore::MapId map, terraincore::TexelRect rect, std::string* why) const {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->canWrite(map, rect, why);
     if (!sync(map)) {
         if (why) *why = "the terrain has no such map loaded";
@@ -596,45 +595,45 @@ bool TerrainComponentStore::canWrite(MapId map, TexelRect rect, std::string* why
     return bytes.canWrite(map, rect, why);
 }
 
-bool TerrainComponentStore::canCreateMap(MapId map, std::string* why) const {
+bool TerrainComponentStore::canCreateMap(terraincore::MapId map, std::string* why) const {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->canCreateMap(map, why);
-    if (map.kind == MapKind::Density && (map.index < 0 || map.index >= static_cast<int>(terrainPtr->foliageLayers.size()))) {
+    if (map.kind == terraincore::MapKind::Density && (map.index < 0 || map.index >= static_cast<int>(terrainPtr->foliageLayers.size()))) {
         if (why) *why = "foliage layer " + std::to_string(map.index) + " does not exist: the terrain has " +
                         std::to_string(terrainPtr->foliageLayers.size()) + " foliage layer(s).";
         return false;
     }
-    if (map.kind == MapKind::Blend && (map.index < 0 || map.index >= MAX_TERRAIN_BLENDMAPS)) {
+    if (map.kind == terraincore::MapKind::Blend && (map.index < 0 || map.index >= MAX_TERRAIN_BLENDMAPS)) {
         if (why) *why = "a terrain holds at most " + std::to_string(MAX_TERRAIN_BLENDMAPS) + " blend maps.";
         return false;
     }
     return true;
 }
 
-WriteResult TerrainComponentStore::createMap(MapId map, MapFormat newFormat, float fill) {
+terraincore::WriteResult TerrainComponentStore::createMap(terraincore::MapId map, terraincore::MapFormat newFormat, float fill) {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->createMap(map, newFormat, fill);
     std::string why;
-    if (!canCreateMap(map, &why)) return WriteResult{false, why, 0};
-    if (format(map).exists) return WriteResult{false, "map already exists", 0};
-    if (newFormat.bounds.empty() || newFormat.channels <= 0) return WriteResult{false, "empty map", 0};
+    if (!canCreateMap(map, &why)) return terraincore::WriteResult{false, why, 0};
+    if (format(map).exists) return terraincore::WriteResult{false, "map already exists", 0};
+    if (newFormat.bounds.empty() || newFormat.channels <= 0) return terraincore::WriteResult{false, "empty map", 0};
 
-    if (map.kind == MapKind::Blend && map.index >= static_cast<int>(terrainPtr->blendMaps.size())) {
+    if (map.kind == terraincore::MapKind::Blend && map.index >= static_cast<int>(terrainPtr->blendMaps.size())) {
         terrainPtr->blendMaps.resize(map.index + 1);
     }
     Texture* texture = terrainMapTexture(*terrainPtr, map);
-    if (!texture) return WriteResult{false, "no such map", 0};
+    if (!texture) return terraincore::WriteResult{false, "no such map", 0};
 
     // The pixels this store fills; an editor store seeds a file instead (EditorTerrainStore)
     const int bytesPerChannel = newFormat.bitsPerChannel >= 16 ? 2 : 1;
     const size_t size = static_cast<size_t>(newFormat.bounds.area()) * newFormat.channels * bytesPerChannel;
     unsigned char* raw = static_cast<unsigned char*>(std::malloc(size));
-    if (!raw) return WriteResult{false, "out of memory", 0};
-    const uint32_t quantized = quantizeChannel(fill, newFormat.bitsPerChannel);
+    if (!raw) return terraincore::WriteResult{false, "out of memory", 0};
+    const uint32_t quantized = terraincore::quantizeChannel(fill, newFormat.bitsPerChannel);
     const uint32_t opaque = newFormat.bitsPerChannel >= 16 ? 65535u : 255u;
     const size_t texels = static_cast<size_t>(newFormat.bounds.area());
     for (size_t i = 0; i < texels; i++) {
         uint8_t* stored = raw + i * newFormat.channels * bytesPerChannel;
         for (int c = 0; c < newFormat.channels; c++) {
-            encodeChannel(stored + c * bytesPerChannel, c == 3 ? opaque : quantized, newFormat.bitsPerChannel);
+            terraincore::encodeChannel(stored + c * bytesPerChannel, c == 3 ? opaque : quantized, newFormat.bitsPerChannel);
         }
     }
 
@@ -649,31 +648,31 @@ WriteResult TerrainComponentStore::createMap(MapId map, MapFormat newFormat, flo
         texture->getData().setDataOwned(true);
     } else {
         std::free(raw);
-        return WriteResult{false, "the new map could not be stored", 0};
+        return terraincore::WriteResult{false, "the new map could not be stored", 0};
     }
 
     markMapRebuilt(*terrainPtr, map);
     TerrainEditEvents::publish(scene, entity, map, format(map).bounds);
-    return WriteResult{true, "", 0};
+    return terraincore::WriteResult{true, "", 0};
 }
 
-bool TerrainComponentStore::canRemoveMap(MapId map) const {
+bool TerrainComponentStore::canRemoveMap(terraincore::MapId map) const {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->canRemoveMap(map);
     // T3 R29: while a volume holds it, a last fill keeps the map, all solid
-    return map.kind == MapKind::Hole && !terrainPtr->holeMap.empty() && terrainPtr->holeMapHolds == 0;
+    return map.kind == terraincore::MapKind::Hole && !terrainPtr->holeMap.empty() && terrainPtr->holeMapHolds == 0;
 }
 
-WriteResult TerrainComponentStore::removeMap(MapId map) {
+terraincore::WriteResult TerrainComponentStore::removeMap(terraincore::MapId map) {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->removeMap(map);
-    if (!canRemoveMap(map)) return WriteResult{false, "this map stays with the terrain", 0};
-    const MapFormat before = format(map);
+    if (!canRemoveMap(map)) return terraincore::WriteResult{false, "this map stays with the terrain", 0};
+    const terraincore::MapFormat before = format(map);
     terrainPtr->holeMap = Texture();
     // the colliders take the whole terrain back, as the map is gone
     noteTerrainMapEdited(scene, entity, *terrainPtr, map, before.bounds);
-    return WriteResult{true, "", 0};
+    return terraincore::WriteResult{true, "", 0};
 }
 
-void TerrainComponentStore::takeDirty(std::vector<std::pair<MapId, TexelRect>>& out) {
+void TerrainComponentStore::takeDirty(std::vector<std::pair<terraincore::MapId, terraincore::TexelRect>>& out) {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) {
         world->takeDirty(out);
         return;
@@ -682,31 +681,31 @@ void TerrainComponentStore::takeDirty(std::vector<std::pair<MapId, TexelRect>>& 
     dirty.clear();
 }
 
-Vector2 TerrainComponentStore::worldOfTexel(MapId map, int x, int y) const {
+Vector2 TerrainComponentStore::worldOfTexel(terraincore::MapId map, int x, int y) const {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->worldOfTexel(map, x, y);
     sync(map);
     bytes.setFrame(terrainPtr->terrainSize, terrainPtr->maxHeight);
     return bytes.worldOfTexel(map, x, y);
 }
 
-Vector2 TerrainComponentStore::texelOfWorld(MapId map, float localX, float localZ) const {
+Vector2 TerrainComponentStore::texelOfWorld(terraincore::MapId map, float localX, float localZ) const {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->texelOfWorld(map, localX, localZ);
     sync(map);
     bytes.setFrame(terrainPtr->terrainSize, terrainPtr->maxHeight);
     return bytes.texelOfWorld(map, localX, localZ);
 }
 
-TexelRect TerrainComponentStore::preferredBlock(MapId map) const {
+terraincore::TexelRect TerrainComponentStore::preferredBlock(terraincore::MapId map) const {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->preferredBlock(map);
-    return sync(map) ? bytes.preferredBlock(map) : TexelRect{};
+    return sync(map) ? bytes.preferredBlock(map) : terraincore::TexelRect{};
 }
 
-std::unique_ptr<TerrainLargeEdit> TerrainComponentStore::beginLarge(MapId map, TexelRect rect) {
+std::unique_ptr<terraincore::TerrainLargeEdit> TerrainComponentStore::beginLarge(terraincore::MapId map, terraincore::TexelRect rect) {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->beginLarge(map, rect);
     return nullptr;
 }
 
-std::unique_ptr<TerrainStoreUndoHook> TerrainComponentStore::takeUndoHook() {
+std::unique_ptr<terraincore::TerrainStoreUndoHook> TerrainComponentStore::takeUndoHook() {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->takeUndoHook();
     return nullptr;
 }

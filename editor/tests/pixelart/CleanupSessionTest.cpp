@@ -23,6 +23,8 @@
 #include <thread>
 #include <atomic>
 
+namespace CleanupSessionTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::cleanup;
 using jasperengine::pixelart::Rgba8;
@@ -684,3 +686,5 @@ TEST_F(CleanupSessionFiles, OutputPathsCarryTheirRolesExtension) {
     EXPECT_FALSE(encodeOutputs(prepared, result, files, problem));
     EXPECT_EQ(problem.kind, "invalid_value");
 }
+
+}  // namespace CleanupSessionTest_cpp

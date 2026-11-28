@@ -16,12 +16,13 @@
 #include <string>
 #include <vector>
 
+namespace ios_template_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
 
-namespace ios_template_test {
 
     const fs::path repo = JASPER_TEST_REPO_DIR;
     const fs::path templateDir = repo / "engine" / "platform" / "apple" / "ios" / "player-template";
@@ -63,6 +64,8 @@ namespace ios_template_test {
     }
 
 }
+
+namespace ios_template_test {
 
 using namespace ios_template_test;
 
@@ -108,3 +111,5 @@ TEST(IosTemplate, AllFourAndFixedOrientations) {
     EXPECT_EQ(arrayOf(plist, "UISupportedInterfaceOrientations~ipad"), std::vector<std::string>{"UIInterfaceOrientationPortrait"}) << plist;
     EXPECT_EQ(boolOf(plist, "UIRequiresFullScreen"), "<true/>") << plist;
 }
+
+}  // namespace ios_template_test

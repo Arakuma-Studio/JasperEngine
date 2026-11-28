@@ -10,6 +10,8 @@
 
 #include "titleart/render/TitlePrograms.h"
 
+namespace TitleArtBlendGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -211,3 +213,5 @@ TEST(BlendModesGpu, LightAndMax) {
         }
     }
 }
+
+}  // namespace TitleArtBlendGpuTest_cpp

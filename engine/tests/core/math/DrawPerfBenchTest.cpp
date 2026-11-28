@@ -18,6 +18,8 @@
 #include <cstdio>
 #include <vector>
 
+namespace DrawPerfBenchTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -115,3 +117,5 @@ TEST(DrawPerfBench, MirrorSign){
     });
     report("mirror sign (determinant)", general, affine, 4.0);
 }
+
+}  // namespace DrawPerfBenchTest_cpp

@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+namespace VoxelFileTest_cpp {
+
 using namespace voxeltest;
 
 namespace {
@@ -325,3 +327,5 @@ TEST(VoxelFile, LoadsV1Fixture) {
     EXPECT_GT(store.sdfAt(0, 4, 4, 4), 0);
     EXPECT_EQ(contentHash(store), 0x0a82fe9ed6fcdcbeull) << std::hex << contentHash(store);
 }
+
+}  // namespace VoxelFileTest_cpp

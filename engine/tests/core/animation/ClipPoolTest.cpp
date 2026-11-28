@@ -27,6 +27,8 @@
 #include <thread>
 #include <vector>
 
+namespace ClipPoolTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -632,3 +634,5 @@ TEST_F(ClipPool, InvalidateModelDuringASubClipBuildIsNotCached){
     EXPECT_FLOAT_EQ(endX(AnimationClipPool::get(hero + "#1")), 10.0f);
     setAnimationClipPoolTestHooks(AnimationClipPoolTestHooks());
 }
+
+}  // namespace ClipPoolTest_cpp

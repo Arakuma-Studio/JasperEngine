@@ -19,6 +19,8 @@
 #include <set>
 #include <string>
 
+namespace ProjectSaveAsTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -135,3 +137,5 @@ TEST(ProjectTempDir, SkipsBusyFolders) {
     EXPECT_EQ(chosen, root / "MyProject 3");
     EXPECT_EQ(Project::chooseTempProjectDir(root, "MyProject", [](const fs::path&) { return false; }), root / "MyProject");
 }
+
+}  // namespace ProjectSaveAsTest_cpp

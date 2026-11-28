@@ -58,6 +58,8 @@ namespace hexglsl {
 
 }
 
+namespace HexTilingTest_cpp {
+
 using namespace hexglsl;
 
 namespace {
@@ -191,3 +193,5 @@ TEST(HexTiling, WeightsFollowContrast){
     EXPECT_NEAR(dark.y, 0.0f, 1e-6f);
     EXPECT_NEAR(dark.x + dark.y + dark.z, 1.0f, 1e-6f);
 }
+
+}  // namespace HexTilingTest_cpp

@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace core_asset_AssetIdentityTest_cpp {
+
 using namespace jasperengine;
 
 // The derivation is a persistence contract: these never change (AC7). The same vectors run
@@ -214,3 +216,5 @@ TEST(AssetMap, MalformedMapIsRejected) {
     EXPECT_FALSE(AssetMap::findPath(Guid::parse("4b1e9c0d2a7f4e31b6c58d0f9e2a7c13"), path));
     AssetMap::reset();
 }
+
+}  // namespace core_asset_AssetIdentityTest_cpp

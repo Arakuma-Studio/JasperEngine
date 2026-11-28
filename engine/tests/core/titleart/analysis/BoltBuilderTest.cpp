@@ -23,6 +23,8 @@
 #include <set>
 #include <utility>
 
+namespace BoltBuilderTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::analysis;
@@ -205,3 +207,5 @@ TEST(BoltBuilder, TwelveBoltsLayout) {
         EXPECT_NEAR(s2.ay / two.scale, s.ay, 1e-9);
     }
 }
+
+}  // namespace BoltBuilderTest_cpp

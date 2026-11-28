@@ -12,6 +12,8 @@
 
 #include <set>
 
+namespace SpriteSlicedGeometryTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -120,3 +122,5 @@ TEST(SpriteSlicedGeometry, IndicesCoverTheNineQuads) {
     plain.border = Vector4(0, 0, 0, 0);
     EXPECT_FALSE(spriteFrameHasBorder(plain));
 }
+
+}  // namespace SpriteSlicedGeometryTest_cpp

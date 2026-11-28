@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+namespace AnimatorRootMotionTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::anim;
 using namespace animatortest;
@@ -208,3 +210,5 @@ TEST(RootMotionBlock, BasedUponRoundTrips){
     ASSERT_EQ(warnings.size(), 1u);
     EXPECT_NE(warnings[0].message.find("body_orientation"), std::string::npos) << "the warning names the valid values";
 }
+
+}  // namespace AnimatorRootMotionTest_cpp

@@ -113,7 +113,6 @@
 #include <cstring>
 
 using namespace jasperengine;
-using namespace jasperengine::rendershared;
 
 namespace {
 
@@ -9605,7 +9604,7 @@ void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const
         candidate.worldBounds = mesh.worldAABB;
         // what drawMesh tests on its own (isBatchVisible: instances, terrains, tilemaps and the
         // editor's per-pass overrides) is kept here; a mesh's bounds are tested once here
-        bool own = cullsBatch(mesh, entry.instmesh) && !entry.instmesh && !entry.terrain && !entry.tilemap;
+        bool own = rendershared::cullsBatch(mesh, entry.instmesh) && !entry.instmesh && !entry.terrain && !entry.tilemap;
 #ifdef JASPERENGINE_EDITOR
         own = own && !(passObjects && isObjectOverridden(*entry.transform));
 #endif
@@ -10452,7 +10451,7 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
         InstanceOrder order = (mesh->isTransparent() || particleOrder || !sortsByDistance(mainCamera)) ? InstanceOrder::KEEP : InstanceOrder::NEAREST;
         const Vector3& eye = mainCameraTransform.worldPosition;
         const InstanceRenderData* instances = instmesh.renderInstances.data();
-        const InstanceVatRenderData* vat = instanceVatData(instmesh);
+        const InstanceVatRenderData* vat = rendershared::instanceVatData(instmesh);
         const InstanceBounds* bounds = instmesh.renderBounds.data();
         const unsigned int count = (instmesh.renderBounds.size() < instmesh.numVisible) ? 0 : instmesh.numVisible;
         buildInstanceView(rv().instanceViews[0], instmesh.views[0], instances, vat, bounds, count, instmesh, *mesh, *transform,
@@ -17629,12 +17628,12 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
     const Vector3 localCenter = hasBounds ? vertexBounds.getCenter() : Vector3::ZERO;
     const float localRadius = hasBounds ? vertexBounds.getHalfSize().length() : 0.0f;
 
-    const float cullEnd = instanceFadeCullEnd(instmesh, mesh, *scene);
-    const float cullNear = instanceFadeCullNear(instmesh, mesh, *scene);
+    const float cullEnd = rendershared::instanceFadeCullEnd(instmesh, mesh, *scene);
+    const float cullNear = rendershared::instanceFadeCullNear(instmesh, mesh, *scene);
     // the lists are cut past margins where the fade has shrunk instances to nothing, so the eye
     // can move that far before they are cut again (RenderSystem::update)
-    const float slackFar = instanceFadeSlackFar(instmesh, cullEnd);
-    const float slackNear = instanceFadeSlackNear(cullNear);
+    const float slackFar = rendershared::instanceFadeSlackFar(instmesh, cullEnd);
+    const float slackNear = rendershared::instanceFadeSlackNear(cullNear);
     instmesh.lastFadeCullEnd = cullEnd;
     instmesh.lastFadeCullNear = cullNear;
     instmesh.lastFadeCullEye = instmesh.fadeEyeLocal;
@@ -18139,7 +18138,7 @@ Vector3 RenderSystem::instanceFadeEye(Entity entity, const InstancedMeshComponen
 }
 
 bool RenderSystem::isBatchVisible(Entity entity, const MeshComponent& mesh, const Transform& transform, const InstancedMeshComponent* instmesh, int instanceView, const float cameraFar, const Plane frustumPlanes[6]){
-    if (!cullsBatch(mesh, instmesh))
+    if (!rendershared::cullsBatch(mesh, instmesh))
         return true;
 #ifdef JASPERENGINE_EDITOR
     if (passObjects){
@@ -18388,7 +18387,7 @@ void RenderSystem::updateSceneColorRedirect(CameraComponent& mainCamera){
         if (transform->needUpdate || mesh->needUpdateAABB){
             // moved (a billboard turns every frame): its bounds are made again later in the
             // update, from the model matrix updateTransform made already
-            if (!cullsBatch(*mesh, instmesh)){
+            if (!rendershared::cullsBatch(*mesh, instmesh)){
                 seen = true;
             }else{
                 // (a Vertex Animator's bounds, as the update makes worldAABB)
@@ -18692,8 +18691,8 @@ void RenderSystem::updateInstancedMeshView(Entity entity, MeshComponent& mesh, I
     // instances that face or scale with the camera are rebuilt when it moves
     const bool cameraBound = instmesh.instancedBillboard || instmesh.particle.cameraDependent();
 
-    const float cullEnd = instanceFadeCullEnd(instmesh, mesh, *scene);
-    const float cullNear = instanceFadeCullNear(instmesh, mesh, *scene);
+    const float cullEnd = rendershared::instanceFadeCullEnd(instmesh, mesh, *scene);
+    const float cullNear = rendershared::instanceFadeCullNear(instmesh, mesh, *scene);
     // cut again once the eye moves past the margin the lists were cut with
     const float eyeDx = instmesh.fadeEyeLocal.x - instmesh.lastFadeCullEye.x;
     const float eyeDz = instmesh.fadeEyeLocal.z - instmesh.lastFadeCullEye.z;
@@ -22814,10 +22813,10 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
     const Vector3 localCenter = hasBounds ? vertexBounds.getCenter() : Vector3::ZERO;
     const float localRadius = hasBounds ? vertexBounds.getHalfSize().length() : 0.0f;
 
-    const float cullEnd = instanceFadeCullEnd(instmesh, mesh, *scene);
+    const float cullEnd = rendershared::instanceFadeCullEnd(instmesh, mesh, *scene);
     const float cullRadius = cullEnd + std::max(0.0001f, cullEnd * 0.00001f);
     const float cullRadiusSquared = cullRadius * cullRadius;
-    const float cullNear = instanceFadeCullNear(instmesh, mesh, *scene);
+    const float cullNear = rendershared::instanceFadeCullNear(instmesh, mesh, *scene);
     const float cullNearSquared = cullNear * cullNear;
 
     Quaternion billboardRotation;
@@ -22969,8 +22968,8 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
         const InstanceVatRenderData* vat;
         const InstanceBounds* bounds;
         unsigned int count;
-        source.own = instmesh.instancedBillboard || instmesh.particle.cameraDependent() || instanceFadeCullEnd(instmesh, *mesh, *scene) >= 0.0f ||
-                     instanceFadeCullNear(instmesh, *mesh, *scene) > 0.0f;
+        source.own = instmesh.instancedBillboard || instmesh.particle.cameraDependent() || rendershared::instanceFadeCullEnd(instmesh, *mesh, *scene) >= 0.0f ||
+                     rendershared::instanceFadeCullNear(instmesh, *mesh, *scene) > 0.0f;
         if (source.own){
             buildInstanceList(instmesh, *mesh, *transform, camera, source.fadeEyeLocal, source);
             instances = source.instances.data();
@@ -22982,7 +22981,7 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
             source.bounds.clear();
             source.vat.clear();
             instances = instmesh.renderInstances.data();
-            vat = instanceVatData(instmesh);
+            vat = rendershared::instanceVatData(instmesh);
             bounds = instmesh.renderBounds.data();
             count = (instmesh.renderBounds.size() < instmesh.numVisible) ? 0 : instmesh.numVisible;
         }

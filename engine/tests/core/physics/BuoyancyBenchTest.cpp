@@ -27,6 +27,8 @@
 #include <cstdio>
 #include <memory>
 
+namespace BuoyancyBenchTest_cpp {
+
 using namespace jasperengine;
 
 TEST(BuoyancyBench, HundredBodiesFourColumns){
@@ -113,3 +115,5 @@ TEST(BuoyancyBench, HundredBodiesFourColumns){
     Engine::latchShaderTime();
     Engine::setUpdateTime(updateTime);
 }
+
+}  // namespace BuoyancyBenchTest_cpp

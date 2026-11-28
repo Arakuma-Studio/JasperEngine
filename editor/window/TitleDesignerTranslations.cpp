@@ -31,7 +31,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::titledesigner;
 namespace ta = jasperengine::titleart;
 namespace fs = std::filesystem;
 
@@ -71,7 +70,7 @@ namespace {
         }
     }
 
-    bool commit(TitleDesignerState& state, const ta::Json& ops, const std::string& name) {
+    bool commit(titledesigner::TitleDesignerState& state, const ta::Json& ops, const std::string& name) {
         std::string error;
         if (!state.commit(ops, name, &error)) {
             panel().message = error;
@@ -81,7 +80,7 @@ namespace {
         return true;
     }
 
-    void exportStrings(TitleDesignerState& state, bool xliff) {
+    void exportStrings(titledesigner::TitleDesignerState& state, bool xliff) {
         Project* project = state.project();
         if (!project || !state.document()) return;
         const fs::path document = state.document()->absolutePath();
@@ -111,7 +110,7 @@ namespace {
         panel().message = "Exported " + std::to_string(count) + " XLIFF file(s)";
     }
 
-    void importStrings(TitleDesignerState& state) {
+    void importStrings(titledesigner::TitleDesignerState& state) {
         const std::string file = FileDialogs::openFileDialogFiltered("", "Strings", "csv,xlf,xliff");
         if (file.empty()) return;
         std::string error;
@@ -124,7 +123,7 @@ namespace {
                           std::to_string(report.value("notes", ta::Json::array()).size()) + " note(s)";
     }
 
-    void drawPanel(TitleDesignerState& state) {
+    void drawPanel(titledesigner::TitleDesignerState& state) {
         if (!state.isOpen()) return;
         const ta::TitleArtDoc& doc = state.committed();
         PanelState& p = panel();
@@ -201,7 +200,7 @@ namespace {
             ImGui::TableNextColumn();
             if (ImGui::Selectable(row.key.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick | ImGuiSelectableFlags_SpanAllColumns) &&
                 ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-                state.selectOne(NodeRef{NodeKind::Layer, row.id, "", ""});
+                state.selectOne(titledesigner::NodeRef{titledesigner::NodeKind::Layer, row.id, "", ""});
             }
             ImGui::TableNextColumn();
             ImGui::TextUnformatted(row.name.c_str());
@@ -240,7 +239,7 @@ namespace {
                 }
                 ImGui::EndDisabled();
                 if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-                    state.selectOne(NodeRef{NodeKind::Layer, row.id, "", ""});
+                    state.selectOne(titledesigner::NodeRef{titledesigner::NodeKind::Layer, row.id, "", ""});
                     state.setLanguage(code);
                 }
                 if (ImGui::BeginPopupContextItem("##cellmenu")) {
@@ -272,11 +271,11 @@ namespace {
 }
 
 void editor::registerTitleDesignerTranslations() {
-    PanelDef def;
+    titledesigner::PanelDef def;
     def.id = "s87.translations";
     def.title = "Translations";
-    def.region = PanelDef::Region::Bottom;
+    def.region = titledesigner::PanelDef::Region::Bottom;
     def.draw = drawPanel;
-    def.visibleByDefault = [](const TitleDesignerState& state) { return state.isOpen() && ta::titleIsMultilingual(state.committed().root); };
-    addPanel(std::move(def));
+    def.visibleByDefault = [](const titledesigner::TitleDesignerState& state) { return state.isOpen() && ta::titleIsMultilingual(state.committed().root); };
+    titledesigner::addPanel(std::move(def));
 }

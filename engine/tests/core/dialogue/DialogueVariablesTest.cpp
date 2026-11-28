@@ -15,6 +15,8 @@
 
 #include <algorithm>
 
+namespace DialogueVariablesTest_cpp {
+
 using namespace jasperengine::dialogue;
 using dialoguetest::GraphText;
 
@@ -188,3 +190,5 @@ TEST_F(DialogueVariablesTest, OnChangedFires) {
     Variables::set("unrelated", Value(1.0));
     EXPECT_EQ(heard, (std::vector<std::string>{"gold"}));
 }
+
+}  // namespace DialogueVariablesTest_cpp

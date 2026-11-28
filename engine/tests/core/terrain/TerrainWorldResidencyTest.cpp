@@ -28,6 +28,8 @@
 #include <cmath>
 #include <random>
 
+namespace TerrainWorldResidencyTest_cpp {
+
 using namespace terrainworldtest;
 using jasperengine::CameraComponent;
 using jasperengine::CullingSystem;
@@ -233,3 +235,5 @@ TEST(TerrainWorldResidency, IsAreaLoadedNoAlloc){
     EXPECT_TRUE(runtime->isAreaLoaded(32.0f, 32.0f, 1.0f));
 }
 #endif
+
+}  // namespace TerrainWorldResidencyTest_cpp

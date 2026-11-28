@@ -22,6 +22,8 @@
 #include <string>
 #include <vector>
 
+namespace TitleArtSchedulerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -508,3 +510,5 @@ TEST_F(TitleArtSchedulerTest, LiveBudgetsByPlatformGroup) {
     EXPECT_DOUBLE_EQ(titleLiveBudgetMs(DevicePlatformGroup::Mobile), 0.5);
     EXPECT_DOUBLE_EQ(titleLiveBudgetMs(DevicePlatformGroup::Web), 0.5);
 }
+
+}  // namespace TitleArtSchedulerTest_cpp

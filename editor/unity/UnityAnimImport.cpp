@@ -19,7 +19,9 @@
 #include <sstream>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::unity;
+
+namespace jasperengine::editor::unity {
+
 using Json = nlohmann::json;
 
 namespace {
@@ -490,7 +492,7 @@ namespace {
 
 }
 
-AnimImportResult jasperengine::editor::unity::importAnimText(const std::string& text, const AnimImportOptions& options) {
+AnimImportResult importAnimText(const std::string& text, const AnimImportOptions& options) {
     AnimImportResult result;
     YamlFile file;
     std::string error;
@@ -854,7 +856,7 @@ AnimImportResult jasperengine::editor::unity::importAnimText(const std::string& 
     return result;
 }
 
-AnimImportResult jasperengine::editor::unity::importAnimFile(const std::filesystem::path& file, const AnimImportOptions& options) {
+AnimImportResult importAnimFile(const std::filesystem::path& file, const AnimImportOptions& options) {
     std::ifstream in(file, std::ios::binary);
     if (!in) {
         AnimImportResult result;
@@ -867,3 +869,5 @@ AnimImportResult jasperengine::editor::unity::importAnimFile(const std::filesyst
     if (withSource.source.empty()) withSource.source = file.filename().string();
     return importAnimText(buffer.str(), withSource);
 }
+
+}  // namespace jasperengine::editor::unity

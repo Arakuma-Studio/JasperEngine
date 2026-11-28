@@ -18,6 +18,8 @@
 #include <filesystem>
 #include <fstream>
 
+namespace TitleStringsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using TitleStringsJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
@@ -195,3 +197,5 @@ TEST_F(TitleStringsTest, MalformedFilesFailWithAMessage) {
     EXPECT_FALSE(parseTitleStringsXliff("<notxliff/>", out, error));
     EXPECT_FALSE(parseTitleStringsXliff("<xliff", out, error));
 }
+
+}  // namespace TitleStringsTest_cpp

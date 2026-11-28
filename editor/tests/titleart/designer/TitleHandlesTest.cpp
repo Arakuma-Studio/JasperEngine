@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+namespace TitleHandlesTest_cpp {
+
 using namespace jasperengine::editor::titledesigner;
 namespace ta = jasperengine::titleart;
 
@@ -463,3 +465,5 @@ TEST(TitleHandlesTest, LightSphereMapping) {
     EXPECT_DOUBLE_EQ(std::fmod(angle, 15.0), 0.0);
     EXPECT_DOUBLE_EQ(std::fmod(altitude, 5.0), 0.0);
 }
+
+}  // namespace TitleHandlesTest_cpp

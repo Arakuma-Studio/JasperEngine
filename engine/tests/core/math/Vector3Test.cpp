@@ -8,6 +8,8 @@
 #include <cmath>
 #include <limits>
 
+namespace Vector3Test_cpp {
+
 using namespace jasperengine;
 
 TEST(Vector3, ConstantsAreTheUnitAxes){
@@ -191,3 +193,5 @@ TEST(Vector3, IsValidRejectsNanAndInfinity){
 TEST(Vector3, ToStringListsTheComponents){
     EXPECT_EQ(Vector3(1, 2, 3).toString(), "Vector3(1.000000, 2.000000, 3.000000)");
 }
+
+}  // namespace Vector3Test_cpp

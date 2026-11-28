@@ -8,7 +8,8 @@
 #include <cstdio>
 
 using namespace jasperengine;
-using namespace jasperengine::gametest;
+
+namespace jasperengine::gametest {
 
 namespace {
 
@@ -127,12 +128,12 @@ namespace {
 
 }
 
-bool jasperengine::gametest::isSnapshotName(const std::string& name) {
+bool isSnapshotName(const std::string& name) {
     if (name.empty() || name.size() > 64) return false;
     return std::all_of(name.begin(), name.end(), [](unsigned char c) { return std::isalnum(c) || c == '_' || c == '-'; });
 }
 
-bool jasperengine::gametest::applyOptions(CaseSpec& spec, const Settings& settings, const Json& config, const Json& options,
+bool applyOptions(CaseSpec& spec, const Settings& settings, const Json& config, const Json& options,
                                       std::string& error) {
     spec.fixedFps = settings.fixedFps;
     spec.width = settings.width;
@@ -148,3 +149,5 @@ bool jasperengine::gametest::applyOptions(CaseSpec& spec, const Settings& settin
     else if (!optionsOk) error = optionError;
     return configOk && optionsOk;
 }
+
+}  // namespace jasperengine::gametest

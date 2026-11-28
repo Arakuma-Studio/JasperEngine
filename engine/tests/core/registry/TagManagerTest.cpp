@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+namespace TagManagerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -85,3 +87,5 @@ TEST_F(TagManagerTest, GetMaskHasABitPerKnownName){
     EXPECT_EQ(LayerMask::getMask({"UI"}), 1u << 5);
     EXPECT_EQ(LAYER_MASK_DEFAULT_RAYCAST, ~(1u << 2));
 }
+
+}  // namespace TagManagerTest_cpp

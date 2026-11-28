@@ -19,6 +19,8 @@
 #include <sstream>
 #include <string>
 
+namespace Physics3DCompoundTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::physics3dtest;
 
@@ -129,3 +131,5 @@ TEST(Physics3DCompound, AnimatedChildWarnsOnce) {
     EXPECT_EQ(log.count("moved on"), 1u);
     EXPECT_EQ(log.count("kinematic Rigidbody"), 1u);
 }
+
+}  // namespace Physics3DCompoundTest_cpp

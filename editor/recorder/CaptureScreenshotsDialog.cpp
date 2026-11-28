@@ -20,7 +20,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::recordinput;
+
+namespace jasperengine::editor::recordinput {
 
 namespace {
 
@@ -191,3 +192,5 @@ void CaptureScreenshotsDialog::show(Project* project) {
     }
     ImGui::End();
 }
+
+}  // namespace jasperengine::editor::recordinput

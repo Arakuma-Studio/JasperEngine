@@ -26,6 +26,8 @@
 #include <set>
 #include <string>
 
+namespace StreamAtmosphereTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::test;
@@ -296,3 +298,5 @@ TEST(StreamAtmosphere, FogProfileFieldsOmitIfDefault){
     EXPECT_TRUE(StreamSchema::isKnownFieldKey(ComponentType::FogComponent, "profile"));
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace StreamAtmosphereTest_cpp

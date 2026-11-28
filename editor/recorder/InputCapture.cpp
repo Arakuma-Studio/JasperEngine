@@ -15,7 +15,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::recordinput;
+
+namespace jasperengine::editor::recordinput {
 
 InputCapture& InputCapture::get() {
     static InputCapture instance;
@@ -231,3 +232,5 @@ void InputCapture::finish(const std::string& error) {
         callback(result);
     }
 }
+
+}  // namespace jasperengine::editor::recordinput

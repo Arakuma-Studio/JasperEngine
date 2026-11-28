@@ -21,6 +21,8 @@
 #include <filesystem>
 #include <memory>
 
+namespace UIParticleSystemCreateTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -110,3 +112,5 @@ TEST_F(UIParticleSystemCreateTest, OneUnscaledLocalSystemWithTheSoftImage){
     ASSERT_TRUE(history()->undo());
     EXPECT_FALSE(s->isEntityCreated(entity) && s->findComponent<ParticleSystemComponent>(entity));
 }
+
+}  // namespace UIParticleSystemCreateTest_cpp

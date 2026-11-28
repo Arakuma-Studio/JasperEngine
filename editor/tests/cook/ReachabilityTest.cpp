@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace ReachabilityTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -112,3 +114,5 @@ TEST(ReachabilityTest, TenThousandAssetsWithinBudget) {
     EXPECT_GT(reached.size(), 9000u);
     if (editor::test::perfSlack() > 0.0) { EXPECT_LE(ms, 50.0 * editor::test::perfSlack()); }
 }
+
+}  // namespace ReachabilityTest_cpp

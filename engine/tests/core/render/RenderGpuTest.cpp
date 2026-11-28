@@ -20,6 +20,8 @@
 
 #include <gtest/gtest.h>
 
+namespace RenderGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -128,3 +130,5 @@ TEST_F(RenderGpu, AnInvalidSwapchainSkipsItsPasses){
     GpuEnvironment::drawFrames(3);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace RenderGpuTest_cpp

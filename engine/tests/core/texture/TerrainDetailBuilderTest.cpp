@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 
+namespace TerrainDetailBuilderTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::terraincore;
 
@@ -192,3 +194,5 @@ TEST(TerrainDetailBuilder, LayersWithNoMapGetWhiteSlices){
     DetailPixels unread;
     EXPECT_FALSE(buildDetailPixels(terrain, planDetailArray(terrain), DetailBuildOptions(), unread));
 }
+
+}  // namespace TerrainDetailBuilderTest_cpp

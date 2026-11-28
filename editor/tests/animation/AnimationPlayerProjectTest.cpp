@@ -36,6 +36,8 @@
 #include <string>
 #include <vector>
 
+namespace AnimationPlayerProjectTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::editor::mcp::Json;
@@ -354,3 +356,5 @@ TEST(AnimationPlayerProject, TheCookedScenePreloadsTheClipsAndTheirModels) {
     // the scene file stores the GUIDs
     EXPECT_NE(readAll(project()->getProjectPath() / "Players.scene").find(WALK_GUID), std::string::npos);
 }
+
+}  // namespace AnimationPlayerProjectTest_cpp

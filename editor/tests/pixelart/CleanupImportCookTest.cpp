@@ -37,6 +37,8 @@
 #include <string>
 #include <vector>
 
+namespace CleanupImportCookTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -424,3 +426,5 @@ TEST(CleanupImportCookQueue, AnOutsideEditOfTheStepAloneRecooks) {
     queue.attach(nullptr);
     closeProject(*project);
 }
+
+}  // namespace CleanupImportCookTest_cpp

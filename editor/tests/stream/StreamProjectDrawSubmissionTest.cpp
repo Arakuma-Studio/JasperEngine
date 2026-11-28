@@ -20,6 +20,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace StreamProjectDrawSubmissionTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -75,3 +77,4 @@ TEST(StreamProjectDrawSubmission, CommandIsUndoable) {
     EXPECT_TRUE(Engine::isGpuInstancingEnabled());
 }
 
+}  // namespace StreamProjectDrawSubmissionTest_cpp

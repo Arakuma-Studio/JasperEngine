@@ -31,6 +31,8 @@
 #include <string>
 #include <vector>
 
+namespace WaterWavesGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -248,3 +250,5 @@ TEST(WaterWavesGpu, GerstnerMatchesCpu){
     }
     std::printf("[gpu] waterGerstner GPU vs CPU on %s: worst |dh| %.3g (tolerance %.3g)\n", HeadlessContext::getBackendName(), worst, tolerance);
 }
+
+}  // namespace WaterWavesGpuTest_cpp

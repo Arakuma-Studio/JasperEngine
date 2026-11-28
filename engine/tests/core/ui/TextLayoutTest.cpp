@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+namespace ui_TextLayoutTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -147,3 +149,5 @@ TEST(TextLayout, AutoSizeFitsFixedBox){
     EXPECT_NEAR(large, 2.0f * small, 2.0f);
     EXPECT_GT(small, 0.0f);
 }
+
+}  // namespace ui_TextLayoutTest_cpp

@@ -12,6 +12,8 @@
 #include <thread>
 #include <vector>
 
+namespace AppLoadingTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -40,3 +42,5 @@ TEST(AppLoading, ASlowProgressFrameLeavesTheLoadWorkTime) {
         EXPECT_GE(starts[i] - ends[i - 1], std::chrono::milliseconds(33)) << "frame " << i << " followed its predecessor without load work between";
     }
 }
+
+}  // namespace AppLoadingTest_cpp

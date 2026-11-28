@@ -19,6 +19,8 @@
 #include <set>
 #include <sstream>
 
+namespace ProcMatExpanderTest_cpp {
+
 using namespace jasperengine::editor::procmat;
 using namespace jasperengine::editor::procmat::test;
 // its own name: another Json is in sight in some unity units
@@ -177,3 +179,5 @@ TEST(ProcMatExpander, AnInputReadAsATextureNeedsABuffer) {
     PassBuilder pass;
     EXPECT_THROW(expander.shaderText(*node.outputs.at(0), pass), ExpansionError);
 }
+
+}  // namespace ProcMatExpanderTest_cpp

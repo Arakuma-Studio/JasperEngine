@@ -11,6 +11,8 @@
 
 #include <algorithm>
 
+namespace SplineStationsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 using namespace jasperengine::test;
@@ -375,3 +377,5 @@ TEST(SplineStationsTests, TheGridAgreesWithTheLinearQuery){
     empty.build(std::span<const SplineStation>());
     EXPECT_FALSE(empty.closest(0.0f, 0.0f).valid);
 }
+
+}  // namespace SplineStationsTest_cpp

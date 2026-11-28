@@ -37,7 +37,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::platform;
+
+namespace jasperengine::editor::platform {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -836,7 +838,7 @@ namespace {
 
 }
 
-void platform::logDeviceLines(const std::vector<DeviceLogLine>& lines) {
+void logDeviceLines(const std::vector<DeviceLogLine>& lines) {
     LogCategory& category = logCategoryDevice();
     for (const DeviceLogLine& entry : lines) {
         if (!Logger::shouldLog(entry.level, category)) continue;
@@ -845,7 +847,7 @@ void platform::logDeviceLines(const std::vector<DeviceLogLine>& lines) {
     }
 }
 
-std::unique_ptr<DeviceRunner> platform::makeRunner(const RunDevice& device) {
+std::unique_ptr<DeviceRunner> makeRunner(const RunDevice& device) {
     switch (device.kind) {
         case RunDeviceKind::Host: return std::make_unique<HostRunner>(device);
         case RunDeviceKind::Browser: return std::make_unique<WebRunner>(device);
@@ -856,13 +858,13 @@ std::unique_ptr<DeviceRunner> platform::makeRunner(const RunDevice& device) {
     return nullptr;
 }
 
-std::string platform::playerIdentityOf(const std::map<std::string, std::string>& executables) {
+std::string playerIdentityOf(const std::map<std::string, std::string>& executables) {
     std::string listing;
     for (const auto& [path, sha] : executables) listing += path + "=" + sha + "\n";
     return sha256Hex(listing);
 }
 
-PatchDecision platform::decidePatch(const DeviceRecord* record, const RunDevice& device, bool development, const std::string& playerId,
+PatchDecision decidePatch(const DeviceRecord* record, const RunDevice& device, bool development, const std::string& playerId,
                                     const std::string& playerIdentity, bool runtimeDebuggable) {
     PatchDecision decision;
     if (device.platform != BuildPlatform::Android && device.platform != BuildPlatform::IOS) {
@@ -1101,3 +1103,5 @@ void DeviceRuns::stopAll() {
     }
     for (auto& [id, entry] : all) entry->runner->stop();
 }
+
+}  // namespace jasperengine::editor::platform
