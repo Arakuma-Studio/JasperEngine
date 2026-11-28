@@ -34,6 +34,7 @@
 #include "asset/SubAssetKeys.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <filesystem>
@@ -263,6 +264,11 @@ namespace jasperengine::editor {
         const std::filesystem::path& getProjectPath() const { return projectPath; }
         // Stops a scan's walk through links after this many entries (the bound of S68 R7; tests)
         static void setLinkedEntryLimitForTesting(size_t limit);
+        // A meta deleted while its file stays is written again by a refresh at least this long
+        // after the one that found it gone (1 s; tests shorten it), see metaRestores
+        static void setMetaRestoreDelayForTesting(std::chrono::milliseconds delay);
+        // A deleted meta whose file stays is due to be written again: the editor's poll walks the disk
+        bool isMetaRestoreDue() const;
 
         // The content hashes still being computed in the background (tests and the bench wait)
         void waitForBackgroundWork();
@@ -322,6 +328,12 @@ namespace jasperengine::editor {
         std::unordered_map<std::string, std::string> hardLinks;   // key(a hard link's path) -> key of the tracked path of that file
         std::set<std::string> readOnlyLinked;                // key -> assets getReadOnlyLinkedAssets lists
         std::set<std::string> warnedReadOnly;                // the linked folders reported in the log
+        // key -> when refresh may write again the meta of a tracked file found without it. Not at
+        // once: a folder deleted file by file (a file manager, rm -rf) may take the meta before the
+        // file, and a meta written back in between is left behind in a folder that cannot go. Only
+        // by a refresh that found nothing else changed in the file's folder, so a delete still
+        // going on there waits; close() writes what is still due.
+        std::map<std::string, std::chrono::steady_clock::time_point> metaRestores;
 
         // background content hashing
         // background content hashes and cache writes: one S06 strand (Background lane, FIFO,

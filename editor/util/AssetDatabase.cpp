@@ -574,6 +574,21 @@ void editor::AssetDatabase::setLinkedEntryLimitForTesting(size_t limit) {
     linkedEntryLimit = limit ? limit : DEFAULT_LINKED_ENTRY_LIMIT;
 }
 
+namespace {
+    constexpr std::chrono::milliseconds DEFAULT_META_RESTORE_DELAY{1000};
+    std::atomic<std::chrono::milliseconds::rep> metaRestoreDelayMs{DEFAULT_META_RESTORE_DELAY.count()};
+}
+
+void editor::AssetDatabase::setMetaRestoreDelayForTesting(std::chrono::milliseconds delay) {
+    metaRestoreDelayMs = delay.count() >= 0 ? delay.count() : DEFAULT_META_RESTORE_DELAY.count();
+}
+
+bool editor::AssetDatabase::isMetaRestoreDue() const {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    const auto now = std::chrono::steady_clock::now();
+    return std::any_of(metaRestores.begin(), metaRestores.end(), [now](const auto& pending) { return pending.second <= now; });
+}
+
 std::shared_ptr<const editor::AssetDatabase::LinkTable> editor::AssetDatabase::linkTable() const {
     return std::atomic_load(&links);
 }
@@ -2219,6 +2234,14 @@ void editor::AssetDatabase::open(const fs::path& path, const fs::path& assetsDir
 void editor::AssetDatabase::close() {
     stopHashing();
     std::lock_guard<std::recursive_mutex> lock(mutex);
+    // a meta still waiting to be written again: without it the next open() gives the file a new GUID
+    for (const auto& [k, due] : metaRestores) {
+        auto it = byPath.find(k);
+        if (it != byPath.end() && fileExists(it->second.path) && !fileExists(AssetTypes::metaPathFor(it->second.path).generic_string())) {
+            writeIdentity(it->second);
+        }
+    }
+    metaRestores.clear();
     const bool dirty = cacheDirty.exchange(false);
     if (dirty && !projectPath.empty()) {
         saveCache();
@@ -2299,6 +2322,26 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
     bool dirty = false;
     forgetWritableFolders();
     installLinks(scan.links);
+    const auto now = std::chrono::steady_clock::now();
+    const std::chrono::milliseconds metaRestoreDelay{metaRestoreDelayMs.load()};
+    // the identity a tracked file lost written again: it is still the same asset
+    auto restoreIdentity = [&](const std::string& relative, const Entry& known, bool fileSame) {
+        Entry updated = known;
+        statFile(relative, updated.writeTime, updated.size);
+        if (!fileSame) {
+            updated.hasContentHash = false;
+            refreshSubAssets(updated, &known);
+        }
+        const bool written = writeIdentity(updated);
+        stampAfterIdentityWrite(updated, written);
+        noteIdentityWrite(updated, written);
+        changes.push_back({Change::Type::Modified, updated.guid.str(), relative, {}});
+        insert(std::move(updated));
+        if (!fileSame) queueHash(relative);
+    };
+    // metaRestores: the files still without their metas, and those of them due now
+    std::unordered_set<std::string> metaRestoresWaiting;
+    std::vector<std::string> metaRestoresDue;
 
     const std::vector<std::string>& metas = scan.metas;
     std::unordered_set<std::string> present;
@@ -2341,6 +2384,15 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
         if (fileSame && metaSame) {
             continue;
         }
+        if (sidecar && known.hasMeta && !metaPresent) {
+            // its meta deleted, the file still there: written again later (metaRestores)
+            metaRestoresWaiting.insert(k);
+            auto pending = metaRestores.try_emplace(k, now + metaRestoreDelay);
+            if (!pending.second && pending.first->second <= now) {
+                metaRestoresDue.push_back(relative);
+            }
+            continue;
+        }
         dirty = true;
         if (sidecar && metaSame && known.hasMeta) {
             // only the content changed: the identity is in the meta, which did not (R21's rule:
@@ -2370,20 +2422,8 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
             continue;
         }
         if (!identified || copiedClipGuid) {
-            // Written again without its identity (another tool, or the meta deleted): it is
-            // still the same asset
-            updated = known;
-            statFile(relative, updated.writeTime, updated.size);
-            if (!fileSame) {
-                updated.hasContentHash = false;
-                refreshSubAssets(updated, &known);
-            }
-            const bool written = writeIdentity(updated);
-            stampAfterIdentityWrite(updated, written);
-            noteIdentityWrite(updated, written);
-            changes.push_back({Change::Type::Modified, updated.guid.str(), relative, {}});
-            insert(std::move(updated));
-            if (!fileSame) queueHash(relative);
+            // Written again without its identity (another tool): it is still the same asset
+            restoreIdentity(relative, known, fileSame);
             continue;
         }
         if (updated.guid != known.guid) {
@@ -2518,6 +2558,37 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
 
     for (const auto& [guid, entry] : gone) {
         changes.push_back({Change::Type::Removed, guid.str(), entry.path, {}});
+    }
+
+    // the metas of files gone since, or back, are not written
+    for (auto it = metaRestores.begin(); it != metaRestores.end();) {
+        it = metaRestoresWaiting.count(it->first) ? std::next(it) : metaRestores.erase(it);
+    }
+    const size_t walkChanges = changes.size();
+    for (const std::string& relative : metaRestoresDue) {
+        const std::string k = relativeKeyOf(relative);
+        auto known = byPath.find(k);
+        if (known == byPath.end()) {
+            continue;
+        }
+        // something else changed in its folder: a delete may still be going on there
+        const std::string folder = relativeKeyOf(fs::path(relative).parent_path().generic_string()) + "/";
+        const auto under = [&](const fs::path& path) { return !path.empty() && relativeKeyOf(path.generic_string()).rfind(folder, 0) == 0; };
+        if (std::any_of(changes.begin(), changes.begin() + static_cast<std::ptrdiff_t>(walkChanges),
+                        [&](const Change& change) { return under(change.path) || under(change.oldPath); })) {
+            metaRestores[k] = now + metaRestoreDelay;
+            continue;
+        }
+        // as the disk is now, not as the walk saw it: the file gone or the meta back is the next walk's
+        if (!fileExists(relative) || fileExists(AssetTypes::metaPathFor(relative).generic_string())) {
+            continue;
+        }
+        metaRestores.erase(k);
+        dirty = true;
+        fs::file_time_type time{};
+        uint64_t size = 0;
+        statFile(relative, time, size);
+        restoreIdentity(relative, known->second, time == known->second.writeTime && size == known->second.size);
     }
     // what was known of an asset whose meta is no longer an orphan is not needed
     for (auto it = orphanLast.begin(); it != orphanLast.end();) {
