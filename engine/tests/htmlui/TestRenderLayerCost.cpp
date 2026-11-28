@@ -12,6 +12,8 @@
 
 #include "HtmlUIClock.h"
 #include "HtmlUITexture.h"
+#include "render/SystemRender.h"
+#include "sokol/SokolSystem.h"
 
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/Mesh.h>
@@ -330,6 +332,47 @@ TEST(RenderLayerCost, CacheSharesEqualElements){
     ASSERT_TRUE(freshImage(rml, false, uncached));
     std::string where;
     EXPECT_EQ(differingPixels(second.rgba, uncached, 320, Rml::Rectanglei::FromSize(Rml::Vector2i(320, 200)), &where), 0u) << where;
+}
+
+// A scope stored in a frame that left work undone keeps its result for that frame only: the next
+// frame stores it again. A draw waits for its pipeline while a GL worker context warms it (NVIDIA)
+// or Vulkan's pipeline thread makes it, and a refused upload or uniform block skips one (here: the
+// uniform budget refuses every draw of the frame). Kept for good, the result missed what was
+// skipped until the element changed: a menu's blurred text-shadow glow never showed on NVIDIA GL,
+// where llvmpipe, which makes its pipelines at once, drew it.
+TEST(RenderLayerCost, CacheKeepsNoResultOfAFrameWithSkippedDraws){
+    JASPER_REQUIRE_GPU();
+    LayerCacheOn on;
+    const Rml::Rectanglei all = Rml::Rectanglei::FromSize(Rml::Vector2i(320, 200));
+    RenderTestContext render(320, 200, 320, 200, 4);
+    ASSERT_TRUE(render.isValid());
+    ASSERT_NE(render.loadFromMemory(cacheDocument(40), "layer-cache"), nullptr);
+    RmlRenderer::setLayerCacheForTesting(false);
+    CacheFrame settling;
+    ASSERT_TRUE(firstDrawn(render, settling) && nextFrame(render, settling));
+    RmlRenderer::setLayerCacheForTesting(true);
+
+    const uint64_t skippedBefore = SystemRender::getUniformSkippedDraws();
+    SokolSystem::overrideBudget(SokolSystem::UNIFORM_BUDGET, 0, true);
+    CacheFrame skipped;
+    const bool drawn = nextFrame(render, skipped);
+    SokolSystem::restoreBudgets();
+    TestSystem::get().clearLogs();
+    ASSERT_TRUE(drawn);
+    ASSERT_GT(SystemRender::getUniformSkippedDraws(), skippedBefore) << "the frame skipped no draw";
+    EXPECT_GE(skipped.stats.layerCacheMisses, 1u);
+
+    CacheFrame stored, hit;
+    ASSERT_TRUE(nextFrame(render, stored));
+    EXPECT_EQ(stored.stats.layerCacheHits, 0u) << "the result of the frame with skipped draws was kept";
+    EXPECT_GE(stored.stats.layerCacheMisses, 1u);
+    ASSERT_TRUE(nextFrame(render, hit));
+    EXPECT_GE(hit.stats.layerCacheHits, 1u);
+    std::vector<uint8_t> uncached;
+    ASSERT_TRUE(freshImage(cacheDocument(40), false, uncached));
+    std::string where;
+    EXPECT_EQ(differingPixels(stored.rgba, uncached, 320, all, &where), 0u) << "the frame after the skipped one differs at " << where;
+    EXPECT_EQ(differingPixels(hit.rgba, uncached, 320, all, &where), 0u) << "the cached frame differs at " << where;
 }
 
 namespace {

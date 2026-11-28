@@ -1192,7 +1192,7 @@ namespace jasperengine {
             size_t bytes = 0;
             uint64_t lastUsed = 0;                // replay
             bool hit = false;                     // drawn from since it was stored
-            bool transient = false;               // over the budget, for an equal scope of the replay only
+            bool transient = false;               // over the budget or incomplete: for an equal scope of the replay only
         };
         // what the replay does with a recorded command of a cached scope: a hit's commands draw
         // nothing (its clip masks only set the mask, drawn where it is tested), its composite
