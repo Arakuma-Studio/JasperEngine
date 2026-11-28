@@ -23,6 +23,8 @@
 #include <memory>
 #include <sstream>
 
+namespace PachislopPortTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::titlelibrary;
 namespace fs = std::filesystem;
@@ -362,3 +364,5 @@ TEST_F(PachislopPortTest, DeniedTerms) {
         EXPECT_EQ(hits[0].path, inj.expect);
     }
 }
+
+}  // namespace PachislopPortTest_cpp

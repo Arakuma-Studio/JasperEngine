@@ -24,6 +24,8 @@
 #include <cmath>
 #include <vector>
 
+namespace PhysicsSyncTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -592,3 +594,5 @@ TEST(PhysicsRay, FiniteRayMissesSpheresBehindOrBeyondIt) {
     ASSERT_TRUE(inside.hit);
     EXPECT_NEAR(inside.point.x, 1.0f, 1e-4f);
 }
+
+}  // namespace PhysicsSyncTest_cpp

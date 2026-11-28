@@ -8,7 +8,8 @@
 #include <cstdio>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::platform;
+
+namespace jasperengine::editor::platform {
 
 std::string devicecmd::shellQuote(const std::string& word) {
     std::string quoted = "'";
@@ -127,3 +128,5 @@ std::string devicecmd::queryFromArgs(const std::vector<std::string>& args) {
     }
     return query;
 }
+
+}  // namespace jasperengine::editor::platform

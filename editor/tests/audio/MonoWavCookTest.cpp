@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+namespace MonoWavCookTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace {
@@ -114,3 +116,5 @@ TEST(MonoWavCook, LeavesEverythingElse) {
     EXPECT_FALSE(MonoWavCook::cook(cut, out));
     EXPECT_EQ(out, "untouched");
 }
+
+}  // namespace MonoWavCookTest_cpp

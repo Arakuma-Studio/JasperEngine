@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace AssetDatabaseTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::test;
@@ -554,3 +556,5 @@ TEST_F(AssetDatabaseTest, ToRelativeStripsTheProject){
     EXPECT_EQ(database.toRelative("already/relative.prefab"), std::filesystem::path("already/relative.prefab"));
     EXPECT_EQ(database.toRelative(""), std::filesystem::path());
 }
+
+}  // namespace AssetDatabaseTest_cpp

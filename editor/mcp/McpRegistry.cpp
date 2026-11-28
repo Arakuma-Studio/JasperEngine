@@ -13,7 +13,8 @@
 #include <cstdlib>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::mcp;
+
+namespace jasperengine::editor::mcp {
 
 namespace {
 
@@ -306,3 +307,5 @@ size_t McpRegistry::toolChars(const ToolDef& def) {
     }
     return count;
 }
+
+}  // namespace jasperengine::editor::mcp

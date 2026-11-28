@@ -6,6 +6,8 @@
 #include "titleart/TitleArtChecks.h"
 #include "titleart/TitleArtIO.h"
 
+namespace TitleArtChecksTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using TitleArtChecksJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
@@ -111,3 +113,5 @@ TEST_F(TitleArtChecksTest, PixelChecksSkipWithoutARenderer) {
     gpu.render = [](const titleart::RenderRequest&, TitleCheckImage&, std::string&) { return true; };
     EXPECT_EQ(TitleArtChecks::run(selected, gpu).verdict, TitleCheckStatus::Fail);
 }
+
+}  // namespace TitleArtChecksTest_cpp

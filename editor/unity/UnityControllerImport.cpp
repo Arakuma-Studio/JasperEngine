@@ -22,7 +22,9 @@
 #include <sstream>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::unity;
+
+namespace jasperengine::editor::unity {
+
 namespace fs = std::filesystem;
 using Json = nlohmann::json;
 
@@ -624,7 +626,7 @@ namespace {
 
 }
 
-bool jasperengine::editor::unity::isUnityAnimationAsset(const fs::path& file) {
+bool isUnityAnimationAsset(const fs::path& file) {
     const std::string ext = extensionLower(file);
     if (ext != ".anim" && ext != ".controller" && ext != ".mask") return false;
     std::ifstream in(file, std::ios::binary);
@@ -638,7 +640,7 @@ bool jasperengine::editor::unity::isUnityAnimationAsset(const fs::path& file) {
     return anim::isUnityYamlMask(head);
 }
 
-AnimImportResult jasperengine::editor::unity::importUnityClip(const fs::path& file, bool mirrorX) {
+AnimImportResult importUnityClip(const fs::path& file, bool mirrorX) {
     jasperengine::editor::unity::Project unity;
     std::string error;
     const fs::path root = jasperengine::editor::unity::Project::findRoot(file);
@@ -655,7 +657,7 @@ AnimImportResult jasperengine::editor::unity::importUnityClip(const fs::path& fi
     return result;
 }
 
-fs::path jasperengine::editor::unity::freeImportPath(const fs::path& folder, const fs::path& file) {
+fs::path freeImportPath(const fs::path& folder, const fs::path& file) {
     const std::string stem = file.stem().string();
     const std::string ext = extensionLower(file);
     for (int n = 1; n < 10000; n++) {
@@ -666,7 +668,7 @@ fs::path jasperengine::editor::unity::freeImportPath(const fs::path& folder, con
     return folder / (stem + ext);
 }
 
-AssetImportResult jasperengine::editor::unity::importUnityAnimationAsset(const AssetImportOptions& options) {
+AssetImportResult importUnityAnimationAsset(const AssetImportOptions& options) {
     AssetImportResult result;
     const std::string ext = extensionLower(options.file);
     if (ext != ".anim" && ext != ".controller" && ext != ".mask") {
@@ -751,7 +753,7 @@ AssetImportResult jasperengine::editor::unity::importUnityAnimationAsset(const A
     return result;
 }
 
-AssetImportResult jasperengine::editor::unity::importUnityAnimationIntoProject(jasperengine::editor::Project* project, AssetImportOptions options) {
+AssetImportResult importUnityAnimationIntoProject(jasperengine::editor::Project* project, AssetImportOptions options) {
     if (!project || project->getProjectPath().empty()) {
         AssetImportResult result;
         result.error = "no project is open";
@@ -770,3 +772,5 @@ AssetImportResult jasperengine::editor::unity::importUnityAnimationIntoProject(j
     }
     return result;
 }
+
+}  // namespace jasperengine::editor::unity

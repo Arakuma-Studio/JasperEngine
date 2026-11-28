@@ -16,6 +16,8 @@
 
 #include <algorithm>
 
+namespace TitleAddCatalogTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::titledesigner;
@@ -206,3 +208,5 @@ TEST(TitleAddCatalogTest, EntriesApply) {
         EXPECT_EQ(layers, e->addsLayer ? 2u : 1u) << id;
     }
 }
+
+}  // namespace TitleAddCatalogTest_cpp

@@ -47,6 +47,8 @@
 #include <string>
 #include <vector>
 
+namespace ShadowPcssGlesGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -412,3 +414,5 @@ TEST_F(ShadowPcssGlesGpu, HeaviestPaintedTerrainStaysWithinTheBindSlots){
 }
 
 #endif
+
+}  // namespace ShadowPcssGlesGpuTest_cpp

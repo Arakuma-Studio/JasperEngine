@@ -15,6 +15,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PoolGenerationTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -104,3 +106,5 @@ TEST(PoolGenerationTests, FontReplaceBumpsTheGeneration) {
     EXPECT_EQ(FontPool::get(id), font);
     FontPool::remove(id);
 }
+
+}  // namespace PoolGenerationTest_cpp

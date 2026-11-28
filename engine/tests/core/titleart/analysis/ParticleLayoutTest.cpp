@@ -22,6 +22,8 @@
 #include <map>
 #include <set>
 
+namespace ParticleLayoutTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::analysis;
@@ -354,3 +356,5 @@ TEST(ParticleLayout, InkSplatterDrops) {
     params["amount"] = 0;
     EXPECT_TRUE(layoutInkSplatter(g, ParamValues(params), 1.0).empty());
 }
+
+}  // namespace ParticleLayoutTest_cpp

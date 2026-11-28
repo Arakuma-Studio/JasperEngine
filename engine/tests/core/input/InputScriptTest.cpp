@@ -17,6 +17,8 @@
 
 #include <random>
 
+namespace InputScriptTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::input;
 
@@ -488,3 +490,5 @@ TEST_F(InputScriptPlayerTest, RunnerPacesPlayersByRunningFrames){
     EXPECT_FALSE(ScriptRunner::isActive());
     EXPECT_EQ(ScriptRunner::frameOf(player.get()), -1);
 }
+
+}  // namespace InputScriptTest_cpp

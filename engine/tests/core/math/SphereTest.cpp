@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+namespace SphereTest_cpp {
+
 using namespace jasperengine;
 
 TEST(Sphere, ContainsPointsUpToTheSurface){
@@ -62,3 +64,5 @@ TEST(Sphere, AreaAndVolume){
     EXPECT_NEAR(sphere.surfaceArea(), 50.2654825f, 1e-3f);
     EXPECT_NEAR(sphere.volume(), 33.5103216f, 1e-3f);
 }
+
+}  // namespace SphereTest_cpp

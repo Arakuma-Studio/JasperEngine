@@ -23,7 +23,6 @@
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
-using namespace jasperengine::vat;
 using jasperengine::editor::FileUtils;
 using jasperengine::editor::FloatImage;
 using Json = nlohmann::json;
@@ -413,13 +412,13 @@ void importOpenVat(const VatImportSpec& spec, const VatImportDetection& detectio
     const bool normals = spec.normals && (separateNormals || packed);
 
     // clips: 1-based scene frames to rows
-    std::vector<VatClip> clips;
+    std::vector<jasperengine::vat::VatClip> clips;
     if (remap.animations.empty()){
         if (spec.fps <= 0.0f){
             addError(result, "fps_unknown", "the export has no animations: its frame rate is unknown", "pass fps (the Blender scene's frames per second)");
             return;
         }
-        VatClip clip;
+        jasperengine::vat::VatClip clip;
         clip.name = where.name;
         clip.start = 0;
         clip.frames = F;
@@ -430,8 +429,8 @@ void importOpenVat(const VatImportSpec& spec, const VatImportDetection& detectio
         for (const Animation& a : remap.animations) base = std::min(base, a.start);
         std::set<std::string> names;
         for (const Animation& a : remap.animations){
-            if (clips.size() >= (size_t)VAT_MAX_CLIPS){
-                addWarning(result, "clip_out_of_range", "more than " + std::to_string(VAT_MAX_CLIPS) + " animations: the rest are left out",
+            if (clips.size() >= (size_t)jasperengine::vat::VAT_MAX_CLIPS){
+                addWarning(result, "clip_out_of_range", "more than " + std::to_string(jasperengine::vat::VAT_MAX_CLIPS) + " animations: the rest are left out",
                            "split the export");
                 break;
             }
@@ -453,7 +452,7 @@ void importOpenVat(const VatImportSpec& spec, const VatImportDetection& detectio
                 addError(result, "fps_unknown", "animation \"" + a.name + "\" has no framerate", "pass fps");
                 return;
             }
-            VatClip clip;
+            jasperengine::vat::VatClip clip;
             std::string name = a.name.empty() ? "Clip" : a.name;
             std::string unique = name;
             for (int n = 2; names.count(unique); n++) unique = name + " " + std::to_string(n);
@@ -476,7 +475,7 @@ void importOpenVat(const VatImportSpec& spec, const VatImportDetection& detectio
     PresetLimits limits;
     presetLimits(spec.preset, limits);
     Assembled in;
-    in.payload.mode = VatMode::Vertices;
+    in.payload.mode = jasperengine::vat::VatMode::Vertices;
     in.payload.layout.width = limits.width;
     in.payload.layout.samples = F;
     in.payload.layout.vertices = elements;
@@ -484,7 +483,7 @@ void importOpenVat(const VatImportSpec& spec, const VatImportDetection& detectio
     std::vector<std::string> fixes = {"use the desktop preset (preset: desktop)"};
     if (normals) fixes.push_back("leave out the normals (normals: false)");
     fixes.push_back("export fewer frames");
-    if (!checkPayloadSize(VatMode::Vertices, F, elements, in.payload.layout.texelsPerSample(VatMode::Vertices), limits,
+    if (!checkPayloadSize(jasperengine::vat::VatMode::Vertices, F, elements, in.payload.layout.texelsPerSample(jasperengine::vat::VatMode::Vertices), limits,
                           "the model's " + std::to_string(elements) + " vertices", fixes, result)){
         return;
     }

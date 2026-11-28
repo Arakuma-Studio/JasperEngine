@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace ProjectCookCacheTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -85,3 +87,5 @@ TEST_F(ProjectCookCacheTest, WritesCookedSceneOnSave) {
     ASSERT_FALSE(game.prefabs.empty());
     for (const player::GamePrefab& prefab : game.prefabs) EXPECT_TRUE(fs::exists(abs(".jasperengine/cooked/" + prefab.file))) << prefab.name;
 }
+
+}  // namespace ProjectCookCacheTest_cpp

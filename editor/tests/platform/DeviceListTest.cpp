@@ -23,12 +23,13 @@
 #include <string>
 #include <vector>
 
+namespace device_list_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::platform;
 using jasperengine::test::TestTempDir;
 
-namespace device_list_test {
 
     // A POSIX sh's word splitting of one command line: quotes (' and "), backslashes, spaces.
     // Enough to check what the device's shell makes of the strings the editor sends.
@@ -83,6 +84,8 @@ namespace device_list_test {
     }
 
 }
+
+namespace device_list_test {
 
 using namespace device_list_test;
 
@@ -392,3 +395,5 @@ TEST(DeviceRecords, RoundTripAndIgnoreANewerFile) {
     EXPECT_TRUE(DeviceRecords::load(dir.path(), &warning).devices.empty());
     EXPECT_FALSE(warning.empty());
 }
+
+}  // namespace device_list_test

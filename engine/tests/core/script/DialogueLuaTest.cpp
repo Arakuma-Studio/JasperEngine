@@ -29,6 +29,8 @@
 #include <sstream>
 #include <string>
 
+namespace DialogueLuaTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -201,3 +203,5 @@ TEST_F(DialogueLua, WaitReturnValuePauses) {
         "Dialogue.removeHandler('quest')\n"), "");
     EXPECT_EQ(dialogue::Handlers::action("quest"), nullptr);
 }
+
+}  // namespace DialogueLuaTest_cpp

@@ -22,7 +22,9 @@
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vertexcolor;
+
+namespace jasperengine::editor::vertexcolor {
+
 namespace vcd = jasperengine::editor::vertexcolor::detail;
 
 namespace {
@@ -36,7 +38,7 @@ namespace {
 
 }
 
-bool editor::vertexcolor::bakeToTexture(Project* project, uint32_t sceneId, Entity entity, const BakeTextureOptions& options, std::string* error) {
+bool bakeToTexture(Project* project, uint32_t sceneId, Entity entity, const BakeTextureOptions& options, std::string* error) {
     auto fail = [&](const std::string& why) {
         if (error) *error = why;
         return false;
@@ -142,3 +144,5 @@ bool editor::vertexcolor::bakeToTexture(Project* project, uint32_t sceneId, Enti
     project->onAssetFilesChanged(project->getAssetDatabase().importAssets(file));
     return true;
 }
+
+}  // namespace jasperengine::editor::vertexcolor

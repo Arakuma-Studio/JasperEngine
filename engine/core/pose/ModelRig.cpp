@@ -20,7 +20,8 @@
 #include <unordered_map>
 
 using namespace jasperengine;
-using namespace jasperengine::pose;
+
+namespace jasperengine::pose {
 
 namespace {
 
@@ -216,11 +217,11 @@ namespace {
 
 }
 
-bool pose::buildSkeleton(Scene* scene, Entity model, Skeleton& skeleton, std::vector<Entity>& boneEntities){
+bool buildSkeleton(Scene* scene, Entity model, Skeleton& skeleton, std::vector<Entity>& boneEntities){
     return buildSkeleton(scene, model, skeleton, boneEntities, nullptr);
 }
 
-bool pose::buildSkeleton(Scene* scene, Entity model, Skeleton& skeleton, std::vector<Entity>& boneEntities,
+bool buildSkeleton(Scene* scene, Entity model, Skeleton& skeleton, std::vector<Entity>& boneEntities,
                          std::vector<Matrix4>* bridges){
     skeleton.bones.clear();
     boneEntities.clear();
@@ -281,7 +282,7 @@ bool pose::buildSkeleton(Scene* scene, Entity model, Skeleton& skeleton, std::ve
     return true;
 }
 
-std::shared_ptr<PoseSkin> pose::buildSkin(Scene* scene, Entity model, const Skeleton& skeleton,
+std::shared_ptr<PoseSkin> buildSkin(Scene* scene, Entity model, const Skeleton& skeleton,
                                           const std::vector<Entity>& boneEntities){
     if (!scene || !scene->isEntityCreated(model)) return nullptr;
     const ModelComponent* modelComponent = scene->findComponent<ModelComponent>(model);
@@ -306,7 +307,7 @@ std::shared_ptr<PoseSkin> pose::buildSkin(Scene* scene, Entity model, const Skel
     }, inverseBind);
 }
 
-bool pose::buildSkeletonFromGltf(const tinygltf::Model& gltf, Skeleton& skeleton, std::vector<std::string>& bonePaths,
+bool buildSkeletonFromGltf(const tinygltf::Model& gltf, Skeleton& skeleton, std::vector<std::string>& bonePaths,
                                  std::vector<Matrix4>* bridges, std::vector<int>* boneNodes){
     skeleton.bones.clear();
     bonePaths.clear();
@@ -390,11 +391,11 @@ bool pose::buildSkeletonFromGltf(const tinygltf::Model& gltf, Skeleton& skeleton
     return true;
 }
 
-void pose::gltfNodeLocal(const tinygltf::Model& gltf, int node, Vector3& position, Quaternion& rotation, Vector3& scale){
+void gltfNodeLocal(const tinygltf::Model& gltf, int node, Vector3& position, Quaternion& rotation, Vector3& scale){
     gltfNodeMatrix(gltf, node).decompose(position, scale, rotation);
 }
 
-std::shared_ptr<PoseSkin> pose::buildSkinFromGltf(const tinygltf::Model& gltf, const Skeleton& skeleton,
+std::shared_ptr<PoseSkin> buildSkinFromGltf(const tinygltf::Model& gltf, const Skeleton& skeleton,
                                                   const std::vector<int>& boneNodes){
     std::unordered_map<int, int> boneOfNode;
     for (size_t i = 0; i < boneNodes.size(); i++) boneOfNode[boneNodes[i]] = (int)i;
@@ -415,7 +416,7 @@ std::shared_ptr<PoseSkin> pose::buildSkinFromGltf(const tinygltf::Model& gltf, c
     }, inverseBind);
 }
 
-bool pose::resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& overrides, HumanoidMap& out,
+bool resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& overrides, HumanoidMap& out,
                            std::string* error, std::vector<std::string>* notes){
     // the naming rules the model was imported with: a model imported before a rules change keeps
     // the map it had (said, with the way to the new one)
@@ -453,7 +454,7 @@ bool pose::resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& ov
     return validateHumanoid(skeleton, out, error);
 }
 
-bool pose::resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& overrides, HumanoidMap& out,
+bool resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& overrides, HumanoidMap& out,
                            HumanExtraMap& extra, std::string* error, std::vector<std::string>* notes, std::string* extraError){
     extra = HumanExtraMap();
     if (extraError) extraError->clear();
@@ -463,7 +464,7 @@ bool pose::resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& ov
     return true;
 }
 
-void pose::noteSpineProxies(Scene* scene, Entity model, const HumanoidMap& map, std::vector<std::string>& notes){
+void noteSpineProxies(Scene* scene, Entity model, const HumanoidMap& map, std::vector<std::string>& notes){
     const ModelComponent* modelComponent = scene && scene->isEntityCreated(model) ? scene->findComponent<ModelComponent>(model) : nullptr;
     if (!modelComponent || !modelComponent->gltfModel) return;
     // nodes and animations only, without the pooled-glTF lock: loads append buffers to a pooled
@@ -501,7 +502,7 @@ void pose::noteSpineProxies(Scene* scene, Entity model, const HumanoidMap& map, 
     }
 }
 
-bool pose::humanoidSidecarStamp(const std::string& modelPath, std::string& stamp, std::string* error){
+bool humanoidSidecarStamp(const std::string& modelPath, std::string& stamp, std::string* error){
     stamp.clear();
     bool notFound = false;
     if (readTextFile(humanoidSidecarPath(modelPath), stamp, error, &notFound)) return true;
@@ -587,7 +588,7 @@ void PoseRigCache::clear(){
     entries.clear();
 }
 
-bool pose::buildModelRig(Scene* scene, Entity model, ModelRigInfo& out, std::vector<Entity>& boneEntities,
+bool buildModelRig(Scene* scene, Entity model, ModelRigInfo& out, std::vector<Entity>& boneEntities,
                          std::vector<Matrix4>* bridges, std::string* error){
     const ModelComponent* modelComponent = scene ? scene->findComponent<ModelComponent>(model) : nullptr;
     if (!modelComponent){
@@ -628,3 +629,5 @@ bool pose::buildModelRig(Scene* scene, Entity model, ModelRigInfo& out, std::vec
     }
     return true;
 }
+
+}  // namespace jasperengine::pose

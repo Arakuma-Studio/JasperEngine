@@ -20,6 +20,8 @@
 #include <sys/qos.h>
 #endif
 
+namespace FileWatcherTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -622,3 +624,5 @@ TEST(FileWatcherBackends, AStartOnAThreadThatEndsStillWatches) {
     }, timeLimit(fileWatcherMs(3000)))) << watcher->name();
     watcher->stop();
 }
+
+}  // namespace FileWatcherTest_cpp

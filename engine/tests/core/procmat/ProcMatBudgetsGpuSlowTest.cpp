@@ -29,6 +29,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace ProcMatBudgetsGpuSlowTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::procmat;
 using jasperengine::test::GpuEnvironment;
@@ -257,3 +259,5 @@ TEST(ProcMatBudgetsGpuSlow, ABakeOf1024OnTheDeviceAndOnTheCpu) {
         EXPECT_LE(cpu, 300000.0 * slack) << "R25, tier 3";
     }
 }
+
+}  // namespace ProcMatBudgetsGpuSlowTest_cpp

@@ -24,7 +24,7 @@
 
 namespace fs = std::filesystem;
 
-using namespace jasperengine::io;
+namespace jasperengine::io {
 
 namespace {
 
@@ -168,3 +168,5 @@ std::string ScopedFileLock::readOwnerInfo(const fs::path& lockFile){
         return {};
     return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
 }
+
+}  // namespace jasperengine::io

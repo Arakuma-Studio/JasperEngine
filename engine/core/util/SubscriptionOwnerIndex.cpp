@@ -12,7 +12,6 @@
 using namespace jasperengine;
 
 namespace je_owner_index {}
-using namespace je_owner_index;
 
 namespace je_owner_index {
 
@@ -38,24 +37,24 @@ detail::SlotStateBase::~SlotStateBase() = default;
 
 void SubscriptionOwnerIndex::add(uint64_t ownerKey, const std::shared_ptr<detail::SlotStateBase>& state, uint64_t id) {
     if (ownerKey == 0 || !state) return;
-    IndexState& index = indexState();
+    je_owner_index::IndexState& index = je_owner_index::indexState();
     std::lock_guard<std::mutex> lock(index.mutex);
-    std::vector<Entry>& entries = index.owners[ownerKey];
+    std::vector<je_owner_index::Entry>& entries = index.owners[ownerKey];
     // signals that went away leave expired entries: dropped as the list grows
     if (entries.size() >= 16 && (entries.size() & (entries.size() - 1)) == 0) {
-        entries.erase(std::remove_if(entries.begin(), entries.end(), [](const Entry& e) { return e.state.expired(); }),
+        entries.erase(std::remove_if(entries.begin(), entries.end(), [](const je_owner_index::Entry& e) { return e.state.expired(); }),
                       entries.end());
     }
-    entries.push_back(Entry{state, state.get(), id});
+    entries.push_back(je_owner_index::Entry{state, state.get(), id});
 }
 
 void SubscriptionOwnerIndex::forget(uint64_t ownerKey, const detail::SlotStateBase* state, uint64_t id) {
     if (ownerKey == 0) return;
-    IndexState& index = indexState();
+    je_owner_index::IndexState& index = je_owner_index::indexState();
     std::lock_guard<std::mutex> lock(index.mutex);
     auto it = index.owners.find(ownerKey);
     if (it == index.owners.end()) return;
-    std::vector<Entry>& entries = it->second;
+    std::vector<je_owner_index::Entry>& entries = it->second;
     for (size_t i = 0; i < entries.size(); i++) {
         if (entries[i].raw == state && entries[i].id == id) {
             entries[i] = std::move(entries.back());
@@ -68,9 +67,9 @@ void SubscriptionOwnerIndex::forget(uint64_t ownerKey, const detail::SlotStateBa
 
 size_t SubscriptionOwnerIndex::removeOwner(uint64_t ownerKey) {
     if (ownerKey == 0) return 0;
-    std::vector<Entry> entries;
+    std::vector<je_owner_index::Entry> entries;
     {
-        IndexState& index = indexState();
+        je_owner_index::IndexState& index = je_owner_index::indexState();
         std::lock_guard<std::mutex> lock(index.mutex);
         auto it = index.owners.find(ownerKey);
         if (it == index.owners.end()) return 0;
@@ -79,7 +78,7 @@ size_t SubscriptionOwnerIndex::removeOwner(uint64_t ownerKey) {
     }
     // outside the lock: removing a slot calls forget()
     size_t removed = 0;
-    for (const Entry& entry : entries) {
+    for (const je_owner_index::Entry& entry : entries) {
         if (std::shared_ptr<detail::SlotStateBase> state = entry.state.lock()) {
             if (state->removeSlot(entry.id)) removed++;
         }
@@ -94,7 +93,7 @@ size_t SubscriptionOwnerIndex::releaseOwner(uint64_t ownerKey) {
 }
 
 size_t SubscriptionOwnerIndex::entryCount(uint64_t ownerKey) {
-    IndexState& index = indexState();
+    je_owner_index::IndexState& index = je_owner_index::indexState();
     std::lock_guard<std::mutex> lock(index.mutex);
     auto it = index.owners.find(ownerKey);
     return it == index.owners.end() ? 0 : it->second.size();
@@ -108,14 +107,14 @@ namespace je_owner_index {
 }
 
 uint64_t SubscriptionOwnerIndex::setRegistrationOwner(uint64_t ownerKey) {
-    uint64_t& owner = threadRegistrationOwner();
+    uint64_t& owner = je_owner_index::threadRegistrationOwner();
     const uint64_t previous = owner;
     owner = ownerKey;
     return previous;
 }
 
 uint64_t SubscriptionOwnerIndex::registrationOwner() {
-    return threadRegistrationOwner();
+    return je_owner_index::threadRegistrationOwner();
 }
 
 namespace je_owner_index {
@@ -126,12 +125,12 @@ namespace je_owner_index {
 }
 
 uint64_t SubscriptionOwnerIndex::setScriptOwner(uint64_t ownerKey) {
-    uint64_t& owner = threadScriptOwner();
+    uint64_t& owner = je_owner_index::threadScriptOwner();
     const uint64_t previous = owner;
     owner = ownerKey;
     return previous;
 }
 
 uint64_t SubscriptionOwnerIndex::scriptOwner() {
-    return threadScriptOwner();
+    return je_owner_index::threadScriptOwner();
 }

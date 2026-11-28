@@ -22,6 +22,8 @@
 #include <string>
 #include <vector>
 
+namespace ProjectShaderGlobalsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -215,3 +217,5 @@ TEST_F(ProjectShaderGlobalsStreamTest, ProjectSettingsCancelRestoresTheDeclarati
     EXPECT_NE(edit.error(), "");
     EXPECT_FALSE(edit.commit());
 }
+
+}  // namespace ProjectShaderGlobalsTest_cpp

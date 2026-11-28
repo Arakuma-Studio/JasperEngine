@@ -37,11 +37,15 @@
 #include "ScriptDataTestSupport.h"
 #include "support/EditorTestSupport.h"
 
+namespace SpriteNormalsWatcherTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace sn = jasperengine::editor::spritenormals;
 namespace ts = jasperengine::editor::texsynth;
 namespace fs = std::filesystem;
+
+}  // namespace SpriteNormalsWatcherTest_cpp
 
 namespace jasperengine::editor {
 
@@ -68,12 +72,14 @@ namespace jasperengine::editor {
         static double interval(W& w) { return w.interval(); }
         static int hashes(W& w) { return w.hashCount->load(); }
         static void settle(W& w, double seconds) { w.settleSeconds = seconds; }
-        static std::shared_ptr<sn::SpriteNormalsRun> regeneration(W& w) { return w.regen; }
+        static std::shared_ptr<spritenormals::SpriteNormalsRun> regeneration(W& w) { return w.regen; }
         static size_t queued(W& w) { return w.queue.size(); }
         static const std::string& lastLog(W& w) { return w.lastLog; }
     };
 
 }
+
+namespace SpriteNormalsWatcherTest_cpp {
 
 namespace {
 
@@ -551,3 +557,5 @@ TEST(SpriteNormalsWatcher, ANoticedPathWakesAgainOnceItWasIndexed) {
     WatcherAccess::scan(watcher);
     EXPECT_TRUE(watcher.generatedInfo(map, source, role));
 }
+
+}  // namespace SpriteNormalsWatcherTest_cpp

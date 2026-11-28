@@ -33,6 +33,8 @@
 #include <filesystem>
 #include <string>
 
+namespace StreamSortingTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -391,3 +393,5 @@ TEST(StreamSorting, ShaderCacheVersionCoversThePixelArtBatching){
     ASSERT_EQ(name.rfind('v', 0), 0u) << name;
     EXPECT_GE(std::stoi(name.substr(1)), 61) << name;
 }
+
+}  // namespace StreamSortingTest_cpp

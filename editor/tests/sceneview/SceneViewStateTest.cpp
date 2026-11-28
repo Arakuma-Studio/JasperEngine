@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+namespace SceneViewStateTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -178,3 +180,5 @@ TEST(Workspace, SceneFileBytesUnchanged) {
     }
     EXPECT_GT(checked, 0);
 }
+
+}  // namespace SceneViewStateTest_cpp

@@ -22,6 +22,8 @@
 #include <string>
 #include <vector>
 
+namespace Physics2DCollidersTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::physics2dtest;
@@ -425,3 +427,5 @@ TEST(Physics2DColliders, OldFilesReadAndContactEventsDefault) {
     EXPECT_TRUE(world.rb(e).isColliderContactEvents(1));
     EXPECT_TRUE(Collider2D().contactEvents);
 }
+
+}  // namespace Physics2DCollidersTest_cpp

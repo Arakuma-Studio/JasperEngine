@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace SettingsRegistryTest_cpp {
+
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
@@ -180,3 +182,5 @@ TEST(SettingsSearch, FindsTheS98Settings) {
     EXPECT_EQ(materials->label, "Material Creation Mode");
     EXPECT_TRUE(materials->mcp && materials->get && materials->set);
 }
+
+}  // namespace SettingsRegistryTest_cpp

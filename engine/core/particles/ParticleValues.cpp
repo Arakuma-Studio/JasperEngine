@@ -19,9 +19,10 @@
 #include <mutex>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
 
-float particles::remapDriver(float value, float lo, float hi, CurveWrap wrap){
+namespace jasperengine::particles {
+
+float remapDriver(float value, float lo, float hi, CurveWrap wrap){
     const float span = hi - lo;
     float normalized = span != 0.0f ? (value - lo) / span : 0.0f;
     switch (wrap){
@@ -246,3 +247,5 @@ bool MinMaxGradient::operator==(const MinMaxGradient& other) const{
            driverMax == other.driverMax && wrap == other.wrap && ramp == other.ramp && rampColors == other.rampColors &&
            rampSteps == other.rampSteps && rampReverse == other.rampReverse && rampBias == other.rampBias;
 }
+
+}  // namespace jasperengine::particles

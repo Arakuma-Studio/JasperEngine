@@ -27,6 +27,8 @@
 #include <random>
 #include <set>
 
+namespace TitleFxCatalogTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -183,3 +185,5 @@ TEST(LightGlowMathTest, CascadeVariance) {
     EXPECT_NEAR(tfx::glowLevelVariance(1, false), 0.25 + 4.0 / 6.0, 1e-12);
     EXPECT_NEAR(tfx::glowLevelVariance(2, true), (16.0 - 1.0) / 12.0 + 4.0 / 6.0 + 16.0 / 6.0, 1e-12);
 }
+
+}  // namespace TitleFxCatalogTest_cpp

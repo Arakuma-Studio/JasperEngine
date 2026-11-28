@@ -41,10 +41,11 @@
 #include <string>
 #include <vector>
 
+namespace audio_source_slots_test {
+
 using namespace jasperengine;
 using namespace jasperengine::scripttest;
 
-namespace audio_source_slots_test {
 
     namespace fs = std::filesystem;
 
@@ -172,6 +173,8 @@ namespace audio_source_slots_test {
     };
 
 }
+
+namespace audio_source_slots_test {
 
 using namespace audio_source_slots_test;
 
@@ -416,3 +419,5 @@ TEST_F(AudioSourceSlotsEditorTest, BrokenSlotsLoadWithAWarning) {
     EXPECT_EQ(again->getComponent<AudioSourceComponent>(siren).slot, 2) << "numbered again in entity order";
     EXPECT_EQ(log.count(D_LOG_WARN, "share slot numbers"), 1u);
 }
+
+}  // namespace audio_source_slots_test

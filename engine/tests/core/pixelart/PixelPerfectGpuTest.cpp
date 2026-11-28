@@ -46,6 +46,8 @@
 #include <string>
 #include <vector>
 
+namespace PixelPerfectGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -1052,3 +1054,5 @@ TEST_F(PixelPerfectBenchGpu, SnappingFrameCost){
         EXPECT_LE(on, off * 1.02 * slack);
     }
 }
+
+}  // namespace PixelPerfectGpuTest_cpp

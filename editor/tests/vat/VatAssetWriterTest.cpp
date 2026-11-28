@@ -27,6 +27,8 @@
 #include <fstream>
 #include <functional>
 
+namespace VatAssetWriterTest_cpp {
+
 using namespace jasperengine;
 namespace fs = std::filesystem;
 namespace ev = jasperengine::editor::vat;
@@ -451,3 +453,5 @@ TEST_F(VatAssetWriter, RefusesInputsThatDisagree){
     ev::VatEncodedFiles out;
     EXPECT_FALSE(encode(bake, out, nullptr));
 }
+
+}  // namespace VatAssetWriterTest_cpp

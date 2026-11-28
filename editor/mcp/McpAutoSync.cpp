@@ -44,7 +44,8 @@
 #endif
 
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::mcp;
+
+namespace jasperengine::editor::mcp {
 
 namespace fs = std::filesystem;
 
@@ -1189,3 +1190,5 @@ Json McpAutoSync::stats() const {
             {"complete", lastComplete}, {"scan_ms", round3(lastScanMs)}, {"settle_ms", round3(lastSettleMs)},
             {"scan_cpu_ms", round3(lastScanCpuMs)}, {"settle_cpu_ms", round3(lastSettleCpuMs)}};
 }
+
+}  // namespace jasperengine::editor::mcp

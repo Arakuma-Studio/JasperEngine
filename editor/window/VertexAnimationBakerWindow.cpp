@@ -42,7 +42,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vat;
 using jasperengine::vat::VatClip;
 using jasperengine::vat::VatData;
 using jasperengine::vat::VatMode;
@@ -165,24 +164,24 @@ namespace {
         return fs::is_regular_file(path, ec);
     }
 
-    VatClipOverride* findOverride(VatBakeSpec& spec, const std::string& name) {
-        for (VatClipOverride& override : spec.clipOverrides) {
+    jasperengine::editor::vat::VatClipOverride* findOverride(jasperengine::editor::vat::VatBakeSpec& spec, const std::string& name) {
+        for (jasperengine::editor::vat::VatClipOverride& override : spec.clipOverrides) {
             if (override.name == name) return &override;
         }
         return nullptr;
     }
 
     // the override row of a clip, made when missing; dropped again when back to the defaults
-    VatClipOverride& overrideRow(VatBakeSpec& spec, const std::string& name) {
-        if (VatClipOverride* found = findOverride(spec, name)) return *found;
-        VatClipOverride row;
+    jasperengine::editor::vat::VatClipOverride& overrideRow(jasperengine::editor::vat::VatBakeSpec& spec, const std::string& name) {
+        if (jasperengine::editor::vat::VatClipOverride* found = findOverride(spec, name)) return *found;
+        jasperengine::editor::vat::VatClipOverride row;
         row.name = name;
         spec.clipOverrides.push_back(row);
         return spec.clipOverrides.back();
     }
 
-    void pruneOverrides(VatBakeSpec& spec) {
-        spec.clipOverrides.erase(std::remove_if(spec.clipOverrides.begin(), spec.clipOverrides.end(), [](const VatClipOverride& o) {
+    void pruneOverrides(jasperengine::editor::vat::VatBakeSpec& spec) {
+        spec.clipOverrides.erase(std::remove_if(spec.clipOverrides.begin(), spec.clipOverrides.end(), [](const jasperengine::editor::vat::VatClipOverride& o) {
             return o.wrap == ClipWrapMode::Default && o.fps <= 0.0f && o.interpolate;
         }), spec.clipOverrides.end());
     }
@@ -263,7 +262,7 @@ bool VertexAnimationBakerWindow::holdsUnsavedResult() const {
     if (isRunning()) return true;
     if (!written.vat.empty()) return false;
     // only the result Bake would still write (the shown settings'): a stale one is gone already
-    if (mode == Mode::Bake && run && run->state() == VatBakeState::Done) return runKey == specKey();
+    if (mode == Mode::Bake && run && run->state() == jasperengine::editor::vat::VatBakeState::Done) return runKey == specKey();
     return mode == Mode::Import && importResult && importResult->ok() && importKey == importSpecKey();
 }
 
@@ -325,8 +324,8 @@ void VertexAnimationBakerWindow::resetForProjectSwitch() {
     mode = Mode::None;
     sourceLabel.clear();
     playOnLabel.clear();
-    spec = VatBakeSpec();
-    written = VatWriteResult();
+    spec = jasperengine::editor::vat::VatBakeSpec();
+    written = jasperengine::editor::vat::VatWriteResult();
     resetSource();
     status.clear();
     statusError = false;
@@ -345,7 +344,7 @@ void VertexAnimationBakerWindow::resetSource() {
     probe.reset();
     probeKey.clear();
     issues.clear();
-    estimate = VatEstimate();
+    estimate = jasperengine::editor::vat::VatEstimate();
     clips.clear();
     summary.clear();
     planned.clear();
@@ -355,16 +354,16 @@ void VertexAnimationBakerWindow::resetSource() {
     noneChecked = false;
     plannedRewrite = false;
     reimport = false;
-    detection = VatImportDetection();
-    importSpec = VatImportSpec();
-    importOut = VatImportWriteOptions();
+    detection = jasperengine::editor::vat::VatImportDetection();
+    importSpec = jasperengine::editor::vat::VatImportSpec();
+    importOut = jasperengine::editor::vat::VatImportWriteOptions();
     importKey.clear();
     spec.clips.clear();
     spec.clipOverrides.clear();
     spec.sockets.clear();
     spec.output.clear();
     spec.overwrite = false;
-    if (spec.place == VatPlace::Replace) spec.place = VatPlace::None;
+    if (spec.place == jasperengine::editor::vat::VatPlace::Replace) spec.place = jasperengine::editor::vat::VatPlace::None;
     markChanged();
 }
 
@@ -428,10 +427,10 @@ bool VertexAnimationBakerWindow::setSourcePath(const std::string& given, std::st
                           extension == ".anim" || extension == ".poseanim";
     // a Houdini / OpenVAT export (a folder, its mesh or its textures)
     if (!(bakeable && inside && (extension == ".prefab" || extension == ".anim" || extension == ".poseanim"))) {
-        VatImportDetection detected = detectVatImport(FileUtils::pathToUtf8(absolute));
+        jasperengine::editor::vat::VatImportDetection detected = jasperengine::editor::vat::detectVatImport(FileUtils::pathToUtf8(absolute));
         // a model file is an export's mesh only when the export's data sits beside it (the
         // detection names any mesh a candidate, with the missing textures as its problems)
-        const VatImportFiles& files = detected.files;
+        const jasperengine::editor::vat::VatImportFiles& files = detected.files;
         const bool exportData = !files.position.empty() || !files.material.empty() || !files.dataJson.empty() || !files.vat.empty() ||
                                 !files.remapInfo.empty() || !files.lookup.empty();
         if (detected.found() && (!bakeable || !inside || exportData)) {
@@ -439,13 +438,13 @@ bool VertexAnimationBakerWindow::setSourcePath(const std::string& given, std::st
             mode = Mode::Import;
             sourceLabel = path;
             detection = detected;
-            importSpec = VatImportSpec();
+            importSpec = jasperengine::editor::vat::VatImportSpec();
             importSpec.path = FileUtils::pathToUtf8(absolute);
             importSpec.projectRoot = FileUtils::pathToUtf8(project->getProjectPath());
             importSpec.clipName = detected.assetName;
             importSpec.preset = presetName(spec.preset);
             importSpec.normals = spec.normals;
-            importOut.place = spec.place == VatPlace::Crowd ? VatPlace::Crowd : (spec.place == VatPlace::Beside ? VatPlace::Beside : VatPlace::None);
+            importOut.place = spec.place == jasperengine::editor::vat::VatPlace::Crowd ? jasperengine::editor::vat::VatPlace::Crowd : (spec.place == jasperengine::editor::vat::VatPlace::Beside ? jasperengine::editor::vat::VatPlace::Beside : jasperengine::editor::vat::VatPlace::None);
             summary = detected.summary;
             setStatus("", false);
             return true;
@@ -461,16 +460,16 @@ bool VertexAnimationBakerWindow::setSourcePath(const std::string& given, std::st
         return false;
     }
     const std::string relative = projectRelative(project, absolute);
-    const VatBakeSpec previous = spec;
+    const jasperengine::editor::vat::VatBakeSpec previous = spec;
     resetSource();
     mode = Mode::Bake;
     sourceLabel = relative;
-    spec.source = VatSourceSpec();
+    spec.source = jasperengine::editor::vat::VatSourceSpec();
     if (extension == ".anim" || extension == ".poseanim") {
-        spec.source.kind = extension == ".anim" ? VatSourceKind::Anim : VatSourceKind::Pose;
+        spec.source.kind = extension == ".anim" ? jasperengine::editor::vat::VatSourceKind::Anim : jasperengine::editor::vat::VatSourceKind::Pose;
         spec.source.anims = {relative};
         // played on what the previous source played them on, else the clip's preview model
-        if ((previous.source.kind == VatSourceKind::Anim || previous.source.kind == VatSourceKind::Pose) && !previous.source.path.empty()) {
+        if ((previous.source.kind == jasperengine::editor::vat::VatSourceKind::Anim || previous.source.kind == jasperengine::editor::vat::VatSourceKind::Pose) && !previous.source.path.empty()) {
             spec.source.path = previous.source.path;
             spec.source.scene = previous.source.scene;
             spec.source.sceneId = previous.source.sceneId;
@@ -493,7 +492,7 @@ bool VertexAnimationBakerWindow::setSourcePath(const std::string& given, std::st
         }
         playOnLabel = isGameObjectSource(spec.source) ? sceneLabel(project, spec.source.sceneId) + ": " + spec.source.path : spec.source.path;
     } else {
-        spec.source.kind = VatSourceKind::Model;
+        spec.source.kind = jasperengine::editor::vat::VatSourceKind::Model;
         spec.source.path = relative;
     }
     setStatus("", false);
@@ -513,8 +512,8 @@ bool VertexAnimationBakerWindow::setSourceEntity(uint32_t sceneId, Entity entity
     }
     resetSource();
     mode = Mode::Bake;
-    spec.source = VatSourceSpec();
-    spec.source.kind = VatSourceKind::Entity;
+    spec.source = jasperengine::editor::vat::VatSourceSpec();
+    spec.source.kind = jasperengine::editor::vat::VatSourceKind::Entity;
     spec.source.path = EntityPath::of(*sceneProject, entity);
     spec.source.sceneId = sceneId;
     sourceLabel = sceneProject->name + ": " + spec.source.path;
@@ -524,7 +523,7 @@ bool VertexAnimationBakerWindow::setSourceEntity(uint32_t sceneId, Entity entity
 }
 
 bool VertexAnimationBakerWindow::setPlayOnPath(const std::string& given, std::string& error) {
-    if (spec.source.kind != VatSourceKind::Anim && spec.source.kind != VatSourceKind::Pose) {
+    if (spec.source.kind != jasperengine::editor::vat::VatSourceKind::Anim && spec.source.kind != jasperengine::editor::vat::VatSourceKind::Pose) {
         error = "Play on is for .anim and .poseanim sources";
         return false;
     }
@@ -547,7 +546,7 @@ bool VertexAnimationBakerWindow::setPlayOnPath(const std::string& given, std::st
 }
 
 bool VertexAnimationBakerWindow::setPlayOnEntity(uint32_t sceneId, Entity entity, std::string& error) {
-    if (spec.source.kind != VatSourceKind::Anim && spec.source.kind != VatSourceKind::Pose) {
+    if (spec.source.kind != jasperengine::editor::vat::VatSourceKind::Anim && spec.source.kind != jasperengine::editor::vat::VatSourceKind::Pose) {
         error = "Play on is for .anim and .poseanim sources";
         return false;
     }
@@ -587,14 +586,14 @@ bool VertexAnimationBakerWindow::openVat(const std::string& vatPath, std::string
         return false;
     }
     const VatData& data = *parsed.data;
-    const std::vector<VatIssue> staleness = checkVatStaleness(project, relative);
+    const std::vector<jasperengine::editor::vat::VatIssue> staleness = jasperengine::editor::vat::checkVatStaleness(project, relative);
 
     if (data.recipe.sources.size() == 1 && (data.recipe.sources[0].kind == "houdini_vat3" || data.recipe.sources[0].kind == "openvat")) {
-        VatImportSpec recipeSpec;
-        if (!importSpecFromRecipe(data.recipe, FileUtils::pathToUtf8(project->getProjectPath()), recipeSpec, error)) return false;
+        jasperengine::editor::vat::VatImportSpec recipeSpec;
+        if (!jasperengine::editor::vat::importSpecFromRecipe(data.recipe, FileUtils::pathToUtf8(project->getProjectPath()), recipeSpec, error)) return false;
         resetSource();
         mode = Mode::Import;
-        detection = detectVatImport(recipeSpec.path);
+        detection = jasperengine::editor::vat::detectVatImport(recipeSpec.path);
         importSpec = recipeSpec;
         importSpec.projectRoot = FileUtils::pathToUtf8(project->getProjectPath());
         importOut.output = relative;
@@ -604,15 +603,15 @@ bool VertexAnimationBakerWindow::openVat(const std::string& vatPath, std::string
         sourceLabel = recipeSpec.path;
         summary = detection.summary;
     } else {
-        VatBakeSession loader(project);
-        VatBakeSpec loaded;
+        jasperengine::editor::vat::VatBakeSession loader(project);
+        jasperengine::editor::vat::VatBakeSpec loaded;
         std::string loadError;
         if (loader.loadRebake(relative, loadError)) {
             loaded = loader.spec();
         } else {
             // the recipe as it is: the problem shows in the estimate (a closed scene, a missing file)
             std::string recipeError;
-            if (!specFromRecipe(data.recipe, loaded, recipeError)) {
+            if (!jasperengine::editor::vat::specFromRecipe(data.recipe, loaded, recipeError)) {
                 error = recipeError;
                 return false;
             }
@@ -621,14 +620,14 @@ bool VertexAnimationBakerWindow::openVat(const std::string& vatPath, std::string
         }
         resetSource();
         mode = Mode::Bake;
-        const VatPlace place = spec.place;
+        const jasperengine::editor::vat::VatPlace place = spec.place;
         spec = loaded;
-        spec.place = place == VatPlace::Replace && !isGameObjectSource(spec.source) ? VatPlace::None : place;
+        spec.place = place == jasperengine::editor::vat::VatPlace::Replace && !isGameObjectSource(spec.source) ? jasperengine::editor::vat::VatPlace::None : place;
         spec.output = relative;
         spec.overwrite = true;
         rebakePath = relative;
         rebakeKey = specKey();
-        if (spec.source.kind == VatSourceKind::Anim || spec.source.kind == VatSourceKind::Pose) {
+        if (spec.source.kind == jasperengine::editor::vat::VatSourceKind::Anim || spec.source.kind == jasperengine::editor::vat::VatSourceKind::Pose) {
             std::string anims;
             for (const std::string& anim : spec.source.anims) anims += (anims.empty() ? "" : ", ") + anim;
             sourceLabel = anims;
@@ -638,7 +637,7 @@ bool VertexAnimationBakerWindow::openVat(const std::string& vatPath, std::string
         }
         if (!loadError.empty()) sourceNotes.push_back("The recipe can't run as it is: " + loadError);
     }
-    for (const VatIssue& issue : staleness) {
+    for (const jasperengine::editor::vat::VatIssue& issue : staleness) {
         sourceNotes.push_back((issue.kind == "vat-source-changed" ? "Source changed since baking: " : "") + issue.message +
                               (issue.fix.empty() ? std::string() : " (" + issue.fix + ")"));
     }
@@ -671,8 +670,8 @@ bool VertexAnimationBakerWindow::openEntry(const VatBakeEntry& entry, bool bakeN
             }
             resetSource();
             mode = Mode::Bake;
-            spec.source = VatSourceSpec();
-            spec.source.kind = VatSourceKind::Pose;
+            spec.source = jasperengine::editor::vat::VatSourceSpec();
+            spec.source.kind = jasperengine::editor::vat::VatSourceKind::Pose;
             spec.source.path = EntityPath::of(*sceneProject, entry.entity);
             spec.source.sceneId = entry.sceneId;
             spec.source.anims = {projectRelative(project, project->resolveAssetPath(FileUtils::pathFromUtf8(entry.asset)))};
@@ -726,7 +725,7 @@ bool VertexAnimationBakerWindow::openEntry(const VatBakeEntry& entry, bool bakeN
     spec.precision = last.precision;
     spec.preset = last.preset;
     spec.toleranceMm = last.toleranceMm;
-    spec.place = VatPlace::Beside;
+    spec.place = jasperengine::editor::vat::VatPlace::Beside;
     spec.output.clear();
     markChanged();
     return bake(true, error);
@@ -734,8 +733,8 @@ bool VertexAnimationBakerWindow::openEntry(const VatBakeEntry& entry, bool bakeN
 
 // ====================================================================== settings
 
-void VertexAnimationBakerWindow::setSpec(const VatBakeSpec& next) {
-    const VatSourceSpec source = spec.source;
+void VertexAnimationBakerWindow::setSpec(const jasperengine::editor::vat::VatBakeSpec& next) {
+    const jasperengine::editor::vat::VatSourceSpec source = spec.source;
     spec = next;
     spec.source = source;
     markChanged();
@@ -757,7 +756,7 @@ void VertexAnimationBakerWindow::setCheckedClips(const std::vector<std::string>&
     markChanged();
 }
 
-bool VertexAnimationBakerWindow::applyFix(const VatFix& fix, std::string& error) {
+bool VertexAnimationBakerWindow::applyFix(const jasperengine::editor::vat::VatFix& fix, std::string& error) {
     Json value;
     try {
         value = Json::parse(fix.value);
@@ -774,7 +773,7 @@ bool VertexAnimationBakerWindow::applyFix(const VatFix& fix, std::string& error)
         }
         spec.fps = fps;
         // clips sampled faster than the new rate follow it (the estimate's lowering)
-        for (VatClipOverride& override : spec.clipOverrides) {
+        for (jasperengine::editor::vat::VatClipOverride& override : spec.clipOverrides) {
             if (override.fps > fps) override.fps = fps;
         }
     } else if (setting == "normals" && value.is_boolean()) {
@@ -878,7 +877,7 @@ std::string VertexAnimationBakerWindow::specKey() const {
     j["anims"] = spec.source.anims;
     j["clips"] = spec.clips;
     Json overrides = Json::array();
-    for (const VatClipOverride& o : spec.clipOverrides) overrides.push_back({o.name, (int)o.wrap, o.fps, o.interpolate});
+    for (const jasperengine::editor::vat::VatClipOverride& o : spec.clipOverrides) overrides.push_back({o.name, (int)o.wrap, o.fps, o.interpolate});
     j["overrides"] = overrides;
     j["mode"] = modeChoiceName(spec.mode);
     j["fps"] = spec.fps;
@@ -918,11 +917,11 @@ void VertexAnimationBakerWindow::refreshEstimate() {
     probeLoading = false;
     issues.clear();
     clips.clear();
-    estimate = VatEstimate();
+    estimate = jasperengine::editor::vat::VatEstimate();
     planned.clear();
     probe.reset();
-    if ((spec.source.kind == VatSourceKind::Anim || spec.source.kind == VatSourceKind::Pose) && spec.source.path.empty()) {
-        VatIssue issue;
+    if ((spec.source.kind == jasperengine::editor::vat::VatSourceKind::Anim || spec.source.kind == jasperengine::editor::vat::VatSourceKind::Pose) && spec.source.path.empty()) {
+        jasperengine::editor::vat::VatIssue issue;
         issue.kind = "invalid_source";
         issue.error = true;
         issue.message = "the clips need a model, prefab or GameObject to play on";
@@ -931,14 +930,14 @@ void VertexAnimationBakerWindow::refreshEstimate() {
         updateSummary();
         return;
     }
-    probe = std::make_unique<VatBakeSession>(project);
+    probe = std::make_unique<jasperengine::editor::vat::VatBakeSession>(project);
     probe->setSpec(spec);
     issues = probe->check();
-    for (const VatIssue& issue : issues) probeLoading = probeLoading || issue.kind == "source_loading";
-    for (const VatSourceClip& clip : probe->sourceClips()) clips.push_back({clip.name, clip.origin, clip.length, clip.wrap});
+    for (const jasperengine::editor::vat::VatIssue& issue : issues) probeLoading = probeLoading || issue.kind == "source_loading";
+    for (const jasperengine::editor::vat::VatSourceClip& clip : probe->sourceClips()) clips.push_back({clip.name, clip.origin, clip.length, clip.wrap});
     if (!hasErrors(issues) || !probe->sourceClips().empty()) estimate = probe->estimate();
     if (noneChecked && !clips.empty()) {
-        VatIssue issue;
+        jasperengine::editor::vat::VatIssue issue;
         issue.kind = "no_animation";
         issue.error = true;
         issue.message = "no clip is checked";
@@ -958,7 +957,7 @@ void VertexAnimationBakerWindow::updateSummary() {
         return;
     }
     if (clips.empty() && hasErrors(issues)) {
-        for (const VatIssue& issue : issues) {
+        for (const jasperengine::editor::vat::VatIssue& issue : issues) {
             if (issue.error) {
                 summary = issue.message;
                 return;
@@ -977,12 +976,12 @@ void VertexAnimationBakerWindow::updateSummary() {
 
 bool VertexAnimationBakerWindow::isRunning() const {
     if (importJob) return true;
-    return run && (run->state() == VatBakeState::Posing || run->state() == VatBakeState::Encoding);
+    return run && (run->state() == jasperengine::editor::vat::VatBakeState::Posing || run->state() == jasperengine::editor::vat::VatBakeState::Encoding);
 }
 
 bool VertexAnimationBakerWindow::isStale() const {
     if (mode == Mode::Import) return importResult && importKey != importSpecKey();
-    const VatBakeResult* result = run ? run->result() : nullptr;
+    const jasperengine::editor::vat::VatBakeResult* result = run ? run->result() : nullptr;
     return result && runKey != specKey();
 }
 
@@ -1015,7 +1014,7 @@ bool VertexAnimationBakerWindow::bake(bool write, std::string& error) {
         const fs::path absolute = absoluteOf(project, spec.output);
         std::vector<std::string> existing;
         if (fileExists(absolute)) existing.push_back(spec.output);
-        const std::string mesh = meshPathFor(FileUtils::pathToUtf8(absolute));
+        const std::string mesh = jasperengine::editor::vat::meshPathFor(FileUtils::pathToUtf8(absolute));
         if (fileExists(FileUtils::pathFromUtf8(mesh))) existing.push_back(projectRelative(project, FileUtils::pathFromUtf8(mesh)));
         if (!existing.empty()) {
             std::string list;
@@ -1038,7 +1037,7 @@ bool VertexAnimationBakerWindow::startBake(bool write, std::string& error) {
         const std::string key = specKey();
         // an in-memory result whose source is gone is never written (it would name a GameObject
         // that no longer exists): dropped, and the bake below reports the source
-        if (run && run->state() == VatBakeState::Done) {
+        if (run && run->state() == jasperengine::editor::vat::VatBakeState::Done) {
             const std::string gone = sourceGone(run->spec().source);
             if (!gone.empty()) dropStoredResult(gone);
         }
@@ -1052,7 +1051,7 @@ bool VertexAnimationBakerWindow::startBake(bool write, std::string& error) {
 
 bool VertexAnimationBakerWindow::startBakeFor(const std::string& key, bool write, std::string& error) {
     // the same settings as an in-memory result: written as it is, no second bake
-    if (write && run && run->state() == VatBakeState::Done && runKey == key) {
+    if (write && run && run->state() == jasperengine::editor::vat::VatBakeState::Done && runKey == key) {
         writeWhenDone = true;
         runFinished = false;
         finishRun();
@@ -1060,7 +1059,7 @@ bool VertexAnimationBakerWindow::startBakeFor(const std::string& key, bool write
         return !statusError;
     }
     releasePreview();
-    run = std::make_unique<VatBakeSession>(project);
+    run = std::make_unique<jasperengine::editor::vat::VatBakeSession>(project);
     std::string loadError;
     if (!rebakePath.empty() && key == rebakeKey && run->loadRebake(rebakePath, loadError)) {
         // the recipe exactly as loaded: its clip matching keeps every hand edit
@@ -1070,7 +1069,7 @@ bool VertexAnimationBakerWindow::startBakeFor(const std::string& key, bool write
     runKey = key;
     writeWhenDone = write;
     runFinished = false;
-    written = VatWriteResult();
+    written = jasperengine::editor::vat::VatWriteResult();
     rememberSettings();
     if (!run->start()) {
         error = run->failureIssues().empty() ? run->error() : issuesText(run->failureIssues(), true);
@@ -1083,7 +1082,7 @@ bool VertexAnimationBakerWindow::startBakeFor(const std::string& key, bool write
 }
 
 void VertexAnimationBakerWindow::cancel() {
-    if (run && (run->state() == VatBakeState::Posing || run->state() == VatBakeState::Encoding)) {
+    if (run && (run->state() == jasperengine::editor::vat::VatBakeState::Posing || run->state() == jasperengine::editor::vat::VatBakeState::Encoding)) {
         run->cancel();
     }
     if (importJob) {
@@ -1110,12 +1109,12 @@ void VertexAnimationBakerWindow::tick(double budgetMs) {
     watchSource();
     if (!run || runFinished) return;
     try {
-        if (run->state() == VatBakeState::Posing || run->state() == VatBakeState::Encoding) {
+        if (run->state() == jasperengine::editor::vat::VatBakeState::Posing || run->state() == jasperengine::editor::vat::VatBakeState::Encoding) {
             if (!run->advance(budgetMs)) return;
         }
         finishRun();
     } catch (const std::exception& exception) {
-        if (run && (run->state() == VatBakeState::Posing || run->state() == VatBakeState::Encoding)) run->cancel();
+        if (run && (run->state() == jasperengine::editor::vat::VatBakeState::Posing || run->state() == jasperengine::editor::vat::VatBakeState::Encoding)) run->cancel();
         failWith("bake", exception.what());
     }
 }
@@ -1128,7 +1127,7 @@ void VertexAnimationBakerWindow::failWith(const std::string& what, const std::st
     Out::error("Vertex Animation: %s", text.c_str());
 }
 
-std::string VertexAnimationBakerWindow::sourceGone(const VatSourceSpec& source) const {
+std::string VertexAnimationBakerWindow::sourceGone(const jasperengine::editor::vat::VatSourceSpec& source) const {
     if (!project) return "no project is open";
     if (source.sceneId != 0) {
         SceneProject* sceneProject = project->getScene(source.sceneId);
@@ -1176,12 +1175,12 @@ void VertexAnimationBakerWindow::watchSource() {
             sourceLabel.clear();
             playOnLabel.clear();
             resetSource();
-            spec.source = VatSourceSpec();
+            spec.source = jasperengine::editor::vat::VatSourceSpec();
             setStatus("The scene of the source (" + label + ") was closed: choose a source.", false);
             return;
         }
     }
-    if (run && run->state() == VatBakeState::Done) {
+    if (run && run->state() == jasperengine::editor::vat::VatBakeState::Done) {
         const std::string gone = sourceGone(run->spec().source);
         if (!gone.empty()) dropStoredResult(gone);
     }
@@ -1196,15 +1195,15 @@ void VertexAnimationBakerWindow::watchSource() {
 std::string VertexAnimationBakerWindow::stageLine() const {
     if (importJob) return "Stage 1 of 1: Importing " + detection.assetName;
     if (!run) return "";
-    const VatBakeProgress progress = run->progress();
+    const jasperengine::editor::vat::VatBakeProgress progress = run->progress();
     switch (run->state()) {
-        case VatBakeState::Posing: return "Stage 1 of 2: " + progress.stage;
-        case VatBakeState::Encoding: return "Stage 2 of 2: " + progress.stage;
+        case jasperengine::editor::vat::VatBakeState::Posing: return "Stage 1 of 2: " + progress.stage;
+        case jasperengine::editor::vat::VatBakeState::Encoding: return "Stage 2 of 2: " + progress.stage;
         default: return progress.stage;
     }
 }
 
-std::string VertexAnimationBakerWindow::statusLine(const VatWriteResult& out, const VatData& data, bool import) {
+std::string VertexAnimationBakerWindow::statusLine(const jasperengine::editor::vat::VatWriteResult& out, const VatData& data, bool import) {
     std::string clipNames;
     for (size_t i = 0; i < data.clips.size() && i < 4; i++) clipNames += (i ? ", " : "") + data.clips[i].name;
     if (data.clips.size() > 4) clipNames += ", ...";
@@ -1212,7 +1211,7 @@ std::string VertexAnimationBakerWindow::statusLine(const VatWriteResult& out, co
     std::string line = std::string(import ? "Imported" : "Baked") + " '" + out.vat + "' (" + modeLabel(data.mode) + ", " +
                        std::to_string(data.clips.size()) + (data.clips.size() == 1 ? " clip: " : " clips: ") + clipNames + "; " +
                        std::to_string(data.layout.width) + " x " + std::to_string(data.layout.height) + " " +
-                       textureFormatName(data.layout.precision) + ", " + bytesText(data.stats.bytes) + ")" +
+                       jasperengine::editor::vat::textureFormatName(data.layout.precision) + ", " + bytesText(data.stats.bytes) + ")" +
                        (out.rewritten ? ", written over the previous bake (GUID and edits kept)" : "") + "; one undo step (" +
                        out.undoName + ")";
     if (out.entity != NULL_ENTITY) {
@@ -1236,15 +1235,15 @@ void VertexAnimationBakerWindow::finishRun() {
     if (!run || runFinished) return;
     runFinished = true;
     switch (run->state()) {
-        case VatBakeState::Done: {
-            const VatBakeResult* result = run->result();
+        case jasperengine::editor::vat::VatBakeState::Done: {
+            const jasperengine::editor::vat::VatBakeResult* result = run->result();
             if (!writeWhenDone) {
                 setStatus("Baked in memory (" + std::string(modeLabel(result->data.mode)) + ", " + bytesText(result->report.bytes) +
                           "): compare it in Preview; Bake writes this result without baking again.", false);
                 return;
             }
             std::string error;
-            VatIssue issue;
+            jasperengine::editor::vat::VatIssue issue;
             if (!run->write(written, error, &issue)) {
                 if (!issue.fix.empty() && error.find(issue.fix) == std::string::npos) error += " (" + issue.fix + ")";
                 setStatus("The bake can't be written: " + error, true);
@@ -1263,10 +1262,10 @@ void VertexAnimationBakerWindow::finishRun() {
             markChanged();
             break;
         }
-        case VatBakeState::Cancelled:
+        case jasperengine::editor::vat::VatBakeState::Cancelled:
             setStatus("Cancelled: nothing was written.", false);
             break;
-        case VatBakeState::Failed: {
+        case jasperengine::editor::vat::VatBakeState::Failed: {
             const std::string error = run->failureIssues().empty() ? run->error() : issuesText(run->failureIssues(), true);
             setStatus("The bake failed: " + error, true);
             Out::error("Vertex Animation: the bake failed: %s", error.c_str());
@@ -1295,7 +1294,7 @@ bool VertexAnimationBakerWindow::runImport(std::string& error) {
     }
     if (scenePlaying(&error)) return false;
     // what the options fix (fps, axis) goes to the importer; any other missing piece stops here
-    for (const VatIssue& issue : detection.issues) {
+    for (const jasperengine::editor::vat::VatIssue& issue : detection.issues) {
         if (!issue.error) continue;
         const bool fixed = (issue.kind == "fps_unknown" && importSpec.fps > 0.0f) || (issue.kind == "unknown_target" && !importSpec.axis.empty());
         if (!fixed) {
@@ -1305,7 +1304,7 @@ bool VertexAnimationBakerWindow::runImport(std::string& error) {
     }
     if (!importOut.output.empty() && !importOut.overwrite) {
         const fs::path absolute = absoluteOf(project, importOut.output);
-        if (fileExists(absolute) || fileExists(FileUtils::pathFromUtf8(meshPathFor(FileUtils::pathToUtf8(absolute))))) {
+        if (fileExists(absolute) || fileExists(FileUtils::pathFromUtf8(jasperengine::editor::vat::meshPathFor(FileUtils::pathToUtf8(absolute))))) {
             getEditorHost().registerConfirmAlert("Replace Files?", "These files exist and would be replaced:\n  " + importOut.output +
                                                  "\n\nReplace them? (Undo puts them back.)", [this]() {
                 importOut.overwrite = true;
@@ -1317,7 +1316,7 @@ bool VertexAnimationBakerWindow::runImport(std::string& error) {
     }
     releasePreview();
     importResult.reset();
-    written = VatWriteResult();
+    written = jasperengine::editor::vat::VatWriteResult();
     importSpec.projectRoot = FileUtils::pathToUtf8(project->getProjectPath());
     auto job = std::make_shared<ImportJob>();
     job->spec = importSpec;
@@ -1326,13 +1325,13 @@ bool VertexAnimationBakerWindow::runImport(std::string& error) {
         try {
             raw->result = importVat(raw->spec);
         } catch (const std::exception& exception) {
-            VatIssue issue;
+            jasperengine::editor::vat::VatIssue issue;
             issue.kind = "read_failed";
             issue.error = true;
             issue.message = exception.what();
             raw->result.errors.push_back(issue);
         } catch (...) {
-            VatIssue issue;
+            jasperengine::editor::vat::VatIssue issue;
             issue.kind = "read_failed";
             issue.error = true;
             issue.message = "the import stopped on an unknown error";
@@ -1351,7 +1350,7 @@ void VertexAnimationBakerWindow::finishImport() {
     std::shared_ptr<ImportJob> job = importJob;
     importJob.reset();
     if (job->thread.joinable()) job->thread.join();
-    importResult = std::make_shared<VatImportResult>(std::move(job->result));
+    importResult = std::make_shared<jasperengine::editor::vat::VatImportResult>(std::move(job->result));
     if (!importResult->ok()) {
         const std::string text = vatImportIssuesText(importResult->errors);
         setStatus("The import failed: " + text, true);
@@ -1359,18 +1358,18 @@ void VertexAnimationBakerWindow::finishImport() {
         return;
     }
     std::string error;
-    VatImportWriteOptions options = importOut;
-    if (options.place == VatPlace::Crowd) {
-        VatCrowd crowd;
+    jasperengine::editor::vat::VatImportWriteOptions options = importOut;
+    if (options.place == jasperengine::editor::vat::VatPlace::Crowd) {
+        jasperengine::editor::vat::VatCrowd crowd;
         crowd.count = crowdCount;
         crowd.area = crowdArea;
         crowd.seed = crowdSeedValue();
-        const std::string problem = crowdPlacementProblem(crowd);
+        const std::string problem = jasperengine::editor::vat::crowdPlacementProblem(crowd);
         if (!problem.empty()) {
             setStatus("The import can't be placed: " + problem, true);
             return;
         }
-        options.crowd = crowdPlacement(crowd);
+        options.crowd = jasperengine::editor::vat::crowdPlacement(crowd);
     }
     bool wrote = false;
     try {
@@ -1400,8 +1399,8 @@ std::string VertexAnimationBakerWindow::sourcePreviewFile() {
         previewNote = "A Houdini / OpenVAT export: its source can't be shown here; the VAT plays the imported data.";
         return "";
     }
-    const VatSourceSpec& source = run ? run->spec().source : spec.source;
-    if (!isGameObjectSource(source)) return source.path;
+    const jasperengine::editor::vat::VatSourceSpec& source = run ? run->spec().source : spec.source;
+    if (!jasperengine::editor::vat::isGameObjectSource(source)) return source.path;
     SceneProject* sceneProject = nullptr;
     if (source.sceneId != 0) {
         sceneProject = project->getScene(source.sceneId);
@@ -1511,7 +1510,7 @@ void VertexAnimationBakerWindow::applyHeatmap() {
 }
 
 void VertexAnimationBakerWindow::drawHeatmapLegend() {
-    const VatBakeResult* result = run ? run->result() : nullptr;
+    const jasperengine::editor::vat::VatBakeResult* result = run ? run->result() : nullptr;
     if (!result) return;
     const float tolerance = result->report.toleranceMm;
     float worst = 0.0f;
@@ -1522,9 +1521,9 @@ void VertexAnimationBakerWindow::drawHeatmapLegend() {
     const ImVec2 at = ImGui::GetCursorScreenPos();
     ImDrawList* draw = ImGui::GetWindowDrawList();
     float c0[4], c1[4], c2[4];
-    heatmapColor(0.0f, tolerance, c0);
-    heatmapColor(tolerance, tolerance, c1);
-    heatmapColor(2.0f * tolerance, tolerance, c2);
+    jasperengine::editor::vat::heatmapColor(0.0f, tolerance, c0);
+    jasperengine::editor::vat::heatmapColor(tolerance, tolerance, c1);
+    jasperengine::editor::vat::heatmapColor(2.0f * tolerance, tolerance, c2);
     const ImU32 green = ImGui::GetColorU32(ImVec4(c0[0], c0[1], c0[2], 1.0f));
     const ImU32 yellow = ImGui::GetColorU32(ImVec4(c1[0], c1[1], c1[2], 1.0f));
     const ImU32 red = ImGui::GetColorU32(ImVec4(c2[0], c2[1], c2[2], 1.0f));
@@ -1555,10 +1554,10 @@ void VertexAnimationBakerWindow::updatePreview(float dt) {
     previewTime = std::clamp(previewTime, 0.0f, std::max(0.0f, length));
     if (vatView && vatView->hasSubject()) vatView->poseVat(clip.name, previewTime);
     if (sourceView && sourceView->hasSubject() && mode == Mode::Bake) {
-        const VatBakeResult* result = run->result();
+        const jasperengine::editor::vat::VatBakeResult* result = run->result();
         std::shared_ptr<const AnimationClip> sourceClip;
         if ((size_t)previewClip < result->sourceClips.size()) {
-            for (const VatSourceClip& candidate : run->sourceClips()) {
+            for (const jasperengine::editor::vat::VatSourceClip& candidate : run->sourceClips()) {
                 if (candidate.name == result->sourceClips[(size_t)previewClip]) sourceClip = candidate.clip;
             }
         }
@@ -1597,7 +1596,7 @@ bool VertexAnimationBakerWindow::sourceField(const char* id, std::string& text, 
             if (!files.empty()) {
                 applied = playOn ? setPlayOnPath(files[0], error) : setSourcePath(files[0], error);
                 // several .anim files: every one is a clip of the source
-                if (applied && !playOn && spec.source.kind == VatSourceKind::Anim) {
+                if (applied && !playOn && spec.source.kind == jasperengine::editor::vat::VatSourceKind::Anim) {
                     for (size_t i = 1; i < files.size(); i++) {
                         const fs::path absolute = absoluteOf(project, files[i]);
                         if (lower(FileUtils::pathToUtf8(absolute.extension())) == ".anim") spec.source.anims.push_back(projectRelative(project, absolute));
@@ -1660,7 +1659,7 @@ void VertexAnimationBakerWindow::drawSource() {
         drawImportSource();
         return;
     }
-    if (spec.source.kind == VatSourceKind::Anim || spec.source.kind == VatSourceKind::Pose) {
+    if (spec.source.kind == jasperengine::editor::vat::VatSourceKind::Anim || spec.source.kind == jasperengine::editor::vat::VatSourceKind::Pose) {
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted("Play on");
         ImGui::SameLine();
@@ -1669,9 +1668,9 @@ void VertexAnimationBakerWindow::drawSource() {
 }
 
 void VertexAnimationBakerWindow::drawImportSource() {
-    const VatImportDetection& d = detection;
-    std::string what = std::string(d.kind == VatImportKind::HoudiniVat3 ? "Houdini Labs VAT 3" : "OpenVAT") + " export";
-    if (d.mode != HoudiniMode::Unknown) what += ", " + std::string(houdiniModeName(d.mode)) + (d.modeSource.empty() ? "" : " (from the " + d.modeSource + ")");
+    const jasperengine::editor::vat::VatImportDetection& d = detection;
+    std::string what = std::string(d.kind == jasperengine::editor::vat::VatImportKind::HoudiniVat3 ? "Houdini Labs VAT 3" : "OpenVAT") + " export";
+    if (d.mode != jasperengine::editor::vat::HoudiniMode::Unknown) what += ", " + std::string(jasperengine::editor::vat::houdiniModeName(d.mode)) + (d.modeSource.empty() ? "" : " (from the " + d.modeSource + ")");
     ImGui::TextWrapped("%s", what.c_str());
     std::string metadata;
     if (!d.metadataSource.empty()) metadata += "metadata: " + d.metadataSource;
@@ -1698,7 +1697,7 @@ void VertexAnimationBakerWindow::drawImportSource() {
         }
         ImGui::TreePop();
     }
-    for (const VatIssue& issue : d.issues) {
+    for (const jasperengine::editor::vat::VatIssue& issue : d.issues) {
         const std::string text = issue.message + (issue.fix.empty() ? std::string() : " (" + issue.fix + ")");
         if (issue.error) errorText(text);
         else warningText(text);
@@ -1741,12 +1740,12 @@ void VertexAnimationBakerWindow::drawClips() {
         }
         UIProbe::item("vatbaker.clip." + std::to_string(i));
         ImGui::SetItemTooltip("%s", row.origin.c_str());
-        VatClipOverride* override = findOverride(spec, row.name);
+        jasperengine::editor::vat::VatClipOverride* override = findOverride(spec, row.name);
         const ClipWrapMode wrap = override && override->wrap != ClipWrapMode::Default ? override->wrap : row.wrap;
         const float fps = override && override->fps > 0.0f ? override->fps : spec.fps;
         int frames = 1;
         float sampleFps = 0.0f;
-        clipFrames(row.length, wrap, fps, frames, sampleFps);
+        jasperengine::editor::vat::clipFrames(row.length, wrap, fps, frames, sampleFps);
         ImGui::TableSetColumnIndex(1);
         ImGui::Text("%d", frames);
         ImGui::TableSetColumnIndex(2);
@@ -1806,13 +1805,13 @@ void VertexAnimationBakerWindow::drawSettings() {
     const char* modes[] = {"Auto", "Vertices", "Bones"};
     int modeIndex = (int)spec.mode;
     if (ImGui::Combo("##mode", &modeIndex, modes, 3)) {
-        spec.mode = (VatModeChoice)modeIndex;
+        spec.mode = (jasperengine::editor::vat::VatModeChoice)modeIndex;
         markChanged();
     }
     UIProbe::item("vatbaker.mode");
     tooltip("Vertices: every vertex per frame (anything that deforms: skin, morphs, lattices). Bones: bone matrices per frame\n"
             "(kilobytes, exact normals; skin and rigid parts only). Auto picks Bones when bones reproduce the motion.");
-    const VatBakeResult* result = run && runKey == specKey() ? run->result() : nullptr;
+    const jasperengine::editor::vat::VatBakeResult* result = run && runKey == specKey() ? run->result() : nullptr;
     const std::string decision = result ? std::string(modeLabel(result->report.mode)) + ": " + result->report.modeReason
                                         : (estimate.modeReason.empty() ? std::string() : estimate.modeReason);
     if (!decision.empty()) {
@@ -1839,7 +1838,7 @@ void VertexAnimationBakerWindow::drawSettings() {
     const char* precisions[] = {"Auto", "Half", "Float"};
     int precisionIndex = (int)spec.precision;
     if (ImGui::Combo("##precision", &precisionIndex, precisions, 3)) {
-        spec.precision = (VatPrecisionChoice)precisionIndex;
+        spec.precision = (jasperengine::editor::vat::VatPrecisionChoice)precisionIndex;
         markChanged();
     }
     tooltip("Vertices mode: half floats (8 bytes a texel) unless their error exceeds the tolerance (Auto), or always float. Bones are float.");
@@ -1848,7 +1847,7 @@ void VertexAnimationBakerWindow::drawSettings() {
     const char* presets[] = {"Mobile & Web", "Desktop"};
     int presetIndex = (int)spec.preset;
     if (ImGui::Combo("##preset", &presetIndex, presets, 2)) {
-        spec.preset = (VatPreset)presetIndex;
+        spec.preset = (jasperengine::editor::vat::VatPreset)presetIndex;
         markChanged();
     }
     UIProbe::item("vatbaker.preset");
@@ -1897,17 +1896,17 @@ void VertexAnimationBakerWindow::drawSockets() {
     ImGui::Unindent(ImGui::GetFontSize() * 7.0f);
 }
 
-void VertexAnimationBakerWindow::drawIssues(const std::vector<VatIssue>& list, const char* id) {
+void VertexAnimationBakerWindow::drawIssues(const std::vector<jasperengine::editor::vat::VatIssue>& list, const char* id) {
     ImGui::PushID(id);
     for (size_t i = 0; i < list.size(); i++) {
-        const VatIssue& issue = list[i];
+        const jasperengine::editor::vat::VatIssue& issue = list[i];
         ImGui::PushID((int)i);
         const std::string text = issue.message + (issue.fixes.empty() && !issue.fix.empty() ? " (" + issue.fix + ")" : std::string());
         if (issue.error) errorText(text);
         else warningText(text);
         ImGui::SetItemTooltip("%s", issue.kind.c_str());
         for (size_t f = 0; f < issue.fixes.size(); f++) {
-            const VatFix& fix = issue.fixes[f];
+            const jasperengine::editor::vat::VatFix& fix = issue.fixes[f];
             if (f > 0) ImGui::SameLine();
             else ImGui::Indent(ImGui::GetFontSize());
             ImGui::PushID((int)f);
@@ -1929,7 +1928,7 @@ void VertexAnimationBakerWindow::drawEstimate() {
     if (estimate.width > 0) {
         char line[256];
         std::snprintf(line, sizeof(line), "%s, %d x %d %s, %s", modeLabel(estimate.mode), estimate.width, estimate.height,
-                      textureFormatName(estimate.precision), bytesText(estimate.bytes).c_str());
+                      jasperengine::editor::vat::textureFormatName(estimate.precision), bytesText(estimate.bytes).c_str());
         ImGui::TextUnformatted(line);
         UIProbe::item("vatbaker.estimate.texture");
         ImGui::TextDisabled("%s vertices, %s bones, %d samples, %d texel fetches per vertex", thousands((uint64_t)estimate.vertices).c_str(),
@@ -1944,31 +1943,31 @@ void VertexAnimationBakerWindow::drawEstimate() {
         if (share > 1.0f) ImGui::PopStyleColor();
         tooltip("The payload texture against the limit of the preset");
         if (estimate.clips.size() > 1 && ImGui::TreeNode("Memory per clip")) {
-            for (const VatClipEstimate& clip : estimate.clips) {
+            for (const jasperengine::editor::vat::VatClipEstimate& clip : estimate.clips) {
                 ImGui::TextDisabled("%s: %d frames at %.4g fps, %s", clip.name.c_str(), clip.frames, clip.fps, bytesText(clip.bytes).c_str());
             }
             ImGui::TreePop();
         }
     }
     drawIssues(issues, "check");
-    const VatBakeResult* result = run ? run->result() : nullptr;
+    const jasperengine::editor::vat::VatBakeResult* result = run ? run->result() : nullptr;
     if (result) {
-        const VatReport& report = result->report;
+        const jasperengine::editor::vat::VatReport& report = result->report;
         ImGui::Spacing();
         ImGui::TextUnformatted(isStale() ? "Last bake (other settings):" : "Measured by the bake:");
         ImGui::TextDisabled("%s, %d x %d %s, %s; error max %.3g mm, mean %.3g mm (tolerance %.3g mm)", modeLabel(report.mode), report.width,
-                            report.height, textureFormatName(report.precision), bytesText(report.bytes).c_str(), report.maxErrorMm,
+                            report.height, jasperengine::editor::vat::textureFormatName(report.precision), bytesText(report.bytes).c_str(), report.maxErrorMm,
                             report.meanErrorMm, report.toleranceMm);
-        std::vector<VatIssue> warnings;
-        for (const VatIssue& warning : report.warnings) {
+        std::vector<jasperengine::editor::vat::VatIssue> warnings;
+        for (const jasperengine::editor::vat::VatIssue& warning : report.warnings) {
             // the check's own rows are listed above
             bool listed = false;
-            for (const VatIssue& issue : issues) listed = listed || (issue.kind == warning.kind && issue.message == warning.message);
+            for (const jasperengine::editor::vat::VatIssue& issue : issues) listed = listed || (issue.kind == warning.kind && issue.message == warning.message);
             if (!listed) warnings.push_back(warning);
         }
         drawIssues(warnings, "report");
     }
-    if (run && run->state() == VatBakeState::Failed) drawIssues(run->failureIssues(), "failure");
+    if (run && run->state() == jasperengine::editor::vat::VatBakeState::Failed) drawIssues(run->failureIssues(), "failure");
 }
 
 void VertexAnimationBakerWindow::drawPreview() {
@@ -2064,7 +2063,7 @@ void VertexAnimationBakerWindow::drawOutput() {
             "baked again in place (its GUID and edits kept), another file of that name makes it take a free name.");
     if (!importing && output.empty() && plannedRewrite && !planned.empty()) subtle("Bakes '" + planned + "' again (same source: GUID and edits kept).");
 
-    VatPlace& place = importing ? importOut.place : spec.place;
+    jasperengine::editor::vat::VatPlace& place = importing ? importOut.place : spec.place;
     const char* labels[] = {"Files only", "Beside", "Replace", "Crowd..."};
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Place");
@@ -2072,10 +2071,10 @@ void VertexAnimationBakerWindow::drawOutput() {
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
     if (ImGui::BeginCombo("##place", labels[(int)place])) {
         for (int i = 0; i < 4; i++) {
-            const bool replaceInvalid = i == (int)VatPlace::Replace && (importing || !isGameObjectSource(spec.source));
+            const bool replaceInvalid = i == (int)jasperengine::editor::vat::VatPlace::Replace && (importing || !isGameObjectSource(spec.source));
             ImGui::BeginDisabled(replaceInvalid);
             if (ImGui::Selectable(labels[i], (int)place == i)) {
-                place = (VatPlace)i;
+                place = (jasperengine::editor::vat::VatPlace)i;
                 markChanged();
             }
             ImGui::EndDisabled();
@@ -2088,7 +2087,7 @@ void VertexAnimationBakerWindow::drawOutput() {
     UIProbe::item("vatbaker.place");
     tooltip("Files only: just the files. Beside: also a new GameObject \"<name> (VAT)\" at the source. Replace: that, and the source is\n"
             "disabled. Crowd: the new GameObject becomes a crowd of instances (count, area, seed). One undo step either way.");
-    if (place == VatPlace::Crowd) {
+    if (place == jasperengine::editor::vat::VatPlace::Crowd) {
         ImGui::Indent(ImGui::GetFontSize() * 7.0f);
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6.0f);
         if (ImGui::InputInt("Count", &crowdCount)) crowdCount = std::clamp(crowdCount, 1, 100000);
@@ -2124,7 +2123,7 @@ void VertexAnimationBakerWindow::drawImportSettings() {
     if (ImGui::InputFloat("##fps", &fps, 0.0f, 0.0f, fps > 0.0f ? "%.4g" : fpsHint.c_str())) importSpec.fps = std::clamp(fps, 0.0f, 240.0f);
     UIProbe::item("vatbaker.import.fps");
     tooltip("Frames per second of the export (0: the one its metadata gives; needed when it has none)");
-    if (detection.kind == VatImportKind::HoudiniVat3) {
+    if (detection.kind == jasperengine::editor::vat::VatImportKind::HoudiniVat3) {
         label("Axis");
         const char* axes[] = {"From the export", "Unity", "Unreal", "Houdini", "Z-up"};
         const char* names[] = {"", "unity", "unreal", "houdini", "zup"};
@@ -2134,10 +2133,10 @@ void VertexAnimationBakerWindow::drawImportSettings() {
         }
         if (ImGui::Combo("##axis", &axisIndex, axes, 5)) importSpec.axis = names[axisIndex];
         tooltip("The Target Engine the export was made for (when its metadata doesn't say)");
-        if (detection.mode == HoudiniMode::Rigid) {
+        if (detection.mode == jasperengine::editor::vat::HoudiniMode::Rigid) {
             label("Upsample");
             int upsample = importSpec.upsample;
-            if (ImGui::InputInt("##upsample", &upsample)) importSpec.upsample = std::clamp(upsample, 0, VAT_IMPORT_MAX_UPSAMPLE);
+            if (ImGui::InputInt("##upsample", &upsample)) importSpec.upsample = std::clamp(upsample, 0, jasperengine::editor::vat::VAT_IMPORT_MAX_UPSAMPLE);
             tooltip("Rigid pieces: samples per exported frame (0: automatic, where fast spins need more)");
             label("Mode");
             const char* modes[] = {"Auto", "Bones", "Vertices"};
@@ -2166,12 +2165,12 @@ void VertexAnimationBakerWindow::drawImportReport() {
     if (!importResult) return;
     ImGui::SeparatorText("Imported");
     if (!importResult->ok()) {
-        for (const VatIssue& issue : importResult->errors) errorText(issue.message + (issue.fix.empty() ? std::string() : " (" + issue.fix + ")"));
+        for (const jasperengine::editor::vat::VatIssue& issue : importResult->errors) errorText(issue.message + (issue.fix.empty() ? std::string() : " (" + issue.fix + ")"));
         return;
     }
-    const VatImportReport& report = importResult->report;
+    const jasperengine::editor::vat::VatImportReport& report = importResult->report;
     ImGui::TextDisabled("%s, %d x %d %s, %s; %d frames (%d exported x %d), %d vertices, %d bones", modeLabel(report.mode), report.width,
-                        report.height, textureFormatName(report.precision), bytesText(report.bytes).c_str(), report.frames,
+                        report.height, jasperengine::editor::vat::textureFormatName(report.precision), bytesText(report.bytes).c_str(), report.frames,
                         report.sourceFrames, report.upsample, report.vertices, report.bones);
     if (!report.modeReason.empty()) subtle(report.modeReason);
     drawIssues(report.warnings, "import");
@@ -2200,7 +2199,7 @@ void VertexAnimationBakerWindow::drawFooter() {
             if (mode == Mode::None) reason = "Choose a source first.";
             else if (noneChecked) reason = "Check the clips to bake.";
             else if (hasErrors(issues)) {
-                for (const VatIssue& issue : issues) {
+                for (const jasperengine::editor::vat::VatIssue& issue : issues) {
                     if (issue.error) {
                         reason = issue.message + " (" + issue.fix + ")";
                         break;
@@ -2209,7 +2208,7 @@ void VertexAnimationBakerWindow::drawFooter() {
             }
         }
         if (importing && reason.empty()) {
-            for (const VatIssue& issue : detection.issues) {
+            for (const jasperengine::editor::vat::VatIssue& issue : detection.issues) {
                 const bool fixed = (issue.kind == "fps_unknown" && importSpec.fps > 0.0f) || (issue.kind == "unknown_target" && !importSpec.axis.empty());
                 if (issue.error && !fixed) {
                     reason = issue.message + " (" + issue.fix + ")";

@@ -14,11 +14,11 @@
 
 #include <cmath>
 
-using namespace jasperengine;
-namespace fs = std::filesystem;
+// the tests live in the namespace they test, in a namespace of this file's own: a using-directive
+// or a file-local helper would reach the next sources of a unity unit
+namespace jasperengine::editor::unity::UnityYamlTest_cpp {
 
-// the tests live in the namespace they test: a using-directive would reach the next sources of a unity unit
-namespace jasperengine::editor::unity {
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -122,4 +122,4 @@ TEST(UnityYamlTest, ProjectIndexesGuidsAndFindsItsRoot) {
     ASSERT_TRUE(meta && meta["TextureImporter"]);
 }
 
-}  // namespace jasperengine::editor::unity
+}  // namespace jasperengine::editor::unity::UnityYamlTest_cpp

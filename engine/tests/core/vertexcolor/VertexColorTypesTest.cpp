@@ -11,6 +11,8 @@
 #include <cstring>
 #include <limits>
 
+namespace VertexColorTypesTest_cpp {
+
 using namespace jasperengine;
 
 // (a named namespace, tests included: a unity build merges the test sources)
@@ -115,3 +117,5 @@ TEST(VertexColorTypes, InitialValueIsNeverTransparentBlack) {
 }
 
 } // namespace vertex_color_types_test
+
+}  // namespace VertexColorTypesTest_cpp

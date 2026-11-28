@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+namespace ShaderManifestTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -547,3 +549,5 @@ TEST(ShaderManifest, TextureMain){
     const ShaderManifest twice = shaderManifestParse("// @shader mesh\n// @texture u_a white main\n// @texture u_b white main\n");
     EXPECT_TRUE(shaderManifestHasDiagnostic(twice, true, "is the main texture already"));
 }
+
+}  // namespace ShaderManifestTest_cpp

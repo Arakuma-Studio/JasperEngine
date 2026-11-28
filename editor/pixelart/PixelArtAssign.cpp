@@ -15,9 +15,10 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::pixelart;
 
-AssignmentDefaults jasperengine::editor::pixelart::assignmentDefaults(const Project& project, const std::string& texturePath){
+namespace jasperengine::editor::pixelart {
+
+AssignmentDefaults assignmentDefaults(const Project& project, const std::string& texturePath){
     AssignmentDefaults out;
     if (texturePath.empty())
         return out;
@@ -38,7 +39,7 @@ AssignmentDefaults jasperengine::editor::pixelart::assignmentDefaults(const Proj
     return out;
 }
 
-bool jasperengine::editor::pixelart::applyAssignmentFilters(const Project& project, Texture& texture){
+bool applyAssignmentFilters(const Project& project, Texture& texture){
     if (texture.empty() || texture.isFramebuffer() || texture.isCubeMap())
         return false;
     const AssignmentDefaults defaults = assignmentDefaults(project, texture.getPath());
@@ -49,7 +50,7 @@ bool jasperengine::editor::pixelart::applyAssignmentFilters(const Project& proje
     return true;
 }
 
-std::vector<FixChange> jasperengine::editor::pixelart::referenceFilterChanges(Project& project, const std::string& texturePath){
+std::vector<FixChange> referenceFilterChanges(Project& project, const std::string& texturePath){
     std::vector<FixChange> out;
     const AssignmentDefaults defaults = assignmentDefaults(project, texturePath);
     if (!defaults.known)
@@ -81,3 +82,5 @@ std::vector<FixChange> jasperengine::editor::pixelart::referenceFilterChanges(Pr
     }
     return out;
 }
+
+}  // namespace jasperengine::editor::pixelart

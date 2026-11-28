@@ -43,97 +43,97 @@
     },
     "groups": {
         "diagnostics": {
-            "chars": 15000,
+            "chars": 6500,
             "tools": 16,
-            "spec": "S06 (3 tools), S07 (4), S09 (4) and S28 (5) share it; the default 15,000 characters still apply"
+            "spec": "S06 (3 tools), S07 (4), S09 (4) and S28 (5) share it; 6500 chars: 6003 measured on main 50a86847a4, up to the next 500 (the ratchet after the trains and #163's trims)"
         },
         "profiling": {
-            "chars": 7000,
+            "chars": 5000,
             "tools": 7,
-            "spec": "S15 (its 7 tools within 7,000 characters)"
+            "spec": "S15 (its 7 tools within 7,000 characters); 5000 chars: 4891 measured on main 50a86847a4, up to the next 500 (the ratchet after the trains and #163's trims)"
         },
         "voxels": {
-            "chars": 4500,
+            "chars": 3500,
             "tools": 4,
-            "spec": "T6 R66 (its 4 tools within 4,500 characters)"
+            "spec": "T6 R66 (its 4 tools within 4,500 characters); 3500 chars: 3016 measured on main 50a86847a4, up to the next 500 (the ratchet after the trains and #163's trims)"
         },
         "device": {
-            "chars": 1500,
+            "chars": 1000,
             "tools": 2,
-            "spec": "S56 (get_device_info and set_device_simulation within 1,500 characters; the tier table goes through set_project_settings)"
+            "spec": "S56 (get_device_info and set_device_simulation within 1,500 characters; the tier table goes through set_project_settings); 1000 chars: 916 measured on main 50a86847a4, up to the next 500 (the ratchet after the trains and #163's trims)"
         },
         "splines": {
-            "chars": 6000,
+            "chars": 3000,
             "tools": 12,
-            "spec": "S18 (within 6,000 characters)"
+            "spec": "S18 (within 6,000 characters); 3000 chars: 2761 measured on main 50a86847a4, up to the next 500 (the ratchet after the trains and #163's trims)"
         },
         "scripting": {
-            "chars": 15000,
+            "chars": 6500,
             "tools": 13,
-            "spec": "S23's 12 (hot reload, script status and settings, editor menus, expressions, the graph tools), upstream's user_settings (PlayerPrefs, the scripts' saved data: no group fits it better; SYNC#4) and S95's edit_data_asset (Data Assets, the scripts' data classes)"
+            "spec": "S23's 12 (hot reload, script status and settings, editor menus, expressions, the graph tools), upstream's user_settings (PlayerPrefs, the scripts' saved data: no group fits it better; SYNC#4) and S95's edit_data_asset (Data Assets, the scripts' data classes); 6500 chars: 6400 measured on main 50a86847a4, up to the next 500 (the ratchet after the trains and #163's trims)"
         },
         "animation": {
-            "chars": 16000,
+            "chars": 15500,
             "tools": 13,
-            "spec": "S21's Animator tools, upstream's pose, Vertex Animation and lattice tools, and S77's check_animation and optimize_animation (R55): one tool more than the default count, so an agent reading clip quality need not enable two groups; mesh-space-rotation R34-R36 added fields, no tool (15,104 measured)"
+            "spec": "S21's Animator tools, upstream's pose, Vertex Animation and lattice tools, and S77's check_animation and optimize_animation (R55): one tool more than the default count, so an agent reading clip quality need not enable two groups; mesh-space-rotation R34-R36 added fields, no tool (15,104 measured); 15500 chars: 15192 measured on main 50a86847a4, up to the next 500 (the ratchet after the trains and #163's trims)"
         },
         "editor_ux": {
-            "chars": 24000,
+            "chars": 15500,
             "tools": 21,
-            "spec": "S24's 4 tools, BF1's find_ui_item, S25's 8 (search, commands, shortcuts, layouts, labels, saved searches, bookmarks), S26's 5 Scene view tools (pick_at, bookmarks, layout, measures, filters), upstream's place_with_physics and S08's get_inspector_layout (the Inspector's drawn rows; it reads the editor UI as find_ui_item does, so it stays in this group), and SYNC#4's configure_game_view (upstream ui-scaling-text and safe-area made the Game view toolbar's editor preferences a tool; out of core so the default listing fits, its options in jasper://docs/ui)"
+            "spec": "S24's 4 tools, BF1's find_ui_item, S25's 8 (search, commands, shortcuts, layouts, labels, saved searches, bookmarks), S26's 5 Scene view tools (pick_at, bookmarks, layout, measures, filters), upstream's place_with_physics and S08's get_inspector_layout (the Inspector's drawn rows; it reads the editor UI as find_ui_item does, so it stays in this group), and SYNC#4's configure_game_view (upstream ui-scaling-text and safe-area made the Game view toolbar's editor preferences a tool; out of core so the default listing fits, its options in jasper://docs/ui); 15500 chars: 15161 measured on main 50a86847a4, up to the next 500 (the ratchet after the trains and #163's trims)"
         },
         "terrain": {
-            "chars": 16000,
+            "chars": 14500,
             "tools": 10,
-            "spec": "The one limit for T1-T5 (programme decision D17, T1 R74), lowered to the measured total plus 5 % when T4 lands: sculpt_terrain, set_terrain_maps, sample_terrain, T1's edit_terrain, visualize_terrain and export_terrain_heightmap, T2's generate_terrain and preview_noise_graph, T4's edit_terrain_world, and agent-authoring's edit_terrain_details"
+            "spec": "The one limit for T1-T5 (programme decision D17, T1 R74), lowered to the measured total plus 5 % when T4 lands: sculpt_terrain, set_terrain_maps, sample_terrain, T1's edit_terrain, visualize_terrain and export_terrain_heightmap, T2's generate_terrain and preview_noise_graph, T4's edit_terrain_world, and agent-authoring's edit_terrain_details; 14500 chars: 14180 measured on main 50a86847a4, up to the next 500 (the ratchet after the trains and #163's trims)"
         },
         "particles": {
-            "chars": 15000,
+            "chars": 10000,
             "tools": 13,
-            "spec": "S20's 10 tools, upstream's import_unity_particles, and S91's preview_particle_effect and bake_particle_sheet (the bake follows bake_vertex_animation as a tool of its own: a preview's writes stay its save_path); the default 15,000 characters still apply",
+            "spec": "S20's 10 tools, upstream's import_unity_particles, and S91's preview_particle_effect and bake_particle_sheet (the bake follows bake_vertex_animation as a tool of its own: a preview's writes stay its save_path); 10000 chars: 9851 measured on main 50a86847a4, up to the next 500 (the ratchet after the trains and #163's trims)",
             "reason": "R12's Bake Sprite Sheet writes two files as one undo step and runs as a job, as bake_vertex_animation does; folding it into preview_particle_effect would make that read-only tool write, so the 13th tool is the bake"
         }
     },
     "exceptions": {
         "set_model_import_settings": {
-            "limit": 1765,
-            "reason": "S94 F40/F43: the normals, tangents, smoothness source and rest pose settings of the Model Importer, each a settings key of the one import tool (1681 measured + 5 %)"
+            "limit": 1737,
+            "reason": "S94 F40/F43: the normals, tangents, smoothness source and rest pose settings of the Model Importer, each a settings key of the one import tool (1681 measured + 5 %); lowered to the 1737 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         },
         "configure_game_view": {
-            "limit": 1620,
-            "reason": "input-device-awareness R27: its input_scheme (the Game view's Input Scheme menu: auto, or a scheme forced at Play start) on the toolbar tool that holds Simulate Touch; 1499 before, 1620 measured (eval case guard_input_scheme_forced)"
+            "limit": 1617,
+            "reason": "input-device-awareness R27: its input_scheme (the Game view's Input Scheme menu: auto, or a scheme forced at Play start) on the toolbar tool that holds Simulate Touch; 1499 before, 1620 measured (eval case guard_input_scheme_forced); lowered to the 1617 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         },
         "check_animation": {
             "limit": 1579,
             "reason": "S77's tool (1382) plus mesh-space-rotation R36's layer_blend check: its enum entry, a free-form layer_blend (the handler checks its members, jasper://docs/animator names them), limits.layer_twist_deg and a sentence, instead of a 14th tool in the animation group (R40); 1579 measured"
         },
         "visualize_navigation": {
-            "limit": 1725,
-            "reason": "S74 path filter (agent_type, area_mask) and S75 R33 (frame, island / tile colours, slope and tile label flags, GameObject path ends, the Game view screenshot): 1642 measured + 5 %"
+            "limit": 1694,
+            "reason": "S74 path filter (agent_type, area_mask) and S75 R33 (frame, island / tile colours, slope and tile label flags, GameObject path ends, the Game view screenshot): 1642 measured + 5 %; lowered to the 1694 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         },
         "set_scene_camera": {
-            "limit": 1960,
-            "reason": "S26 (R17-R21): the Scene view camera's projection, ortho size, axis view, Frame All and Scene Camera settings (field of view, clip planes, speed, easing, ...) on the one camera tool agents already use"
+            "limit": 1585,
+            "reason": "S26 (R17-R21): the Scene view camera's projection, ortho size, axis view, Frame All and Scene Camera settings (field of view, clip planes, speed, easing, ...) on the one camera tool agents already use; lowered to the 1585 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         },
         "place_with_physics": {
-            "limit": 2890,
-            "reason": "upstream (Physics Placement), predates its merge into oe-port: 3609 with S31's schema conventions until upstream round 3 moved its per-argument texts to jasper://docs/physics (2890 measured, nested objects still say additionalProperties)"
+            "limit": 2735,
+            "reason": "upstream (Physics Placement), predates its merge into oe-port: 3609 with S31's schema conventions until upstream round 3 moved its per-argument texts to jasper://docs/physics (2890 measured, nested objects still say additionalProperties); lowered to the 2735 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         },
         "synthesize_texture": {
-            "limit": 2341,
-            "reason": "upstream (Texture Synthesis), predates its merge into oe-port: 3519 with S31's schema conventions until upstream round 3 moved its per-argument texts to jasper://docs/texture-synthesis (2341 measured, nested objects still say additionalProperties)"
+            "limit": 2103,
+            "reason": "upstream (Texture Synthesis), predates its merge into oe-port: 3519 with S31's schema conventions until upstream round 3 moved its per-argument texts to jasper://docs/texture-synthesis (2341 measured, nested objects still say additionalProperties); lowered to the 2103 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         },
         "edit_animation": {
             "limit": 3555,
             "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the round-1 upstream sync, 3494 on round 2 (upstream's .anim clip mode on the same tool: clip, create, tracks by path, keys, events, cheaper than a second tool); 3578 with refs typed integer|string again (the CLI tells ids from names by it), 3606 with its free-form key items saying so (S31 conventions); 3566 with S77's root_motion (a free-form object; the guide names its members) paid for by a shorter clip sentence (the core listing had 3 characters left); 3613 with S94's create.unity and mirror_x (the Unity .anim import, extending this tool instead of a new core one), the core listing paid by a shorter guide pointer and create.humanoid's members left to the schema; 3574 once S94's merged packages put the core listing 38 over, by cutting two notes no eval case needs (scene mode's undo scope and audio actions without a clip); 3555 when S94 met S96 on main (the core listing 63 over), without \"audio: sound cues\" (the schema names the cue's keys) and with a shorter set_shader_uniform"
         },
         "sculpt_terrain": {
-            "limit": 2699,
-            "reason": "grandfathered by S31: 2571 chars when the limits were set, +5%"
+            "limit": 2627,
+            "reason": "grandfathered by S31: 2571 chars when the limits were set, +5%; lowered to the 2627 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         },
         "edit_tilemap": {
-            "limit": 2173,
-            "reason": "S31's grandfathered limit lowered by S50: 2070 chars when its ops moved to jasper://docs/tilemaps, +5%"
+            "limit": 2070,
+            "reason": "S31's grandfathered limit lowered by S50: 2070 chars when its ops moved to jasper://docs/tilemaps, +5%; lowered to the 2070 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         },
         "assert_ui": {
             "limit": 2020,
@@ -144,8 +144,8 @@
             "reason": "grandfathered by S31: 1984 chars when the limits were set, +5%; 2196 measured on the upstream sync (upstream's types water, fluid_simulation, lattice); 2188 with Vapor's fog_zone and a trimmed description"
         },
         "set_sprite_frames": {
-            "limit": 2075,
-            "reason": "grandfathered by S31: 1977 chars when the limits were set, +5%"
+            "limit": 1792,
+            "reason": "grandfathered by S31: 1977 chars when the limits were set, +5%; lowered to the 1792 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         },
         "build_project": {
             "limit": 1931,
@@ -156,44 +156,44 @@
             "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); 1980 measured with the text event's per_unit (unicode-text: typing one UTF-16 unit at a time, as Windows and Android deliver it; eval case guard_typing_utf16_units); +10 measured for the app actions hide|show (platform-lifecycle, eval case bad_app_hide); input-recorder-and-input-scripts' file parameter and shot, wait until, gamepad connect|disconnect and safe_area steps (eval cases guard_input_script_file, bad_input_ms_in_file) beside text-entry's app back and gamepad warp: 2000 measured after the description dropped what the play description and the event schema already say"
         },
         "create_particles": {
-            "limit": 1888,
-            "reason": "grandfathered by S31: 1799 chars when the limits were set, +5%"
+            "limit": 1878,
+            "reason": "grandfathered by S31: 1799 chars when the limits were set, +5%; lowered to the 1878 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         },
         "set_terrain_maps": {
-            "limit": 2719,
-            "reason": "grandfathered by S31: 1793 chars when the limits were set, +5%; 2280 measured on the upstream sync (upstream's Stochastic Tiling layers); 2369 with S11's hex_tiling and hex_rotation beside them; 2719 with agent-authoring's blend map slots (index, path) and Terrain Layer factors (uv_scale, uv_offset, tint, four factors)"
+            "limit": 2717,
+            "reason": "grandfathered by S31: 1793 chars when the limits were set, +5%; 2280 measured on the upstream sync (upstream's Stochastic Tiling layers); 2369 with S11's hex_tiling and hex_rotation beside them; 2719 with agent-authoring's blend map slots (index, path) and Terrain Layer factors (uv_scale, uv_offset, tint, four factors); lowered to the 2717 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         },
         "inspect_ui": {
             "limit": 1687,
             "reason": "grandfathered by S31: 1707 chars when the limits were set, +5% (tighter than its HTML UI cap 1956); 1687 measured after mcp-budget-trim cut what the detail and at parameters already say (the craftsman merge took core over 99,000)"
         },
         "play": {
-            "limit": 1704,
-            "reason": "grandfathered by S31 at 1555 chars (+5% = 1632); S24 added keep_changes (+154): 1709 when S31 merged S24; input-recorder-and-input-scripts' input (replay a .input.json from Play's start) beside project-test-runner's data, after both trimmed its description (that spec's budget rule); 1704 measured after mcp-budget-trim cut the job sentence (timeout_seconds and wait say it) and wording (the craftsman merge took core over 99,000)"
+            "limit": 1681,
+            "reason": "grandfathered by S31 at 1555 chars (+5% = 1632); S24 added keep_changes (+154): 1709 when S31 merged S24; input-recorder-and-input-scripts' input (replay a .input.json from Play's start) beside project-test-runner's data, after both trimmed its description (that spec's budget rule); 1704 measured after mcp-budget-trim cut the job sentence (timeout_seconds and wait say it) and wording (the craftsman merge took core over 99,000); lowered to the 1681 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         },
         "wait": {
             "limit": 1464,
             "reason": "grandfathered by S31: 1534 chars when the limits were set, +5%; 1464 measured after mcp-budget-trim cut its result field list (the craftsman merge took core over 99,000)"
         },
         "create_ui_document": {
-            "limit": 1300,
-            "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 1231 when S31 set the limits"
+            "limit": 1082,
+            "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 1231 when S31 set the limits; lowered to the 1082 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         },
         "import_files": {
-            "limit": 1052,
-            "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 882 when S31 set the limits"
+            "limit": 882,
+            "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 882 when S31 set the limits; lowered to the 882 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         },
         "list_ui_effects": {
-            "limit": 900,
-            "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 535 when S31 set the limits"
+            "limit": 478,
+            "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 535 when S31 set the limits; lowered to the 478 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         },
         "set_ui_effect_time": {
             "limit": 694,
             "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 269 when S31 set the limits; 694 measured on the upstream sync (upstream's fluid pointer_path and splats; its own cap was 750)"
         },
         "bake_vertex_animation": {
-            "limit": 2075,
-            "reason": "upstream round 3 (Vertex Animation Textures): one tool for bake, rebake, import and placement (preview, then the same arguments with output), its detail in jasper://docs/vertex-animation; upstream capped it at 2000 (1977 measured); 2075 with S31's schema conventions (place.crowd's nested objects say additionalProperties false). In the animation group, outside the default listing"
+            "limit": 1525,
+            "reason": "upstream round 3 (Vertex Animation Textures): one tool for bake, rebake, import and placement (preview, then the same arguments with output), its detail in jasper://docs/vertex-animation; upstream capped it at 2000 (1977 measured); 2075 with S31's schema conventions (place.crowd's nested objects say additionalProperties false). In the animation group, outside the default listing; lowered to the 1525 measured on main 50a86847a4 (the ratchet after the trains and #163's trims)"
         }
     },
     "core_trades": []

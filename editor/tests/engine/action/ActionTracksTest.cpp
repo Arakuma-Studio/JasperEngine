@@ -25,6 +25,8 @@
 #include <cmath>
 #include <vector>
 
+namespace ActionTracksTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -388,3 +390,5 @@ TEST(ActionTriggers, ChildOnStartMovingTheComponentArrays) {
     step(scene, 0.25, 1);
     EXPECT_NEAR(positionOf(scene, target).x, 3.75f, 1e-4f);
 }
+
+}  // namespace ActionTracksTest_cpp

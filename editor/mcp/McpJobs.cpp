@@ -17,10 +17,12 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::mcp;
+
+namespace jasperengine::editor::mcp {
+
 namespace fs = std::filesystem;
 
-const char* jasperengine::editor::mcp::jobStatusName(JobStatus status) {
+const char* jobStatusName(JobStatus status) {
     switch (status) {
         case JobStatus::Running: return "running";
         case JobStatus::Succeeded: return "succeeded";
@@ -30,7 +32,7 @@ const char* jasperengine::editor::mcp::jobStatusName(JobStatus status) {
     return "unknown";
 }
 
-const char* jasperengine::editor::mcp::jobBusyName(JobBusy busy) {
+const char* jobBusyName(JobBusy busy) {
     switch (busy) {
         case JobBusy::None: return "none";
         case JobBusy::Export: return "export";
@@ -297,7 +299,7 @@ size_t McpJobs::runningCount() const {
     return count;
 }
 
-void jasperengine::editor::mcp::replyWhenJobDone(const CallPtr& call, const JobPtr& job, bool wait, double timeoutSeconds,
+void replyWhenJobDone(const CallPtr& call, const JobPtr& job, bool wait, double timeoutSeconds,
                                                  std::function<ToolResult(const McpJob&)> onFinished) {
     auto finish = [call, job, onFinished]() {
         if (onFinished) {
@@ -415,7 +417,7 @@ double jasperengine::editor::mcp::jobmodel::titleExportSeconds(size_t layers, in
     return 0.2 + out * (0.1 + static_cast<double>(std::max<size_t>(layers, 1)) * pixels * 2e-8);
 }
 
-double jasperengine::editor::mcp::jobRemainingSeconds(double estimated, double elapsed, double progress) {
+double jobRemainingSeconds(double estimated, double elapsed, double progress) {
     const double byEstimate = std::max(0.0, estimated - elapsed);
     if (!(progress > 0.0)) return byEstimate;
     if (progress >= 1.0) return 0.0;
@@ -424,7 +426,7 @@ double jasperengine::editor::mcp::jobRemainingSeconds(double estimated, double e
     return std::max(0.0, (1.0 - progress) * byEstimate + progress * byProgress);
 }
 
-std::string jasperengine::editor::mcp::formatJobDuration(double seconds) {
+std::string formatJobDuration(double seconds) {
     const long long s = std::max(0LL, static_cast<long long>(std::llround(seconds)));
     char text[32];
     if (s < 60) std::snprintf(text, sizeof(text), "%lld s", s);
@@ -545,3 +547,5 @@ bool JobHistory::record(const fs::path& file, const std::string& kind, double se
     if (!warned.exchange(true)) Out::warning("Could not write the job history %s: estimates use the cost models only.", FileUtils::pathToUtf8(file).c_str());
     return false;
 }
+
+}  // namespace jasperengine::editor::mcp

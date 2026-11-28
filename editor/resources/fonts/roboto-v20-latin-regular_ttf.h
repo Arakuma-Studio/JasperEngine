@@ -4,8 +4,8 @@
 // Licensed under the Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
 //
 
-#ifndef DefaultFont_h
-#define DefaultFont_h
+#ifndef ROBOTO_V20_LATIN_REGULAR_TTF_H
+#define ROBOTO_V20_LATIN_REGULAR_TTF_H
 
 //Created using 'xxd' tool with roboto-v20-latin-regular.ttf
 //Roboto font from https://fonts.google.com/specimen/Roboto
@@ -3030,4 +3030,4 @@ unsigned char roboto_v20_latin_regular_ttf[] = {
 };
 unsigned int roboto_v20_latin_regular_ttf_len = 36176;
 
-#endif /* DefaultFont_h */
+#endif /* ROBOTO_V20_LATIN_REGULAR_TTF_H */

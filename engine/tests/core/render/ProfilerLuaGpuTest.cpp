@@ -21,6 +21,8 @@
 
 #include <string>
 
+namespace ProfilerLuaGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -106,3 +108,5 @@ TEST_F(ProfilerLuaGpu, GpuTimingArmsTimers){
     GpuEnvironment::drawFrames(2);
     EXPECT_FALSE(SystemRender::getGpuTimingState().enabled);
 }
+
+}  // namespace ProfilerLuaGpuTest_cpp

@@ -1,6 +1,6 @@
 # Unity builds of our own targets (docs/testing.md, "Unity build"): JASPERENGINE_UNITY_BUILD=ON
 # merges the C/C++ sources of jasperengine, the editor executables, the project executable and the
-# test targets 16 at a time. Vendored libraries are never unity-built.
+# test targets 16 at a time (JASPERENGINE_UNITY_BATCH_SIZE). Vendored libraries are never unity-built.
 #
 # A source that cannot share a translation unit is fixed first (its file-local helpers go into a
 # uniquely named namespace); otherwise it gets SKIP_UNITY_BUILD_INCLUSION next to a one-line
@@ -9,6 +9,9 @@
 include_guard(GLOBAL)
 
 option(JASPERENGINE_UNITY_BUILD "Unity-build the engine, editor, project and test targets" OFF)
+# Another size moves every batch boundary: a build at two sizes shows no source depends on its
+# neighbours (tools/build.sh UNITY_BATCH=<n>)
+set(JASPERENGINE_UNITY_BATCH_SIZE 16 CACHE STRING "Sources per unity unit of our own targets")
 
 # jasperengine_target_unity_build(<target>...): a no-op unless JASPERENGINE_UNITY_BUILD is on
 function(jasperengine_target_unity_build)
@@ -16,7 +19,7 @@ function(jasperengine_target_unity_build)
         return()
     endif()
     foreach(target IN LISTS ARGN)
-        set_target_properties(${target} PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE 16)
+        set_target_properties(${target} PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE ${JASPERENGINE_UNITY_BATCH_SIZE})
         # GCC warns about a type from an anonymous namespace used by a class in an included file,
         # meant for headers: in a unity unit every source is an included file (gtest fixtures)
         target_compile_options(${target} PRIVATE $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Wno-subobject-linkage>)

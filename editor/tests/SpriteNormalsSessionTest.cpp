@@ -59,6 +59,8 @@
 #include "util/FileUtils.h"
 #include "support/EditorTestSupport.h"
 
+namespace SpriteNormalsSessionTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace sn = jasperengine::editor::spritenormals;
@@ -1831,3 +1833,5 @@ TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
 #endif
     fs::remove_all(dir);
 }
+
+}  // namespace SpriteNormalsSessionTest_cpp

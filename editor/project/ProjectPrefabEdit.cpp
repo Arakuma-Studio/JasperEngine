@@ -25,7 +25,6 @@
 #include <unordered_set>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::prefabinternal;
 
 bool editor::Project::createPrefab(uint32_t sceneId, fs::path filepath, YAML::Node entityNode, const std::string& guid,
         const std::unordered_map<Entity, Entity>* registryIds, Entity nextEntity){
@@ -328,7 +327,7 @@ void editor::Project::overrideOutsideReferences(uint32_t sceneId, Entity instanc
         }
         for (ComponentType componentType : Catalog::findComponents(sceneProject->scene, object)) {
             if (componentType != ComponentType::PrefabComponent &&
-                componentHasExternalEntityRef(sceneProject->scene, object, componentType, inside)) {
+                jasperengine::editor::prefabinternal::componentHasExternalEntityRef(sceneProject->scene, object, componentType, inside)) {
                 instance->overrides[object].addWholeComponent(componentType);
             }
         }
@@ -408,7 +407,7 @@ void editor::Project::moveNestedInstancesToAsset(Prefab& prefab, const std::file
             }
         }
         for (Entity top : addedBelow(scene, inside, instanceObjects)) {
-            const Entity parentLocal = transformParent(scene, top);
+            const Entity parentLocal = jasperengine::editor::prefabinternal::transformParent(scene, top);
             const int childIndex = childIndexOf(scene, parentLocal, top);
             YAML::Node node = Stream::encodeEntity(top, scene, this, sceneProject);
             std::vector<Entity> localBranch;
@@ -490,7 +489,7 @@ void editor::Project::moveNestedInstancesToAsset(Prefab& prefab, const std::file
                     continue;
                 }
                 if (value) {
-                    values["components"][componentKey(type)] = value;
+                    values["components"][jasperengine::editor::prefabinternal::componentKey(type)] = value;
                 }
             }
             if (values.size() > 0) {
@@ -884,7 +883,7 @@ bool editor::Project::addEntityToPrefab(uint32_t sceneId, Entity entity, Entity 
         }
     }
     // Place it under its parent in the scene, as in the prefab
-    if (scene->findComponent<Transform>(entity) && scene->findComponent<Transform>(parent) && transformParent(scene, entity) != parent) {
+    if (scene->findComponent<Transform>(entity) && scene->findComponent<Transform>(parent) && jasperengine::editor::prefabinternal::transformParent(scene, entity) != parent) {
         ProjectUtils::moveEntityOrderByTransform(scene, sceneProject->entities, entity, parent, 0, false);
     }
 
@@ -1654,7 +1653,7 @@ bool editor::Project::addEntityToOuterPrefab(uint32_t sceneId, Entity entity, En
     const uint32_t holderId = holder->instanceId;
 
     // Below its parent in the scene, where the instance shows it
-    if (scene->findComponent<Transform>(entity) && scene->findComponent<Transform>(parent) && transformParent(scene, entity) != parent) {
+    if (scene->findComponent<Transform>(entity) && scene->findComponent<Transform>(parent) && jasperengine::editor::prefabinternal::transformParent(scene, entity) != parent) {
         ProjectUtils::moveEntityOrderByTransform(scene, sceneProject->entities, entity, parent, 0, false);
     }
     const int childIndex = scene->findComponent<Transform>(entity) ? [&]() {

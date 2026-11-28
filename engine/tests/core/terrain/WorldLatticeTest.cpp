@@ -11,6 +11,8 @@
 #include <bit>
 #include <cstring>
 
+namespace WorldLatticeTest_cpp {
+
 using namespace terrainworldtest;
 
 namespace {
@@ -194,3 +196,5 @@ TEST(WorldLattice, AbsentNeighbourGutterRepeatsBorder) {
     for (int k = 0; k < n + 3; k++) EXPECT_EQ(tile->sample(n + 2, k), tile->sample(n + 1, std::min(std::max(k, 1), n + 1))) << k;
     EXPECT_EQ(tile->sample(n + 1, 10), static_cast<uint16_t>(quantizeChannel(0.75f, 16)));
 }
+
+}  // namespace WorldLatticeTest_cpp

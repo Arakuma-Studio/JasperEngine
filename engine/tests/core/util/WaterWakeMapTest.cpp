@@ -11,9 +11,10 @@
 
 #include <cmath>
 
+namespace water_wake_map_test {
+
 using namespace jasperengine;
 
-namespace water_wake_map_test {
 
     // a 2 x 6 m hull moving along +X at `speed`, its history over `seconds`, on body `body`
     WaterWakeTrack track(float speed, float seconds, uint8_t body){
@@ -70,6 +71,8 @@ namespace water_wake_map_test {
     }
 
 }
+
+namespace water_wake_map_test {
 
 using namespace water_wake_map_test;
 
@@ -168,3 +171,5 @@ TEST(WaterWakeMap, StaysOnItsWater){
     EXPECT_FALSE(map.sample(place.x, place.y, 2, foam, crest));
     EXPECT_EQ(crest, 0.0f);
 }
+
+}  // namespace water_wake_map_test

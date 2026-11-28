@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+namespace AnimContractSmokeTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -433,3 +435,5 @@ TEST(AnimContract, AnimationPlayerObjectAndPreview){
     EXPECT_EQ(samples.size(), previewState.clip->getTracks().size());
     actions->resetPlayers();
 }
+
+}  // namespace AnimContractSmokeTest_cpp

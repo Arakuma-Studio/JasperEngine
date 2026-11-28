@@ -14,6 +14,8 @@
 #include <chrono>
 #include <cstdio>
 
+namespace DialogueBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::dialogue;
 using dialoguetest::GraphText;
@@ -196,3 +198,5 @@ TEST(DialogueBench, StepAllocations) {
     std::printf("[bench] dialogue advance allocations: %llu in 100 warm steps\n", static_cast<unsigned long long>(allocations));
     EXPECT_EQ(allocations, 0u) << "R17: a warm step reuses the payload's strings and the runner's buffers";
 }
+
+}  // namespace DialogueBenchTest_cpp

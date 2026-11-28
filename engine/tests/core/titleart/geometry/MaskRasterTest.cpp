@@ -17,6 +17,8 @@
 #include <numeric>
 #include <vector>
 
+namespace MaskRasterTest_cpp {
+
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::geometry;
 using namespace jasperengine::titleart::test;
@@ -414,3 +416,5 @@ TEST(MaskRasterTest, Deterministic) {
     EXPECT_EQ(a.pixels, b.pixels);
     EXPECT_GT(coverage(a), 100);
 }
+
+}  // namespace MaskRasterTest_cpp

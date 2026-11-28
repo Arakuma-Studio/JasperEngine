@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PoseSecondaryTest_cpp {
+
 using namespace posetest;
 using H = HumanBone;
 
@@ -161,3 +163,5 @@ TEST(PoseFollowThrough, FramesUseItWithHumanize){
     EXPECT_GT(difference, degToRad(0.5));
     EXPECT_EQ(a.back().rotations[boneIndex(H::Head)], a.front().rotations[boneIndex(H::Head)]);
 }
+
+}  // namespace PoseSecondaryTest_cpp

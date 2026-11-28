@@ -17,6 +17,8 @@
 #include <fstream>
 #include <string>
 
+namespace ModelLimitsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -72,3 +74,5 @@ TEST(ModelLimits, AModelWithinThemLogsNoError){
     EXPECT_TRUE(model.loadModel(file));
     EXPECT_TRUE(log.errors().empty()) << log.describeErrors();
 }
+
+}  // namespace ModelLimitsTest_cpp

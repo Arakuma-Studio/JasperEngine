@@ -17,6 +17,8 @@
 
 #include <cmath>
 
+namespace ParticleSubEmittersTest_cpp {
+
 using namespace particletest;
 
 namespace {
@@ -470,3 +472,5 @@ TEST(ParticleSubEmitters, ALaterEntrysParticlesCountAgainstAnEarlierOne){
     f.ticks(30);
     EXPECT_LE(f.runtime.totalCount(), 200u);
 }
+
+}  // namespace ParticleSubEmittersTest_cpp

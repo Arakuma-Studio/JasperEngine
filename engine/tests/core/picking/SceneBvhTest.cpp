@@ -22,6 +22,8 @@
 #include <set>
 #include <vector>
 
+namespace SceneBvhTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -441,3 +443,5 @@ TEST(SceneBvh, OverlapMatchesLinearScan){
     }
     EXPECT_GT(found, 1000u);
 }
+
+}  // namespace SceneBvhTest_cpp

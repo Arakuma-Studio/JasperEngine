@@ -23,7 +23,6 @@
 #include <mutex>
 
 using namespace jasperengine;
-using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -64,58 +63,58 @@ namespace {
     // T5's maps over one tile, in the tile's own texels: height with its one-sample gutter (N + 3 a side,
     // texel i at (i - 1) h from the tile's corner, so the scatter's bilerp crosses the seam on the
     // neighbour's samples), holes and density as the tile holds them. The world's own store writes.
-    class TileFoliageMaps final : public TerrainMapStore {
+    class TileFoliageMaps final : public terraincore::TerrainMapStore {
     public:
-        TileFoliageMaps(TerrainWorldRuntime& runtime, TileCoord coord): runtime(runtime), coord(coord) {}
+        TileFoliageMaps(TerrainWorldRuntime& runtime, terraincore::TileCoord coord): runtime(runtime), coord(coord) {}
 
-        TerrainFrame frame() const override {
-            TerrainFrame frame;
+        terraincore::TerrainFrame frame() const override {
+            terraincore::TerrainFrame frame;
             frame.maxHeight = runtime.maxHeight();
             return frame;
         }
 
-        MapFormat format(MapId map) const override {
-            const WorldLattice& lattice = runtime.lattice();
-            MapFormat format;
+        terraincore::MapFormat format(terraincore::MapId map) const override {
+            const terraincore::WorldLattice& lattice = runtime.lattice();
+            terraincore::MapFormat format;
             format.channels = 1;
             format.bitsPerChannel = 8;
             int side = 0;
             switch (map.kind) {
-                case MapKind::Height:
+                case terraincore::MapKind::Height:
                     format.bitsPerChannel = 16;
                     format.exists = map.index == 0;
                     side = lattice.heightSide();
                     break;
-                case MapKind::Hole:
+                case terraincore::MapKind::Hole:
                     format.exists = map.index == 0 && runtime.store().maps().hasHoles;
                     side = lattice.holeSide();
                     break;
-                case MapKind::Density:
+                case terraincore::MapKind::Density:
                     // a layer the tile has no map for reads 0, as the world's store does
                     format.exists = map.index >= 0;
                     side = lattice.densitySide();
                     break;
-                case MapKind::Blend:
+                case terraincore::MapKind::Blend:
                     // foliage reads no paint
                     format.channels = 4;
                     side = lattice.blendSide();
                     break;
             }
-            format.bounds = TexelRect{0, 0, side, side};
+            format.bounds = terraincore::TexelRect{0, 0, side, side};
             return format;
         }
 
-        bool readBytes(MapId map, TexelRect rect, std::span<uint8_t> out) const override {
-            const MapFormat mapFormat = format(map);
-            const int bytes = bytesPerTexel(mapFormat);
+        bool readBytes(terraincore::MapId map, terraincore::TexelRect rect, std::span<uint8_t> out) const override {
+            const terraincore::MapFormat mapFormat = format(map);
+            const int bytes = terraincore::bytesPerTexel(mapFormat);
             if (!mapFormat.exists || rect.empty() || !mapFormat.bounds.contains(rect) || out.size() != static_cast<size_t>(rect.area()) * bytes) return false;
-            const std::shared_ptr<const WorldTile> data = runtime.resident(coord);
+            const std::shared_ptr<const terraincore::WorldTile> data = runtime.resident(coord);
             if (!data) return false;
-            const TileMap* source = nullptr;
+            const terraincore::TileMap* source = nullptr;
             uint8_t fill = 0;
-            if (map.kind == MapKind::Height) {
+            if (map.kind == terraincore::MapKind::Height) {
                 source = &data->height;
-            } else if (map.kind == MapKind::Hole) {
+            } else if (map.kind == terraincore::MapKind::Hole) {
                 source = data->holes.empty() ? nullptr : &data->holes;
                 fill = 255;
             } else if (map.index < static_cast<int>(data->density.size()) && !data->density[map.index].empty()) {
@@ -132,10 +131,10 @@ namespace {
             return true;
         }
 
-        bool read(MapId map, TexelRect rect, std::span<float> out) const override {
-            const MapFormat mapFormat = format(map);
+        bool read(terraincore::MapId map, terraincore::TexelRect rect, std::span<float> out) const override {
+            const terraincore::MapFormat mapFormat = format(map);
             if (mapFormat.channels != 1 || out.size() != static_cast<size_t>(rect.area())) return false;
-            std::vector<uint8_t> bytes(static_cast<size_t>(rect.area()) * bytesPerTexel(mapFormat));
+            std::vector<uint8_t> bytes(static_cast<size_t>(rect.area()) * terraincore::bytesPerTexel(mapFormat));
             if (!readBytes(map, rect, bytes)) return false;
             for (size_t i = 0; i < out.size(); i++) {
                 out[i] = mapFormat.bitsPerChannel >= 16 ? static_cast<float>(bytes[2 * i] | (bytes[2 * i + 1] << 8)) / 65535.0f : bytes[i] / 255.0f;
@@ -143,57 +142,57 @@ namespace {
             return true;
         }
 
-        WriteResult write(MapId, TexelRect, std::span<const float>) override { return WriteResult{false, TILE_FOLIAGE_READ_ONLY, 0}; }
-        WriteResult writeBytes(MapId, TexelRect, std::span<const uint8_t>) override { return WriteResult{false, TILE_FOLIAGE_READ_ONLY, 0}; }
-        bool canWrite(MapId, TexelRect, std::string* why) const override {
+        terraincore::WriteResult write(terraincore::MapId, terraincore::TexelRect, std::span<const float>) override { return terraincore::WriteResult{false, TILE_FOLIAGE_READ_ONLY, 0}; }
+        terraincore::WriteResult writeBytes(terraincore::MapId, terraincore::TexelRect, std::span<const uint8_t>) override { return terraincore::WriteResult{false, TILE_FOLIAGE_READ_ONLY, 0}; }
+        bool canWrite(terraincore::MapId, terraincore::TexelRect, std::string* why) const override {
             if (why) *why = TILE_FOLIAGE_READ_ONLY;
             return false;
         }
-        WriteResult createMap(MapId, MapFormat, float) override { return WriteResult{false, TILE_FOLIAGE_READ_ONLY, 0}; }
-        bool canCreateMap(MapId, std::string* why) const override {
+        terraincore::WriteResult createMap(terraincore::MapId, terraincore::MapFormat, float) override { return terraincore::WriteResult{false, TILE_FOLIAGE_READ_ONLY, 0}; }
+        bool canCreateMap(terraincore::MapId, std::string* why) const override {
             if (why) *why = TILE_FOLIAGE_READ_ONLY;
             return false;
         }
-        void takeDirty(std::vector<std::pair<MapId, TexelRect>>&) override {}
+        void takeDirty(std::vector<std::pair<terraincore::MapId, terraincore::TexelRect>>&) override {}
 
         // the region's frame: centred on the tile
-        Vector2 worldOfTexel(MapId map, int x, int y) const override {
-            const WorldLattice& lattice = runtime.lattice();
+        Vector2 worldOfTexel(terraincore::MapId map, int x, int y) const override {
+            const terraincore::WorldLattice& lattice = runtime.lattice();
             const float half = lattice.tileSize() * 0.5f;
-            if (map.kind == MapKind::Height) {
+            if (map.kind == terraincore::MapKind::Height) {
                 return Vector2(static_cast<float>(x - 1) * lattice.spacing - half, static_cast<float>(y - 1) * lattice.spacing - half);
             }
-            const float texel = lattice.tileSize() / static_cast<float>(format(map).bounds.w - (map.kind == MapKind::Blend ? 1 : 0));
-            const float centre = map.kind == MapKind::Blend ? 0.0f : 0.5f;
+            const float texel = lattice.tileSize() / static_cast<float>(format(map).bounds.w - (map.kind == terraincore::MapKind::Blend ? 1 : 0));
+            const float centre = map.kind == terraincore::MapKind::Blend ? 0.0f : 0.5f;
             return Vector2((static_cast<float>(x) + centre) * texel - half, (static_cast<float>(y) + centre) * texel - half);
         }
 
-        Vector2 texelOfWorld(MapId map, float localX, float localZ) const override {
-            const WorldLattice& lattice = runtime.lattice();
+        Vector2 texelOfWorld(terraincore::MapId map, float localX, float localZ) const override {
+            const terraincore::WorldLattice& lattice = runtime.lattice();
             const float half = lattice.tileSize() * 0.5f;
-            if (map.kind == MapKind::Height) {
+            if (map.kind == terraincore::MapKind::Height) {
                 return Vector2((localX + half) / lattice.spacing + 1.0f, (localZ + half) / lattice.spacing + 1.0f);
             }
-            const float texel = lattice.tileSize() / static_cast<float>(format(map).bounds.w - (map.kind == MapKind::Blend ? 1 : 0));
-            const float centre = map.kind == MapKind::Blend ? 0.0f : 0.5f;
+            const float texel = lattice.tileSize() / static_cast<float>(format(map).bounds.w - (map.kind == terraincore::MapKind::Blend ? 1 : 0));
+            const float centre = map.kind == terraincore::MapKind::Blend ? 0.0f : 0.5f;
             return Vector2((localX + half) / texel - centre, (localZ + half) / texel - centre);
         }
 
-        TexelRect preferredBlock(MapId map) const override { return format(map).bounds; }
-        std::unique_ptr<TerrainLargeEdit> beginLarge(MapId, TexelRect) override { return nullptr; }
-        std::unique_ptr<TerrainStoreUndoHook> takeUndoHook() override { return nullptr; }
+        terraincore::TexelRect preferredBlock(terraincore::MapId map) const override { return format(map).bounds; }
+        std::unique_ptr<terraincore::TerrainLargeEdit> beginLarge(terraincore::MapId, terraincore::TexelRect) override { return nullptr; }
+        std::unique_ptr<terraincore::TerrainStoreUndoHook> takeUndoHook() override { return nullptr; }
 
     private:
         TerrainWorldRuntime& runtime;
-        TileCoord coord;
+        terraincore::TileCoord coord;
     };
 
     // The world's own query (R24), offset to the tile: a tree on a border leans by both tiles' samples
-    class TileFoliageQuery final : public TerrainSurfaceQuery {
+    class TileFoliageQuery final : public terraincore::TerrainSurfaceQuery {
     public:
         TileFoliageQuery(TerrainWorldRuntime& runtime, float centreX, float centreZ): runtime(runtime), centreX(centreX), centreZ(centreZ) {}
 
-        SurfaceSample sample(float localX, float localZ) const override { return runtime.query(localX + centreX, localZ + centreZ, false); }
+        terraincore::SurfaceSample sample(float localX, float localZ) const override { return runtime.query(localX + centreX, localZ + centreZ, false); }
         float heightAt(float localX, float localZ) const override { return sample(localX, localZ).height; }
         bool raycast(const Vector3& origin, const Vector3& direction, float maxT, bool skipHoles, Vector3& point, float& t) const override {
             const Vector3 offset(centreX, 0.0f, centreZ);
@@ -216,9 +215,9 @@ namespace {
     // own centre, so T5's cells (-S/16 .. S/16) cover the tile and no cell crosses a seam (S is a power
     // of two of at least 16 m, R2). Made and dropped by TerrainWorldSystem, never outliving its runtime
     // while FoliageSystem still reads it.
-    class TileFoliageRegion final : public FoliageRegion {
+    class TileFoliageRegion final : public terraincore::FoliageRegion {
     public:
-        TileFoliageRegion(Scene* scene, Entity entity, TerrainWorldRuntime& runtime, TileCoord coord, bool hasTrees)
+        TileFoliageRegion(Scene* scene, Entity entity, TerrainWorldRuntime& runtime, terraincore::TileCoord coord, bool hasTrees)
             : scene(scene), entity(entity), runtime(runtime), coord(coord),
               centreX((static_cast<float>(coord.x) + 0.5f) * runtime.lattice().tileSize()),
               centreZ((static_cast<float>(coord.z) + 0.5f) * runtime.lattice().tileSize()),
@@ -231,17 +230,17 @@ namespace {
         }
 
         uint32_t regionKey() const override { return coord.key(); }
-        TerrainMapStore& maps() override { return tileMaps; }
-        const TerrainSurfaceQuery& surface() const override { return query; }
+        terraincore::TerrainMapStore& maps() override { return tileMaps; }
+        const terraincore::TerrainSurfaceQuery& surface() const override { return query; }
 
-        std::shared_ptr<TreeStore> trees() override {
+        std::shared_ptr<terraincore::TreeStore> trees() override {
             pollTrees();
             return store;
         }
 
         // whole cells from the world's origin: a cell straddling no seam is seeded alike by either tile
         void cellOffset(int& x, int& z) const override {
-            const int cells = static_cast<int>(runtime.lattice().tileSize() / FOLIAGE_DETAIL_CELL_SIZE);
+            const int cells = static_cast<int>(runtime.lattice().tileSize() / terraincore::FOLIAGE_DETAIL_CELL_SIZE);
             x = coord.x * cells + cells / 2;
             z = coord.z * cells + cells / 2;
         }
@@ -253,7 +252,7 @@ namespace {
         }
 
         bool frame(Frame& out) const override {
-            const WorldLattice& lattice = runtime.lattice();
+            const terraincore::WorldLattice& lattice = runtime.lattice();
             out.size = lattice.tileSize();
             out.heightMapSize = static_cast<float>(lattice.heightSide()) * lattice.spacing;
             out.maxHeight = runtime.maxHeight();
@@ -269,8 +268,8 @@ namespace {
             request.path = path;
             request.priority = IOPriority::Normal;
             request.name = "terrain-world-trees";
-            treeTask = AssetIOService::instance().submitRead(request, [error](std::vector<uint8_t>&& bytes) -> std::shared_ptr<TreeStore> {
-                auto loaded = std::make_shared<TreeStore>();
+            treeTask = AssetIOService::instance().submitRead(request, [error](std::vector<uint8_t>&& bytes) -> std::shared_ptr<terraincore::TreeStore> {
+                auto loaded = std::make_shared<terraincore::TreeStore>();
                 if (!loaded->decode(bytes, error.get(), worldTreeDecompress)) return nullptr;
                 return loaded;
             });
@@ -281,7 +280,7 @@ namespace {
             if (!treesLoading || !treeTask.isReady()) return;
             treesLoading = false;
             if (treeTask.status() == jobs::TaskStatus::Completed) store = treeTask.get();
-            treeTask = jobs::Task<std::shared_ptr<TreeStore>>();
+            treeTask = jobs::Task<std::shared_ptr<terraincore::TreeStore>>();
             if (!store) {
                 Log::error("Terrain World: the trees of tile (%i, %i) were refused: %s. The tile draws no trees.", coord.x, coord.z,
                            treeError->empty() ? "the file could not be read" : treeError->c_str());
@@ -291,25 +290,25 @@ namespace {
         Scene* scene;
         Entity entity;
         TerrainWorldRuntime& runtime;
-        TileCoord coord;
+        terraincore::TileCoord coord;
         float centreX, centreZ;
         TileFoliageMaps tileMaps;
         TileFoliageQuery query;
-        std::shared_ptr<TreeStore> store;
-        jobs::Task<std::shared_ptr<TreeStore>> treeTask;
+        std::shared_ptr<terraincore::TreeStore> store;
+        jobs::Task<std::shared_ptr<terraincore::TreeStore>> treeTask;
         std::shared_ptr<std::string> treeError;
         bool treesLoading = false;
     };
 
     // R27: a tile's foliage starts when the tile draws: Resident, or in memory where nothing uploads (R15)
-    bool foliageTileReady(const TerrainWorldRuntime& runtime, TileCoord tile) {
-        const TileState state = runtime.tileState(tile);
-        const bool drawn = state == TileState::Resident || (!runtime.tiles().budgets().gpu && state == TileState::CpuReady);
+    bool foliageTileReady(const TerrainWorldRuntime& runtime, terraincore::TileCoord tile) {
+        const terraincore::TileState state = runtime.tileState(tile);
+        const bool drawn = state == terraincore::TileState::Resident || (!runtime.tiles().budgets().gpu && state == terraincore::TileState::CpuReady);
         return drawn && runtime.resident(tile) != nullptr;
     }
 
-    bool worldTileHasTrees(const TerrainWorldRuntime& runtime, TileCoord tile) {
-        for (const WorldTileInfo& info : runtime.manifest().tiles) {
+    bool worldTileHasTrees(const TerrainWorldRuntime& runtime, terraincore::TileCoord tile) {
+        for (const terraincore::WorldTileInfo& info : runtime.manifest().tiles) {
             if (info.coord == tile) return info.trees;
         }
         return false;
@@ -366,7 +365,7 @@ void TerrainWorldSystem::syncFoliage(Entity entity, TerrainWorldRuntime& runtime
     if (found != foliageTiles.end()) {
         std::map<uint32_t, FoliageTile>& tiles = found->second;
         for (auto it = tiles.begin(); it != tiles.end();) {
-            const TileCoord coord = TileCoord::fromKey(it->first);
+            const terraincore::TileCoord coord = terraincore::TileCoord::fromKey(it->first);
             if (!foliageTileReady(runtime, coord)) {
                 foliage->removeRegion(entity, it->first);
                 it = tiles.erase(it);
@@ -381,7 +380,7 @@ void TerrainWorldSystem::syncFoliage(Entity entity, TerrainWorldRuntime& runtime
             ++it;
         }
     }
-    for (const TileCoord& coord : runtime.tiles().knownTiles()) {
+    for (const terraincore::TileCoord& coord : runtime.tiles().knownTiles()) {
         if (found != foliageTiles.end() && found->second.count(coord.key())) continue;
         if (!foliageTileReady(runtime, coord)) continue;
         auto region = std::make_shared<TileFoliageRegion>(scene, entity, runtime, coord, worldTileHasTrees(runtime, coord));
@@ -513,11 +512,11 @@ void TerrainWorldSystem::updateFocuses(TerrainWorldRuntime& runtime, const Terra
     Vector3 origin;
     if (const Transform* transform = scene->findComponent<Transform>(runtime.getEntity())) origin = transform->worldPosition;
     const double now = Engine::getRealtimeSinceStartup();
-    std::vector<StreamFocus> focuses;
+    std::vector<terraincore::StreamFocus> focuses;
     auto follow = [&](Entity entity, int id) {
         const Transform* transform = scene->findComponent<Transform>(entity);
         if (!transform) return;
-        StreamFocus focus;
+        terraincore::StreamFocus focus;
         focus.id = id;
         focus.x = transform->worldPosition.x - origin.x;
         focus.z = transform->worldPosition.z - origin.z;
@@ -582,7 +581,7 @@ void TerrainWorldSystem::pump(double now) {
             }
         }
 
-        const WorldPlatformBudget budget = terrainWorldPlatformBudget();
+        const terraincore::WorldPlatformBudget budget = terrainWorldPlatformBudget();
         runtime->applySettings(component->poolSize, component->lodDistance, component->uploadBudget, budget.nearTiles);
         // R29: brushes, edit_terrain and generation make tiles; a game's Lua edits do not
         runtime->store().options().autoAddTiles = component->autoAddTiles && !runtime->playing();

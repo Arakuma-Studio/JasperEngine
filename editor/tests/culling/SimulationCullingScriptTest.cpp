@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+namespace SimulationCullingScriptTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::scripttest;
 
@@ -280,3 +282,5 @@ TEST_F(SimulationCullingScriptTest, LuaCullingGroupCallbackMakesNoGarbage) {
     EXPECT_EQ(after, before) << "Lua bytes over 100 frames of events";
     lua("q:dispose()");
 }
+
+}  // namespace SimulationCullingScriptTest_cpp

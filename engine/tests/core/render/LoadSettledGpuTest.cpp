@@ -23,6 +23,8 @@
 #include <memory>
 #include <string>
 
+namespace LoadSettledGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -70,3 +72,5 @@ TEST_F(LoadSettledGpu, AMissingModelAndAnEmptyMeshDoNotKeepTheSceneLoading){
     EXPECT_TRUE(system->describeNotLoaded().empty());
     EXPECT_FALSE(model.needUpdateModel) << "the failed load is over, not retried";
 }
+
+}  // namespace LoadSettledGpuTest_cpp

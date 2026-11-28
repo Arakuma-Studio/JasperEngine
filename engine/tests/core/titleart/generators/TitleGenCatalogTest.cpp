@@ -31,6 +31,8 @@
 #include <set>
 #include <sstream>
 
+namespace TitleGenCatalogTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -240,3 +242,5 @@ TEST(TitleFxNoClock, GeneratorsReadNoTime) {
     }
     EXPECT_GE(scanned, 10);
 }
+
+}  // namespace TitleGenCatalogTest_cpp

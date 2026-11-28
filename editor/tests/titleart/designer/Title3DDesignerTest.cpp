@@ -24,6 +24,8 @@
 
 #include "support/PosixCompat.h"
 
+namespace Title3DDesignerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::titledesigner;
@@ -279,3 +281,5 @@ TEST(Title3DDesignerTest, EnvironmentTile) {
     // different environments give different tiles
     EXPECT_NE(studio, title3DEnvironmentTile("sunset", w, h));
 }
+
+}  // namespace Title3DDesignerTest_cpp

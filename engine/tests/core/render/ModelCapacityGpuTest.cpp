@@ -39,6 +39,8 @@
 #include <thread>
 #include <vector>
 
+namespace ModelCapacityGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -393,3 +395,5 @@ TEST(ModelCapacityGpu, EverySubmeshIsCulledByItsOwnBounds){
     EXPECT_EQ(Engine::getFrameStats().visible, plates - outside);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace ModelCapacityGpuTest_cpp

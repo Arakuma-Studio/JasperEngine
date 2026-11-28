@@ -41,6 +41,8 @@
 #include <string>
 #include <vector>
 
+namespace WaterFeaturesGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -237,3 +239,5 @@ TEST_F(WaterFeaturesGpu, RiverFlowAndMeshDepth){
     expectGolden("water_flow_mesh_depth");
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace WaterFeaturesGpuTest_cpp

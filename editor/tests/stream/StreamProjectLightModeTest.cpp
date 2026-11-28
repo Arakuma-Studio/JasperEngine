@@ -18,6 +18,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace StreamProjectLightModeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -59,3 +61,4 @@ TEST(StreamProjectLightMode, RoundTripsAndAppliesAtOnce) {
     EXPECT_EQ(loaded.getLightMode(), LightMode::AUTOMATIC);
 }
 
+}  // namespace StreamProjectLightModeTest_cpp

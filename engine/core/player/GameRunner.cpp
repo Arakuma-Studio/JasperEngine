@@ -54,7 +54,8 @@
 #include <mutex>
 
 using namespace jasperengine;
-using namespace jasperengine::player;
+
+namespace jasperengine::player {
 
 namespace {
 
@@ -186,7 +187,7 @@ namespace {
 
 }
 
-bool player::readGameConfig(const std::string& contentUrl, PlayerConfig& out, std::string& error) {
+bool readGameConfig(const std::string& contentUrl, PlayerConfig& out, std::string& error) {
     Data data;
     const std::string path = contentUrl + "game.json";
     if (data.open(path.c_str()) != FileErrors::FILEDATA_OK) {
@@ -208,7 +209,7 @@ bool player::readGameConfig(const std::string& contentUrl, PlayerConfig& out, st
     return true;
 }
 
-void player::applySettings(const PlayerConfig& game) {
+void applySettings(const PlayerConfig& game) {
     // Threading first: the job system and the asset readers start with these counts
     const ThreadingSettings threadingDefaults;
     if (game.threading.workers != threadingDefaults.workers || game.threading.reservedFrameWorkers != threadingDefaults.reservedFrameWorkers ||
@@ -337,7 +338,7 @@ void player::applySettings(const PlayerConfig& game) {
     }
 }
 
-void player::runGame(const PlayerConfig& game, const ProjectHooks& hooks, const std::string& contentUrl) {
+void runGame(const PlayerConfig& game, const ProjectHooks& hooks, const std::string& contentUrl) {
     RunningGame& state = running();
     state.game = game;
     state.hooks = hooks;
@@ -376,3 +377,5 @@ void player::runGame(const PlayerConfig& game, const ProjectHooks& hooks, const 
     if (!start && !game.scenes.empty()) start = &game.scenes.front();
     if (start) SceneManager::loadScene(start->id);
 }
+
+}  // namespace jasperengine::player

@@ -8,6 +8,8 @@
 
 #include "window/InspectorWindowClips.h"
 
+namespace InspectorRootTransformTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -36,3 +38,5 @@ TEST(InspectorRootTransform, MixedPerMember){
     EXPECT_FALSE(mixed.positionYOffset);
     EXPECT_STREQ(inspectorclips::rootPositionYBasisLabel(anim::RootPositionYBasis::CenterOfMass), "Center of Mass");
 }
+
+}  // namespace InspectorRootTransformTest_cpp

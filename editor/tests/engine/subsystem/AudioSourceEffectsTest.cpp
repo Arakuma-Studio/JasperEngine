@@ -33,6 +33,8 @@
 #include <string>
 #include <vector>
 
+namespace AudioSourceEffectsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -342,3 +344,5 @@ TEST_F(AudioSourceEffectsBench, LowPassCostOn32Voices) {
         EXPECT_LE(wrapperMicros, ceilingMicros * slack) << "REQ-36: the block's ceiling";
     }
 }
+
+}  // namespace AudioSourceEffectsTest_cpp

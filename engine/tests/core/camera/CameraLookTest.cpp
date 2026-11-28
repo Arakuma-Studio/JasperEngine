@@ -16,6 +16,8 @@
 
 #include <cmath>
 
+namespace CameraLookTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -108,3 +110,5 @@ TEST(CameraUpFor, FallbackIsPerpendicularToTheView){
     EXPECT_EQ(cameraUpFor(Vector3(0, 0, 1), Vector3(0, 0, 1)), Vector3(0, 1, 0));
     EXPECT_EQ(cameraUpFor(Vector3(0, 0, -1), Vector3(0, 0, 1)), Vector3(0, 1, 0));
 }
+
+}  // namespace CameraLookTest_cpp

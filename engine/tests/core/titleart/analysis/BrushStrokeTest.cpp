@@ -20,6 +20,8 @@
 #include <cmath>
 #include <cstring>
 
+namespace BrushStrokeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::analysis;
@@ -155,3 +157,5 @@ TEST(BrushStroke, MainStrokeAndSlash) {
     ASSERT_EQ(one.size(), 1u);
     EXPECT_NEAR(one[0].len.back(), 2.0 * slash.radius, 0.05 * 2.0 * slash.radius);
 }
+
+}  // namespace BrushStrokeTest_cpp

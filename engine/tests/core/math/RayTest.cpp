@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+namespace RayTest_cpp {
+
 using namespace jasperengine;
 
 TEST(Ray, GetPointWalksAlongTheDirection){
@@ -96,3 +98,5 @@ TEST(Ray, MissesASphereBesideIt){
     const Ray ray(Vector3(0, 5, -10), Vector3(0, 0, 20));
     EXPECT_FALSE(ray.intersects(Sphere(Vector3::ZERO, 2.0f)));
 }
+
+}  // namespace RayTest_cpp

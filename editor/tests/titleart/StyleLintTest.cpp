@@ -22,6 +22,8 @@
 #include <map>
 #include <sstream>
 
+namespace StyleLintTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::titlelibrary;
@@ -431,3 +433,5 @@ TEST(StyleLintTest, MatchesPachislop) {
     EXPECT_EQ(compared, 120u);
     EXPECT_GE(theirFindings, 20u) << "the red controls and the library's own findings";
 }
+
+}  // namespace StyleLintTest_cpp

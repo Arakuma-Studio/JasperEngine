@@ -19,6 +19,8 @@
 #include <fstream>
 #include <string>
 
+namespace PhysicsPlacementWorkspaceTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -242,3 +244,5 @@ TEST(PhysicsPlacementWorkspace, HandEditedValuesAreClampedToThePanelRanges) {
     clampPhysicsPlacementSettings(defaults);
     expectSame(defaults, PhysicsPlacementSettings());
 }
+
+}  // namespace PhysicsPlacementWorkspaceTest_cpp

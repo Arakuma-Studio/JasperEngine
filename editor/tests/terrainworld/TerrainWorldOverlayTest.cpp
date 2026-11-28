@@ -19,6 +19,8 @@
 
 #include "TempDir.h"
 
+namespace TerrainWorldOverlayTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::terraincore::TileCoord;
@@ -198,3 +200,5 @@ TEST(TerrainWorldOverlay, CapturesTheRuntime) {
     state = captureTerrainWorldOverlay(*runtime, TerrainWorldOverlayMode::CollisionChunks);
     EXPECT_TRUE(state.rects.empty());
 }
+
+}  // namespace TerrainWorldOverlayTest_cpp

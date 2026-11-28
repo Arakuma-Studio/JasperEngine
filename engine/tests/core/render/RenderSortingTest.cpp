@@ -17,6 +17,8 @@
 #include <algorithm>
 #include <vector>
 
+namespace RenderSortingTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -79,3 +81,5 @@ TEST(RenderSorting, ModeTokensRoundTrip){
     EXPECT_FALSE(SortingLayers::transparencySortModeFromToken("isometric", read));
     EXPECT_EQ(read, TransparencySortMode::PERSPECTIVE);
 }
+
+}  // namespace RenderSortingTest_cpp

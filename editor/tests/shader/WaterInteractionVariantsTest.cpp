@@ -30,10 +30,11 @@
 #include <set>
 #include <string>
 
+namespace water_interaction_variants_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
-namespace water_interaction_variants_test {
 
     SubmeshShaderInputs waterInputs(){
         SubmeshShaderInputs inputs;
@@ -71,6 +72,8 @@ namespace water_interaction_variants_test {
     }
 
 }
+
+namespace water_interaction_variants_test {
 
 using namespace water_interaction_variants_test;
 
@@ -228,3 +231,5 @@ TEST_F(WaterInteractionVariantKeys, ExportsCollectThemOnlyWithTheComponents){
     EXPECT_GT(both.first, 0u);
     EXPECT_GT(both.second, 0u);
 }
+
+}  // namespace water_interaction_variants_test

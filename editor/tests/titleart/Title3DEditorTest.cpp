@@ -25,6 +25,8 @@
 #include <cstring>
 #include <map>
 
+namespace Title3DEditorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using Title3DEditorJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
@@ -246,3 +248,4 @@ TEST(TitleEnvironmentCookTest, StudioCooksForEveryFamilyAndCaches) {
     EXPECT_EQ(after.hits, before.hits + 1);
 }
 
+}  // namespace Title3DEditorTest_cpp

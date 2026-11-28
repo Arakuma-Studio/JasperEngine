@@ -16,6 +16,8 @@
 #include <cstddef>
 #include <string>
 
+namespace ShadowDataLayoutTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -119,3 +121,5 @@ TEST(ShadowDataLayout, HighFiltersAddTheRawDepthView){
     EXPECT_TRUE(hasTexture(*shadowDataLayoutFragmentOf(medium), "u_shadowAtlas"));
     EXPECT_TRUE(hasTexture(*shadowDataLayoutFragmentOf(medium), "u_shadowPointAtlas"));
 }
+
+}  // namespace ShadowDataLayoutTest_cpp

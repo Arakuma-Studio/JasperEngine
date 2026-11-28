@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+namespace AssetIndexQueryTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -53,3 +55,5 @@ TEST(AssetIndex, ReferenceQueriesKeepPathOrderPrefixesAndOverlayLimits) {
     EXPECT_EQ(index.referencesTo(texture, "assets/textures/picture.png", false, 1),
               std::vector<DepEdge>{added});
 }
+
+}  // namespace AssetIndexQueryTest_cpp

@@ -23,6 +23,8 @@
 #include <map>
 #include <string>
 
+namespace ProcMatBakedGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -104,3 +106,5 @@ TEST(ProcMatBakedGpu, ABakedMaterialDrawsOnASphere) {
     }
     Engine::removeScene(&scene);
 }
+
+}  // namespace ProcMatBakedGpuTest_cpp

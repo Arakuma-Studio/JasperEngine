@@ -6,7 +6,8 @@
 #include <algorithm>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
+
+namespace jasperengine::particles {
 
 void ParticleTrails::configure(uint32_t ringCount, uint32_t pointCount){
     rings = ringCount;
@@ -124,3 +125,5 @@ void ParticleTrails::point(uint32_t ring, uint32_t k, float& x, float& y, float&
     z = zs[slot];
     time = times[slot];
 }
+
+}  // namespace jasperengine::particles

@@ -21,7 +21,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vertexcolor;
+
+namespace jasperengine::editor::vertexcolor {
+
 namespace vcd = jasperengine::editor::vertexcolor::detail;
 
 struct StrokeSession::Impl {
@@ -215,3 +217,5 @@ void StrokeSession::cancel() {
 bool StrokeSession::active() const {
     return impl && impl->active;
 }
+
+}  // namespace jasperengine::editor::vertexcolor

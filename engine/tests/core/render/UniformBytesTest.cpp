@@ -25,6 +25,8 @@
 #include <memory>
 #include <vector>
 
+namespace UniformBytesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -94,3 +96,5 @@ TEST_F(UniformBytesGpu, ConstantsAreAppliedOncePerPass){
     EXPECT_LE(after * 10, before * 4) << "less than 60% fewer uniform bytes";
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace UniformBytesTest_cpp

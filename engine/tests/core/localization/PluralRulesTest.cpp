@@ -10,6 +10,8 @@
 
 #include <string>
 
+namespace PluralRulesTest_cpp {
+
 using namespace jasperengine::l10n;
 
 namespace {
@@ -35,3 +37,5 @@ TEST(PluralRulesTest, GeneratedTableMatchesCldrSamples) {
     }
     EXPECT_GT(checked, 5000u);
 }
+
+}  // namespace PluralRulesTest_cpp

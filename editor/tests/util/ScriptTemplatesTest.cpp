@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ScriptTemplatesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -45,3 +47,5 @@ TEST(ScriptTemplates, WriteTemplateFilesWritesTheTemplateStrings) {
     EXPECT_EQ(dir.read("Orc.h"), files.header);
     EXPECT_EQ(dir.read("Orc.cpp"), files.source);
 }
+
+}  // namespace ScriptTemplatesTest_cpp

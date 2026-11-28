@@ -18,6 +18,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace SceneDiffTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::vcs::scene;
@@ -322,3 +324,5 @@ TEST(SceneDiff, PrefabInstanceOverridesShowOnTheirMembers) {
     // the override list changed too
     EXPECT_NE(member->component("prefabOverrides"), nullptr);
 }
+
+}  // namespace SceneDiffTest_cpp

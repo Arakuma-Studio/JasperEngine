@@ -19,6 +19,8 @@
 
 #include <cmath>
 
+namespace CurveCodecTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::test;
@@ -119,3 +121,4 @@ TEST(CurveCodec, OldTweenSceneLoadsALinearCurve) {
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+}  // namespace CurveCodecTest_cpp

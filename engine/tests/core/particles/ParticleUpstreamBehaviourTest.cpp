@@ -21,6 +21,8 @@
 #include <set>
 #include <vector>
 
+namespace ParticleUpstreamBehaviourTest_cpp {
+
 using namespace particletest;
 
 namespace {
@@ -687,3 +689,5 @@ TEST(ParticleUpstreamScene, DeactivatedGameObjectClearsAndReplaysOnReactivation)
     EXPECT_GT(system.getParticleCount(), 0u) << "Play On Awake plays it again";
     EXPECT_LT(system.getParticleCount(), 20u);
 }
+
+}  // namespace ParticleUpstreamBehaviourTest_cpp

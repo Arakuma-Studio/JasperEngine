@@ -11,6 +11,8 @@
 
 #include <string>
 
+namespace VulkanRobustnessTest_cpp {
+
 using namespace jasperengine;
 
 TEST(VulkanRobustness, EnabledWhereTheDescriptorSizesMatch){
@@ -29,3 +31,5 @@ TEST(VulkanRobustness, OffWhereARobustDescriptorIsLarger){
     EXPECT_FALSE(decideVulkanRobustBufferAccess(true, 32, 16, 16, 16).enable);
     EXPECT_FALSE(decideVulkanRobustBufferAccess(true, 16, 16, 32, 16).enable);
 }
+
+}  // namespace VulkanRobustnessTest_cpp

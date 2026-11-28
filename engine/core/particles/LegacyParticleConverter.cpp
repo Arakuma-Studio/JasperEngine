@@ -12,7 +12,8 @@
 #include <functional>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
+
+namespace jasperengine::particles {
 
 namespace {
 
@@ -472,3 +473,5 @@ LegacyParticleSystem LegacyParticleConverter::extract(const ParticleEffectDocume
     p.spriteInitializer.frames = d.textureSheetAnimation.startFrameList;
     return p;
 }
+
+}  // namespace jasperengine::particles

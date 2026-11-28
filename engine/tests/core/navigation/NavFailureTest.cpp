@@ -13,6 +13,8 @@
 #include <cmath>
 #include <string>
 
+namespace NavFailureTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 using nav::PathFailure;
@@ -327,3 +329,5 @@ TEST_F(NavFailureTest, GridReasons){
     EXPECT_EQ(solver.solve(map, nav::GridCell{2, 0}, nav::GridCell{6, 6}, query, costs).failure, PathFailure::StartFiltered);
     EXPECT_EQ(solver.solve(map, nav::GridCell{6, 6}, nav::GridCell{2, 0}, query, costs).failure, PathFailure::EndFiltered);
 }
+
+}  // namespace NavFailureTest_cpp

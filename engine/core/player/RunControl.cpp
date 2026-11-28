@@ -32,7 +32,8 @@
 #include <string>
 
 using namespace jasperengine;
-using namespace jasperengine::player;
+
+namespace jasperengine::player {
 
 namespace {
 
@@ -442,3 +443,5 @@ uint64_t RunControl::countedFrames() {
 void RunControl::noteError() {
     state().errorLogged.store(true);
 }
+
+}  // namespace jasperengine::player

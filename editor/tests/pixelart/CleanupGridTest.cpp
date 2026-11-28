@@ -18,8 +18,12 @@
 #include <thread>
 #include <vector>
 
+namespace CleanupGridTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::cleanup;
+// the cleanup's own, not pixelart's namesakes: a batch that declares both would be ambiguous
+using jasperengine::editor::pixelart::cleanup::RgbaImage;
 // its own name: another RgbaImage is in sight in some unity units
 using CleanupGridImage = jasperengine::editor::pixelart::cleanup::RgbaImage;
 
@@ -187,3 +191,5 @@ TEST(CleanupGrid, DetectsTheSameGridWhateverTheThreadCount) {
     EXPECT_EQ(serial.x.confidence, parallel.x.confidence);
     EXPECT_EQ(serial.y.confidence, parallel.y.confidence);
 }
+
+}  // namespace CleanupGridTest_cpp

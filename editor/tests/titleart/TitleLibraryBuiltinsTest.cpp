@@ -29,6 +29,8 @@
 #include <set>
 #include <sstream>
 
+namespace TitleLibraryBuiltinsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::titlelibrary;
@@ -357,3 +359,5 @@ TEST_F(TitleLibraryBuiltins, MatchesPachislop) {
     for (const std::string& f : firstFailures) list += "  " + f + "\n";
     EXPECT_TRUE(failuresByCase.empty()) << failuresByCase.size() << " of " << compared << " cases differ:\n" << list;
 }
+
+}  // namespace TitleLibraryBuiltinsTest_cpp

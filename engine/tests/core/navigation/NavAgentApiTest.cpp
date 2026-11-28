@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace NavAgentApiTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 
@@ -518,3 +520,5 @@ TEST_F(NavAgentApiTest, PathFailedReason){
     EXPECT_EQ(reasons[0], nav::PathFailure::BlockedByArea);
     EXPECT_FALSE(across.hasPath());
 }
+
+}  // namespace NavAgentApiTest_cpp

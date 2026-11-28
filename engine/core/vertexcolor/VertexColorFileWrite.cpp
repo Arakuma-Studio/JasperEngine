@@ -20,7 +20,6 @@ namespace jasperengine::vertexcolor {
 
     namespace {
 
-        using namespace fileformat;
 
         // the editor's zstd (setBodyCompressor); none in a game, which links only zstd's decoder
         std::atomic<BodyCompressor> vcolorsCompressor{nullptr};
@@ -114,20 +113,20 @@ namespace jasperengine::vertexcolor {
         std::vector<uint8_t> body;
         encodeVcolorsBody(data, includeEditor, body);
 
-        uint8_t flags = includeEditor ? VCOLORS_FLAG_EDITOR : 0;
+        uint8_t flags = includeEditor ? vertexcolor::fileformat::VCOLORS_FLAG_EDITOR : 0;
         std::vector<uint8_t> packed;
         const BodyCompressor compressor = vcolorsCompressor.load();
         if (!body.empty() && compressor && compressor(body, packed) && packed.size() < body.size())
-            flags |= VCOLORS_FLAG_ZSTD;
+            flags |= vertexcolor::fileformat::VCOLORS_FLAG_ZSTD;
 
         std::vector<uint8_t> out;
         VcolorsWriter w(out);
-        for (uint8_t m : VCOLORS_MAGIC) w.u8(m);
+        for (uint8_t m : vertexcolor::fileformat::VCOLORS_MAGIC) w.u8(m);
         w.u32(VCOLORS_VERSION);
         w.u8((uint8_t)data.format);
         w.u8(flags);
         w.u16(0);
-        const std::vector<uint8_t>& payload = (flags & VCOLORS_FLAG_ZSTD) ? packed : body;
+        const std::vector<uint8_t>& payload = (flags & vertexcolor::fileformat::VCOLORS_FLAG_ZSTD) ? packed : body;
         out.insert(out.end(), payload.begin(), payload.end());
         return out;
     }

@@ -9,6 +9,8 @@
 
 #include <cmath>
 
+namespace EffectLintsTest_cpp {
+
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::lint;
@@ -411,3 +413,5 @@ TEST(EffectLints, CheckRowsHaveTheVerdictToolsShape) {
     EXPECT_TRUE(skip["measured"].is_null());
     EXPECT_EQ(skip["limited_by"], "a loop has no end");
 }
+
+}  // namespace EffectLintsTest_cpp

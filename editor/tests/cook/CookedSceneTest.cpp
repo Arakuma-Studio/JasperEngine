@@ -48,12 +48,13 @@
 #include <set>
 #include <sstream>
 
+namespace cooked_scene_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
-namespace cooked_scene_test {
 
     // Keys of a component's encode that a cooked scene does not carry over as they are, each
     // for a reason that holds in the Factory (Compile) path too
@@ -129,6 +130,8 @@ namespace cooked_scene_test {
     }
 
 }
+
+namespace cooked_scene_test {
 
 using namespace cooked_scene_test;
 
@@ -1521,3 +1524,5 @@ TEST(RuntimeFields, Generated) {
     EXPECT_TRUE(text.str() == emitted) << "engine/core/serialization/RuntimeFields.gen.inc is stale: regenerate it with "
                                           "jasperengine-editor reflect --emit-runtime-fields engine/core/serialization/RuntimeFields.gen.inc";
 }
+
+}  // namespace cooked_scene_test

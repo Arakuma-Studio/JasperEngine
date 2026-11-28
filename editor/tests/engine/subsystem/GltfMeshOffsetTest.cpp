@@ -31,6 +31,8 @@
 #include <thread>
 #include <vector>
 
+namespace GltfMeshOffsetTest_cpp {
+
 using namespace jasperengine;
 namespace fs = std::filesystem;
 
@@ -342,3 +344,4 @@ TEST_F(GltfMeshOffset, FoliageBakesTheWholeNodeTransform) {
     EXPECT_EQ(plainMesh.windingOrder, WindingOrder::CCW);
 }
 
+}  // namespace GltfMeshOffsetTest_cpp

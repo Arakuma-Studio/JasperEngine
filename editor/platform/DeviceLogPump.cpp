@@ -11,7 +11,8 @@
 #include <utility>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::platform;
+
+namespace jasperengine::editor::platform {
 
 DeviceLogPump::DeviceLogPump(Sink sink): DeviceLogPump(std::move(sink), Options()) {}
 
@@ -175,3 +176,5 @@ void SimulatorLogMerge::flush(double now, bool all) {
     }
     while (!unified.empty() && (all || now - unified.front().second >= hold)) unified.pop_front();
 }
+
+}  // namespace jasperengine::editor::platform

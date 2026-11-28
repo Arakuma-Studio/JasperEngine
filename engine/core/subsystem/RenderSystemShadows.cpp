@@ -30,7 +30,6 @@
 #include <unordered_set>
 
 using namespace jasperengine;
-using namespace jasperengine::rendershared;
 
 namespace {
 
@@ -485,7 +484,7 @@ void RenderSystem::ensureCasterLayers(){
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
         if (instmesh){
             unbounded = unbounded || instmesh->instancedBillboard ||
-                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f || instanceFadeCullNear(*instmesh, mesh, *scene) > 0.0f ||
+                rendershared::instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f || rendershared::instanceFadeCullNear(*instmesh, mesh, *scene) > 0.0f ||
                 (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
         }
         if ((terrain && !mesh.staticShadowCaster) || unbounded){
@@ -493,7 +492,7 @@ void RenderSystem::ensureCasterLayers(){
         }
 
         // the batch test of the depth passes (isBatchVisible), against each shadow camera
-        const bool everywhere = unbounded || !cullsBatch(mesh, instmesh);
+        const bool everywhere = unbounded || !rendershared::cullsBatch(mesh, instmesh);
         for (int k = 0; k < numLocalLights; k++){
             const int l = localLights[k];
             if (lightCasterLayers[l] & layerBit)
@@ -622,7 +621,7 @@ void RenderSystem::updateShadowCasters(){
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
         if (instmesh){
             unbounded = unbounded || instmesh->instancedBillboard ||
-                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f || instanceFadeCullNear(*instmesh, mesh, *scene) > 0.0f ||
+                rendershared::instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f || rendershared::instanceFadeCullNear(*instmesh, mesh, *scene) > 0.0f ||
                 (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
         }
         // a static terrain draws a cut of its own in each slot (shadowTerrainCut): the camera
@@ -1075,7 +1074,7 @@ RenderSystem::LodView RenderSystem::shadowLodView(const LightComponent& light, i
     // shadow LOD (spec S54 R7): the light's own error budget, about one level coarser than the
     // camera's rule (SHADOW_LOD_COARSER) over the project's and the device tier's Shadow LOD Bias
     // (QualityResolver, contract C4: above 1 keeps detail); casters snap, never fade
-    view.threshold = SHADOW_LOD_TEXELS * SHADOW_LOD_COARSER / std::max(QualityResolver::shadowLodBias(), 0.001f);
+    view.threshold = rendershared::SHADOW_LOD_TEXELS * rendershared::SHADOW_LOD_COARSER / std::max(QualityResolver::shadowLodBias(), 0.001f);
     view.bias = QualityResolver::lodBias();
 
     const LightCamera& shadowCamera = lightCamera(lightIndex, light, cameraIndex);
@@ -1094,7 +1093,7 @@ RenderSystem::LodView RenderSystem::pointFaceLodView(const LightComponent& light
     LodView view;
     view.enabled = scene->isMeshLodEnabled();
     // as a shadow slot's: the light's own budget, over the Shadow LOD Bias (QualityResolver, C4)
-    view.threshold = SHADOW_LOD_TEXELS * SHADOW_LOD_COARSER / std::max(QualityResolver::shadowLodBias(), 0.001f);
+    view.threshold = rendershared::SHADOW_LOD_TEXELS * rendershared::SHADOW_LOD_COARSER / std::max(QualityResolver::shadowLodBias(), 0.001f);
     view.bias = QualityResolver::lodBias();
     const LightCamera& faceCamera = lightCamera(lightIndex, light, face);
     const Matrix4& projection = faceCamera.lightProjectionMatrix;
@@ -1604,7 +1603,7 @@ void RenderSystem::buildCameraShadowInstances(CameraShadows& target){
 
         // the frame's list, the one this camera's color pass draws
         const InstanceRenderData* instances = instmesh.renderInstances.data();
-        const InstanceVatRenderData* vat = instanceVatData(instmesh);
+        const InstanceVatRenderData* vat = rendershared::instanceVatData(instmesh);
         const InstanceBounds* bounds = instmesh.renderBounds.data();
         const unsigned int count = (instmesh.renderBounds.size() < instmesh.numVisible) ? 0 : instmesh.numVisible;
 

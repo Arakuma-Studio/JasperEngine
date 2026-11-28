@@ -20,6 +20,8 @@
 #include <functional>
 #include <thread>
 
+namespace X11VisibilityTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -136,5 +138,7 @@ TEST_F(X11VisibilityTest, AttachReadsAHiddenWindow){
     adopted.attach(display, window, true);
     EXPECT_TRUE(adopted.isHidden());
 }
+
+}  // namespace X11VisibilityTest_cpp
 
 #endif

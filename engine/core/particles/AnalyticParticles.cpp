@@ -17,7 +17,8 @@
 #include <limits>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
+
+namespace jasperengine::particles {
 
 namespace {
 
@@ -970,3 +971,5 @@ uint32_t AnalyticParticles::aliveCount(const AnalyticProgram& p){
         n += evaluate(p, s).alive ? 1u : 0u;
     return n;
 }
+
+}  // namespace jasperengine::particles

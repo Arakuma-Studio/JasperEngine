@@ -6,7 +6,8 @@
 #include "math/noise/GradientCurl3DSimd.h"
 
 using namespace jasperengine;
-using namespace jasperengine::noise;
+
+namespace jasperengine::noise {
 
 namespace {
 
@@ -30,14 +31,16 @@ namespace {
 
 }
 
-const char* noise::curlNativeBackend(){
+const char* curlNativeBackend(){
     return simd::Native::name;
 }
 
-void noise::curlNoiseBatch(CurlBackend backend, int potentials, const float* x, const float* y, const float* z,
+void curlNoiseBatch(CurlBackend backend, int potentials, const float* x, const float* y, const float* z,
                            size_t count, uint32_t seed, float* outX, float* outY, float* outZ){
     if (backend == CurlBackend::Native)
         run<simd::Native>(potentials, x, y, z, count, seed, outX, outY, outZ);
     else
         run<simd::Scalar>(potentials, x, y, z, count, seed, outX, outY, outZ);
 }
+
+}  // namespace jasperengine::noise

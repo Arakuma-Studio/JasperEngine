@@ -65,23 +65,22 @@ namespace {
 }
 }
 
-using namespace jasperengine::editor::paletteassetfield;
 
 namespace jasperengine::editor {
 
 bool paletteAssetField(const char* id, Project& project, const std::string& current, std::string& picked, bool allowNone, float width) {
     ImGui::PushID(id);
     bool changed = false;
-    std::shared_ptr<const pxc::Palette> palette = current.empty() ? nullptr : pxc::PaletteLibrary::get(current);
+    std::shared_ptr<const jasperengine::pixelart::Palette> palette = current.empty() ? nullptr : jasperengine::pixelart::PaletteLibrary::get(current);
     const std::string shown = current.empty() ? std::string("None")
-                            : palette ? displayName(*palette, current) : "Missing (" + current + ")";
+                            : palette ? paletteassetfield::displayName(*palette, current) : "Missing (" + current + ")";
 
     const float fieldWidth = width > 0.0f ? width : std::max(1.0f, ImGui::GetContentRegionAvail().x + width);
     const ImGuiStyle& style = ImGui::GetStyle();
     ImGui::PushStyleColor(ImGuiCol_Text, current.empty() ? style.Colors[ImGuiCol_TextDisabled] : style.Colors[ImGuiCol_Text]);
     ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
     if (ImGui::Button((shown + "###palette_field").c_str(), ImVec2(fieldWidth, 0.0f))) {
-        listedPalettes() = pixelart::listProjectPalettes(project);
+        paletteassetfield::listedPalettes() = pixelart::listProjectPalettes(project);
         ImGui::OpenPopup("##palette_field_popup");
     }
     ImGui::PopStyleVar();
@@ -91,7 +90,7 @@ bool paletteAssetField(const char* id, Project& project, const std::string& curr
         const ImVec2 min = ImGui::GetItemRectMin();
         const ImVec2 max = ImGui::GetItemRectMax();
         const float band = std::max(2.0f, std::floor(ImGui::GetFontSize() * 0.22f));
-        drawSwatches(ImGui::GetWindowDrawList(), ImVec2(min.x + style.FramePadding.x * 0.5f, max.y - band - 1.0f),
+        paletteassetfield::drawSwatches(ImGui::GetWindowDrawList(), ImVec2(min.x + style.FramePadding.x * 0.5f, max.y - band - 1.0f),
                      ImVec2(max.x - style.FramePadding.x * 0.5f, max.y - 1.0f), palette->colors,
                      std::min((int)palette->colors.size(), 256));
     }
@@ -101,7 +100,7 @@ bool paletteAssetField(const char* id, Project& project, const std::string& curr
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
             for (const std::string& file : Util::getStringsFromPayload(payload)) {
-                if (!isPaletteFile(file) || !project.isInsideAssetsPath(FileUtils::pathFromUtf8(file))) continue;
+                if (!paletteassetfield::isPaletteFile(file) || !project.isInsideAssetsPath(FileUtils::pathFromUtf8(file))) continue;
                 picked = FileUtils::pathToGenericUtf8(project.normalizeToAssetsRelative(FileUtils::pathFromUtf8(file)));
                 changed = picked != current;
                 break;
@@ -115,11 +114,11 @@ bool paletteAssetField(const char* id, Project& project, const std::string& curr
     if (ImGui::BeginPopup("##palette_field_popup")) {
         const float stripWidth = ImGui::GetFontSize() * 6.0f;
         // a strip of the entry's colours at the right end of its line
-        auto entryStrip = [&](const std::vector<pxc::Rgba8>& colors) {
+        auto entryStrip = [&](const std::vector<paletteassetfield::pxc::Rgba8>& colors) {
             const ImVec2 min = ImGui::GetItemRectMin();
             const ImVec2 max = ImGui::GetItemRectMax();
             const float inset = (max.y - min.y) * 0.25f;
-            drawSwatches(ImGui::GetWindowDrawList(), ImVec2(std::max(min.x, max.x - stripWidth), min.y + inset), ImVec2(max.x, max.y - inset),
+            paletteassetfield::drawSwatches(ImGui::GetWindowDrawList(), ImVec2(std::max(min.x, max.x - stripWidth), min.y + inset), ImVec2(max.x, max.y - inset),
                          colors, std::min((int)colors.size(), 32));
         };
         if (allowNone && ImGui::Selectable("None##palette_none", current.empty())) {
@@ -127,10 +126,10 @@ bool paletteAssetField(const char* id, Project& project, const std::string& curr
             changed = !current.empty();
         }
         ImGui::SeparatorText("Project");
-        if (listedPalettes().empty())
+        if (paletteassetfield::listedPalettes().empty())
             ImGui::TextDisabled("No .palette in the project yet");
-        for (const pixelart::ProjectPalette& entry : listedPalettes()) {
-            const std::string label = displayName(entry.palette, entry.assetPath) + "##" + entry.assetPath;
+        for (const pixelart::ProjectPalette& entry : paletteassetfield::listedPalettes()) {
+            const std::string label = paletteassetfield::displayName(entry.palette, entry.assetPath) + "##" + entry.assetPath;
             if (ImGui::Selectable(label.c_str(), entry.assetPath == current, 0, ImVec2(0.0f, 0.0f))) {
                 picked = entry.assetPath;
                 changed = picked != current;
@@ -140,7 +139,7 @@ bool paletteAssetField(const char* id, Project& project, const std::string& curr
         }
         ImGui::SeparatorText("Built-in");
         for (const pixelart::BuiltinPalette& builtin : pixelart::builtinPalettes()) {
-            const std::string label = displayName(builtin.palette, builtin.id) + "##" + pixelart::kBuiltinPrefix + builtin.id;
+            const std::string label = paletteassetfield::displayName(builtin.palette, builtin.id) + "##" + pixelart::kBuiltinPrefix + builtin.id;
             if (ImGui::Selectable(label.c_str(), false)) {
                 picked = pixelart::kBuiltinPrefix + builtin.id;
                 changed = true;
@@ -155,7 +154,7 @@ bool paletteAssetField(const char* id, Project& project, const std::string& curr
     return changed;
 }
 
-void paletteSwatchStrip(const char* id, const std::vector<pxc::Rgba8>& colors, float width, float height, int maxColors) {
+void paletteSwatchStrip(const char* id, const std::vector<paletteassetfield::pxc::Rgba8>& colors, float width, float height, int maxColors) {
     ImGui::PushID(id);
     const int count = (int)colors.size();
     const int shown = std::min(count, std::max(1, maxColors));
@@ -165,10 +164,10 @@ void paletteSwatchStrip(const char* id, const std::vector<pxc::Rgba8>& colors, f
     const float stripWidth = std::max(1.0f, avail - moreWidth);
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     ImGui::InvisibleButton("##swatch_strip", ImVec2(stripWidth, std::max(1.0f, height)));
-    drawSwatches(ImGui::GetWindowDrawList(), origin, ImVec2(origin.x + stripWidth, origin.y + height), colors, shown);
+    paletteassetfield::drawSwatches(ImGui::GetWindowDrawList(), origin, ImVec2(origin.x + stripWidth, origin.y + height), colors, shown);
     if (shown > 0 && ImGui::IsItemHovered()) {
         const int index = std::clamp((int)((ImGui::GetIO().MousePos.x - origin.x) / stripWidth * (float)shown), 0, shown - 1);
-        ImGui::SetTooltip("%d: %s", index, hexOf(colors[(size_t)index]).c_str());
+        ImGui::SetTooltip("%d: %s", index, paletteassetfield::hexOf(colors[(size_t)index]).c_str());
     }
     if (!more.empty()) {
         ImGui::SameLine();

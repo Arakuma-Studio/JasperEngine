@@ -20,6 +20,8 @@
 #include <filesystem>
 #include <fstream>
 
+namespace ModelHierarchyTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::test;
 namespace fs = std::filesystem;
@@ -73,3 +75,5 @@ TEST(ModelHierarchyTest, PreserveHierarchySingleMesh) {
     EXPECT_EQ(scene.getEntityName(body->second), "Body");
     EXPECT_NEAR(scene.getComponent<Transform>(body->second).position.y, 1.0f, 1e-5f) << "the node keeps its transform";
 }
+
+}  // namespace ModelHierarchyTest_cpp

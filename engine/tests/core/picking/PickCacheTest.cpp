@@ -18,6 +18,8 @@
 #include <chrono>
 #include <vector>
 
+namespace PickCacheTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -158,3 +160,5 @@ TEST(PickCache, PendingReturnsBoundsAndWaitBuildsInline){
     EXPECT_FALSE(hit.pending);
     EXPECT_EQ(hit.kind, PickKind::MESH);
 }
+
+}  // namespace PickCacheTest_cpp

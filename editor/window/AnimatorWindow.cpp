@@ -39,7 +39,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::anim;
 namespace fs = std::filesystem;
 
 namespace{
@@ -65,10 +64,10 @@ namespace{
         return duration<double>(steady_clock::now().time_since_epoch()).count();
     }
 
-    std::string uniqueName(const StateMachineDef& machine, const std::string& wanted){
+    std::string uniqueName(const anim::StateMachineDef& machine, const std::string& wanted){
         auto taken = [&](const std::string& name){
-            for (const StateDef& s : machine.states) if (s.name == name) return true;
-            for (const StateMachineDef& m : machine.subMachines) if (m.name == name) return true;
+            for (const anim::StateDef& s : machine.states) if (s.name == name) return true;
+            for (const anim::StateMachineDef& m : machine.subMachines) if (m.name == name) return true;
             return false;
         };
         if (!taken(wanted)) return wanted;
@@ -78,11 +77,11 @@ namespace{
         }
     }
 
-    std::string motionLabel(const MotionDef& motion){
-        if (motion.isTree()) return std::string("Blend Tree (") + blendTreeTypeName(motion.tree.front().type) + ")";
+    std::string motionLabel(const anim::MotionDef& motion){
+        if (motion.isTree()) return std::string("Blend Tree (") + anim::blendTreeTypeName(motion.tree.front().type) + ")";
         if (motion.clip.empty()) return std::string();
-        SubClipReference subClip;
-        if (parseSubClipReference(motion.clip.path, subClip)) return subClip.clip;
+        anim::SubClipReference subClip;
+        if (anim::parseSubClipReference(motion.clip.path, subClip)) return subClip.clip;
         return fs::path(motion.clip.path).stem().string();
     }
 
@@ -101,14 +100,14 @@ namespace{
     }
 
     // a parameter of `def` by name (empty: none), optionally of the number types only
-    bool comboParameter(const char* label, const ControllerDef& def, std::string& value, bool numbersOnly){
+    bool comboParameter(const char* label, const anim::ControllerDef& def, std::string& value, bool numbersOnly){
         bool changed = false;
         if (ImGui::BeginCombo(label, value.empty() ? "(none)" : value.c_str())){
             if (ImGui::Selectable("(none)", value.empty())){
                 value.clear();
                 changed = true;
             }
-            for (const ParameterDef& p : def.parameters){
+            for (const anim::ParameterDef& p : def.parameters){
                 if (numbersOnly && p.type != AnimatorParameterType::Float && p.type != AnimatorParameterType::Int) continue;
                 if (ImGui::Selectable(p.name.c_str(), p.name == value)){
                     value = p.name;
@@ -121,49 +120,49 @@ namespace{
     }
 
     // the assets-relative clip reference of a dropped or picked file ("<model>#<clip>" kept)
-    bool clipFromPath(Project* project, const std::string& path, AnimatorAssetRef& out){
-        SubClipReference subClip;
-        const bool isSubClip = parseSubClipReference(path, subClip);
+    bool clipFromPath(Project* project, const std::string& path, anim::AnimatorAssetRef& out){
+        anim::SubClipReference subClip;
+        const bool isSubClip = anim::parseSubClipReference(path, subClip);
         const std::string file = isSubClip ? subClip.model : path;
         if (!project->isInsideAssetsPath(file) && !project->isInsideAssetsPath(project->resolveAssetPath(file).string())) return false;
         const fs::path absolute = project->isInsideAssetsPath(file) ? fs::path(file) : project->resolveAssetPath(file);
         const std::string stored = project->normalizeToAssetsRelative(absolute).generic_string();
         if (isSubClip){
-            out.path = formatSubClipReference(stored, subClip.clip);
+            out.path = anim::formatSubClipReference(stored, subClip.clip);
             out.guid.clear();
             return true;
         }
         if (!Util::isAnimationClipFile(stored)) return false;
         out.path = stored;
         std::string text;
-        out.guid = ProjectChecks::readFile(absolute, text) ? readClipGuid(text) : std::string();
+        out.guid = ProjectChecks::readFile(absolute, text) ? anim::readClipGuid(text) : std::string();
         return true;
     }
 
     // every transition list of a machine and its sub-machines
-    void forEachTransition(StateMachineDef& machine, const std::function<void(TransitionDef&)>& visit){
-        for (TransitionDef& t : machine.entry) visit(t);
-        for (TransitionDef& t : machine.anyState) visit(t);
-        for (TransitionDef& t : machine.exitTransitions) visit(t);
-        for (StateDef& s : machine.states) for (TransitionDef& t : s.transitions) visit(t);
-        for (StateMachineDef& sub : machine.subMachines) forEachTransition(sub, visit);
+    void forEachTransition(anim::StateMachineDef& machine, const std::function<void(anim::TransitionDef&)>& visit){
+        for (anim::TransitionDef& t : machine.entry) visit(t);
+        for (anim::TransitionDef& t : machine.anyState) visit(t);
+        for (anim::TransitionDef& t : machine.exitTransitions) visit(t);
+        for (anim::StateDef& s : machine.states) for (anim::TransitionDef& t : s.transitions) visit(t);
+        for (anim::StateMachineDef& sub : machine.subMachines) forEachTransition(sub, visit);
     }
 
-    void forEachState(StateMachineDef& machine, const std::function<void(StateDef&)>& visit){
-        for (StateDef& s : machine.states) visit(s);
-        for (StateMachineDef& sub : machine.subMachines) forEachState(sub, visit);
+    void forEachState(anim::StateMachineDef& machine, const std::function<void(anim::StateDef&)>& visit){
+        for (anim::StateDef& s : machine.states) visit(s);
+        for (anim::StateMachineDef& sub : machine.subMachines) forEachState(sub, visit);
     }
 
-    void forEachTree(MotionDef& motion, const std::function<void(BlendTreeDef&)>& visit){
+    void forEachTree(anim::MotionDef& motion, const std::function<void(anim::BlendTreeDef&)>& visit){
         if (!motion.isTree()) return;
         visit(motion.tree.front());
-        for (BlendChildDef& child : motion.tree.front().children) forEachTree(child.motion, visit);
+        for (anim::BlendChildDef& child : motion.tree.front().children) forEachTree(child.motion, visit);
     }
 
     // R27: where the layer's Mesh Space Rotation applies on the bound Animator
-    std::string meshSpaceAppliesLine(const AnimatorInstance* bound, const std::string& layer){
+    std::string meshSpaceAppliesLine(const anim::AnimatorInstance* bound, const std::string& layer){
         if (!bound) return "Applies where the mask starts or stops";
-        const std::vector<std::string> names = meshSpaceBoundaryNames(*bound, bound->getLayerIndex(layer));
+        const std::vector<std::string> names = anim::meshSpaceBoundaryNames(*bound, bound->getLayerIndex(layer));
         if (names.empty()) return "Applies nowhere: the mask neither starts nor stops on this rig";
         std::string text = "Applies at: ";
         for (size_t i = 0; i < names.size(); i++) text += (i ? ", " : "") + names[i];
@@ -272,7 +271,7 @@ void AnimatorWindow::setDocument(const std::string& path){
 void AnimatorWindow::setCurrentLayer(int index){
     layer = index;
     machinePath.clear();
-    const ControllerDef def = working();
+    const anim::ControllerDef def = working();
     layerName = index >= 0 && (size_t)index < def.layers.size() ? def.layers[(size_t)index].name : std::string();
 }
 
@@ -289,28 +288,28 @@ int AnimatorWindow::getLayer(){
     return layer;
 }
 
-bool AnimatorWindow::selectionExists(const ControllerDef& def){
-    ControllerDef copy = def;
-    StateMachineDef* machine = machineOf(copy);
+bool AnimatorWindow::selectionExists(const anim::ControllerDef& def){
+    anim::ControllerDef copy = def;
+    anim::StateMachineDef* machine = machineOf(copy);
     if (!machine) return false;
     switch (selection.kind){
         case SelectionKind::None:
         case SelectionKind::Layer:
             return true;
         case SelectionKind::State:
-            for (const StateDef& st : machine->states) if (st.name == selection.name) return true;
+            for (const anim::StateDef& st : machine->states) if (st.name == selection.name) return true;
             return false;
         case SelectionKind::SubMachine:
-            for (const StateMachineDef& m : machine->subMachines) if (m.name == selection.name) return true;
+            for (const anim::StateMachineDef& m : machine->subMachines) if (m.name == selection.name) return true;
             return false;
         case SelectionKind::Transition: {
-            const std::vector<TransitionDef>* list = nullptr;
+            const std::vector<anim::TransitionDef>* list = nullptr;
             if (selection.list == ListKind::AnyState) list = &machine->anyState;
             else if (selection.list == ListKind::Entry) list = &machine->entry;
             else if (selection.list == ListKind::Exit){
-                for (const StateMachineDef& sub : machine->subMachines) if (sub.name == selection.owner) list = &sub.exitTransitions;
+                for (const anim::StateMachineDef& sub : machine->subMachines) if (sub.name == selection.owner) list = &sub.exitTransitions;
             }else{
-                for (const StateDef& st : machine->states) if (st.name == selection.owner) list = &st.transitions;
+                for (const anim::StateDef& st : machine->states) if (st.name == selection.owner) list = &st.transitions;
             }
             return list && selection.index >= 0 && (size_t)selection.index < list->size();
         }
@@ -321,7 +320,7 @@ bool AnimatorWindow::selectionExists(const ControllerDef& def){
 void AnimatorWindow::syncToDocument(){
     if (!document || document->revision() == documentRevision) return;
     documentRevision = document->revision();
-    const ControllerDef& def = document->controller();
+    const anim::ControllerDef& def = document->controller();
     int found = -1;
     for (size_t l = 0; l < def.layers.size(); l++) if (def.layers[l].name == layerName) found = (int)l;
     if (found < 0){
@@ -342,11 +341,11 @@ void AnimatorWindow::syncToDocument(){
         return;
     }
     // the rest of a multi-selection without what is gone
-    if (const StateMachineDef* machine = machineOf(const_cast<ControllerDef&>(def))){
+    if (const anim::StateMachineDef* machine = machineOf(const_cast<anim::ControllerDef&>(def))){
         auto gone = [machine](const std::string& name){
             if (name == "Entry" || name == "Any State" || name == "Exit") return false;
-            for (const StateDef& st : machine->states) if (st.name == name) return false;
-            for (const StateMachineDef& m : machine->subMachines) if (m.name == name) return false;
+            for (const anim::StateDef& st : machine->states) if (st.name == name) return false;
+            for (const anim::StateMachineDef& m : machine->subMachines) if (m.name == name) return false;
             return true;
         };
         selection.others.erase(std::remove_if(selection.others.begin(), selection.others.end(), gone), selection.others.end());
@@ -390,19 +389,19 @@ void AnimatorWindow::followSelection(){
     if (!animator->controller.path.empty()) setDocument(animator->controller.path);
 }
 
-ControllerDef AnimatorWindow::working() const{
+anim::ControllerDef AnimatorWindow::working() const{
     if (pending) return *pending;
-    return document ? document->controller() : ControllerDef();
+    return document ? document->controller() : anim::ControllerDef();
 }
 
-void AnimatorWindow::stage(const ControllerDef& def, const std::string& undoName){
+void AnimatorWindow::stage(const anim::ControllerDef& def, const std::string& undoName){
     pending = def;
     pendingUndo = undoName;
 }
 
 void AnimatorWindow::flush(){
     if (!pending || ImGui::IsAnyItemActive()) return;
-    const ControllerDef def = *pending;
+    const anim::ControllerDef def = *pending;
     const std::string undo = pendingUndo;
     pending.reset();
     commit(def, undo);
@@ -412,7 +411,7 @@ bool AnimatorWindow::editable() const{
     return document && document->loadError().empty();
 }
 
-bool AnimatorWindow::commit(const ControllerDef& def, const std::string& undoName, const std::string& mergeKey){
+bool AnimatorWindow::commit(const anim::ControllerDef& def, const std::string& undoName, const std::string& mergeKey){
     pending.reset();
     if (!document) return false;
     std::string error;
@@ -425,12 +424,12 @@ bool AnimatorWindow::commit(const ControllerDef& def, const std::string& undoNam
     return true;
 }
 
-StateMachineDef* AnimatorWindow::machineOf(ControllerDef& def){
+anim::StateMachineDef* AnimatorWindow::machineOf(anim::ControllerDef& def){
     if (layer < 0 || (size_t)layer >= def.layers.size()) return nullptr;
-    StateMachineDef* machine = &def.layers[(size_t)layer].machine;
+    anim::StateMachineDef* machine = &def.layers[(size_t)layer].machine;
     for (const std::string& name : machinePath){
-        StateMachineDef* next = nullptr;
-        for (StateMachineDef& sub : machine->subMachines) if (sub.name == name) next = &sub;
+        anim::StateMachineDef* next = nullptr;
+        for (anim::StateMachineDef& sub : machine->subMachines) if (sub.name == name) next = &sub;
         if (!next) return machine;
         machine = next;
     }
@@ -448,7 +447,7 @@ anim::AnimatorInstance* AnimatorWindow::liveInstance() const{
 }
 
 anim::AnimatorInstance* AnimatorWindow::boundInstance() const{
-    AnimatorInstance* live = liveInstance();
+    anim::AnimatorInstance* live = liveInstance();
     // the window may show another controller than the Animator plays (opened from the Project window)
     if (!live || !document || live->controllerPath.empty()) return nullptr;
     return AnimatorAssetDocument::open(project, live->controllerPath, nullptr) == document ? live : nullptr;
@@ -476,11 +475,11 @@ bool AnimatorWindow::inspectorShowsSelection() const{
 
 // ---------------------------------------------------------------- edits
 
-bool AnimatorWindow::addState(const std::string& name, const ImVec2& position, const MotionDef& motion){
-    ControllerDef def = working();
-    StateMachineDef* machine = machineOf(def);
+bool AnimatorWindow::addState(const std::string& name, const ImVec2& position, const anim::MotionDef& motion){
+    anim::ControllerDef def = working();
+    anim::StateMachineDef* machine = machineOf(def);
     if (!machine) return false;
-    StateDef state;
+    anim::StateDef state;
     state.name = uniqueName(*machine, name.empty() ? std::string("New State") : name);
     state.position = Vector2(position.x, position.y);
     state.motion = motion;
@@ -493,10 +492,10 @@ bool AnimatorWindow::addState(const std::string& name, const ImVec2& position, c
 }
 
 bool AnimatorWindow::addSubStateMachine(const std::string& name, const ImVec2& position){
-    ControllerDef def = working();
-    StateMachineDef* machine = machineOf(def);
+    anim::ControllerDef def = working();
+    anim::StateMachineDef* machine = machineOf(def);
     if (!machine) return false;
-    StateMachineDef sub;
+    anim::StateMachineDef sub;
     sub.name = uniqueName(*machine, name.empty() ? std::string("New StateMachine") : name);
     sub.position = Vector2(position.x, position.y);
     machine->subMachines.push_back(sub);
@@ -508,12 +507,12 @@ bool AnimatorWindow::addSubStateMachine(const std::string& name, const ImVec2& p
 }
 
 bool AnimatorWindow::addTransition(const std::string& fromState, const std::string& toNode, bool fromAnyState, bool fromEntry){
-    ControllerDef def = working();
-    StateMachineDef* machine = machineOf(def);
+    anim::ControllerDef def = working();
+    anim::StateMachineDef* machine = machineOf(def);
     if (!machine) return false;
-    TransitionDef t;
+    anim::TransitionDef t;
     t.to = toNode;
-    std::vector<TransitionDef>* list = nullptr;
+    std::vector<anim::TransitionDef>* list = nullptr;
     Selection made;
     made.kind = SelectionKind::Transition;
     if (fromAnyState){
@@ -526,9 +525,9 @@ bool AnimatorWindow::addTransition(const std::string& fromState, const std::stri
         made.list = ListKind::Entry;
         t.duration = 0.0f;
     }else{
-        for (StateDef& s : machine->states) if (s.name == fromState) list = &s.transitions;
+        for (anim::StateDef& s : machine->states) if (s.name == fromState) list = &s.transitions;
         if (!list){
-            for (StateMachineDef& sub : machine->subMachines){
+            for (anim::StateMachineDef& sub : machine->subMachines){
                 if (sub.name == fromState){
                     list = &sub.exitTransitions;
                     made.list = ListKind::Exit;
@@ -552,8 +551,8 @@ bool AnimatorWindow::addTransition(const std::string& fromState, const std::stri
 }
 
 bool AnimatorWindow::setDefaultState(const std::string& name){
-    ControllerDef def = working();
-    StateMachineDef* machine = machineOf(def);
+    anim::ControllerDef def = working();
+    anim::StateMachineDef* machine = machineOf(def);
     if (!machine) return false;
     machine->defaultState = name;
     return commit(def, "Set Default State " + name);
@@ -566,8 +565,8 @@ bool AnimatorWindow::canDelete(){
 
 bool AnimatorWindow::removeSelection(){
     syncToDocument();
-    ControllerDef def = working();
-    StateMachineDef* machine = machineOf(def);
+    anim::ControllerDef def = working();
+    anim::StateMachineDef* machine = machineOf(def);
     if (!machine) return false;
     bool removed = false;
     std::string what;
@@ -599,13 +598,13 @@ bool AnimatorWindow::removeSelection(){
         if (count > 1) what = "Delete " + std::to_string(count) + " Nodes";
         else what = std::string(selection.kind == SelectionKind::State ? "Delete State " : "Delete Sub-State Machine ") + selection.name;
     }else if (selection.kind == SelectionKind::Transition){
-        std::vector<TransitionDef>* list = nullptr;
+        std::vector<anim::TransitionDef>* list = nullptr;
         if (selection.list == ListKind::AnyState) list = &machine->anyState;
         else if (selection.list == ListKind::Entry) list = &machine->entry;
         else if (selection.list == ListKind::Exit){
-            for (StateMachineDef& sub : machine->subMachines) if (sub.name == selection.owner) list = &sub.exitTransitions;
+            for (anim::StateMachineDef& sub : machine->subMachines) if (sub.name == selection.owner) list = &sub.exitTransitions;
         }else{
-            for (StateDef& s : machine->states) if (s.name == selection.owner) list = &s.transitions;
+            for (anim::StateDef& s : machine->states) if (s.name == selection.owner) list = &s.transitions;
         }
         if (list && selection.index >= 0 && (size_t)selection.index < list->size()){
             list->erase(list->begin() + selection.index);
@@ -616,23 +615,23 @@ bool AnimatorWindow::removeSelection(){
     if (!removed) return false;
     if (!gone.empty()){
         // the transitions into them (or into a sub-machine's states) go with them
-        auto into = [&](const TransitionDef& t){
+        auto into = [&](const anim::TransitionDef& t){
             for (const std::string& name : gone) if (t.to == name || t.to.rfind(name + "/", 0) == 0) return true;
             return false;
         };
-        auto prune = [&](std::vector<TransitionDef>& list){ list.erase(std::remove_if(list.begin(), list.end(), into), list.end()); };
+        auto prune = [&](std::vector<anim::TransitionDef>& list){ list.erase(std::remove_if(list.begin(), list.end(), into), list.end()); };
         prune(machine->entry);
         prune(machine->anyState);
-        for (StateDef& s : machine->states) prune(s.transitions);
-        for (StateMachineDef& sub : machine->subMachines) prune(sub.exitTransitions);
+        for (anim::StateDef& s : machine->states) prune(s.transitions);
+        for (anim::StateMachineDef& sub : machine->subMachines) prune(sub.exitTransitions);
     }
     selection = Selection();
     return commit(def, what);
 }
 
 bool AnimatorWindow::addParameter(const std::string& name, AnimatorParameterType type){
-    ControllerDef def = working();
-    ParameterDef p;
+    anim::ControllerDef def = working();
+    anim::ParameterDef p;
     p.type = type;
     std::string wanted = name;
     int n = 0;
@@ -643,8 +642,8 @@ bool AnimatorWindow::addParameter(const std::string& name, AnimatorParameterType
 }
 
 bool AnimatorWindow::addLayer(const std::string& name){
-    ControllerDef def = working();
-    LayerDef l;
+    anim::ControllerDef def = working();
+    anim::LayerDef l;
     std::string wanted = name;
     int n = 0;
     while (def.findLayer(wanted) >= 0) wanted = name + " " + std::to_string(++n);
@@ -673,9 +672,9 @@ void AnimatorWindow::selectTransition(const std::string& fromState, int index, b
     else{
         selection.list = ListKind::State;
         selection.owner = fromState;
-        ControllerDef def = working();
-        if (StateMachineDef* machine = machineOf(def)){
-            for (const StateMachineDef& sub : machine->subMachines) if (sub.name == fromState) selection.list = ListKind::Exit;
+        anim::ControllerDef def = working();
+        if (anim::StateMachineDef* machine = machineOf(def)){
+            for (const anim::StateMachineDef& sub : machine->subMachines) if (sub.name == fromState) selection.list = ListKind::Exit;
         }
     }
 }
@@ -697,11 +696,11 @@ std::string AnimatorWindow::describeSelection(){
 bool AnimatorWindow::renameState(const std::string& from, const std::string& to){
     syncToDocument();
     if (to.empty() || from == to) return false;
-    ControllerDef def = working();
-    StateMachineDef* machine = machineOf(def);
+    anim::ControllerDef def = working();
+    anim::StateMachineDef* machine = machineOf(def);
     if (!machine) return false;
-    StateDef* state = nullptr;
-    for (StateDef& st : machine->states) if (st.name == from) state = &st;
+    anim::StateDef* state = nullptr;
+    for (anim::StateDef& st : machine->states) if (st.name == from) state = &st;
     if (!state){
         status = "no state \"" + from + "\" in this machine";
         return false;
@@ -715,10 +714,10 @@ bool AnimatorWindow::renameState(const std::string& from, const std::string& to)
     const std::string unique = uniqueName(*machine, wanted);
     state->name = unique;
     // this machine's transitions naming it, and its default
-    auto fix = [&](std::vector<TransitionDef>& list){ for (TransitionDef& t : list) if (t.to == from) t.to = unique; };
+    auto fix = [&](std::vector<anim::TransitionDef>& list){ for (anim::TransitionDef& t : list) if (t.to == from) t.to = unique; };
     fix(machine->entry);
     fix(machine->anyState);
-    for (StateDef& st : machine->states) fix(st.transitions);
+    for (anim::StateDef& st : machine->states) fix(st.transitions);
     if (machine->defaultState == from) machine->defaultState = unique;
     if (!commit(def, "Rename State " + from + " -> " + unique)) return false;
     if (selection.kind == SelectionKind::State && selection.name == from) selection.name = unique;
@@ -729,7 +728,7 @@ bool AnimatorWindow::renameState(const std::string& from, const std::string& to)
 
 bool AnimatorWindow::renameParameter(const std::string& from, const std::string& to){
     syncToDocument();
-    ControllerDef def = working();
+    anim::ControllerDef def = working();
     const int index = def.findParameter(from);
     if (index < 0){
         status = "no parameter \"" + from + "\"";
@@ -745,40 +744,40 @@ bool AnimatorWindow::renameParameter(const std::string& from, const std::string&
         return false;
     }
     def.parameters[(size_t)index].name = to;
-    for (LayerDef& l : def.layers){
-        forEachTransition(l.machine, [&](TransitionDef& t){
-            for (ConditionDef& c : t.conditions) if (c.parameter == from) c.parameter = to;
+    for (anim::LayerDef& l : def.layers){
+        forEachTransition(l.machine, [&](anim::TransitionDef& t){
+            for (anim::ConditionDef& c : t.conditions) if (c.parameter == from) c.parameter = to;
         });
-        forEachState(l.machine, [&](StateDef& st){
+        forEachState(l.machine, [&](anim::StateDef& st){
             for (std::string* sp : {&st.speedParameter, &st.timeParameter, &st.cycleOffsetParameter}) if (*sp == from) *sp = to;
-            forEachTree(st.motion, [&](BlendTreeDef& tree){
+            forEachTree(st.motion, [&](anim::BlendTreeDef& tree){
                 if (tree.parameter == from) tree.parameter = to;
                 if (tree.parameterY == from) tree.parameterY = to;
-                for (BlendChildDef& c : tree.children) if (c.directParameter == from) c.directParameter = to;
+                for (anim::BlendChildDef& c : tree.children) if (c.directParameter == from) c.directParameter = to;
             });
         });
     }
     if (!commit(def, "Rename Parameter " + from + " -> " + to)) return false;
     // (S21 keeps any name; Lua reads it as a string: a name that is not a Lua identifier is a
     // validation warning, not a refusal)
-    if (!isLuaIdentifier(to)) status = "\"" + to + "\" is not a Lua identifier (scripts pass it as a string)";
+    if (!anim::isLuaIdentifier(to)) status = "\"" + to + "\" is not a Lua identifier (scripts pass it as a string)";
     return true;
 }
 
 bool AnimatorWindow::removeParameter(const std::string& name){
     syncToDocument();
-    ControllerDef def = working();
+    anim::ControllerDef def = working();
     const int index = def.findParameter(name);
     if (index < 0) return false;
     def.parameters.erase(def.parameters.begin() + index);
     // the conditions that read it go with it, the trees and state parameters reading it are cleared
-    removeParameterReferences(def, name);
+    anim::removeParameterReferences(def, name);
     return commit(def, "Delete Parameter " + name);
 }
 
 bool AnimatorWindow::renameLayer(int index, const std::string& name){
     syncToDocument();
-    ControllerDef def = working();
+    anim::ControllerDef def = working();
     if (index < 0 || (size_t)index >= def.layers.size() || name.empty()) return false;
     const std::string from = def.layers[(size_t)index].name;
     if (from == name) return false;
@@ -794,9 +793,9 @@ bool AnimatorWindow::renameLayer(int index, const std::string& name){
 
 bool AnimatorWindow::moveLayer(int from, int to){
     syncToDocument();
-    ControllerDef def = working();
+    anim::ControllerDef def = working();
     if (from < 0 || to < 0 || (size_t)from >= def.layers.size() || (size_t)to >= def.layers.size() || from == to) return false;
-    LayerDef moved = def.layers[(size_t)from];
+    anim::LayerDef moved = def.layers[(size_t)from];
     def.layers.erase(def.layers.begin() + from);
     def.layers.insert(def.layers.begin() + to, moved);
     if (!commit(def, "Move Layer " + moved.name)) return false;
@@ -808,7 +807,7 @@ bool AnimatorWindow::moveLayer(int from, int to){
 
 bool AnimatorWindow::removeLayer(int index){
     syncToDocument();
-    ControllerDef def = working();
+    anim::ControllerDef def = working();
     if (index < 0 || (size_t)index >= def.layers.size()) return false;
     if (def.layers.size() <= 1){
         status = "a controller keeps one layer";
@@ -832,8 +831,8 @@ bool AnimatorWindow::removeLayer(int index){
 bool AnimatorWindow::moveNodes(const std::vector<std::pair<std::string, ImVec2>>& positions){
     syncToDocument();
     if (!editable()) return false;
-    ControllerDef def = working();
-    StateMachineDef* m = machineOf(def);
+    anim::ControllerDef def = working();
+    anim::StateMachineDef* m = machineOf(def);
     if (!m) return false;
     bool any = false;
     for (const auto& [name, position] : positions){
@@ -841,27 +840,27 @@ bool AnimatorWindow::moveNodes(const std::vector<std::pair<std::string, ImVec2>>
         if (name == "Entry"){ m->entryPosition = p; any = true; continue; }
         if (name == "Any State"){ m->anyStatePosition = p; any = true; continue; }
         if (name == "Exit"){ m->exitPosition = p; any = true; continue; }
-        for (StateDef& st : m->states) if (st.name == name){ st.position = p; any = true; }
-        for (StateMachineDef& sub : m->subMachines) if (sub.name == name){ sub.position = p; any = true; }
+        for (anim::StateDef& st : m->states) if (st.name == name){ st.position = p; any = true; }
+        for (anim::StateMachineDef& sub : m->subMachines) if (sub.name == name){ sub.position = p; any = true; }
     }
     return any && commit(def, "Move States", "move");
 }
 
 int AnimatorWindow::setBlendThreshold(const std::string& state, int child, float threshold){
     syncToDocument();
-    ControllerDef def = working();
-    StateMachineDef* machine = machineOf(def);
+    anim::ControllerDef def = working();
+    anim::StateMachineDef* machine = machineOf(def);
     if (!machine || !std::isfinite(threshold)) return -1;
-    for (StateDef& st : machine->states){
+    for (anim::StateDef& st : machine->states){
         if (st.name != state || !st.motion.isTree()) continue;
-        BlendTreeDef& tree = st.motion.tree.front();
+        anim::BlendTreeDef& tree = st.motion.tree.front();
         if (tree.type != BlendTreeType::Simple1D || child < 0 || (size_t)child >= tree.children.size()) return -1;
         tree.children[(size_t)child].threshold = threshold;
         // threshold order (stable, as the file's normalization): the child keeps its motion
         std::vector<size_t> order(tree.children.size());
         for (size_t i = 0; i < order.size(); i++) order[i] = i;
         std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b){ return tree.children[a].threshold < tree.children[b].threshold; });
-        std::vector<BlendChildDef> sorted;
+        std::vector<anim::BlendChildDef> sorted;
         int landed = -1;
         for (size_t i = 0; i < order.size(); i++){
             sorted.push_back(tree.children[order[i]]);
@@ -874,11 +873,11 @@ int AnimatorWindow::setBlendThreshold(const std::string& state, int child, float
     return -1;
 }
 
-bool AnimatorWindow::resolveTypedAsset(const std::string& typed, bool clip, AnimatorAssetRef& out){
-    out = AnimatorAssetRef();
+bool AnimatorWindow::resolveTypedAsset(const std::string& typed, bool clip, anim::AnimatorAssetRef& out){
+    out = anim::AnimatorAssetRef();
     if (typed.empty()) return true;
-    SubClipReference subClip;
-    const bool isSubClip = clip && parseSubClipReference(typed, subClip);
+    anim::SubClipReference subClip;
+    const bool isSubClip = clip && anim::parseSubClipReference(typed, subClip);
     const std::string file = isSubClip ? subClip.model : typed;
     // absolute, project-relative ("assets/anim/run.anim") or assets-relative ("anim/run.anim")
     const fs::path given = fs::u8path(file);
@@ -903,7 +902,7 @@ bool AnimatorWindow::resolveTypedAsset(const std::string& typed, bool clip, Anim
             status = "\"" + subClip.model + "\" is not a model";
             return false;
         }
-        out.path = formatSubClipReference(stored, subClip.clip);
+        out.path = anim::formatSubClipReference(stored, subClip.clip);
         return true;
     }
     if (clip ? !Util::isAnimationClipFile(stored) : !Util::isAvatarMaskFile(stored)){
@@ -912,8 +911,8 @@ bool AnimatorWindow::resolveTypedAsset(const std::string& typed, bool clip, Anim
     }
     out.path = stored;
     std::string text;
-    out.guid = ProjectChecks::readFile(absolute, text) ? readAnimatorAssetGuid(text) : std::string();
-    if (clip && out.guid.empty() && !text.empty()) out.guid = readClipGuid(text);
+    out.guid = ProjectChecks::readFile(absolute, text) ? anim::readAnimatorAssetGuid(text) : std::string();
+    if (clip && out.guid.empty() && !text.empty()) out.guid = anim::readClipGuid(text);
     return true;
 }
 
@@ -921,9 +920,9 @@ std::vector<ClipWarning> AnimatorWindow::problems() const{
     if (!document) return {};
     Project* owner = project;
     return validateController(working(), [owner](const std::string& clip){
-        ControllerClipInfo info;
-        SubClipReference subClip;
-        if (parseSubClipReference(clip, subClip)){
+        anim::ControllerClipInfo info;
+        anim::SubClipReference subClip;
+        if (anim::parseSubClipReference(clip, subClip)){
             std::error_code ec;
             info.loads = fs::is_regular_file(owner->resolveAssetPath(subClip.model), ec);
             if (!info.loads) info.error = "its model does not exist";
@@ -934,7 +933,7 @@ std::vector<ClipWarning> AnimatorWindow::problems() const{
             info.error = "the file does not exist";
             return info;
         }
-        ClipParseResult parsed = parseClip(text);
+        anim::ClipParseResult parsed = anim::parseClip(text);
         info.loads = parsed.ok();
         if (!info.loads) info.error = parsed.error.toString();
         else info.loops = parsed.data->wrap == ClipWrapMode::Loop || parsed.data->wrap == ClipWrapMode::PingPong;
@@ -944,7 +943,7 @@ std::vector<ClipWarning> AnimatorWindow::problems() const{
 
 bool AnimatorWindow::selectPath(const std::string& path){
     syncToDocument();
-    ControllerDef def = working();
+    anim::ControllerDef def = working();
     std::string rest = path;
     int index = -1;
     if (takeIndexed(rest, "parameters", index)){
@@ -961,7 +960,7 @@ bool AnimatorWindow::selectPath(const std::string& path){
     if (rest.compare(0, 13, "state_machine") != 0) return true;
     rest = rest.substr(13);
     if (!rest.empty() && rest[0] == '.') rest = rest.substr(1);
-    StateMachineDef* machine = &def.layers[(size_t)l].machine;
+    anim::StateMachineDef* machine = &def.layers[(size_t)l].machine;
     while (true){
         int sub = -1;
         std::string probe = rest;
@@ -1036,10 +1035,10 @@ bool AnimatorWindow::inspect(const std::string& path){
 bool AnimatorWindow::copySelection(){
     syncToDocument();
     if (selection.kind != SelectionKind::State) return false;
-    ControllerDef def = working();
-    StateMachineDef* machine = machineOf(def);
+    anim::ControllerDef def = working();
+    anim::StateMachineDef* machine = machineOf(def);
     if (!machine) return false;
-    for (const StateDef& st : machine->states){
+    for (const anim::StateDef& st : machine->states){
         if (st.name != selection.name) continue;
         clipboard = st;
         return true;
@@ -1050,16 +1049,16 @@ bool AnimatorWindow::copySelection(){
 bool AnimatorWindow::paste(const ImVec2& position){
     syncToDocument();
     if (!clipboard || !editable()) return false;
-    ControllerDef def = working();
-    StateMachineDef* machine = machineOf(def);
+    anim::ControllerDef def = working();
+    anim::StateMachineDef* machine = machineOf(def);
     if (!machine) return false;
-    StateDef state = *clipboard;
+    anim::StateDef state = *clipboard;
     const std::string original = state.name;
     state.name = uniqueName(*machine, original);
     state.position = Vector2(position.x, position.y);
     // only the transitions among the copied states (here: to itself) come along
-    std::vector<TransitionDef> kept;
-    for (TransitionDef t : state.transitions){
+    std::vector<anim::TransitionDef> kept;
+    for (anim::TransitionDef t : state.transitions){
         if (t.to != original) continue;
         t.to = state.name;
         kept.push_back(t);
@@ -1072,7 +1071,7 @@ bool AnimatorWindow::paste(const ImVec2& position){
 }
 
 bool AnimatorWindow::setLiveParameter(const std::string& name, float value){
-    AnimatorInstance* live = liveInstance();
+    anim::AnimatorInstance* live = liveInstance();
     if (!live) return false;
     const int index = live->findParameter(name);
     if (index < 0 || !document) return false;
@@ -1090,14 +1089,14 @@ bool AnimatorWindow::setLiveParameter(const std::string& name, float value){
 
 std::string AnimatorWindow::meshSpaceAppliesText(int index){
     syncToDocument();
-    const ControllerDef def = working();
+    const anim::ControllerDef def = working();
     if (index < 0 || (size_t)index >= def.layers.size()) return std::string();
     return meshSpaceAppliesLine(boundInstance(), def.layers[(size_t)index].name);
 }
 
-std::vector<MeshSpaceWarning> AnimatorWindow::meshSpaceProblems(){
+std::vector<anim::MeshSpaceWarning> AnimatorWindow::meshSpaceProblems(){
     syncToDocument();
-    AnimatorInstance* bound = boundInstance();
+    anim::AnimatorInstance* bound = boundInstance();
     if (!bound || (!pending && !document)) return {};
     // the Problems strip asks every frame: the working controller read in place, not copied
     return meshSpaceWarnings(pending ? *pending : document->controller(), *bound);
@@ -1105,9 +1104,9 @@ std::vector<MeshSpaceWarning> AnimatorWindow::meshSpaceProblems(){
 
 bool AnimatorWindow::fixMeshSpaceProblem(int index){
     syncToDocument();
-    ControllerDef def = working();
+    anim::ControllerDef def = working();
     if (!editable() || index <= 0 || (size_t)index >= def.layers.size()) return false;
-    LayerDef& l = def.layers[(size_t)index];
+    anim::LayerDef& l = def.layers[(size_t)index];
     // R29: only a proposal; the option on, nothing else
     l.meshSpaceRotation = true;
     return commit(def, "Edit Layer " + l.name);
@@ -1205,7 +1204,7 @@ bool AnimatorWindow::stepPreview(float dt){
     previewClock += dt;
     AnimatorSystem* system = scene->scene->getSystem<AnimatorSystem>().get();
     // Compare (R31): a runtime flag of the previewed Animator only
-    if (AnimatorInstance* runtime = system->instance(previewEntity)) runtime->setMeshSpaceBypass(comparing);
+    if (anim::AnimatorInstance* runtime = system->instance(previewEntity)) runtime->setMeshSpaceBypass(comparing);
     std::string error;
     if (!system->preview(previewEntity, dt, &error)){
         status = "Preview: " + error;
@@ -1339,7 +1338,7 @@ void AnimatorWindow::drawProblems(){
         problemCache = problems();
     }
     // the bound Animator's (they read its rig, so they are not cached with the file's)
-    const std::vector<MeshSpaceWarning> meshSpace = meshSpaceProblems();
+    const std::vector<anim::MeshSpaceWarning> meshSpace = meshSpaceProblems();
     const size_t count = problemCache.size() + meshSpace.size();
     if (count == 0) return;
     const std::string header = std::string(ICON_FA_TRIANGLE_EXCLAMATION " ") + std::to_string(count) + " problem(s)###animator_problems";
@@ -1368,8 +1367,8 @@ void AnimatorWindow::drawProblems(){
 }
 
 void AnimatorWindow::drawLayers(){
-    ControllerDef def = working();
-    AnimatorInstance* live = liveInstance();
+    anim::ControllerDef def = working();
+    anim::AnimatorInstance* live = liveInstance();
     if (ImGui::Button("+ Layer")) addLayer("New Layer");
     UIProbe::item("animator.addLayer");
     for (size_t l = 0; l < def.layers.size(); l++){
@@ -1389,8 +1388,8 @@ void AnimatorWindow::drawLayers(){
 }
 
 void AnimatorWindow::drawParameters(){
-    ControllerDef def = working();
-    AnimatorInstance* live = liveInstance();
+    anim::ControllerDef def = working();
+    anim::AnimatorInstance* live = liveInstance();
     if (ImGui::Button("+")) ImGui::OpenPopup("##add_parameter");
     UIProbe::item("animator.addParameter");
     if (ImGui::BeginPopup("##add_parameter")){
@@ -1401,7 +1400,7 @@ void AnimatorWindow::drawParameters(){
         ImGui::EndPopup();
     }
     for (size_t i = 0; i < def.parameters.size(); i++){
-        const ParameterDef& p = def.parameters[i];
+        const anim::ParameterDef& p = def.parameters[i];
         ImGui::PushID((int)i);
         // the name: renamed on Enter (conditions and trees follow)
         char buffer[128];
@@ -1431,8 +1430,8 @@ void AnimatorWindow::drawParameters(){
                 UIProbe::item("animator.parameter." + std::to_string(i) + ".live");
             }
         }else{
-            ControllerDef full = def;
-            ParameterDef& edited = full.parameters[i];
+            anim::ControllerDef full = def;
+            anim::ParameterDef& edited = full.parameters[i];
             bool changed = false;
             if (p.type == AnimatorParameterType::Float){
                 changed = ImGui::DragFloat("##default", &edited.defaultValue, 0.01f);
@@ -1465,8 +1464,8 @@ void AnimatorWindow::drawParameters(){
 }
 
 void AnimatorWindow::drawGraph(){
-    ControllerDef def = working();
-    StateMachineDef* machine = machineOf(def);
+    anim::ControllerDef def = working();
+    anim::StateMachineDef* machine = machineOf(def);
     if (!machine){
         ImGui::TextDisabled("The controller has no layer: add one in the Layers tab.");
         return;
@@ -1492,7 +1491,7 @@ void AnimatorWindow::drawGraph(){
             ImGui::PopID();
         }
     }
-    AnimatorInstance* live = liveInstance();
+    anim::AnimatorInstance* live = liveInstance();
     const std::string prefix = def.layers[(size_t)layer].name + (machinePath.empty() ? std::string() : "." + [&](){
         std::string joined;
         for (const std::string& n : machinePath) joined += (joined.empty() ? "" : ".") + n;
@@ -1501,7 +1500,7 @@ void AnimatorWindow::drawGraph(){
     std::string liveState, liveNext;
     float liveTime = -1.0f, liveProgress = -1.0f;
     if (live && (size_t)layer < live->layers.size()){
-        const AnimatorInstance::StateInfo current = live->currentState(layer);
+        const anim::AnimatorInstance::StateInfo current = live->currentState(layer);
         liveState = current.fullPath;
         liveTime = current.normalizedTime - std::floor(current.normalizedTime);
         if (!current.loop) liveTime = std::min(1.0f, current.normalizedTime);
@@ -1529,7 +1528,7 @@ void AnimatorWindow::drawGraph(){
     if (!machinePath.empty()) special(kUp, "(Up) Base", Vector2(machine->exitPosition.x, machine->exitPosition.y + 80), kFillUp);
     const std::string defaultName = machine->defaultState.empty() && !machine->states.empty() ? machine->states.front().name : machine->defaultState;
     for (size_t i = 0; i < machine->states.size(); i++){
-        const StateDef& s = machine->states[i];
+        const anim::StateDef& s = machine->states[i];
         GraphCanvas::Node node;
         node.id = kStateBase + i;
         node.label = s.name;
@@ -1548,7 +1547,7 @@ void AnimatorWindow::drawGraph(){
         nodes.push_back(node);
     }
     for (size_t i = 0; i < machine->subMachines.size(); i++){
-        const StateMachineDef& m = machine->subMachines[i];
+        const anim::StateMachineDef& m = machine->subMachines[i];
         GraphCanvas::Node node;
         node.id = kMachineBase + i;
         node.label = m.name;
@@ -1579,7 +1578,7 @@ void AnimatorWindow::drawGraph(){
         return 0;
     };
     std::vector<GraphCanvas::Link> links;
-    auto addLinks = [&](uint64_t list, uint64_t owner, uint64_t from, const std::vector<TransitionDef>& transitions, const std::string& ownerName,
+    auto addLinks = [&](uint64_t list, uint64_t owner, uint64_t from, const std::vector<anim::TransitionDef>& transitions, const std::string& ownerName,
                         ListKind kind){
         for (size_t t = 0; t < transitions.size(); t++){
             const uint64_t to = target(transitions[t].to);
@@ -1746,9 +1745,9 @@ void AnimatorWindow::drawGraph(){
             ImVec2 at = canvas.toCanvas(ImGui::GetMousePos());
             for (const std::string& file : dropped){
                 if (Util::isAnimationClipFile(file)){
-                    AnimatorAssetRef ref;
+                    anim::AnimatorAssetRef ref;
                     if (clipFromPath(project, file, ref)){
-                        MotionDef motion;
+                        anim::MotionDef motion;
                         motion.clip = ref;
                         addState(fs::path(file).stem().string(), at, motion);
                         at.y += 60.0f;
@@ -1766,28 +1765,28 @@ void AnimatorWindow::drawGraph(){
 }
 
 void AnimatorWindow::drawContextMenus(){
-    ControllerDef def = working();
-    StateMachineDef* machine = machineOf(def);
+    anim::ControllerDef def = working();
+    anim::StateMachineDef* machine = machineOf(def);
     if (ImGui::BeginPopup("##animator_canvas_menu")){
         const bool createState = ImGui::BeginMenu("Create State");
         UIProbe::item("animator.menu.create_state");
         if (createState){
             const bool empty = ImGui::MenuItem("Empty");
             UIProbe::item("animator.menu.create_empty");
-            if (empty) addState("New State", contextPosition, MotionDef());
+            if (empty) addState("New State", contextPosition, anim::MotionDef());
             if (ImGui::MenuItem("From Clip...")){
                 const std::string path = FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_ANIMATION_CLIP);
-                AnimatorAssetRef ref;
+                anim::AnimatorAssetRef ref;
                 if (!path.empty() && clipFromPath(project, path, ref)){
-                    MotionDef motion;
+                    anim::MotionDef motion;
                     motion.clip = ref;
                     addState(fs::path(path).stem().string(), contextPosition, motion);
                 }
             }
             if (ImGui::MenuItem("From New Blend Tree")){
-                MotionDef motion;
-                BlendTreeDef tree;
-                for (const ParameterDef& p : def.parameters){
+                anim::MotionDef motion;
+                anim::BlendTreeDef tree;
+                for (const anim::ParameterDef& p : def.parameters){
                     if (p.type == AnimatorParameterType::Float){
                         tree.parameter = p.name;
                         break;
@@ -1828,15 +1827,15 @@ void AnimatorWindow::drawContextMenus(){
         ImGui::EndPopup();
     }
     if (ImGui::BeginPopup("##animator_model_clips")){
-        std::vector<ModelClipInfo> clips;
+        std::vector<anim::ModelClipInfo> clips;
         std::string error;
         const std::string stored = project->normalizeToAssetsRelative(droppedModel).generic_string();
-        if (listModelFileClips(stored, clips, &error)){
+        if (anim::listModelFileClips(stored, clips, &error)){
             ImGui::TextDisabled("Create a state from a clip of %s", fs::path(droppedModel).filename().string().c_str());
-            for (const ModelClipInfo& clip : clips){
+            for (const anim::ModelClipInfo& clip : clips){
                 if (ImGui::MenuItem(clip.name.c_str())){
-                    MotionDef motion;
-                    motion.clip.path = formatSubClipReference(stored, clip.name);
+                    anim::MotionDef motion;
+                    motion.clip.path = anim::formatSubClipReference(stored, clip.name);
                     addState(clip.name, dropPosition, motion);
                 }
             }
@@ -1852,8 +1851,8 @@ void AnimatorWindow::drawContextMenus(){
 bool AnimatorWindow::drawSelectionInspector(){
     if (!windowOpen || !document || selection.kind == SelectionKind::None || !claimHolds()) return false;
     inspectorFrame = ImGui::GetFrameCount();
-    ControllerDef def = working();
-    StateMachineDef* machine = machineOf(def);
+    anim::ControllerDef def = working();
+    anim::StateMachineDef* machine = machineOf(def);
     if (!machine) return false;
     ImGui::PushID("animator_inspector");
     bool drew = false;
@@ -1861,7 +1860,7 @@ bool AnimatorWindow::drawSelectionInspector(){
         drawLayerInspector(def);
         drew = true;
     }else if (selection.kind == SelectionKind::State){
-        for (StateDef& s : machine->states){
+        for (anim::StateDef& s : machine->states){
             if (s.name != selection.name) continue;
             drawStateInspector(def, s);
             drew = true;
@@ -1872,15 +1871,15 @@ bool AnimatorWindow::drawSelectionInspector(){
         ImGui::TextDisabled("Double-click it in the Animator window to edit its states.");
         drew = true;
     }else if (selection.kind == SelectionKind::Transition){
-        std::vector<TransitionDef>* list = nullptr;
+        std::vector<anim::TransitionDef>* list = nullptr;
         std::string from;
         if (selection.list == ListKind::AnyState){ list = &machine->anyState; from = "Any State"; }
         else if (selection.list == ListKind::Entry){ list = &machine->entry; from = "Entry"; }
         else if (selection.list == ListKind::Exit){
-            for (StateMachineDef& sub : machine->subMachines) if (sub.name == selection.owner) list = &sub.exitTransitions;
+            for (anim::StateMachineDef& sub : machine->subMachines) if (sub.name == selection.owner) list = &sub.exitTransitions;
             from = selection.owner + " (exit)";
         }else{
-            for (StateDef& s : machine->states) if (s.name == selection.owner) list = &s.transitions;
+            for (anim::StateDef& s : machine->states) if (s.name == selection.owner) list = &s.transitions;
             from = selection.owner;
         }
         if (list && selection.index >= 0 && (size_t)selection.index < list->size()){
@@ -1893,9 +1892,9 @@ bool AnimatorWindow::drawSelectionInspector(){
     return drew;
 }
 
-void AnimatorWindow::drawLayerInspector(ControllerDef& def){
+void AnimatorWindow::drawLayerInspector(anim::ControllerDef& def){
     if (layer < 0 || (size_t)layer >= def.layers.size()) return;
-    LayerDef& l = def.layers[(size_t)layer];
+    anim::LayerDef& l = def.layers[(size_t)layer];
     ImGui::Text(ICON_FA_LAYER_GROUP " Layer  %s", l.name.c_str());
     ImGui::Separator();
     bool changed = false;
@@ -1921,7 +1920,7 @@ void AnimatorWindow::drawLayerInspector(ControllerDef& def){
     char mask[512];
     std::snprintf(mask, sizeof(mask), "%s", l.mask.path.c_str());
     if (ImGui::InputText("Mask", mask, sizeof(mask), ImGuiInputTextFlags_EnterReturnsTrue)){
-        AnimatorAssetRef ref;
+        anim::AnimatorAssetRef ref;
         if (resolveTypedAsset(mask, false, ref)){
             l.mask = ref;
             changed = true;
@@ -1933,7 +1932,7 @@ void AnimatorWindow::drawLayerInspector(ControllerDef& def){
             if (!dropped.empty() && Util::isAvatarMaskFile(dropped[0]) && project->isInsideAssetsPath(dropped[0])){
                 l.mask.path = project->normalizeToAssetsRelative(dropped[0]).generic_string();
                 std::string text;
-                l.mask.guid = ProjectChecks::readFile(dropped[0], text) ? readAnimatorAssetGuid(text) : std::string();
+                l.mask.guid = ProjectChecks::readFile(dropped[0], text) ? anim::readAnimatorAssetGuid(text) : std::string();
                 changed = true;
             }
         }
@@ -1972,7 +1971,7 @@ void AnimatorWindow::drawLayerInspector(ControllerDef& def){
     if (changed) stage(def, "Edit Layer " + l.name);
 }
 
-void AnimatorWindow::drawStateInspector(ControllerDef& def, StateDef& state){
+void AnimatorWindow::drawStateInspector(anim::ControllerDef& def, anim::StateDef& state){
     ImGui::Text(ICON_FA_SQUARE " State  %s", state.name.c_str());
     ImGui::Separator();
     bool changed = false;
@@ -1989,10 +1988,10 @@ void AnimatorWindow::drawStateInspector(ControllerDef& def, StateDef& state){
     int kind = state.motion.isTree() ? 1 : 0;
     if (comboEnum("Motion", kind, {"Clip", "Blend Tree"})){
         if (kind == 1 && !state.motion.isTree()){
-            state.motion = MotionDef();
+            state.motion = anim::MotionDef();
             state.motion.tree.emplace_back();
         }else if (kind == 0 && state.motion.isTree()){
-            state.motion = MotionDef();
+            state.motion = anim::MotionDef();
         }
         changed = true;
     }
@@ -2000,7 +1999,7 @@ void AnimatorWindow::drawStateInspector(ControllerDef& def, StateDef& state){
         char clip[512];
         std::snprintf(clip, sizeof(clip), "%s", state.motion.clip.path.c_str());
         if (ImGui::InputText("Clip", clip, sizeof(clip), ImGuiInputTextFlags_EnterReturnsTrue)){
-            AnimatorAssetRef ref;
+            anim::AnimatorAssetRef ref;
             if (resolveTypedAsset(clip, true, ref)){
                 state.motion.clip = ref;
                 changed = true;
@@ -2009,7 +2008,7 @@ void AnimatorWindow::drawStateInspector(ControllerDef& def, StateDef& state){
         if (ImGui::BeginDragDropTarget()){
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
                 std::vector<std::string> dropped = Util::getStringsFromPayload(payload);
-                AnimatorAssetRef ref;
+                anim::AnimatorAssetRef ref;
                 if (!dropped.empty() && clipFromPath(project, dropped[0], ref)){
                     state.motion.clip = ref;
                     changed = true;
@@ -2077,7 +2076,7 @@ void AnimatorWindow::drawStateInspector(ControllerDef& def, StateDef& state){
     if (!renameTo.empty()){
         const std::string from = state.name;
         if (pending){
-            const ControllerDef staged = *pending;
+            const anim::ControllerDef staged = *pending;
             const std::string stagedUndo = pendingUndo;
             commit(staged, stagedUndo);
         }
@@ -2085,7 +2084,7 @@ void AnimatorWindow::drawStateInspector(ControllerDef& def, StateDef& state){
     }
 }
 
-bool AnimatorWindow::drawBlendTree(ControllerDef& def, BlendTreeDef& tree, int depth){
+bool AnimatorWindow::drawBlendTree(anim::ControllerDef& def, anim::BlendTreeDef& tree, int depth){
     bool changed = false;
     ImGui::PushID(depth);
     int type = (int)tree.type;
@@ -2099,18 +2098,18 @@ bool AnimatorWindow::drawBlendTree(ControllerDef& def, BlendTreeDef& tree, int d
     if (twoD) changed |= comboParameter("Parameter Y", def, tree.parameterY, true);
 
     // the weights at the current (live, else default) parameters, from the compiled tree
-    ControllerDef single;
+    anim::ControllerDef single;
     single.parameters = def.parameters;
-    LayerDef l;
-    StateDef s;
+    anim::LayerDef l;
+    anim::StateDef s;
     s.name = "Tree";
     s.motion.tree.push_back(tree);
     l.machine.states.push_back(s);
     single.layers.push_back(l);
-    normalizeController(single);
-    std::shared_ptr<const CompiledController> compiled = compileController(single);
+    anim::normalizeController(single);
+    std::shared_ptr<const anim::CompiledController> compiled = anim::compileController(single);
     std::vector<float> parameters(def.parameters.size());
-    AnimatorInstance* live = liveInstance();
+    anim::AnimatorInstance* live = liveInstance();
     for (size_t p = 0; p < def.parameters.size(); p++){
         parameters[p] = def.parameters[p].defaultValue;
         if (live){
@@ -2119,7 +2118,7 @@ bool AnimatorWindow::drawBlendTree(ControllerDef& def, BlendTreeDef& tree, int d
         }
     }
     std::vector<float> weights(compiled->trees.empty() ? 0 : compiled->trees[0].childCount, 0.0f);
-    if (!compiled->trees.empty() && !parameters.empty()) blendTreeWeights(*compiled, compiled->trees[0], parameters.data(), weights.data());
+    if (!compiled->trees.empty() && !parameters.empty()) anim::blendTreeWeights(*compiled, compiled->trees[0], parameters.data(), weights.data());
 
     if (ImGui::BeginTable("##children", tree.type == BlendTreeType::Simple1D || tree.type == BlendTreeType::Direct ? 5 : 6,
                           ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchProp)){
@@ -2132,7 +2131,7 @@ bool AnimatorWindow::drawBlendTree(ControllerDef& def, BlendTreeDef& tree, int d
         ImGui::TableSetupColumn("");
         ImGui::TableHeadersRow();
         for (size_t c = 0; c < tree.children.size(); c++){
-            BlendChildDef& child = tree.children[c];
+            anim::BlendChildDef& child = tree.children[c];
             ImGui::PushID((int)c);
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
@@ -2142,9 +2141,9 @@ bool AnimatorWindow::drawBlendTree(ControllerDef& def, BlendTreeDef& tree, int d
             if (ImGui::BeginDragDropTarget()){
                 if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
                     std::vector<std::string> dropped = Util::getStringsFromPayload(payload);
-                    AnimatorAssetRef ref;
+                    anim::AnimatorAssetRef ref;
                     if (!dropped.empty() && clipFromPath(project, dropped[0], ref)){
-                        child.motion = MotionDef();
+                        child.motion = anim::MotionDef();
                         child.motion.clip = ref;
                         changed = true;
                     }
@@ -2180,8 +2179,8 @@ bool AnimatorWindow::drawBlendTree(ControllerDef& def, BlendTreeDef& tree, int d
         }
         ImGui::EndTable();
     }
-    if (tree.children.size() < MAX_BLEND_CHILDREN && ImGui::Button("+ Motion")){
-        BlendChildDef child;
+    if (tree.children.size() < anim::MAX_BLEND_CHILDREN && ImGui::Button("+ Motion")){
+        anim::BlendChildDef child;
         if (!tree.children.empty()){
             child.threshold = tree.children.back().threshold + 1.0f;
             child.position = Vector2(tree.children.back().position.x + 1.0f, tree.children.back().position.y);
@@ -2192,7 +2191,7 @@ bool AnimatorWindow::drawBlendTree(ControllerDef& def, BlendTreeDef& tree, int d
     ImGui::SameLine();
     if (ImGui::Button(twoD ? "Compute Positions" : "Compute Thresholds")){
         // from each clip's root motion: its speed (1D) or its velocity on the ground (2D)
-        for (BlendChildDef& child : tree.children){
+        for (anim::BlendChildDef& child : tree.children){
             if (child.motion.isTree() || child.motion.clip.empty()) continue;
             std::string error;
             std::shared_ptr<const AnimationClip> clip = AnimationClipPool::getOrLoad(child.motion.clip.path, &error);
@@ -2209,8 +2208,8 @@ bool AnimatorWindow::drawBlendTree(ControllerDef& def, BlendTreeDef& tree, int d
                 }
             }
             if (!best) continue;
-            TrackSample a, b;
-            sampleTrack(*best, 0.0f, a);
+            anim::TrackSample a, b;
+            anim::sampleTrack(*best, 0.0f, a);
             sampleTrack(*best, clip->getLength(), b);
             const Vector3 velocity = (b.vector - a.vector) * (1.0f / clip->getLength());
             if (twoD) child.position = Vector2(velocity.x, velocity.z);
@@ -2231,7 +2230,7 @@ bool AnimatorWindow::drawBlendTree(ControllerDef& def, BlendTreeDef& tree, int d
         const int py = compiled->trees[0].parameterY;
         if (tree.type == BlendTreeType::Simple1D){
             float lo = tree.children.front().threshold, hi = tree.children.back().threshold;
-            for (const BlendChildDef& c : tree.children){ lo = std::min(lo, c.threshold); hi = std::max(hi, c.threshold); }
+            for (const anim::BlendChildDef& c : tree.children){ lo = std::min(lo, c.threshold); hi = std::max(hi, c.threshold); }
             if (hi - lo < 1e-4f) hi = lo + 1.0f;
             std::vector<float> curve(tree.children.size());
             for (size_t c = 0; c < tree.children.size(); c++){
@@ -2239,7 +2238,7 @@ bool AnimatorWindow::drawBlendTree(ControllerDef& def, BlendTreeDef& tree, int d
                 for (int x = 0; x <= 64; x++){
                     std::vector<float> p = parameters;
                     if (px >= 0) p[(size_t)px] = lo + (hi - lo) * (float)x / 64.0f;
-                    blendTreeWeights(*compiled, compiled->trees[0], p.data(), curve.data());
+                    anim::blendTreeWeights(*compiled, compiled->trees[0], p.data(), curve.data());
                     const ImVec2 point(origin.x + size.x * (float)x / 64.0f, origin.y + size.y - 6.0f - (size.y - 12.0f) * curve[c]);
                     if (x > 0) list->AddLine(previous, point, ImGui::GetColorU32(ImGuiCol_PlotLines, 0.4f + 0.6f * (float)c / std::max<size_t>(1, tree.children.size())), 1.5f);
                     previous = point;
@@ -2255,7 +2254,7 @@ bool AnimatorWindow::drawBlendTree(ControllerDef& def, BlendTreeDef& tree, int d
             }
         }else{
             float extent = 1.0f;
-            for (const BlendChildDef& c : tree.children) extent = std::max(extent, std::max(std::fabs(c.position.x), std::fabs(c.position.y)));
+            for (const anim::BlendChildDef& c : tree.children) extent = std::max(extent, std::max(std::fabs(c.position.x), std::fabs(c.position.y)));
             extent *= 1.15f;
             const ImVec2 centre(origin.x + size.x * 0.5f, origin.y + size.y * 0.5f);
             const float scale = std::min(size.x, size.y) * 0.5f / extent;
@@ -2280,7 +2279,7 @@ bool AnimatorWindow::drawBlendTree(ControllerDef& def, BlendTreeDef& tree, int d
     return changed;
 }
 
-void AnimatorWindow::drawTransitionInspector(ControllerDef& def, TransitionDef& t, const std::string& from){
+void AnimatorWindow::drawTransitionInspector(anim::ControllerDef& def, anim::TransitionDef& t, const std::string& from){
     ImGui::Text(ICON_FA_ARROW_RIGHT " Transition  %s -> %s", from.c_str(), t.to.c_str());
     UIProbe::item("animator.transition.title");
     ImGui::Separator();
@@ -2305,7 +2304,7 @@ void AnimatorWindow::drawTransitionInspector(ControllerDef& def, TransitionDef& 
     }
     ImGui::SeparatorText("Conditions");
     for (size_t c = 0; c < t.conditions.size(); c++){
-        ConditionDef& condition = t.conditions[c];
+        anim::ConditionDef& condition = t.conditions[c];
         ImGui::PushID((int)c);
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.4f);
         changed |= comboParameter("##parameter", def, condition.parameter, false);
@@ -2353,7 +2352,7 @@ void AnimatorWindow::drawTransitionInspector(ControllerDef& def, TransitionDef& 
     const bool addCondition = ImGui::Button("+ Condition");
     UIProbe::item("animator.transition.add_condition");
     if (addCondition && !def.parameters.empty()){
-        ConditionDef condition;
+        anim::ConditionDef condition;
         condition.parameter = def.parameters.front().name;
         condition.mode = def.parameters.front().type == AnimatorParameterType::Float ? AnimatorConditionMode::Greater :
                          (def.parameters.front().type == AnimatorParameterType::Int ? AnimatorConditionMode::Equals : AnimatorConditionMode::If);
@@ -2363,9 +2362,9 @@ void AnimatorWindow::drawTransitionInspector(ControllerDef& def, TransitionDef& 
     if (def.parameters.empty()) ImGui::TextDisabled("Add parameters in the Animator window to make conditions.");
 
     // a scrub of the blend on the previewed Animator (between two states of this machine)
-    StateMachineDef* machine = machineOf(def);
+    anim::StateMachineDef* machine = machineOf(def);
     bool toState = false;
-    for (const StateDef& s : machine->states) if (s.name == t.to) toState = true;
+    for (const anim::StateDef& s : machine->states) if (s.name == t.to) toState = true;
     if (previewToken != 0 && selection.list == ListKind::State && !selection.owner.empty() && toState){
         ImGui::SeparatorText("Preview");
         if (ImGui::SliderFloat("Blend", &transitionScrub, 0.0f, 1.0f)){

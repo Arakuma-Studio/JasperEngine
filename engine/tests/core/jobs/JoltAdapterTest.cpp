@@ -29,6 +29,8 @@
 #include <memory>
 #include <vector>
 
+namespace JoltAdapterTest_cpp {
+
 namespace{
 
     // two layers: the floor and the moving boxes
@@ -192,5 +194,7 @@ TEST(JobsJolt, DestroyingTheAdapterWaitsForItsQueuedJobs){
     }
     EXPECT_EQ(ran.load(), 1);
 }
+
+}  // namespace JoltAdapterTest_cpp
 
 #endif // JASPERENGINE_PHYSICS_3D

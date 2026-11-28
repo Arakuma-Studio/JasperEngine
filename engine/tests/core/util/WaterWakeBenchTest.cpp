@@ -17,9 +17,10 @@
 #include <cstdio>
 #include <vector>
 
+namespace water_wake_bench_test {
+
 using namespace jasperengine;
 
-namespace water_wake_bench_test {
 
     // four 6 m hulls crossing the map at 6 m/s, each with 8 s of history (a sample every 0.5 m)
     std::vector<WaterWakeTrack> tracks(){
@@ -75,6 +76,8 @@ namespace water_wake_bench_test {
 
 }
 
+namespace water_wake_bench_test {
+
 using namespace water_wake_bench_test;
 
 TEST(WaterWakeBench, Step256x4){
@@ -92,3 +95,5 @@ TEST(WaterWakeBench, Step128x4){
         EXPECT_LE(us, 200.0 * 1.5 * testsupport::perfSlack());
     }
 }
+
+}  // namespace water_wake_bench_test

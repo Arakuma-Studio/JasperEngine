@@ -17,6 +17,8 @@
 
 #include <string>
 
+namespace StreamNoCapacityTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -149,3 +151,5 @@ TEST(StreamNoCapacity, TrimmedPaletteReachesEveryJointTheVerticesName){
     rigidNode["bonesMatrix"] = YAML::Node(YAML::NodeType::Sequence);
     EXPECT_EQ(Stream::decodeMeshComponent(throughText(rigidNode)).bonesMatrix.stored(), 0u);
 }
+
+}  // namespace StreamNoCapacityTest_cpp

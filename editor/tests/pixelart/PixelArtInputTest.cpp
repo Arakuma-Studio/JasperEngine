@@ -38,6 +38,8 @@
 #include <string>
 #include <vector>
 
+namespace PixelArtInputTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace px = jasperengine::editor::pixelart;
@@ -287,3 +289,5 @@ TEST(PixelArtFix, AFixPlannedBeforeAnEditIsRefused) {
     EXPECT_NE(x, 10.2537f);
     EXPECT_NEAR(x, 10.2537f, 0.5f) << "moved onto whole pixels from where it is now";
 }
+
+}  // namespace PixelArtInputTest_cpp

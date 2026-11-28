@@ -26,6 +26,8 @@
 #include <utility>
 #include <vector>
 
+namespace CompatTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -355,3 +357,5 @@ TEST(Compat, CorpusRoundTrip) {
         EXPECT_TRUE(report.empty()) << problems(report);
     }
 }
+
+}  // namespace CompatTest_cpp

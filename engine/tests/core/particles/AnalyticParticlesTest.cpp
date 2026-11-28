@@ -19,6 +19,8 @@
 #include <cstring>
 #include <random>
 
+namespace AnalyticParticlesTest_cpp {
+
 using namespace particletest;
 
 namespace {
@@ -376,3 +378,5 @@ TEST(AnalyticParticles, PickingBoundsAreTheLiveParticles){
     }
     EXPECT_LT(hi[0] - lo[0], p.boundsMax[0] - p.boundsMin[0]) << "tighter than the culling box";
 }
+
+}  // namespace AnalyticParticlesTest_cpp

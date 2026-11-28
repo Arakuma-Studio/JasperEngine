@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace CancellableEventTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::test::LogCapture;
 
@@ -199,3 +201,5 @@ TEST(CancellableEventTest, MonitorCancelLogsOnce) {
         << log.describeErrors();
     EXPECT_EQ(log.errors().size(), 1u) << log.describeErrors();
 }
+
+}  // namespace CancellableEventTest_cpp

@@ -23,6 +23,8 @@
 #include <filesystem>
 #include <fstream>
 
+namespace BoneOverlayTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -176,3 +178,5 @@ TEST_F(BoneOverlayTest, ARootUnderANodeThatIsNoBoneHasItsMarker){
     EXPECT_NEAR(segments[1].parent.y, 1.0f, 1e-5f);
     EXPECT_FALSE(isUnwrittenAnimatorBone(&scene, hips)) << "no Animator: nothing to say";
 }
+
+}  // namespace BoneOverlayTest_cpp

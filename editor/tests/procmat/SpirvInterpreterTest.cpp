@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+namespace SpirvInterpreterTest_cpp {
+
 using namespace jasperengine::editor::procmat;
 
 namespace {
@@ -616,3 +618,5 @@ TEST(SpirvInterpreter, MatchesThePythonOracle){
     }
     EXPECT_GT(sets, 0);
 }
+
+}  // namespace SpirvInterpreterTest_cpp

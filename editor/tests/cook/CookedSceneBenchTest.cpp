@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+namespace CookedSceneBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -115,3 +117,5 @@ TEST(CookedSceneBench, LoadsTwoThousandGameObjects) {
         EXPECT_LE(best, budgetMs * slack);
     }
 }
+
+}  // namespace CookedSceneBenchTest_cpp

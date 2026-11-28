@@ -18,6 +18,8 @@
 #include <cmath>
 #include <map>
 
+namespace PsdLayerImportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -218,3 +220,5 @@ TEST(PsdLayerImportTest, CharacterRigBindsLayersToBones) {
     EXPECT_NEAR(position[0].as<float>(), 32.0f - kDocW / 2.0f, 0.5f);
     EXPECT_NEAR(position[1].as<float>(), kDocH / 2.0f - 6.0f, 0.5f);
 }
+
+}  // namespace PsdLayerImportTest_cpp

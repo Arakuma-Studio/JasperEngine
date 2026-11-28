@@ -32,7 +32,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vertexcolor;
+
+namespace jasperengine::editor::vertexcolor {
 
 namespace {
 
@@ -1199,3 +1200,5 @@ void VertexPaintWindow::drawDialog(uint32_t sceneId) {
     ImGui::End();
     if (!open && !job.running) dialog = Dialog::None;
 }
+
+}  // namespace jasperengine::editor::vertexcolor

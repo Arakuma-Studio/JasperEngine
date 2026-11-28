@@ -113,7 +113,7 @@ namespace {
         return FileUtils::pathToUtf8(FileUtils::pathFromUtf8(entry.clip).stem());
     }
 
-    std::string readText(const fs::path& path){
+    std::string clipSceneReadText(const fs::path& path){
         std::string text;
         readWholeFile(path, text);
         return text;
@@ -131,7 +131,7 @@ namespace {
             if (anim::isSubClipReference(entry.clip)){
                 if (!anim::buildModelSubClip(entry.clip, data, ignored, &failure)) continue;
             }else{
-                const anim::ClipParseResult parsed = anim::parseClip(readText(project->resolveAssetPath(editor::FileUtils::pathFromUtf8(entry.clip))));
+                const anim::ClipParseResult parsed = anim::parseClip(clipSceneReadText(project->resolveAssetPath(editor::FileUtils::pathFromUtf8(entry.clip))));
                 if (!parsed.ok()) continue;
                 data = *parsed.data;
             }
@@ -739,7 +739,7 @@ bool ClipSceneActions::addClipsToPlayer(Project* project, uint32_t sceneId, Enti
         std::error_code ec;
         if (!fs::is_regular_file(file, ec)) return fail(error, "'" + clip + "' does not exist");
         if (!project->isInsideAssetsPath(file)) return fail(error, "'" + clip + "' is outside the assets folder");
-        const anim::ClipParseResult parsed = anim::parseClip(readText(file));
+        const anim::ClipParseResult parsed = anim::parseClip(clipSceneReadText(file));
         if (!parsed.ok()) return fail(error, "'" + clip + "' is not a valid animation clip (" + parsed.error.toString() + ")");
         entries.push_back(entry);
     }

@@ -20,6 +20,8 @@
 #include <string>
 #include <vector>
 
+namespace EntityNamesTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -147,3 +149,5 @@ TEST_F(EntityNamesTest, PrefabImportNumbersAmongSiblingsOnly){
     EXPECT_EQ(name(below), "Enemy") << "Holder has no Enemy child";
     EXPECT_EQ(name(importEnemy(holder)), "Enemy 2");
 }
+
+}  // namespace EntityNamesTest_cpp

@@ -13,6 +13,8 @@
 #include <cstdint>
 #include <cstring>
 
+namespace MeshLodPoolHashTest_cpp {
+
 using namespace jasperengine;
 
 TEST(MeshLodPoolHash, SeparatesTopBitFlipsOfTwoWords){
@@ -45,3 +47,5 @@ TEST(ContentHash, Separates128BitKeys){
     EXPECT_NE(hashContent128(zero, 16), hashContent128(zero, 32));
     EXPECT_EQ(hashContent128(one, sizeof(one)), hashContent128(one, sizeof(one)));
 }
+
+}  // namespace MeshLodPoolHashTest_cpp

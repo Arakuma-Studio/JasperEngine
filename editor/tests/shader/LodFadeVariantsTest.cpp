@@ -26,6 +26,8 @@
 #include <string>
 #include <vector>
 
+namespace LodFadeVariantsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -148,3 +150,5 @@ TEST_F(LodFadeVariantKeys, AnInstancedMeshShipsItsInstancedFadeVariant){
     scene.addComponent<InstancedMeshComponent>(sphere.getEntity(), {});
     EXPECT_GT(lodFadeVariantsCollect(scene).instancedFade, 0u);
 }
+
+}  // namespace LodFadeVariantsTest_cpp

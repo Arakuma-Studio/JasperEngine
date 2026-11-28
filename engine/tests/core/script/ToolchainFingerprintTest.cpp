@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace ToolchainFingerprintTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -253,3 +255,5 @@ TEST(ToolchainFingerprint, WarnModeDowngradesRefusals) {
     EXPECT_TRUE(check.downgraded);
     EXPECT_NE(check.message.find("JASPER_FINGERPRINT=warn"), std::string::npos);
 }
+
+}  // namespace ToolchainFingerprintTest_cpp

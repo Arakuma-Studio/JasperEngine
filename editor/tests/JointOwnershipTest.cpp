@@ -18,6 +18,8 @@
 #include <cmath>
 #include <string>
 
+namespace JointOwnershipTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -300,3 +302,5 @@ TEST(JointOwnership, DestroyedBodyBLeavesTheSimulationAndLogsOnce) {
         EXPECT_GT(h.drop(), 1.0f) << "the ball fell free";
     }
 }
+
+}  // namespace JointOwnershipTest_cpp

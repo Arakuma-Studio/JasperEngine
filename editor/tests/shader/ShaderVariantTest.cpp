@@ -26,6 +26,8 @@
 #include <set>
 #include <string>
 
+namespace ShaderVariantTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -200,3 +202,5 @@ TEST_F(ShaderVariantTest, S52VariantsCompileForEveryBackend){
         }
     }
 }
+
+}  // namespace ShaderVariantTest_cpp

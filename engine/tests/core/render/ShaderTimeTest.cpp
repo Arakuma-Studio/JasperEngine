@@ -14,6 +14,8 @@
 #include <thread>
 #include <vector>
 
+namespace ShaderTimeTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -98,3 +100,5 @@ TEST_F(ShaderTimeTest, PinnedHoldsUntilUnpinned){
     Engine::latchShaderTime();
     EXPECT_NEAR(Engine::getShaderTime(), (float)Engine::getSystemTime(), 0.01f);
 }
+
+}  // namespace ShaderTimeTest_cpp

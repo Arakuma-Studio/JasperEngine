@@ -16,12 +16,13 @@
 
 #include <algorithm>
 
+namespace reflect_migration_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::reflect;
 
 // (a named namespace, tests included: a unity build merges the test sources)
-namespace reflect_migration_test {
 
     enum class Gait { WALK, RUN };
 

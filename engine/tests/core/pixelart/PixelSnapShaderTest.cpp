@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace PixelSnapShaderTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -155,3 +157,5 @@ TEST(PixelSnapShaderTest, UploadsFitTheReflectedBlock){
     EXPECT_EQ(RenderSystem::depthSnapMode(PIP_DEPTH, 1.0f), 1.0f);
     EXPECT_EQ(RenderSystem::depthSnapMode(PIP_ZPREPASS, 2.0f), 2.0f);
 }
+
+}  // namespace PixelSnapShaderTest_cpp

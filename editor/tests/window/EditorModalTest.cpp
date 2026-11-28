@@ -26,6 +26,8 @@
 #include <thread>
 #include <vector>
 
+namespace EditorModalTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -781,3 +783,5 @@ TEST(EditorFilePickerTest, ANativePickerIsReportedButNotAnswerable) {
     }
     EXPECT_FALSE(EditorFilePicker::info(info));
 }
+
+}  // namespace EditorModalTest_cpp

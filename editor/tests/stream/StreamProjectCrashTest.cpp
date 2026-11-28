@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+namespace StreamProjectCrashTest_cpp {
+
 using namespace jasperengine::editor;
 
 // project.yaml "playerCrash" (Project Settings > Player > Crash Handling)
@@ -73,3 +75,5 @@ TEST(StreamProjectCrash, JournalSettingsRoundTrip) {
     Stream::decodeProject(&loaded, big, Workspace());
     EXPECT_EQ(loaded.getPlayerCrash().journalKiB, PlayerCrashSettings::maxJournalKiB);
 }
+
+}  // namespace StreamProjectCrashTest_cpp

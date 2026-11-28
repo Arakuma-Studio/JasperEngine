@@ -15,6 +15,8 @@
 
 #include <gtest/gtest.h>
 
+namespace SpriteInlineFramesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -99,3 +101,5 @@ TEST(SpriteInlineFrames, SlicedDrawModeIsAdditive) {
     ASSERT_TRUE(spriteNode(again)["someFutureKey"]);
     EXPECT_EQ(spriteNode(again)["someFutureKey"].as<int>(), 7);
 }
+
+}  // namespace SpriteInlineFramesTest_cpp

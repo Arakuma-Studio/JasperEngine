@@ -14,6 +14,8 @@
 
 #include <cstdio>
 
+namespace JoltShapeBuilderTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::physicstest;
 
@@ -228,3 +230,5 @@ TEST(ScenePhysics, HeightfieldMatchesTerrainSurface) {
 }
 
 #endif
+
+}  // namespace JoltShapeBuilderTest_cpp

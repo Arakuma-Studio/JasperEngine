@@ -32,7 +32,6 @@
 #include <cstring>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
 
 namespace {
 
@@ -62,10 +61,10 @@ namespace {
         Vector4 pixelShape;
         Vector4 pixelStreak;
         Vector4 pixelInfo;
-        Vector4 pixelRamp[kMaxRampColors];
+        Vector4 pixelRamp[particles::kMaxRampColors];
     };
     constexpr size_t kFsParticlesBaseSize = 3 * 16;
-    static_assert(sizeof(fs_particles_params_t) == kFsParticlesBaseSize + (5 + kMaxRampColors) * 16, "fs_particles_params_t must match u_fs_particlesParams");
+    static_assert(sizeof(fs_particles_params_t) == kFsParticlesBaseSize + (5 + particles::kMaxRampColors) * 16, "fs_particles_params_t must match u_fs_particlesParams");
 
     // the 'Pxl' variant's vertex members, after the lights and the sprite rects
     struct vs_particles_pixel_t {
@@ -74,12 +73,12 @@ namespace {
         Vector4 pixelStreak;
     };
 
-    MaterialBlendMode materialBlend(ParticleBlend blend){
+    MaterialBlendMode materialBlend(particles::ParticleBlend blend){
         switch (blend){
-            case ParticleBlend::Premultiplied: return MaterialBlendMode::PREMULTIPLIED;
-            case ParticleBlend::Additive:      return MaterialBlendMode::ADDITIVE;
-            case ParticleBlend::Multiply:      return MaterialBlendMode::MULTIPLY;
-            case ParticleBlend::Alpha:
+            case particles::ParticleBlend::Premultiplied: return MaterialBlendMode::PREMULTIPLIED;
+            case particles::ParticleBlend::Additive:      return MaterialBlendMode::ADDITIVE;
+            case particles::ParticleBlend::Multiply:      return MaterialBlendMode::MULTIPLY;
+            case particles::ParticleBlend::Alpha:
             default:                           return MaterialBlendMode::ALPHA;
         }
     }
@@ -120,14 +119,14 @@ namespace {
     }
 
     // what a ring mesh is made from
-    uint64_t ringSource(const RendererModule& r){
+    uint64_t ringSource(const particles::RendererModule& r){
         uint64_t h = 0x52494e47ull;
         for (float v : {r.ringOuterRadius, r.ringInnerRadius, r.ringArc})
             h = mix(h, (uint64_t)std::hash<float>()(v));
         return mix(h, (uint64_t)r.ringSegments);
     }
 
-    uint64_t meshSource(const MeshSource& m){
+    uint64_t meshSource(const particles::MeshSource& m){
         uint64_t h = mix(mix(0x4d455348ull, (uint64_t)m.type), (uint64_t)m.primitive);
         h = mixString(h, m.model);
         return mix(h, (uint64_t)m.submesh);
@@ -135,16 +134,16 @@ namespace {
 
     // what a system's tree has to draw now. A root with trails always draws (as its bounds do not
     // cover them); a child's count only while it lives, so it does not hold its parent out of culling
-    void drawablesOf(const EmitterRuntime& emitter, bool root, bool& hasParticles, bool& hasTrails){
-        const CompiledEffect* effect = emitter.effect();
+    void drawablesOf(const particles::EmitterRuntime& emitter, bool root, bool& hasParticles, bool& hasTrails){
+        const particles::CompiledEffect* effect = emitter.effect();
         if (!effect)
             return;
         // an Analytic emitter stores no particles: it draws while any slot can be alive (S49)
         const bool any = emitter.isAnalytic() ? emitter.isAlive() : emitter.count() > 0;
-        hasParticles = hasParticles || (any && effect->document.renderer.renderMode != RenderMode::None);
+        hasParticles = hasParticles || (any && effect->document.renderer.renderMode != particles::RenderMode::None);
         hasTrails = hasTrails || (effect->program.trails.enabled && (root || emitter.isAlive()));
         for (size_t c = 0; c < emitter.childCount(); c++){
-            if (const EmitterRuntime* child = emitter.child(c))
+            if (const particles::EmitterRuntime* child = emitter.child(c))
                 drawablesOf(*child, false, hasParticles, hasTrails);
         }
     }
@@ -202,7 +201,7 @@ bool RenderSystem::ensureParticleSlots(uint32_t count){
     // 0, 1, 2, ... as floats, in powers of two up to Analytic's most (256 KB)
     uint32_t capacity = std::max<uint32_t>(particleSlotCapacity, 256u);
     while (capacity < count) capacity *= 2;
-    capacity = std::min(capacity, kAnalyticMaxSlots);
+    capacity = std::min(capacity, particles::kAnalyticMaxSlots);
     std::vector<float> slots(capacity);
     for (uint32_t i = 0; i < capacity; i++) slots[i] = (float)i;
     if (particleSlotCapacity > 0)
@@ -274,22 +273,22 @@ bool RenderSystem::appendParticleStream(ParticleStream& stream, const void* data
 
 // ---------------------------------------------------------------- loading
 
-RenderSystem::ParticleVariantSet RenderSystem::getParticleVariants(const CompiledEffect& effect, bool fog){
-    const RendererModule& r = effect.document.renderer;
-    const RenderParams& rp = effect.program.render;
+RenderSystem::ParticleVariantSet RenderSystem::getParticleVariants(const particles::CompiledEffect& effect, bool fog){
+    const particles::RendererModule& r = effect.document.renderer;
+    const particles::RenderParams& rp = effect.program.render;
     ParticleVariantSet set;
     // a Ring is a mesh made from the ring settings: the mesh variant, nothing of its own
-    set.quads = r.renderMode != RenderMode::Mesh && r.renderMode != RenderMode::Ring && r.renderMode != RenderMode::None;
-    set.meshes = r.renderMode == RenderMode::Mesh || r.renderMode == RenderMode::Ring;
+    set.quads = r.renderMode != particles::RenderMode::Mesh && r.renderMode != particles::RenderMode::Ring && r.renderMode != particles::RenderMode::None;
+    set.meshes = r.renderMode == particles::RenderMode::Mesh || r.renderMode == particles::RenderMode::Ring;
     set.trails = effect.program.trails.enabled;
     set.reference = r.shader.empty() ? std::string() : getComponentShaderReference(r.shader, r.shaderFeatures, materialBlend(r.blend));
 
     ParticlesShaderFlags flags;
     flags.texture = !r.texture.empty();
-    flags.stretch = r.renderMode == RenderMode::StretchedBillboard;
+    flags.stretch = r.renderMode == particles::RenderMode::StretchedBillboard;
     flags.frameBlend = rp.frameBlending != 0;
-    flags.lit = r.lighting == LightingMode::Lit;
-    flags.sixWay = r.lighting == LightingMode::SixWay;
+    flags.lit = r.lighting == particles::LightingMode::Lit;
+    flags.sixWay = r.lighting == particles::LightingMode::SixWay;
     flags.customData = rp.customData != 0;
     flags.receiveShadows = r.receiveShadows;
     flags.fog = fog;
@@ -311,11 +310,11 @@ RenderSystem::ParticleVariantSet RenderSystem::getParticleVariants(const Compile
     return set;
 }
 
-uint64_t RenderSystem::particleRenderKey(const CompiledEffect& effect) const{
+uint64_t RenderSystem::particleRenderKey(const particles::CompiledEffect& effect) const{
     // what the load reads: the effect's render settings (not its simulation), the scene's fog
     // and post colour, the pipelines
-    const ParticleEffectDocument& d = effect.document;
-    const RendererModule& r = d.renderer;
+    const particles::ParticleEffectDocument& d = effect.document;
+    const particles::RendererModule& r = d.renderer;
     uint64_t h = 1469598103934665603ull;
     h = mix(h, (uint64_t)r.renderMode);
     h = mix(h, (uint64_t)r.blend);
@@ -339,15 +338,15 @@ uint64_t RenderSystem::particleRenderKey(const CompiledEffect& effect) const{
     h = mixString(h, r.sixWayMapA);
     h = mixString(h, r.sixWayMapB);
     h = mixString(h, r.emissionMap);
-    for (const MeshSource& m : r.meshes){
+    for (const particles::MeshSource& m : r.meshes){
         h = mix(h, (uint64_t)m.type);
         h = mix(h, (uint64_t)m.primitive);
         h = mixString(h, m.model);
         h = mix(h, (uint64_t)m.submesh);
     }
-    if (r.renderMode == RenderMode::Ring)
+    if (r.renderMode == particles::RenderMode::Ring)
         h = mix(h, ringSource(r));
-    const RenderParams& rp = effect.program.render;
+    const particles::RenderParams& rp = effect.program.render;
     h = mix(h, (uint64_t)rp.frameBlending);
     h = mix(h, (uint64_t)rp.customData);
     // S49: the Pixel and Analytic variants, and the slot stream an Analytic draw binds
@@ -367,13 +366,13 @@ void RenderSystem::destroyParticles(ParticleSystemComponent& particles){
         destroyParticleRender(particles.state->render);
 }
 
-void RenderSystem::destroyParticleRender(ParticleRenderData& rd){
+void RenderSystem::destroyParticleRender(particles::ParticleRenderData& rd){
     if (rd.loaded){
         rd.quads.destroy();
         for (ObjectRender& m : rd.meshes) m.destroy();
         rd.trails.destroy();
     }
-    for (ParticleMeshBuffers& m : rd.meshBuffers){
+    for (particles::ParticleMeshBuffers& m : rd.meshBuffers){
         if (m.created){
             m.vertices.destroyBuffer();
             m.indices.destroyBuffer();
@@ -387,30 +386,30 @@ void RenderSystem::destroyParticleRender(ParticleRenderData& rd){
     }
     rd.loaded = false;
     rd.needReload = true;
-    for (std::unique_ptr<ParticleRenderData>& child : rd.children){
+    for (std::unique_ptr<particles::ParticleRenderData>& child : rd.children){
         if (child)
             destroyParticleRender(*child);
     }
     rd.children.clear();
 }
 
-uint32_t RenderSystem::particleSceneInputs(const ParticleRenderData& rd){
+uint32_t RenderSystem::particleSceneInputs(const particles::ParticleRenderData& rd){
     uint32_t inputs = rd.sceneInputs;
-    for (const std::unique_ptr<ParticleRenderData>& child : rd.children){
+    for (const std::unique_ptr<particles::ParticleRenderData>& child : rd.children){
         if (child)
             inputs |= particleSceneInputs(*child);
     }
     return inputs;
 }
 
-bool RenderSystem::isParticleTreeLoaded(const EmitterRuntime& emitter, const ParticleRenderData& rd){
+bool RenderSystem::isParticleTreeLoaded(const particles::EmitterRuntime& emitter, const particles::ParticleRenderData& rd){
     if (!rd.loaded)
         return false;
     for (size_t c = 0; c < emitter.childCount(); c++){
-        const EmitterRuntime* child = emitter.child(c);
+        const particles::EmitterRuntime* child = emitter.child(c);
         if (!child || !child->effect())
             continue;
-        const ParticleRenderData* render = c < rd.children.size() ? rd.children[c].get() : nullptr;
+        const particles::ParticleRenderData* render = c < rd.children.size() ? rd.children[c].get() : nullptr;
         if (!render || !isParticleTreeLoaded(*child, *render))
             return false;
     }
@@ -420,14 +419,14 @@ bool RenderSystem::isParticleTreeLoaded(const EmitterRuntime& emitter, const Par
 bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particles, uint16_t pipelines){
     if (!particles.state || !particles.state->effect)
         return false;
-    ParticleSystemState& state = *particles.state;
+    particles::ParticleSystemState& state = *particles.state;
     if (!loadParticleEmitter(entity, state.runtime, *state.effect, state.render, pipelines))
         return false;
     setParticleSceneInputUser(entity, particleSceneInputs(state.render));
     return true;
 }
 
-bool RenderSystem::updateParticleChildren(Entity entity, const EmitterRuntime& emitter, ParticleRenderData& rd, uint16_t pipelines){
+bool RenderSystem::updateParticleChildren(Entity entity, const particles::EmitterRuntime& emitter, particles::ParticleRenderData& rd, uint16_t pipelines){
     bool loaded = false;
     const size_t count = emitter.childCount();
     while (rd.children.size() > count){
@@ -437,8 +436,8 @@ bool RenderSystem::updateParticleChildren(Entity entity, const EmitterRuntime& e
     }
     rd.children.resize(count);
     for (size_t c = 0; c < count; c++){
-        const EmitterRuntime* child = emitter.child(c);
-        std::unique_ptr<ParticleRenderData>& render = rd.children[c];
+        const particles::EmitterRuntime* child = emitter.child(c);
+        std::unique_ptr<particles::ParticleRenderData>& render = rd.children[c];
         if (!child || !child->effect()){
             // an entry whose effect cannot be read has no runtime, so nothing to draw
             if (render){
@@ -448,7 +447,7 @@ bool RenderSystem::updateParticleChildren(Entity entity, const EmitterRuntime& e
             continue;
         }
         if (!render)
-            render = std::make_unique<ParticleRenderData>();
+            render = std::make_unique<particles::ParticleRenderData>();
         if (!render->loaded || render->needReload || render->loadedKey != particleRenderKey(*child->effect()))
             loaded = loadParticleEmitter(entity, *child, *child->effect(), *render, pipelines) || loaded;
         if (child->childCount() > 0 || !render->children.empty())
@@ -457,15 +456,15 @@ bool RenderSystem::updateParticleChildren(Entity entity, const EmitterRuntime& e
     return loaded;
 }
 
-bool RenderSystem::loadParticleEmitter(Entity entity, const EmitterRuntime& runtime, const CompiledEffect& effect, ParticleRenderData& rd, uint16_t pipelines){
+bool RenderSystem::loadParticleEmitter(Entity entity, const particles::EmitterRuntime& runtime, const particles::CompiledEffect& effect, particles::ParticleRenderData& rd, uint16_t pipelines){
     if (!Engine::isViewLoaded())
         return false;
     if (!ensureParticleBuffers())
         return false;
-    const ParticleEffectDocument& d = effect.document;
-    const RendererModule& r = d.renderer;
-    const ParticleProgram& prog = effect.program;
-    const RenderParams& rp = prog.render;
+    const particles::ParticleEffectDocument& d = effect.document;
+    const particles::RendererModule& r = d.renderer;
+    const particles::ParticleProgram& prog = effect.program;
+    const particles::RenderParams& rp = prog.render;
 
     // the textures: none still loading (an empty path is no texture, not a file to load)
     auto assign = [](Texture& texture, const std::string& path){
@@ -511,7 +510,7 @@ bool RenderSystem::loadParticleEmitter(Entity entity, const EmitterRuntime& runt
     const bool drawsMeshes = variants.meshes;
     const bool drawsTrails = variants.trails;
     const bool customData = rp.customData != 0;
-    const bool sixWay = r.lighting == LightingMode::SixWay;
+    const bool sixWay = r.lighting == particles::LightingMode::SixWay;
     const bool receiveShadows = r.receiveShadows;
 
     auto shaderFor = [&](uint64_t properties, uint16_t id) -> std::shared_ptr<ShaderRender> {
@@ -545,7 +544,7 @@ bool RenderSystem::loadParticleEmitter(Entity entity, const EmitterRuntime& runt
     rd.sceneInputs = manifest ? (manifest->resolveRequire(ShaderReference::getEnabledFeatures(base, r.shaderFeatures)) & ShaderRequire_SceneInputs) : 0u;
 
     // what every program binds: its blocks, the particle textures, the library's
-    auto bindCommon = [&](ObjectRender& render, ShaderData& shaderData, ParticleRenderData::Slots& slots, bool trail) -> bool {
+    auto bindCommon = [&](ObjectRender& render, ShaderData& shaderData, particles::ParticleRenderData::Slots& slots, bool trail) -> bool {
         slots.vsParams = shaderData.getUniformBlockIndex(UniformBlockType::PARTICLES_VS_PARAMS);
         slots.fsParams = shaderData.getUniformBlockIndex(UniformBlockType::PARTICLES_FS_PARAMS);
         slots.fsShadowData = receiveShadows && !trail ? shaderData.getUniformBlockIndexByName("u_fs_shadow_data") : -1;
@@ -584,8 +583,8 @@ bool RenderSystem::loadParticleEmitter(Entity entity, const EmitterRuntime& runt
         }
         if (rp.pixel.active && perInstance)
             render.addAttribute(shaderData.getAttrIndex(AttributeType::PARTICLEPIXEL), &particlePixelPlaceholder, 4, AttributeDataType::UNSIGNED_BYTE,
-                                sizeof(ParticlePixelInstance), 0, true, true);
-        const unsigned int stride = sizeof(ParticleInstance);
+                                sizeof(particles::ParticlePixelInstance), 0, true, true);
+        const unsigned int stride = sizeof(particles::ParticleInstance);
         BufferRender* source = &particleInstancePlaceholder;
         render.addAttribute(shaderData.getAttrIndex(AttributeType::PARTICLEPOSITION), source, 3, AttributeDataType::FLOAT, stride, 0, false, perInstance);
         render.addAttribute(shaderData.getAttrIndex(AttributeType::PARTICLECOLOR), source, 4, AttributeDataType::UNSIGNED_BYTE, stride, 12, true, perInstance);
@@ -594,7 +593,7 @@ bool RenderSystem::loadParticleEmitter(Entity entity, const EmitterRuntime& runt
         render.addAttribute(shaderData.getAttrIndex(AttributeType::PARTICLEVELOCITY), source, 4, AttributeDataType::HALF, stride, 24, false, perInstance);
         if (customData)
             render.addAttribute(shaderData.getAttrIndex(AttributeType::PARTICLECUSTOM), &particleCustomPlaceholder, 4, AttributeDataType::HALF,
-                                sizeof(ParticleCustomInstance), 0, false, perInstance);
+                                sizeof(particles::ParticleCustomInstance), 0, false, perInstance);
     };
 
     if (rd.loaded){
@@ -620,10 +619,10 @@ bool RenderSystem::loadParticleEmitter(Entity entity, const EmitterRuntime& runt
 
     if (drawsMeshes){
         rd.meshCount = 0;
-        const bool ring = r.renderMode == RenderMode::Ring;
-        const size_t meshCount = ring ? 1 : std::min(r.meshes.size(), kMaxRendererMeshes);
+        const bool ring = r.renderMode == particles::RenderMode::Ring;
+        const size_t meshCount = ring ? 1 : std::min(r.meshes.size(), particles::kMaxRendererMeshes);
         for (size_t m = 0; m < meshCount; m++){
-            ParticleMeshBuffers& gpu = rd.meshBuffers[m];
+            particles::ParticleMeshBuffers& gpu = rd.meshBuffers[m];
             const uint64_t sourceKey = ring ? ringSource(r) : meshSource(r.meshes[m]);
             if (gpu.created && gpu.source != sourceKey){
                 // another mesh (or ring) in this slot: made again
@@ -632,18 +631,18 @@ bool RenderSystem::loadParticleEmitter(Entity entity, const EmitterRuntime& runt
                 gpu.created = false;
             }
             if (!gpu.created){
-                ParticleMeshData data;
+                particles::ParticleMeshData data;
                 bool ok = true;
                 if (ring){
-                    ParticleMeshes::ring(r.ringOuterRadius, r.ringInnerRadius, r.ringArc, r.ringSegments, data);
+                    particles::ParticleMeshes::ring(r.ringOuterRadius, r.ringInnerRadius, r.ringArc, r.ringSegments, data);
                 }else{
-                    const MeshSource& source = r.meshes[m];
+                    const particles::MeshSource& source = r.meshes[m];
                     switch (source.type){
-                        case MeshSourceType::Primitive: ParticleMeshes::primitive(source.primitive, data); break;
-                        case MeshSourceType::Model: ok = ParticleMeshes::model(source.model, source.submesh, data); break;
-                        case MeshSourceType::GameObject: {
+                        case particles::MeshSourceType::Primitive: particles::ParticleMeshes::primitive(source.primitive, data); break;
+                        case particles::MeshSourceType::Model: ok = particles::ParticleMeshes::model(source.model, source.submesh, data); break;
+                        case particles::MeshSourceType::GameObject: {
                             MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-                            ok = mesh && ParticleMeshes::meshComponent(*mesh, source.submesh, data);
+                            ok = mesh && particles::ParticleMeshes::meshComponent(*mesh, source.submesh, data);
                             break;
                         }
                     }
@@ -651,7 +650,7 @@ bool RenderSystem::loadParticleEmitter(Entity entity, const EmitterRuntime& runt
                 if (!ok){
                     // a mesh that cannot be read draws as a cube (and says so once)
                     Log::warn("[Particles] Renderer mesh %u cannot be read: drawn as a cube", (unsigned int)m);
-                    ParticleMeshes::primitive(PrimitiveMesh::Cube, data);
+                    particles::ParticleMeshes::primitive(particles::PrimitiveMesh::Cube, data);
                 }
                 JE_GPU_ALLOC_SCOPE(Particles, "Particle meshes");
                 if (!gpu.vertices.createBuffer((unsigned int)(data.vertices.size() * sizeof(float)), data.vertices.data(), BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE) ||
@@ -664,7 +663,7 @@ bool RenderSystem::loadParticleEmitter(Entity entity, const EmitterRuntime& runt
             }
             ObjectRender& render = rd.meshes[m];
             ShaderData& shaderData = rd.meshShader->shaderData;
-            const unsigned int stride = ParticleMeshData::kFloatsPerVertex * sizeof(float);
+            const unsigned int stride = particles::ParticleMeshData::kFloatsPerVertex * sizeof(float);
             render.beginLoad(PrimitiveType::TRIANGLES);
             render.setShader(rd.meshShader.get());
             render.setIndex(&gpu.indices, AttributeDataType::UNSIGNED_INT, 0);
@@ -673,7 +672,7 @@ bool RenderSystem::loadParticleEmitter(Entity entity, const EmitterRuntime& runt
             render.addAttribute(shaderData.getAttrIndex(AttributeType::TEXCOORD1), &gpu.vertices, 2, AttributeDataType::FLOAT, stride, 24, false, false);
             addInstanceAttributes(render, shaderData, true);
             render.addAttribute(shaderData.getAttrIndex(AttributeType::PARTICLEROTATION), &particleRotationPlaceholder, 4, AttributeDataType::SHORT,
-                                sizeof(ParticleMeshInstance), 0, true, true);
+                                sizeof(particles::ParticleMeshInstance), 0, true, true);
             if (!bindCommon(render, shaderData, rd.meshSlots, false))
                 return false;
             // a mesh hides its back faces (particles draw without depth writes by default);
@@ -690,12 +689,12 @@ bool RenderSystem::loadParticleEmitter(Entity entity, const EmitterRuntime& runt
     if (drawsTrails){
         ObjectRender& render = rd.trails;
         ShaderData& shaderData = rd.trailShader->shaderData;
-        const unsigned int stride = sizeof(TrailVertex);
+        const unsigned int stride = sizeof(particles::TrailVertex);
         BufferRender* source = &particleTrailPlaceholder;
         // the strips' triangles: every pair of points a quad (sized for the rings, or the ribbons
         // at their fixed stride)
-        const bool ribbons = prog.trails.mode == TrailMode::Ribbon;
-        const uint32_t points = ribbons ? ParticleRenderPrep::ribbonStripPoints(prog) : prog.trails.maxPoints + 1;
+        const bool ribbons = prog.trails.mode == particles::TrailMode::Ribbon;
+        const uint32_t points = ribbons ? particles::ParticleRenderPrep::ribbonStripPoints(prog) : prog.trails.maxPoints + 1;
         const uint32_t strips = ribbons ? std::max(prog.trails.ribbonCount, 1u) : std::max<uint32_t>(runtime.trails().ringCount(), 1u);
         if (rd.trailIndexCapacity < strips || rd.trailIndexPoints != points){
             if (rd.trailIndexCapacity > 0)
@@ -772,10 +771,10 @@ void RenderSystem::updateParticleRenders(uint16_t pipelines){
         const Entity entity = systems->getEntity(i);
         if (!particles.state || !particles.state->effect)
             continue;
-        ParticleRenderData& rd = particles.state->render;
+        particles::ParticleRenderData& rd = particles.state->render;
         if (!rd.loaded || rd.needReload || rd.loadedKey != particleRenderKey(*particles.state->effect))
             loadParticles(entity, particles, pipelines);
-        const EmitterRuntime& runtime = particles.state->runtime;
+        const particles::EmitterRuntime& runtime = particles.state->runtime;
         if ((runtime.childCount() > 0 || !rd.children.empty()) && updateParticleChildren(entity, runtime, rd, pipelines))
             setParticleSceneInputUser(entity, particleSceneInputs(rd));
     }
@@ -795,14 +794,14 @@ bool RenderSystem::isParticleRenderActive(Entity entity, uint32_t cullingMask) c
     return isLayerVisible(entity, cullingMask);
 }
 
-bool RenderSystem::particleBoundsVisible(const ParticleSystemState& state, CameraComponent& camera){
+bool RenderSystem::particleBoundsVisible(const particles::ParticleSystemState& state, CameraComponent& camera){
     if (!state.hasBounds)
         return false;
     const AABB box(Vector3(state.boundsMin[0], state.boundsMin[1], state.boundsMin[2]), Vector3(state.boundsMax[0], state.boundsMax[1], state.boundsMax[2]));
     return isInsideCamera(camera, box);
 }
 
-void RenderSystem::queueParticleTree(Entity entity, ParticleSystemComponent& particles, const EmitterRuntime& emitter, ParticleRenderData& rd,
+void RenderSystem::queueParticleTree(Entity entity, ParticleSystemComponent& particles, const particles::EmitterRuntime& emitter, particles::ParticleRenderData& rd,
                                      Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, bool root, uint32_t& order){
     // a child with nothing alive has nothing to draw
     if (root || emitter.isAlive()){
@@ -820,18 +819,18 @@ void RenderSystem::queueParticleTree(Entity entity, ParticleSystemComponent& par
         transparentQueue.push_back(data);
     }
     for (size_t c = 0; c < emitter.childCount() && c < rd.children.size(); c++){
-        const EmitterRuntime* child = emitter.child(c);
+        const particles::EmitterRuntime* child = emitter.child(c);
         if (child && child->effect() && rd.children[c])
             queueParticleTree(entity, particles, *child, *rd.children[c], transform, camera, cameraTransform, false, order);
     }
 }
 
 void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particles, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType,
-                                 const EmitterRuntime* only, ParticleRenderData* onlyRender){
+                                 const particles::EmitterRuntime* only, particles::ParticleRenderData* onlyRender){
     if (!particles.state || !particles.state->effect)
         return;
-    ParticleSystemState& state = *particles.state;
-    ParticleRenderData& rd = state.render;
+    particles::ParticleSystemState& state = *particles.state;
+    particles::ParticleRenderData& rd = state.render;
     if (!rd.loaded || state.runtime.isPrewarming())
         return;
 #if JASPERENGINE_PROFILER
@@ -871,26 +870,26 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
 #endif
 }
 
-void RenderSystem::drawParticleTree(const ParticleSystemState& state, const EmitterRuntime& runtime, ParticleRenderData& rd, Transform& transform,
+void RenderSystem::drawParticleTree(const particles::ParticleSystemState& state, const particles::EmitterRuntime& runtime, particles::ParticleRenderData& rd, Transform& transform,
                                     CameraComponent& camera, Transform& camTransform, PipelineType pipType, bool boundsVisible, uint32_t& drawn, bool& sorted){
     if (rd.loaded && !runtime.isPrewarming())
         drawn += drawParticleEmitter(state, runtime, rd, transform, camera, camTransform, pipType, boundsVisible, sorted);
     for (size_t c = 0; c < runtime.childCount() && c < rd.children.size(); c++){
-        const EmitterRuntime* child = runtime.child(c);
+        const particles::EmitterRuntime* child = runtime.child(c);
         if (child && child->effect() && rd.children[c])
             drawParticleTree(state, *child, *rd.children[c], transform, camera, camTransform, pipType, boundsVisible, drawn, sorted);
     }
 }
 
-uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, const EmitterRuntime& runtime, ParticleRenderData& rd, Transform& transform,
+uint32_t RenderSystem::drawParticleEmitter(const particles::ParticleSystemState& state, const particles::EmitterRuntime& runtime, particles::ParticleRenderData& rd, Transform& transform,
                                            CameraComponent& camera, Transform& camTransform, PipelineType pipType, bool boundsVisible, bool& sorted){
-    const CompiledEffect& effect = *runtime.effect();
-    const ParticleEffectDocument& d = effect.document;
-    const ParticleProgram& prog = effect.program;
-    const RenderParams& rp = prog.render;
-    const RendererModule& r = d.renderer;
+    const particles::CompiledEffect& effect = *runtime.effect();
+    const particles::ParticleEffectDocument& d = effect.document;
+    const particles::ParticleProgram& prog = effect.program;
+    const particles::RenderParams& rp = prog.render;
+    const particles::RendererModule& r = d.renderer;
     const bool analytic = prog.analytic && runtime.isAnalytic();
-    const bool hasParticles = (analytic ? runtime.isAlive() : runtime.count() > 0) && r.renderMode != RenderMode::None;
+    const bool hasParticles = (analytic ? runtime.isAlive() : runtime.count() > 0) && r.renderMode != particles::RenderMode::None;
     const bool hasTrails = prog.trails.enabled;
     if ((!hasParticles || !boundsVisible) && !hasTrails)
         return 0;
@@ -909,23 +908,23 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
                       worldToSim[0][2] * forward.x + worldToSim[1][2] * forward.y + worldToSim[2][2] * forward.z);
     if (forward.length() > 0.0f) forward.normalize();
     view.forward[0] = forward.x; view.forward[1] = forward.y; view.forward[2] = forward.z;
-    if (rp.mesh && rp.meshAlignment != MeshAlignment::Simulation && rp.meshAlignment != MeshAlignment::Velocity){
+    if (rp.mesh && rp.meshAlignment != particles::MeshAlignment::Simulation && rp.meshAlignment != particles::MeshAlignment::Velocity){
         // the simulation space's rotation in the world: the emitter's (Local), or none (World)
-        const Quaternion simRotation = prog.space == SimulationSpace::Local ? transform.worldRotation : Quaternion();
+        const Quaternion simRotation = prog.space == particles::SimulationSpace::Local ? transform.worldRotation : Quaternion();
         const Quaternion toSim = simRotation.inverse();
         const Vector3 up = toSim * (camTransform.worldRotation * Vector3(0.0f, 1.0f, 0.0f));
         view.up[0] = up.x; view.up[1] = up.y; view.up[2] = up.z;
         Quaternion align;
         switch (rp.meshAlignment){
-            case MeshAlignment::View: align = toSim * camTransform.worldRotation; break;
-            case MeshAlignment::World: align = toSim; break;
-            case MeshAlignment::Local: align = toSim * transform.worldRotation; break;
+            case particles::MeshAlignment::View: align = toSim * camTransform.worldRotation; break;
+            case particles::MeshAlignment::World: align = toSim; break;
+            case particles::MeshAlignment::Local: align = toSim * transform.worldRotation; break;
             default: break;
         }
         align.normalize();
         view.alignQuat[0] = align.x; view.alignQuat[1] = align.y; view.alignQuat[2] = align.z; view.alignQuat[3] = align.w;
     }
-    view.sort = rp.sort != SortMode::None && (rp.blend == ParticleBlend::Alpha || rp.blend == ParticleBlend::Premultiplied);
+    view.sort = rp.sort != particles::SortMode::None && (rp.blend == particles::ParticleBlend::Alpha || rp.blend == particles::ParticleBlend::Premultiplied);
     if (d.lod.enabled && d.lod.maxDistance > 0.0f){
         const Vector3 center((state.boundsMin[0] + state.boundsMax[0]) * 0.5f, (state.boundsMin[1] + state.boundsMax[1]) * 0.5f,
                              (state.boundsMin[2] + state.boundsMax[2]) * 0.5f);
@@ -936,7 +935,7 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
     // the grid of a pixel particle (S49 R2): a Pixel Perfect Camera's is in the frame block; an
     // orthographic camera without one has 1 / PPU world units a base pixel; a perspective one
     // the screen's pixels at the emitter's depth (Wobble's scale only)
-    const PixelParams& pix = rp.pixel;
+    const particles::PixelParams& pix = rp.pixel;
     float worldPerPixel = 1.0f / (float)std::max(Engine::getPixelsPerUnit(), 1);
     if (pix.active){
         const float heightUnits = std::fabs(camera.topClip - camera.bottomClip);
@@ -963,15 +962,15 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
 
     // the uniform blocks
     alignas(16) unsigned char vsBlock[sizeof(vs_particles_params_t) + 2 * MAX_PARTICLE_LIGHTS * 16 + kMaxSpriteRects * 16 +
-                                      sizeof(vs_particles_pixel_t) + sizeof(AnalyticBlock)] = {};
+                                      sizeof(vs_particles_pixel_t) + sizeof(particles::AnalyticBlock)] = {};
     vs_particles_params_t& vs = *reinterpret_cast<vs_particles_params_t*>(vsBlock);
     vs.modelMatrix = simToWorld;
-    const float sheetKind = rp.sheet == SheetKind::Sprites ? 2.0f : (rp.sheet == SheetKind::Grid ? 1.0f : 0.0f);
+    const float sheetKind = rp.sheet == particles::SheetKind::Sprites ? 2.0f : (rp.sheet == particles::SheetKind::Grid ? 1.0f : 0.0f);
     // (a ring draws as the mesh it is)
-    const RenderMode shaderMode = r.renderMode == RenderMode::Ring ? RenderMode::Mesh : r.renderMode;
+    const particles::RenderMode shaderMode = r.renderMode == particles::RenderMode::Ring ? particles::RenderMode::Mesh : r.renderMode;
     vs.mode = Vector4((float)(int)shaderMode, rp.verticalEmitter ? 1.0f : 0.0f, (float)std::max<uint32_t>(rp.frameCount, 1u), sheetKind);
-    vs.sheet = Vector4((float)std::max<uint32_t>(rp.tilesX, 1u), (float)std::max<uint32_t>(rp.tilesY, 1u), rp.meshAlignment == MeshAlignment::Velocity ? 1.0f : 0.0f,
-                       prog.trails.textureMode == TrailTextureMode::Tile ? kTrailTileRange : 1.0f);
+    vs.sheet = Vector4((float)std::max<uint32_t>(rp.tilesX, 1u), (float)std::max<uint32_t>(rp.tilesY, 1u), rp.meshAlignment == particles::MeshAlignment::Velocity ? 1.0f : 0.0f,
+                       prog.trails.textureMode == particles::TrailTextureMode::Tile ? particles::kTrailTileRange : 1.0f);
     vs.stretch = Vector4(rp.cameraScale, rp.speedScale, rp.lengthScale, rp.freezeInView ? 1.0f : 0.0f);
     const bool perspective = camera.type == CameraType::CAMERA_PERSPECTIVE;
     const float viewHeight = perspective ? 2.0f * std::tan(camera.yfov * 0.5f) : std::fabs(camera.topClip - camera.bottomClip);
@@ -1023,7 +1022,7 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
     fs_particles_params_t fs;
     // a billboard without a texture (nor a sheet over it) draws a soft disc unless it asks for squares
     const bool sheet = d.textureSheetAnimation.present && d.textureSheetAnimation.enabled;
-    const bool disc = r.texture.empty() && r.untexturedShape == UntexturedShape::Disc && !sheet;
+    const bool disc = r.texture.empty() && r.untexturedShape == particles::UntexturedShape::Disc && !sheet;
     fs.blend = Vector4((float)(int)r.blend, disc ? 1.0f : 0.0f, 0.0f, 0.0f);
     const Vector3 emissionLinear = Color::sRGBToLinear(Vector3(r.emissionColor.x, r.emissionColor.y, r.emissionColor.z));
     fs.emissionColor = Vector4(emissionLinear, rd.emission.empty() ? 0.0f : 1.0f);
@@ -1036,14 +1035,14 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
         vsPixel.pixelGrid = Vector4(1.0f / (float)std::max(Engine::getPixelsPerUnit(), 1), onGrid ? 1.0f : 0.0f,
                                     camera.type == CameraType::CAMERA_PERSPECTIVE ? 1.0f : 0.0f, (float)pix.rotationSteps);
         vsPixel.pixelStreak = Vector4(pix.streakLengthScale, pix.streakMaxLength, (float)pix.streakWidth, 0.0f);
-        fs.pixelFade = Vector4((float)(int)pix.fade, (float)pix.ditherSize, pix.ditherSpace == DitherSpace::Particle ? 1.0f : 0.0f,
-                               pix.secondary == SecondaryColorMode::Color ? 1.0f : 0.0f);
+        fs.pixelFade = Vector4((float)(int)pix.fade, (float)pix.ditherSize, pix.ditherSpace == particles::DitherSpace::Particle ? 1.0f : 0.0f,
+                               pix.secondary == particles::SecondaryColorMode::Color ? 1.0f : 0.0f);
         // positive offsets move toward the end of the ramp as it is read (after Reverse, R6)
         const float offset = (float)pix.secondaryOffset * (pix.ramp.rampReverse ? -1.0f : 1.0f);
         fs.pixelSecondary = Vector4(pix.secondaryColor[0], pix.secondaryColor[1], pix.secondaryColor[2], offset);
         fs.pixelShape = Vector4(shape, (float)pix.ringWidth, (float)pix.glowBands, (float)((pix.discRim ? 1 : 0) | (pix.dotShadeBottom ? 2 : 0)));
         fs.pixelStreak = Vector4(pix.streakHeadFraction, (float)pix.streakWidth, 0.0f, 0.0f);
-        const uint32_t rampCount = (pix.rampSource && pix.ramp.kind == GradientParam::Ramp) ? std::min<uint32_t>(pix.ramp.lutSize, kMaxRampColors) : 0u;
+        const uint32_t rampCount = (pix.rampSource && pix.ramp.kind == particles::GradientParam::Ramp) ? std::min<uint32_t>(pix.ramp.lutSize, particles::kMaxRampColors) : 0u;
         fs.pixelInfo = Vector4((float)rampCount, 0.0f, 0.0f, 0.0f);
         const uint32_t* bytes = rampCount ? prog.uints(pix.ramp.lut1) : nullptr;
         for (uint32_t k = 0; k < rampCount; k++){
@@ -1053,7 +1052,7 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
         }
     }
 
-    auto applyBlocks = [&](ObjectRender& render, ParticleRenderData::Slots& slots, uint64_t properties){
+    auto applyBlocks = [&](ObjectRender& render, particles::ParticleRenderData::Slots& slots, uint64_t properties){
         size_t size = sizeof(vs_particles_params_t);
         if (properties & ((1u << 5) | (1u << 6))){        // 'Lit', 'Sxw'
             vsLights(size);
@@ -1061,7 +1060,7 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
         }
         if (properties & (1u << 0)){                      // 'Tex': the sprite rects
             Vector4* rects = reinterpret_cast<Vector4*>(vsBlock + size);
-            if (rp.sheet == SheetKind::Sprites && rp.spriteCount > 0){
+            if (rp.sheet == particles::SheetKind::Sprites && rp.spriteCount > 0){
                 const float* source = reinterpret_cast<const float*>(reinterpret_cast<const unsigned char*>(prog.pool.data()) + rp.sprites);
                 for (uint32_t k = 0; k < std::min<uint32_t>(rp.spriteCount, kMaxSpriteRects); k++)
                     rects[k] = Vector4(source[k * 4], source[k * 4 + 1], source[k * 4 + 2], source[k * 4 + 3]);
@@ -1073,8 +1072,8 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
             size += sizeof(vsPixel);
         }
         if (properties & (1u << 13)){                     // 'Ana': this frame's time and forces
-            std::memcpy(vsBlock + size, &runtime.analytic()->block, sizeof(AnalyticBlock));
-            size += sizeof(AnalyticBlock);
+            std::memcpy(vsBlock + size, &runtime.analytic()->block, sizeof(particles::AnalyticBlock));
+            size += sizeof(particles::AnalyticBlock);
         }
         render.applyUniformBlock(slots.vsParams, (unsigned int)size, vsBlock);
         render.applyUniformBlock(slots.fsParams, (properties & (1u << 12)) ? (unsigned int)sizeof(fs) : (unsigned int)kFsParticlesBaseSize, &fs);
@@ -1101,36 +1100,36 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
             drawn++;
         }
     }else if (hasParticles && boundsVisible){
-        PackResult pack;
+        particles::PackResult pack;
         if (pix.holdFrameRate > 0.0f && !rp.customData){
             // Hold Frames (S49 R5): packed only when the emitter's time crosses a step; between
             // steps the step's records are drawn again (one pack per view)
             pack = rd.held.of((uint64_t)(uintptr_t)&camera).get(runtime, view, arena, &jobs::system(), pix.holdFrameRate);
         }else{
-            pack = ParticleRenderPrep::pack(runtime, view, arena, &jobs::system());
+            pack = particles::ParticleRenderPrep::pack(runtime, view, arena, &jobs::system());
         }
         if (pack.count > 0){
             BufferRender* instanceBuffer = nullptr;
             size_t instanceOffset = 0;
             BufferRender* customBuffer = nullptr;
             size_t customOffset = 0;
-            bool streamed = appendParticleStream(particleInstanceStream, pack.instances, sizeof(ParticleInstance) * pack.count, instanceBuffer, instanceOffset);
+            bool streamed = appendParticleStream(particleInstanceStream, pack.instances, sizeof(particles::ParticleInstance) * pack.count, instanceBuffer, instanceOffset);
             if (streamed && rp.customData)
-                streamed = appendParticleStream(particleCustomStream, pack.custom, sizeof(ParticleCustomInstance) * pack.count, customBuffer, customOffset);
+                streamed = appendParticleStream(particleCustomStream, pack.custom, sizeof(particles::ParticleCustomInstance) * pack.count, customBuffer, customOffset);
             if (streamed && rp.mesh){
                 BufferRender* rotationBuffer = nullptr;
                 size_t rotationOffset = 0;
-                if (appendParticleStream(particleRotationStream, pack.mesh, sizeof(ParticleMeshInstance) * pack.count, rotationBuffer, rotationOffset)){
+                if (appendParticleStream(particleRotationStream, pack.mesh, sizeof(particles::ParticleMeshInstance) * pack.count, rotationBuffer, rotationOffset)){
                     for (uint32_t m = 0; m < rd.meshCount; m++){
                         if (pack.meshCount[m] == 0)
                             continue;
                         ObjectRender& render = rd.meshes[m];
                         if (!render.beginDraw(pipType))
                             continue;
-                        render.replaceVertexBuffer(&particleInstancePlaceholder, instanceBuffer, instanceOffset + (size_t)pack.meshFirst[m] * sizeof(ParticleInstance));
-                        render.replaceVertexBuffer(&particleRotationPlaceholder, rotationBuffer, rotationOffset + (size_t)pack.meshFirst[m] * sizeof(ParticleMeshInstance));
+                        render.replaceVertexBuffer(&particleInstancePlaceholder, instanceBuffer, instanceOffset + (size_t)pack.meshFirst[m] * sizeof(particles::ParticleInstance));
+                        render.replaceVertexBuffer(&particleRotationPlaceholder, rotationBuffer, rotationOffset + (size_t)pack.meshFirst[m] * sizeof(particles::ParticleMeshInstance));
                         if (customBuffer)
-                            render.replaceVertexBuffer(&particleCustomPlaceholder, customBuffer, customOffset + (size_t)pack.meshFirst[m] * sizeof(ParticleCustomInstance));
+                            render.replaceVertexBuffer(&particleCustomPlaceholder, customBuffer, customOffset + (size_t)pack.meshFirst[m] * sizeof(particles::ParticleCustomInstance));
                         applyBlocks(render, rd.meshSlots, rd.meshProperties);
                         render.draw(0, rd.meshBuffers[m].indexCount, pack.meshCount[m]);
                         drawn++;
@@ -1140,7 +1139,7 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
                 ObjectRender& render = rd.quads;
                 BufferRender* pixelBuffer = nullptr;
                 size_t pixelOffset = 0;
-                if (pack.pixel && !appendParticleStream(particlePixelStream, pack.pixel, sizeof(ParticlePixelInstance) * pack.count, pixelBuffer, pixelOffset))
+                if (pack.pixel && !appendParticleStream(particlePixelStream, pack.pixel, sizeof(particles::ParticlePixelInstance) * pack.count, pixelBuffer, pixelOffset))
                     pixelBuffer = nullptr;
                 if (render.beginDraw(pipType)){
                     render.replaceVertexBuffer(&particleInstancePlaceholder, instanceBuffer, instanceOffset);
@@ -1157,14 +1156,14 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
     }
 
     if (hasTrails){
-        const TrailPack trails = ParticleRenderPrep::packTrails(runtime, arena);
+        const particles::TrailPack trails = particles::ParticleRenderPrep::packTrails(runtime, arena);
         // the triangles cover one strip of up to their points, or strips of exactly that many
         const bool fits = trails.strips <= rd.trailIndexCapacity &&
                           (trails.strips == 1 ? trails.pointsPerStrip <= rd.trailIndexPoints : trails.pointsPerStrip == rd.trailIndexPoints);
         if (trails.strips > 0 && fits){
             BufferRender* trailBuffer = nullptr;
             size_t trailOffset = 0;
-            const size_t bytes = sizeof(TrailVertex) * (size_t)trails.strips * trails.pointsPerStrip * 2;
+            const size_t bytes = sizeof(particles::TrailVertex) * (size_t)trails.strips * trails.pointsPerStrip * 2;
             ObjectRender& render = rd.trails;
             if (appendParticleStream(particleTrailStream, trails.vertices, bytes, trailBuffer, trailOffset) && render.beginDraw(pipType)){
                 render.replaceVertexBuffer(&particleTrailPlaceholder, trailBuffer, trailOffset);

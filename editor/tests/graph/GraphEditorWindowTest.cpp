@@ -38,6 +38,8 @@
 #include <memory>
 #include <string>
 
+namespace GraphEditorWindowTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -762,3 +764,5 @@ TEST_F(GraphEditorWindowTest, AProjectSwitchReachesEveryGraphWindow) {
     EXPECT_FALSE(kindWindow.getDocument()) << "the kind's window lets its graph go too";
     EXPECT_EQ(kindWindow.closed, 1);
 }
+
+}  // namespace GraphEditorWindowTest_cpp

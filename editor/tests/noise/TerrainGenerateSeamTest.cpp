@@ -39,6 +39,8 @@
 #include <thread>
 #include <vector>
 
+namespace TerrainGenerateSeamTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -285,3 +287,5 @@ TEST(TerrainGeneration, AJobThatThrowsReportsItsError) {
     EXPECT_NE(got.error.find("out of memory"), std::string::npos) << got.error;
     EXPECT_TRUE(run->finished());
 }
+
+}  // namespace TerrainGenerateSeamTest_cpp

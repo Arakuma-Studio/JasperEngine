@@ -8,7 +8,6 @@
 #include "util/Fnv.h"
 
 using namespace jasperengine;
-using namespace jasperengine::cook;
 
 namespace jasperengine::cook {
 
@@ -82,11 +81,13 @@ namespace jasperengine::cook {
 
 }
 
+namespace jasperengine::cook {
+
 namespace {
     const ShaderType kDefaultShaderTypes[] = {ShaderType::MESH, ShaderType::UI, ShaderType::SKYBOX, ShaderType::POINTS, ShaderType::LINES};
 }
 
-void cook::writeSceneSettings(Writer& w, const Scene& scene) {
+void writeSceneSettings(Writer& w, const Scene& scene) {
     write(w, scene.getBackgroundColor());
     write(w, scene.getShadowQuality());
     w.f32(scene.getShadowDistance());
@@ -189,7 +190,7 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     w.f32(scene.getFixedTimestep());
 }
 
-void cook::readSceneSettings(Reader& r, Scene& scene) {
+void readSceneSettings(Reader& r, Scene& scene) {
     // a record before 1.8 was cooked from a scene whose 2D ambient never tinted without a Light 2D
     scene.setAmbientLight2DWithoutLights(false);
     Vector4 backgroundColor;
@@ -364,3 +365,5 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     if (r.atEnd()) return;
     scene.setFixedTimestep(r.f32());
 }
+
+}  // namespace jasperengine::cook

@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace LuaJsonTest_cpp {
+
 using namespace jasperengine;
 using scriptdata::ScriptDataTest;
 
@@ -375,3 +377,5 @@ TEST_F(LuaJsonTest, DecodesAMegabyteQuickly) {
 }
 
 }
+
+}  // namespace LuaJsonTest_cpp

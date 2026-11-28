@@ -25,7 +25,6 @@
 using namespace jasperengine;
 
 namespace je_file_sink {}
-using namespace je_file_sink;
 
 namespace je_file_sink {
 
@@ -67,7 +66,7 @@ namespace je_file_sink {
 
 RotatingFileSink::RotatingFileSink(Options options): options(std::move(options)) {
     showSource.store(this->options.showSource, std::memory_order_relaxed);
-    if (!this->options.rename) this->options.rename = osRename;
+    if (!this->options.rename) this->options.rename = je_file_sink::osRename;
     if (this->options.maxFiles < 1) this->options.maxFiles = 1;
     pending.reserve(64 * 1024);
     if (!openFile()) return;
@@ -89,7 +88,7 @@ bool RotatingFileSink::isOpen() const {
 
 bool RotatingFileSink::openFile() {
 #if defined(_WIN32)
-    HANDLE file = CreateFileW(widen(options.path).c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+    HANDLE file = CreateFileW(je_file_sink::widen(options.path).c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                               nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) return false;
     LARGE_INTEGER size{};
@@ -144,10 +143,10 @@ void RotatingFileSink::rotate() {
     const std::string& path = options.path;
     bool ok = true;
     const std::string last = path + "." + std::to_string(options.maxFiles);
-    if (fileExists(last)) removeFile(last);
+    if (je_file_sink::fileExists(last)) je_file_sink::removeFile(last);
     for (int i = options.maxFiles - 1; i >= 1 && ok; i--) {
         const std::string from = path + "." + std::to_string(i);
-        if (fileExists(from)) ok = options.rename(from, path + "." + std::to_string(i + 1));
+        if (je_file_sink::fileExists(from)) ok = options.rename(from, path + "." + std::to_string(i + 1));
     }
     if (ok) ok = options.rename(path, path + ".1");
     // reopened either way: a new file after a rotation, the same one (appending) after a failure

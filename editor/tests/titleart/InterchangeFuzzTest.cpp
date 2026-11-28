@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+namespace InterchangeFuzzTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -179,3 +181,5 @@ TEST(InterchangeFuzz, ImportersNeverCrash) {
     EXPECT_EQ(runs, 1500u);
     fs::remove_all(dir);
 }
+
+}  // namespace InterchangeFuzzTest_cpp

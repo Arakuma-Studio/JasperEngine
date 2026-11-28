@@ -29,6 +29,8 @@
 #include <cmath>
 #include <cstdio>
 
+namespace Title3DRendererGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -725,3 +727,5 @@ TEST(Title3DMathTest, CameraMapsTheCanvasPlaneOneToOne) {
     const auto pa = a.apply({1, 0, 0, 1}), pb = b.apply({1, 0, 0, 1});
     EXPECT_GT(std::abs(pa[1] - pb[1]) + std::abs(pa[2] - pb[2]), 0.1);
 }
+
+}  // namespace Title3DRendererGpuTest_cpp

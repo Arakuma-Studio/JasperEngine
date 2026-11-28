@@ -18,6 +18,8 @@
 
 #include <gtest/gtest.h>
 
+namespace StreamMigrationsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -495,3 +497,5 @@ TEST(StreamMigrations, SceneV9ToV10KeepsTheCameraRenderMode){
     EXPECT_FALSE(StreamMigrations::migrate(DocumentKind::Scene, current).migrated());
     EXPECT_FALSE(current["scene"]["htmlUiRenderMode"]);
 }
+
+}  // namespace StreamMigrationsTest_cpp

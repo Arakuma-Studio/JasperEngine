@@ -35,6 +35,8 @@
 #include <sstream>
 #include <thread>
 
+namespace TerrainWorldTreesTest_cpp {
+
 using namespace terrainprojecttest;
 using namespace jasperengine::terraincore;
 
@@ -319,3 +321,5 @@ TEST_F(TerrainWorldTreesTest, MassPlaceDistributesPerTile) {
     ASSERT_TRUE(history()->undo());
     EXPECT_EQ(treesFolderFiles(folder), before) << "one undo takes the four files back out";
 }
+
+}  // namespace TerrainWorldTreesTest_cpp

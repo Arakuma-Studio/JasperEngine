@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+namespace ProjectAssetFilesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -180,3 +182,5 @@ TEST(ProjectResolveAsset, AMissOutsideTheProjectImportsNothing) {
     std::error_code ec;
     EXPECT_FALSE(fs::exists(h.root / "outside.txt.meta", ec)) << "no identity is written next to a file outside the project";
 }
+
+}  // namespace ProjectAssetFilesTest_cpp

@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+namespace ShaderZeroCostTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -246,3 +248,5 @@ TEST(ShaderZeroCost, CavityNormalsOnlyWithCavity){
     for (uint64_t properties : enumerateDepthVariants(true))
         EXPECT_NE(properties & normals, 0u) << ShaderPool::getShaderStr(ShaderType::DEPTH, properties) << " has no 'Cvn' with Cavity on";
 }
+
+}  // namespace ShaderZeroCostTest_cpp

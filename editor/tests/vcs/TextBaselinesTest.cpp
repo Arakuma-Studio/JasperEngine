@@ -12,6 +12,8 @@
 
 #include <algorithm>
 
+namespace TextBaselinesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::test;
 
@@ -221,3 +223,5 @@ TEST(TextBaselines, SvnBaselineIsBase) {
     ASSERT_TRUE(result.ok) << result.message;
     EXPECT_NE(diff.find("+x"), std::string::npos) << diff;
 }
+
+}  // namespace TextBaselinesTest_cpp

@@ -29,6 +29,8 @@
 #include <string>
 #include <vector>
 
+namespace WaterTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -322,3 +324,5 @@ TEST(Water, ForkWithRoleIsWater) {
 
     ShaderManifests::setForkReader(nullptr);
 }
+
+}  // namespace WaterTest_cpp

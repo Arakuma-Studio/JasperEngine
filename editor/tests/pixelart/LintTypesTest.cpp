@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+namespace LintTypesTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::lint;
 
@@ -74,3 +76,5 @@ TEST(LintTypesTest, Verdicts) {
     EXPECT_FALSE(p.empty());
     EXPECT_TRUE(PixelProblem{}.empty());
 }
+
+}  // namespace LintTypesTest_cpp

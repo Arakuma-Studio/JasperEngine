@@ -13,6 +13,8 @@
 
 #include <limits>
 
+namespace StreamValueTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -111,3 +113,5 @@ TEST(StreamValue, TransformKeepsItsValues){
     EXPECT_EQ(read.rotation, transform.rotation);
     EXPECT_EQ(read.scale, transform.scale);
 }
+
+}  // namespace StreamValueTest_cpp

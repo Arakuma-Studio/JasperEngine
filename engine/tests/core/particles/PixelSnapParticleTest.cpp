@@ -17,6 +17,8 @@
 #include <utility>
 #include <vector>
 
+namespace PixelSnapParticleTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::particles;
 
@@ -118,3 +120,5 @@ TEST(PixelLine, StreakAndShardArePixelPerfectAtEveryAngle){
         }
     }
 }
+
+}  // namespace PixelSnapParticleTest_cpp

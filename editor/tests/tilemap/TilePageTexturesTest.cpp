@@ -15,6 +15,8 @@
 #include <filesystem>
 #include <string>
 
+namespace TilePageTexturesTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor::tilemap;
@@ -47,3 +49,5 @@ TEST(TilePageTextures, PageThatFailsIsReadAgainOnlyWhenItsFileChanges) {
     EXPECT_EQ(pages.decodes() - start, 3u);
     pages.clear();
 }
+
+}  // namespace TilePageTexturesTest_cpp

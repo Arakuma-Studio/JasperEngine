@@ -12,6 +12,8 @@
 
 #include <string>
 
+namespace StringFilesTest_cpp {
+
 using namespace jasperengine::editor;
 
 TEST(StringFiles, ImportsS87CsvAndXliff) {
@@ -70,3 +72,5 @@ TEST(StringFiles, PluralsSurviveXliffRoundTrip) {
     EXPECT_EQ(parsed.rows[0].targets.at("ru"), unit.targets["ru"].text);
     EXPECT_EQ(parsed.rows[0].maxChars, 20);
 }
+
+}  // namespace StringFilesTest_cpp

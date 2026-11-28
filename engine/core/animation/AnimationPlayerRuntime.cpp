@@ -102,14 +102,13 @@ void anim::ClipPreviewSession::reset(){
 
 namespace {
 
-    using namespace jasperengine::anim;
 
     float finiteOr(float value, float fallback){
         return std::isfinite(value) ? value : fallback;
     }
 
-    PlayerStateRuntime* findNamed(AnimationPlayerComponent& player, const std::string& name, const std::string& who){
-        AnimationPlayerRuntime& runtime = playerRuntime(player);
+    anim::PlayerStateRuntime* findNamed(AnimationPlayerComponent& player, const std::string& name, const std::string& who){
+        anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(player);
         int index = runtime.findState(name);
         if (index >= 0) return &runtime.states[(size_t)index];
         if (std::find(runtime.warnedStates.begin(), runtime.warnedStates.end(), name) == runtime.warnedStates.end()){
@@ -125,16 +124,16 @@ namespace {
     }
 
     // the queue of one layer (and the stops at cycle ends its states were given); -1: every layer
-    void clearQueue(AnimationPlayerRuntime& runtime, int layer){
+    void clearQueue(anim::AnimationPlayerRuntime& runtime, int layer){
         for (size_t l = 0; l < runtime.layers.size(); l++){
             if (layer < 0 || (int)l == layer) runtime.layers[l].queue.clear();
         }
-        for (PlayerStateRuntime& state : runtime.states){
+        for (anim::PlayerStateRuntime& state : runtime.states){
             if (layer < 0 || runtime.stateLayer(state) == layer) state.stopAtCycleEnd = false;
         }
     }
 
-    void warnOnce(AnimationPlayerRuntime& runtime, const std::string& key, const char* format, const std::string& who, const std::string& what){
+    void warnOnce(anim::AnimationPlayerRuntime& runtime, const std::string& key, const char* format, const std::string& who, const std::string& what){
         if (std::find(runtime.warnedLayers.begin(), runtime.warnedLayers.end(), key) != runtime.warnedLayers.end()) return;
         runtime.warnedLayers.push_back(key);
         Log::warn(format, who.c_str(), what.c_str());
@@ -416,16 +415,16 @@ namespace {
 
     // the runtime layers for the effective authored ones: a surviving name keeps its runtime
     // weight, blend and mask, unless the authored value changed since (then that is taken)
-    void rebuildLayers(AnimationPlayerRuntime& runtime, const std::vector<AnimationPlayerLayer>& authored){
-        std::vector<LayerRuntime> layers(authored.size());
+    void rebuildLayers(anim::AnimationPlayerRuntime& runtime, const std::vector<AnimationPlayerLayer>& authored){
+        std::vector<anim::LayerRuntime> layers(authored.size());
         for (size_t i = 0; i < authored.size(); i++){
             const AnimationPlayerLayer& source = authored[i];
-            LayerRuntime& layer = layers[i];
+            anim::LayerRuntime& layer = layers[i];
             const float weight = i == 0 ? 1.0f : clampWeight(source.weight);
             const AnimationLayerBlend blend = i == 0 ? AnimationLayerBlend::Override : source.blend;
             int old = runtime.findLayer(source.name);
             if (old >= 0){
-                LayerRuntime& previous = runtime.layers[(size_t)old];
+                anim::LayerRuntime& previous = runtime.layers[(size_t)old];
                 layer.weight = previous.weight;
                 layer.targetWeight = previous.targetWeight;
                 layer.fadeSpeed = previous.fadeSpeed;

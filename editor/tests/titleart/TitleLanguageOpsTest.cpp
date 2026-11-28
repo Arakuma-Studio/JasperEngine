@@ -13,6 +13,8 @@
 #include "titleart/TitleTranslations.h"
 #include "titleart/localisation/TitleLanguageOps.h"
 
+namespace TitleLanguageOpsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using TitleLanguageOpsJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
@@ -153,3 +155,5 @@ TEST_F(TitleLanguageOpsTest, SwapTheSourceLanguage) {
     ASSERT_TRUE(relabel.ok);
     EXPECT_EQ(relabel.doc.root["source_language"], "ja-JP");
 }
+
+}  // namespace TitleLanguageOpsTest_cpp

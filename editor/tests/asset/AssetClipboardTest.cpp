@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+namespace AssetClipboardTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine::editor;
 
@@ -68,3 +70,5 @@ TEST(AssetClipboard, PasteTargetDuringASearchIsTheStartFolder) {
     const fs::path result = "/p/assets/sprites/deep/hero.png";
     EXPECT_EQ(AssetClipboard::pasteTarget(start, &result, false), fs::path("/p/assets/sprites/deep"));
 }
+
+}  // namespace AssetClipboardTest_cpp

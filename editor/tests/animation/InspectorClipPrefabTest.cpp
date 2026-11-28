@@ -32,6 +32,8 @@
 #include <string>
 #include <vector>
 
+namespace InspectorClipPrefabTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -186,3 +188,5 @@ TEST(InspectorClipPrefab, AnOverriddenBlendShapeWeightRaisesTheTargetCount) {
     EXPECT_GE(instance.morphTargetCount, 4) << "a load keeps the overridden weight";
     sceneProject->isModified = false;
 }
+
+}  // namespace InspectorClipPrefabTest_cpp

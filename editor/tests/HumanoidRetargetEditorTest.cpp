@@ -54,6 +54,8 @@
 #include <memory>
 #include <string>
 
+namespace HumanoidRetargetEditorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -688,3 +690,5 @@ TEST_F(HumanoidEditorTest, ControllerFromClipsKeepsTheHumanoidFlags) {
     EXPECT_TRUE(states[1].mirror);
     EXPECT_TRUE(states[1].footIK);
 }
+
+}  // namespace HumanoidRetargetEditorTest_cpp

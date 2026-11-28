@@ -14,7 +14,6 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::camera;
 
 namespace{
 
@@ -27,23 +26,23 @@ namespace{
     }
 
     bool hasShakeExtension(const std::string& name){
-        const size_t length = std::char_traits<char>::length(SHAKE_EXTENSION);
-        return name.size() > length && name.compare(name.size() - length, length, SHAKE_EXTENSION) == 0;
+        const size_t length = std::char_traits<char>::length(camera::SHAKE_EXTENSION);
+        return name.size() > length && name.compare(name.size() - length, length, camera::SHAKE_EXTENSION) == 0;
     }
 
-    const char* stateName(const ShakeInstance& instance){
-        if (instance.isPaused() && instance.getState() != ShakeState::Stopped) return "paused";
+    const char* stateName(const camera::ShakeInstance& instance){
+        if (instance.isPaused() && instance.getState() != camera::ShakeState::Stopped) return "paused";
         switch (instance.getState()){
-            case ShakeState::FadingIn: return "fading_in";
-            case ShakeState::Sustained: return "sustained";
-            case ShakeState::FadingOut: return "fading_out";
+            case camera::ShakeState::FadingIn: return "fading_in";
+            case camera::ShakeState::Sustained: return "sustained";
+            case camera::ShakeState::FadingOut: return "fading_out";
             default: return "stopped";
         }
     }
 
     ShakeInstanceHandle shakeEveryGlobal(const ShakeSource& source, const ShakeOptions& options, bool fromPoint,
                                          const Vector3& point, float radius){
-        ShakePreset preset;
+        camera::ShakePreset preset;
         if (!CameraShake::resolveSource(source, preset)) return ShakeInstanceHandle();
         ShakeInstanceHandle handle;
         bool any = false;
@@ -71,7 +70,7 @@ namespace{
 
 // ---------------------------------------------------------------- ShakeInstanceHandle
 
-void ShakeInstanceHandle::add(const std::shared_ptr<ShakerRuntime>& runtime, uint64_t id){
+void ShakeInstanceHandle::add(const std::shared_ptr<camera::ShakerRuntime>& runtime, uint64_t id){
     if (!runtime || id == 0) return;
     members.push_back({runtime, id});
 }
@@ -83,19 +82,19 @@ void ShakeInstanceHandle::merge(const ShakeInstanceHandle& other){
 template<typename F>
 void ShakeInstanceHandle::forEachLive(F&& f) const{
     for (const Member& member : members){
-        if (std::shared_ptr<ShakerRuntime> runtime = member.runtime.lock()){
-            if (ShakerInstanceEntry* entry = runtime->findInstance(member.id)){
+        if (std::shared_ptr<camera::ShakerRuntime> runtime = member.runtime.lock()){
+            if (camera::ShakerInstanceEntry* entry = runtime->findInstance(member.id)){
                 f(*entry);
             }
         }
     }
 }
 
-ShakerInstanceEntry* ShakeInstanceHandle::firstLive() const{
+camera::ShakerInstanceEntry* ShakeInstanceHandle::firstLive() const{
     for (const Member& member : members){
-        if (std::shared_ptr<ShakerRuntime> runtime = member.runtime.lock()){
+        if (std::shared_ptr<camera::ShakerRuntime> runtime = member.runtime.lock()){
             // the component owns the runtime: the entry stays valid while the caller reads it
-            if (ShakerInstanceEntry* entry = runtime->findInstance(member.id)) return entry;
+            if (camera::ShakerInstanceEntry* entry = runtime->findInstance(member.id)) return entry;
         }
     }
     return nullptr;
@@ -106,7 +105,7 @@ void ShakeInstanceHandle::stop(){
 }
 
 void ShakeInstanceHandle::stop(float fade){
-    forEachLive([&](ShakerInstanceEntry& entry){ entry.instance.stop(fade); });
+    forEachLive([&](camera::ShakerInstanceEntry& entry){ entry.instance.stop(fade); });
 }
 
 void ShakeInstanceHandle::pause(){
@@ -114,7 +113,7 @@ void ShakeInstanceHandle::pause(){
 }
 
 void ShakeInstanceHandle::pause(float fade){
-    forEachLive([&](ShakerInstanceEntry& entry){ entry.instance.pause(fade); });
+    forEachLive([&](camera::ShakerInstanceEntry& entry){ entry.instance.pause(fade); });
 }
 
 void ShakeInstanceHandle::resume(){
@@ -122,11 +121,11 @@ void ShakeInstanceHandle::resume(){
 }
 
 void ShakeInstanceHandle::resume(float fade){
-    forEachLive([&](ShakerInstanceEntry& entry){ entry.instance.resume(fade); });
+    forEachLive([&](camera::ShakerInstanceEntry& entry){ entry.instance.resume(fade); });
 }
 
 bool ShakeInstanceHandle::isPaused() const{
-    const ShakerInstanceEntry* entry = firstLive();
+    const camera::ShakerInstanceEntry* entry = firstLive();
     return entry && entry->instance.isPaused();
 }
 
@@ -139,38 +138,38 @@ bool ShakeInstanceHandle::isValid() const{
 }
 
 float ShakeInstanceHandle::getStrengthScale() const{
-    const ShakerInstanceEntry* entry = firstLive();
+    const camera::ShakerInstanceEntry* entry = firstLive();
     return entry ? entry->instance.strengthScale : 0.0f;
 }
 
 void ShakeInstanceHandle::setStrengthScale(float scale){
     if (!std::isfinite(scale)) return;
-    forEachLive([&](ShakerInstanceEntry& entry){ entry.instance.strengthScale = std::max(0.0f, scale); });
+    forEachLive([&](camera::ShakerInstanceEntry& entry){ entry.instance.strengthScale = std::max(0.0f, scale); });
 }
 
 float ShakeInstanceHandle::getRoughnessScale() const{
-    const ShakerInstanceEntry* entry = firstLive();
+    const camera::ShakerInstanceEntry* entry = firstLive();
     return entry ? entry->instance.roughnessScale : 0.0f;
 }
 
 void ShakeInstanceHandle::setRoughnessScale(float scale){
     if (!std::isfinite(scale)) return;
-    forEachLive([&](ShakerInstanceEntry& entry){ entry.instance.roughnessScale = std::max(0.0f, scale); });
+    forEachLive([&](camera::ShakerInstanceEntry& entry){ entry.instance.roughnessScale = std::max(0.0f, scale); });
 }
 
 std::string ShakeInstanceHandle::getState() const{
-    const ShakerInstanceEntry* entry = firstLive();
+    const camera::ShakerInstanceEntry* entry = firstLive();
     return entry ? stateName(entry->instance) : "stopped";
 }
 
 int ShakeInstanceHandle::getCount() const{
     int count = 0;
-    forEachLive([&](ShakerInstanceEntry&){ count++; });
+    forEachLive([&](camera::ShakerInstanceEntry&){ count++; });
     return count;
 }
 
 std::string ShakeInstanceHandle::toString() const{
-    const ShakerInstanceEntry* entry = firstLive();
+    const camera::ShakerInstanceEntry* entry = firstLive();
     if (!entry) return "ShakeInstance(stopped)";
     return "ShakeInstance(" + entry->presetName + ", " + stateName(entry->instance) + ", " + std::to_string(getCount()) +
            (getCount() == 1 ? " shaker)" : " shakers)");
@@ -178,25 +177,25 @@ std::string ShakeInstanceHandle::toString() const{
 
 // ---------------------------------------------------------------- CameraShake
 
-bool CameraShake::resolvePreset(const std::string& nameOrPath, ShakePreset& out, std::string* error){
+bool CameraShake::resolvePreset(const std::string& nameOrPath, camera::ShakePreset& out, std::string* error){
     if (nameOrPath.empty()){
         if (error) *error = "no preset name";
         return false;
     }
     if (!hasShakeExtension(nameOrPath)){
-        if (const ShakePreset* builtin = findBuiltinShakePreset(nameOrPath)){
+        if (const camera::ShakePreset* builtin = camera::findBuiltinShakePreset(nameOrPath)){
             out = *builtin;
             return true;
         }
         if (error){
             std::string names;
-            for (const std::string& name : builtinShakePresetNames()) names += (names.empty() ? "" : ", ") + name;
+            for (const std::string& name : camera::builtinShakePresetNames()) names += (names.empty() ? "" : ", ") + name;
             *error = "unknown shake preset '" + nameOrPath + "': a built-in name (" + names + ") or a .shake path";
         }
         return false;
     }
     std::string why;
-    std::shared_ptr<const ShakePresetFile> file = ShakePresetPool::get(nameOrPath, &why);
+    std::shared_ptr<const camera::ShakePresetFile> file = ShakePresetPool::get(nameOrPath, &why);
     if (!file){
         if (error) *error = "shake preset " + why;
         return false;
@@ -205,7 +204,7 @@ bool CameraShake::resolvePreset(const std::string& nameOrPath, ShakePreset& out,
     return true;
 }
 
-bool CameraShake::resolveSource(const ShakeSource& source, ShakePreset& out){
+bool CameraShake::resolveSource(const ShakeSource& source, camera::ShakePreset& out){
     if (source.inlinePreset){
         out = source.preset;
         sanitizeShakePreset(out);
@@ -279,5 +278,5 @@ void CameraShake::stopAll(float fade){
 }
 
 std::vector<std::string> CameraShake::getPresetNames(){
-    return builtinShakePresetNames();
+    return camera::builtinShakePresetNames();
 }

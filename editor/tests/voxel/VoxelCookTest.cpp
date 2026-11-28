@@ -28,11 +28,12 @@
 #include <set>
 #include <string>
 
+namespace voxel_cook_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::cook;
 
-namespace voxel_cook_test {
 
     voxel::VolumeDesc desc(int x, int y, int z, int levels = 1) {
         voxel::VolumeDesc out;
@@ -80,6 +81,8 @@ namespace voxel_cook_test {
     }
 
 }
+
+namespace voxel_cook_test {
 
 using namespace voxel_cook_test;
 
@@ -157,6 +160,8 @@ TEST(VoxelExport, CollectorListsTierVariants) {
     EXPECT_EQ(voxelDefines(VoxelQuality::Auto), (std::set<std::string>{"HAS_VOXEL", "VOXEL_TIER_HIGH", "VOXEL_TIER_MEDIUM", "VOXEL_TIER_LOW"}));
 }
 
+}  // namespace voxel_cook_test
+
 namespace voxel_cook_test {
 
     // How many MESH keys of a scene with one terrain carry 'Thl', with or without an attached volume
@@ -221,6 +226,8 @@ namespace voxel_cook_test {
     }
 
 }
+
+namespace voxel_cook_test {
 
 // AC39: the chunks' variants come out of the collector's per-device-tier pass, the one an export reads
 TEST(VoxelExport, CollectorShipsChunkVariants) {
@@ -392,3 +399,5 @@ TEST(VoxelCook, FileIsWrittenAtomically) {
     EXPECT_TRUE(isVoxelVolumeFile("x/Y.VoxelVolume"));
     EXPECT_FALSE(isVoxelVolumeFile("x/y.navmesh"));
 }
+
+}  // namespace voxel_cook_test

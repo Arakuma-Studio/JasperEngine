@@ -21,6 +21,8 @@
 #include <atomic>
 #include <string>
 
+namespace MeshSystemImportGateTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -87,3 +89,5 @@ TEST_F(MeshSystemImportGate, OnlyFbxModelsAreAsked) {
     MeshSystem::setModelImportGate(nullptr);
     EXPECT_FALSE(MeshSystem::isModelImportPending("models/Rock.fbx")) << "no gate: a game asks nothing";
 }
+
+}  // namespace MeshSystemImportGateTest_cpp

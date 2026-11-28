@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+namespace MaterialPbrTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -588,3 +590,5 @@ TEST(VertexColorUse, VariantNeedsVertexColours){
     for (const std::string& define : RenderSystem::getSubmeshShaderVariant(lit, inputs).litDefines)
         EXPECT_FALSE(MaterialPbr::isVertexColorDefine(define)) << define;
 }
+
+}  // namespace MaterialPbrTest_cpp

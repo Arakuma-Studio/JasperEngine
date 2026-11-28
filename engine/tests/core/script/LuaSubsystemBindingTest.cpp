@@ -21,6 +21,8 @@
 
 #include <string>
 
+namespace LuaSubsystemBindingTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::test::makeTransformEntity;
 
@@ -112,3 +114,5 @@ TEST(LuaSubsystems, ActionStartOmittedNewRunIsTrue){
     // a new run, as C++ actionStart(e): its frames start again
     EXPECT_FALSE(scene.getComponent<AnimationComponent>(animation).actions[0].started);
 }
+
+}  // namespace LuaSubsystemBindingTest_cpp

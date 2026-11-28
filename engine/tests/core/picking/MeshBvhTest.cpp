@@ -19,6 +19,8 @@
 #include <cstring>
 #include <vector>
 
+namespace MeshBvhTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -575,3 +577,5 @@ TEST(MeshBvh, OverlappingMatchesBruteForce){
         }
     }
 }
+
+}  // namespace MeshBvhTest_cpp

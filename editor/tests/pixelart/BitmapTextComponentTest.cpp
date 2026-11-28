@@ -31,6 +31,8 @@
 #include <string>
 #include <vector>
 
+namespace BitmapTextComponentTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -375,3 +377,5 @@ TEST(BitmapText, ScenesPreloadTheirBitmapFonts){
     const SceneResources resources = editor::Project::collectResourcesInRegistry(&s.scene);
     EXPECT_EQ(resources.bitmapFonts, (std::vector<std::string>{"fonts/hud.bitmapfont", "fonts/extra.fnt"}));
 }
+
+}  // namespace BitmapTextComponentTest_cpp

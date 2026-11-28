@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+namespace TilemapBenchTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -168,3 +170,5 @@ TEST(TilemapBench, AnimatedChunkPatch) {
         EXPECT_LT(us, 30.0 * slack);
     }
 }
+
+}  // namespace TilemapBenchTest_cpp

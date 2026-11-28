@@ -41,6 +41,8 @@
 #include <string>
 #include <vector>
 
+namespace VatImportTest_cpp {
+
 using namespace jasperengine;
 namespace fs = std::filesystem;
 namespace ev = jasperengine::editor::vat;
@@ -1355,3 +1357,5 @@ TEST(VatImport, NonFiniteDecodedDataIsRefused) {
     ASSERT_TRUE(hasError(r, "invalid_data")) << issues(r);
     EXPECT_NE(issues(r).find("inf at frame "), std::string::npos) << issues(r);
 }
+
+}  // namespace VatImportTest_cpp

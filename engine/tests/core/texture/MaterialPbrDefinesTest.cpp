@@ -13,6 +13,8 @@
 #include <type_traits>
 #include <vector>
 
+namespace MaterialPbrDefinesTest_cpp {
+
 using namespace jasperengine;
 
 TEST(MaterialPbrDefines, BitsAreSixtyFourWide){
@@ -46,3 +48,5 @@ TEST(MaterialPbrDefines, BitsAreSixtyFourWide){
     EXPECT_TRUE(std::is_sorted(defines.begin(), defines.end()));
     EXPECT_EQ(MaterialPbr::getDefineBit("NOT_A_DEFINE"), 0u);
 }
+
+}  // namespace MaterialPbrDefinesTest_cpp

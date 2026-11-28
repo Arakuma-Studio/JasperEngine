@@ -13,6 +13,8 @@
 #include <limits>
 #include <vector>
 
+namespace SplineProfileTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 
@@ -293,3 +295,5 @@ TEST(SplineProfileTests, GroundAuthorityFollowsTheCrossSection){
     EXPECT_EQ(resolveGroundAuthority(SplineProfileShape::Flat, true), SplineGroundAuthority::None);
     EXPECT_EQ(resolveGroundAuthority(SplineProfileShape::Crown, true), SplineGroundAuthority::None);
 }
+
+}  // namespace SplineProfileTest_cpp

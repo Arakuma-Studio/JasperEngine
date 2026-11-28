@@ -40,10 +40,11 @@
 #include <string>
 #include <vector>
 
+namespace light2d_steps_gpu_test {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
-namespace light2d_steps_gpu_test {
 
     constexpr int kTextureSize = 64;
     constexpr float kObjectSize = 128.0f;

@@ -19,7 +19,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::recordinput;
+
+namespace jasperengine::editor::recordinput {
 
 namespace fs = std::filesystem;
 
@@ -47,7 +48,7 @@ namespace {
 
 }
 
-bool recordinput::isInputFile(const fs::path& path) {
+bool isInputFile(const fs::path& path) {
     const std::string name = FileUtils::pathToUtf8(path.filename());
     static const std::string suffix = ".input.json";
     return name.size() > suffix.size() && name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0;
@@ -124,3 +125,5 @@ bool InputRecordingInspector::draw(const std::vector<fs::path>& selection) {
     ImGui::TextDisabled("Read-only: edit the file as text.");
     return true;
 }
+
+}  // namespace jasperengine::editor::recordinput

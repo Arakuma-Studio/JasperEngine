@@ -26,6 +26,8 @@
 #include <string>
 #include <vector>
 
+namespace MusicPlayerTest_cpp {
+
 using namespace jasperengine;
 namespace fs = std::filesystem;
 
@@ -300,3 +302,5 @@ TEST_F(MusicPlayerTest, RefusedArgumentsDoNothing) {
     EXPECT_FALSE(Audio::playStinger("hit.wav", "section_end").isValid());
     EXPECT_TRUE(starts("music").empty());
 }
+
+}  // namespace MusicPlayerTest_cpp

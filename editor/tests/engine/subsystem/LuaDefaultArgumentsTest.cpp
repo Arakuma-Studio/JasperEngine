@@ -23,6 +23,8 @@
 #include <filesystem>
 #include <string>
 
+namespace LuaDefaultArgumentsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::physics2dtest;
 namespace fs = std::filesystem;
@@ -87,3 +89,5 @@ TEST(LuaDefaults, Rigidbody2DForceWakesByDefault) {
     world.step(5);
     EXPECT_GT(world.rb(pushed).getPosition().y, before.y);
 }
+
+}  // namespace LuaDefaultArgumentsTest_cpp

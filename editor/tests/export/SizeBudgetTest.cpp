@@ -21,6 +21,8 @@
 #include <sstream>
 #include <string>
 
+namespace SizeBudgetTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -138,3 +140,5 @@ TEST(SizeBudgetTest, SettingsRowsUndo) {
     EXPECT_NE(std::find(keys.begin(), keys.end(), "player.size_budgets"), keys.end());
     EXPECT_NE(std::find(keys.begin(), keys.end(), "player.size_budget_action"), keys.end());
 }
+
+}  // namespace SizeBudgetTest_cpp

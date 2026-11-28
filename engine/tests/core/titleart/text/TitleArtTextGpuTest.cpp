@@ -21,6 +21,8 @@
 #include <chrono>
 #include <functional>
 
+namespace TitleArtTextGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -221,3 +223,5 @@ TEST_F(TitleArtTextGpu, ClassicFixture) {
                 peak / 1048576.0, (unsigned long long)stats.floodPasses, (unsigned long long)stats.floodPassesUnbounded, ms,
                 (unsigned long long)fullPasses, (unsigned long long)movePasses, (unsigned long long)colourPasses);
 }
+
+}  // namespace TitleArtTextGpuTest_cpp

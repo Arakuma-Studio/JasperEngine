@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PlaneTest_cpp {
+
 using namespace jasperengine;
 
 TEST(Plane, ConstantIsTheDistanceAlongTheNormal){
@@ -70,3 +72,5 @@ TEST(Plane, ProjectVectorDropsTheNormalComponent){
     const Plane plane(Vector3::UNIT_Y, 0.0f);
     EXPECT_VEC_NEAR(plane.projectVector(Vector3(1, 5, 2)), Vector3(1, 0, 2), 1e-6f);
 }
+
+}  // namespace PlaneTest_cpp

@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+namespace ObjectRenderShaderGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -118,3 +120,5 @@ TEST(ObjectRenderShaderGpu, BindSlotsKeepStrideApart){
     vec2s.getRender()->destroyBuffer();
     vec4s.getRender()->destroyBuffer();
 }
+
+}  // namespace ObjectRenderShaderGpuTest_cpp

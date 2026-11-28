@@ -22,7 +22,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::gametests;
+
+namespace jasperengine::editor::gametests {
 
 namespace {
 
@@ -72,7 +73,7 @@ namespace {
 
 }
 
-gametest::Target gametests::editorTarget(const gametest::Settings& settings) {
+gametest::Target editorTarget(const gametest::Settings& settings) {
     gametest::Target target;
     target.platform = gametest::hostPlatformName();
     target.arch = gametest::hostArchName();
@@ -83,12 +84,12 @@ gametest::Target gametests::editorTarget(const gametest::Settings& settings) {
     return target;
 }
 
-std::string gametests::nothingMatchedText(const RunRequest& request) {
+std::string nothingMatchedText(const RunRequest& request) {
     return "No test matched \"" + request.filter + "\" (mode " + request.mode + (request.failedOnly ? ", failed_only" : "") +
            "): run_tests {action: \"list\"} shows the case ids.";
 }
 
-Selection gametests::selectCases(Project* project, const RunRequest& request) {
+Selection selectCases(Project* project, const RunRequest& request) {
     Selection out;
     out.root = findRoot(project->getProjectPath());
     if (out.root.empty()) {
@@ -257,7 +258,7 @@ void TestRun::finish(bool cancelledRun) {
     if (callback) callback(*lastOutcome);
 }
 
-bool gametests::importResults(Project* project, const fs::path& file, RunOutcome& out, std::string& error) {
+bool importResults(Project* project, const fs::path& file, RunOutcome& out, std::string& error) {
     out = RunOutcome();
     const fs::path root = findRoot(project->getProjectPath());
     if (root.empty()) {
@@ -328,7 +329,7 @@ bool gametests::importResults(Project* project, const fs::path& file, RunOutcome
     return true;
 }
 
-bool gametests::acceptCaptures(Project* project, const std::vector<std::string>& captures, bool forTarget, std::vector<std::string>& written,
+bool acceptCaptures(Project* project, const std::vector<std::string>& captures, bool forTarget, std::vector<std::string>& written,
                                std::string& error) {
     const fs::path projectDir = project->getProjectPath();
     const fs::path root = findRoot(projectDir);
@@ -382,3 +383,5 @@ bool gametests::acceptCaptures(Project* project, const std::vector<std::string>&
                                             written.size() == 1 ? "Accept Image " + fs::path(written[0]).filename().string()
                                                                 : "Accept " + std::to_string(written.size()) + " Images");
 }
+
+}  // namespace jasperengine::editor::gametests

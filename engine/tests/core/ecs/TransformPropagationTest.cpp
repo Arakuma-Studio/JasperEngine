@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+namespace TransformPropagationTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -189,3 +191,5 @@ TEST(TransformPropagation, WorldPoseOnDemandDoesNotAllocate){
     EXPECT_EQ(dirty.count(), 0u);
     EXPECT_EQ(sum, 0.0f);
 }
+
+}  // namespace TransformPropagationTest_cpp

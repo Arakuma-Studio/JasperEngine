@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+namespace CommandBufferTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::test::makeTransformEntity;
 using jasperengine::test::LogCapture;
@@ -224,3 +226,5 @@ TEST(CommandBufferTest, ConsecutiveDestroysCompactOnce){
     EXPECT_EQ(transforms->getEntity(0), entities[1]);
     EXPECT_EQ(transforms->getCompactionCount(), compactions + 1);
 }
+
+}  // namespace CommandBufferTest_cpp

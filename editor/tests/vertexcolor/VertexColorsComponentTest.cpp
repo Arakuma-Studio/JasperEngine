@@ -36,12 +36,12 @@
 #include <stdexcept>
 #include <string>
 
+// (a namespace of this file's own, tests included: a unity build merges the test sources)
+namespace vertexcolor_VertexColorsComponentTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
-
-// (a named namespace, tests included: a unity build merges the test sources)
-namespace vertex_colors_component_test {
     using namespace jasperengine::editor::test;
 
     constexpr ComponentType VC = ComponentType::VertexColorsComponent;
@@ -351,4 +351,4 @@ TEST(AssetTypes, VertexColorsValueIs40) {
     EXPECT_EQ(reference.guid, guid);
 }
 
-} // namespace vertex_colors_component_test
+}  // namespace vertexcolor_VertexColorsComponentTest_cpp

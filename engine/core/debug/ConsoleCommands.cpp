@@ -27,9 +27,12 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::console;
+
+namespace jasperengine::console {
 
 FunctionSubscribe<void(const std::string&)> Events::onCheatUsed;
+
+}  // namespace jasperengine::console
 
 namespace jasperengine::console {
 
@@ -39,6 +42,8 @@ namespace jasperengine::console {
     };
 
 }
+
+namespace jasperengine::console {
 
 namespace {
 
@@ -1001,7 +1006,7 @@ Result Executor::run(const std::string& line, Source source){
 
 // ---------------------------------------------------------------- registry
 
-bool console::add(CommandSpec spec, std::string* error){
+bool add(CommandSpec spec, std::string* error){
     Registry& r = registry();
     std::string problem = specProblem(spec);
     if (problem.empty() && spec.name == "help")
@@ -1065,14 +1070,14 @@ bool console::add(CommandSpec spec, std::string* error){
     return true;
 }
 
-void console::remove(const std::string& name){
+void remove(const std::string& name){
     if (!registryStorage)
         return;
     std::vector<CommandSpec>& game = registryStorage->game;
     game.erase(std::remove_if(game.begin(), game.end(), [&name](const CommandSpec& c){ return c.name == name; }), game.end());
 }
 
-void console::removeByTag(const std::string& substring){
+void removeByTag(const std::string& substring){
     if (!registryStorage || substring.empty())
         return;
     std::vector<CommandSpec>& game = registryStorage->game;
@@ -1081,18 +1086,18 @@ void console::removeByTag(const std::string& substring){
     }), game.end());
 }
 
-void console::removeOwned(){
+void removeOwned(){
     if (!registryStorage)
         return;
     std::vector<CommandSpec>& game = registryStorage->game;
     game.erase(std::remove_if(game.begin(), game.end(), [](const CommandSpec& c){ return !c.ownerTag.empty(); }), game.end());
 }
 
-const CommandSpec* console::find(const std::string& nameOrAlias){
+const CommandSpec* find(const std::string& nameOrAlias){
     return findAny(registry(), consoleLower(nameOrAlias));
 }
 
-std::vector<const CommandSpec*> console::list(){
+std::vector<const CommandSpec*> list(){
     Registry& r = registry();
     std::vector<const CommandSpec*> out;
     for (const CommandSpec& spec : r.game)
@@ -1105,7 +1110,7 @@ std::vector<const CommandSpec*> console::list(){
     return out;
 }
 
-std::string console::usageOf(const CommandSpec& spec){
+std::string usageOf(const CommandSpec& spec){
     if (!spec.usage.empty())
         return spec.usage;
     std::string usage = spec.name;
@@ -1119,7 +1124,7 @@ std::string console::usageOf(const CommandSpec& spec){
     return usage;
 }
 
-nlohmann::json console::describe(const CommandSpec& spec){
+nlohmann::json describe(const CommandSpec& spec){
     nlohmann::json args = nlohmann::json::array();
     for (const ArgSpec& arg : spec.args){
         nlohmann::json item = {{"name", arg.name}, {"type", typeName(arg.type)}, {"optional", arg.optional || !arg.defaultValue.empty()}};
@@ -1137,11 +1142,11 @@ nlohmann::json console::describe(const CommandSpec& spec){
             {"cheat", spec.cheat}, {"builtIn", spec.builtIn}, {"args", args}};
 }
 
-Result console::execute(const std::string& line, Source source){
+Result execute(const std::string& line, Source source){
     return Executor::run(line, source);
 }
 
-Completion console::complete(const std::string& line, size_t cursor){
+Completion complete(const std::string& line, size_t cursor){
     Completion out;
     const std::string before = line.substr(0, std::min(cursor, line.size()));
     bool endsInSpace = false;
@@ -1208,27 +1213,27 @@ Completion console::complete(const std::string& line, size_t cursor){
 
 // ---------------------------------------------------------------- the gate, cheats, session
 
-void console::setCommandsEnabled(bool enabled){
+void setCommandsEnabled(bool enabled){
     enabledFlag.store(enabled, std::memory_order_relaxed);
 }
 
-bool console::commandsEnabled(){
+bool commandsEnabled(){
     return enabledFlag.load(std::memory_order_relaxed);
 }
 
-const char* console::disabledMessage(){
+const char* disabledMessage(){
     return "Console commands are off in this build (Project Settings > Debug > Console Commands).";
 }
 
-bool console::cheatsUsed(){
+bool cheatsUsed(){
     return cheatFlag;
 }
 
-void console::resetCheatsUsed(){
+void resetCheatsUsed(){
     cheatFlag = false;
 }
 
-void console::endSession(){
+void endSession(){
     cheatFlag = false;
     if (!registryStorage)
         return;
@@ -1236,18 +1241,18 @@ void console::endSession(){
     registryStorage->warnedShadows.clear();
 }
 
-void console::reset(){
+void reset(){
     delete registryStorage;
     registryStorage = nullptr;
     cheatFlag = false;
     enabledFlag.store(false, std::memory_order_relaxed);
 }
 
-bool console::isAllocated(){
+bool isAllocated(){
     return registryStorage != nullptr;
 }
 
-const char* console::statusName(Status status){
+const char* statusName(Status status){
     switch (status){
         case Status::Ok: return "ok";
         case Status::Unknown: return "unknown";
@@ -1259,7 +1264,7 @@ const char* console::statusName(Status status){
     return "error";
 }
 
-const char* console::typeName(ArgType type){
+const char* typeName(ArgType type){
     switch (type){
         case ArgType::String: return "string";
         case ArgType::Int: return "int";
@@ -1273,7 +1278,7 @@ const char* console::typeName(ArgType type){
     return "string";
 }
 
-bool console::parseType(const std::string& name, ArgType& out){
+bool parseType(const std::string& name, ArgType& out){
     static const ArgType types[] = {ArgType::String, ArgType::Int, ArgType::Float, ArgType::Bool, ArgType::Enum,
                                     ArgType::Vector3, ArgType::GameObject, ArgType::Rest};
     const std::string word = consoleLower(name);
@@ -1285,3 +1290,5 @@ bool console::parseType(const std::string& name, ArgType& out){
     }
     return false;
 }
+
+}  // namespace jasperengine::console

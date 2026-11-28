@@ -28,6 +28,8 @@
 #include <string>
 #include <vector>
 
+namespace TestRunnerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::gametest;
 
@@ -742,3 +744,5 @@ end)
         EXPECT_LE(perFrameMs, 0.05 * slack);
     }
 }
+
+}  // namespace TestRunnerTest_cpp

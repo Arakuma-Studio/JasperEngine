@@ -24,12 +24,13 @@
 #include <regex>
 #include <string>
 
+namespace android_template_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
 
-namespace android_template_test {
 
     const fs::path androidTemplateRepo = JASPER_TEST_REPO_DIR;
     const fs::path workspace = androidTemplateRepo / "engine" / "workspaces" / "androidstudio";
@@ -68,6 +69,8 @@ namespace android_template_test {
     }
 
 }
+
+namespace android_template_test {
 
 using namespace android_template_test;
 
@@ -201,3 +204,5 @@ TEST(AndroidTemplate, DebugPackageSuffixSetting) {
     command.undo();
     EXPECT_EQ(project->getAndroidProjectSettings().debugPackageSuffix, ".dbg");
 }
+
+}  // namespace android_template_test

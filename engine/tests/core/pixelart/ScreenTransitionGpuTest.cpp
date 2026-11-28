@@ -28,11 +28,11 @@
 #include <string>
 #include <vector>
 
-using namespace jasperengine;
+// the tests in Pixel Art's namespace, in a namespace of this file's own: a file-scope using-directive
+// or helper would reach the next source of a unity unit (docs/testing.md, Unity build)
+namespace jasperengine::pixelart::ScreenTransitionGpuTest_cpp {
+
 using namespace jasperengine::test;
-// the tests in Pixel Art's namespace: a file-scope using-directive would reach the next source of a
-// unity unit (docs/testing.md, Unity build)
-namespace jasperengine::pixelart {
 
 namespace {
 

@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+namespace TitleTargetPoolTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -184,3 +186,5 @@ TEST_F(TitleTargetPoolTest, TheNodeCacheGivesWayBeforeAnAcquireFails) {
     EXPECT_EQ(cache.size(), 0u) << "the cache gave everything it had";
     EXPECT_TRUE(held->target) << "the held result is still the job's";
 }
+
+}  // namespace TitleTargetPoolTest_cpp

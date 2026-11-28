@@ -36,12 +36,13 @@
 #include <stdexcept>
 #include <string>
 
+namespace vertex_paint_tool_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
 // (a named namespace, tests included: a unity build merges the test sources)
-namespace vertex_paint_tool_test {
     using namespace jasperengine::editor::vertexcolor;
 
     struct Headless {

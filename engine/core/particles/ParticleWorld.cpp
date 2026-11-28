@@ -14,9 +14,10 @@
 #endif
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
 
-uint32_t particles::defaultWorldBudget(){
+namespace jasperengine::particles {
+
+uint32_t defaultWorldBudget(){
 #if defined(__EMSCRIPTEN__)
     return kBudgetWeb;
 #elif defined(JASPERENGINE_ANDROID) || defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
@@ -49,7 +50,7 @@ uint32_t ParticleWorld::projectBudget(){
     return projectWorldBudget;
 }
 
-double particles::cullingStep(CullingMode mode, bool looping, bool visible, double dt, int tickRate, CullState& state, uint32_t& maxTicks){
+double cullingStep(CullingMode mode, bool looping, bool visible, double dt, int tickRate, CullState& state, uint32_t& maxTicks){
     maxTicks = kMaxTicksPerFrame;
     if (mode == CullingMode::Automatic)
         mode = looping ? CullingMode::PauseAndCatchUp : CullingMode::AlwaysSimulate;
@@ -213,3 +214,5 @@ uint32_t ParticleWorld::cullFields(const ForceFieldSample* fields, uint32_t coun
     }
     return n;
 }
+
+}  // namespace jasperengine::particles

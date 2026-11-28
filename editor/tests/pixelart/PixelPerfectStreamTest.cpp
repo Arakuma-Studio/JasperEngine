@@ -29,6 +29,8 @@
 #include <sstream>
 #include <string>
 
+namespace PixelPerfectStreamTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -294,3 +296,5 @@ TEST(VertexColorShaders, ShaderCacheVersionCoversTheVertexColorBits){
     ASSERT_EQ(name.rfind('v', 0), 0u) << name;
     EXPECT_GE(std::stoi(name.substr(1)), 74) << name;
 }
+
+}  // namespace PixelPerfectStreamTest_cpp

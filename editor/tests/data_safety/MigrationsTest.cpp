@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+namespace MigrationsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -103,3 +105,5 @@ TEST(Migrations, NewerFormatGated) {
                                                   std::to_string(Prefab::FILE_VERSION) + ").");
     EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Prefab), Prefab::FILE_VERSION);
 }
+
+}  // namespace MigrationsTest_cpp

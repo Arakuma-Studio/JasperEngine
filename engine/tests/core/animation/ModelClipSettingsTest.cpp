@@ -22,9 +22,10 @@
 #include <fstream>
 #include <iterator>
 
+namespace clipsidecartest {
+
 using namespace jasperengine;
 
-namespace clipsidecartest {
 
     std::string heroGltf(){
         std::ifstream file(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/hero_animated.gltf",
@@ -63,6 +64,8 @@ namespace clipsidecartest {
     };
 
 }
+
+namespace clipsidecartest {
 
 using clipsidecartest::ModelClipSettingsTest;
 
@@ -208,3 +211,5 @@ TEST_F(ModelClipSettingsTest, ThePoolReadsAChangedSidecarOnceTheModelIsInvalidat
     EXPECT_FLOAT_EQ(anim::wrapClipTime(1.25f * walk->getLength(), walk->getLength(), looping->getWrap()), 0.25f * walk->getLength())
         << "it plays on past its end";
 }
+
+}  // namespace clipsidecartest

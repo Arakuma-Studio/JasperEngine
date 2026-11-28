@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+namespace VoxelGeneratorTest_cpp {
+
 using namespace voxeltest;
 
 namespace {
@@ -189,3 +191,5 @@ TEST(VoxelGenerator, AGraphWithNoSdfOutputIsRefused) {
     EXPECT_EQ(compileVoxelGraph(json, error), nullptr);
     EXPECT_NE(error.find("sdf"), std::string::npos);
 }
+
+}  // namespace VoxelGeneratorTest_cpp

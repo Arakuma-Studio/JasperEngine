@@ -36,6 +36,8 @@
 #include <memory>
 #include <vector>
 
+namespace Sprite2DBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -217,3 +219,5 @@ TEST(PixelArtBatchBenchGpu, ThousandSnappedFlashing){
     sprites.clear();
     Engine::removeScene(&scene);
 }
+
+}  // namespace Sprite2DBenchTest_cpp

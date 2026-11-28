@@ -13,7 +13,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::pixelart;
+
+namespace jasperengine::editor::pixelart {
+
 using Json = nlohmann::json;
 
 namespace {
@@ -123,7 +125,7 @@ namespace {
 
 }
 
-const char* jasperengine::editor::pixelart::ruleStatusName(RuleStatus status){
+const char* ruleStatusName(RuleStatus status){
     switch (status){
         case RuleStatus::Fail: return "FAIL";
         case RuleStatus::Warn: return "WARN";
@@ -131,7 +133,7 @@ const char* jasperengine::editor::pixelart::ruleStatusName(RuleStatus status){
     }
 }
 
-const char* jasperengine::editor::pixelart::drawableKindName(DrawableKind kind){
+const char* drawableKindName(DrawableKind kind){
     switch (kind){
         case DrawableKind::Tilemap: return "tilemap";
         case DrawableKind::Image: return "image";
@@ -141,7 +143,7 @@ const char* jasperengine::editor::pixelart::drawableKindName(DrawableKind kind){
     }
 }
 
-Json jasperengine::editor::pixelart::number(double value){
+Json number(double value){
     if (!std::isfinite(value))
         return 0;
     const double rounded = std::round(value * 1000000.0) / 1000000.0;
@@ -152,11 +154,11 @@ Json jasperengine::editor::pixelart::number(double value){
     return rounded;
 }
 
-bool jasperengine::editor::pixelart::isPixelArtBase(int width, int height){
+bool isPixelArtBase(int width, int height){
     return width > 0 && height > 0 && width <= 640 && height <= 360;
 }
 
-PixelRotation jasperengine::editor::pixelart::effectiveRotation(const PixelArtDrawable& drawable, const PixelArtCamera& camera){
+PixelRotation effectiveRotation(const PixelArtDrawable& drawable, const PixelArtCamera& camera){
     if (drawable.kind == DrawableKind::Sprite && drawable.pixelRotation != PixelRotation::CAMERA)
         return drawable.pixelRotation;
     if (camera.hasComponent && camera.component.rotationMode == PixelRotation::ON_GRID)
@@ -164,7 +166,7 @@ PixelRotation jasperengine::editor::pixelart::effectiveRotation(const PixelArtDr
     return PixelRotation::STEPS_90;
 }
 
-const std::vector<std::string>& jasperengine::editor::pixelart::ruleIds(){
+const std::vector<std::string>& ruleIds(){
     static const std::vector<std::string> ids = [](){
         std::vector<std::string> out;
         for (const RuleEntry& entry : ruleTable())
@@ -174,33 +176,33 @@ const std::vector<std::string>& jasperengine::editor::pixelart::ruleIds(){
     return ids;
 }
 
-bool jasperengine::editor::pixelart::isKnownRule(const std::string& id){
+bool isKnownRule(const std::string& id){
     return (bool)ruleFunction(id);
 }
 
-void jasperengine::editor::pixelart::registerRule(std::string id, RuleFn rule){
+void registerRule(std::string id, RuleFn rule){
     std::lock_guard<std::mutex> lock(registryMutex());
     registered()[std::move(id)] = std::move(rule);
 }
 
-void jasperengine::editor::pixelart::unregisterRule(const std::string& id){
+void unregisterRule(const std::string& id){
     std::lock_guard<std::mutex> lock(registryMutex());
     registered().erase(id);
 }
 
-void jasperengine::editor::pixelart::setFontAnalyzer(FontAnalyzer analyzer){
+void setFontAnalyzer(FontAnalyzer analyzer){
     std::lock_guard<std::mutex> lock(registryMutex());
     fontAnalyzer() = analyzer ? std::move(analyzer) : FontAnalyzer(bitmapFontAnalysis);
 }
 
-std::string jasperengine::editor::pixelart::fontAnalysisKey(const std::vector<std::string>& fonts, unsigned int size){
+std::string fontAnalysisKey(const std::vector<std::string>& fonts, unsigned int size){
     std::string key = std::to_string(size);
     for (const std::string& font : fonts)
         key += ";" + font;
     return key;
 }
 
-void jasperengine::editor::pixelart::analyzeFonts(PixelArtCheckInput& input){
+void analyzeFonts(PixelArtCheckInput& input){
     FontAnalyzer analyzer;
     {
         std::lock_guard<std::mutex> lock(registryMutex());
@@ -237,7 +239,7 @@ PixelArtFontInfo jasperengine::editor::pixelart::rules::analyzeFont(const PixelA
     return analyzer(input.assetsRoot, fonts, size);
 }
 
-CheckResult jasperengine::editor::pixelart::run(const PixelArtCheckInput& input, const std::vector<std::string>& selected){
+CheckResult run(const PixelArtCheckInput& input, const std::vector<std::string>& selected){
     CheckResult result;
     // registered rules a later spec placed outside R10's table run after it, by id
     std::vector<std::string> order = ruleIds();
@@ -353,7 +355,7 @@ Json FixPlan::toJson() const{
     return out;
 }
 
-FixPlan jasperengine::editor::pixelart::plan(const CheckResult& result, const std::vector<std::string>& selection){
+FixPlan plan(const CheckResult& result, const std::vector<std::string>& selection){
     FixPlan out;
     // finding index -> chosen option id (empty: the default)
     std::map<size_t, std::string> chosen;
@@ -420,3 +422,5 @@ FixPlan jasperengine::editor::pixelart::plan(const CheckResult& result, const st
     out.needsPerson.assign(needsPerson.begin(), needsPerson.end());
     return out;
 }
+
+}  // namespace jasperengine::editor::pixelart

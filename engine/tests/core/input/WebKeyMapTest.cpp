@@ -14,6 +14,8 @@
 #include <set>
 #include <string>
 
+namespace WebKeyMapTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -141,3 +143,5 @@ TEST(WebKeyMap, TextEntryAttributes){
     notes.enterKey = EnterKey::Enter;
     EXPECT_FALSE(web::lineBreakIsActionKey(notes));
 }
+
+}  // namespace WebKeyMapTest_cpp

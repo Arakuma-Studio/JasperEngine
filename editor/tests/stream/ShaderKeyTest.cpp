@@ -21,8 +21,12 @@
 #include <unordered_set>
 #include <vector>
 
+namespace ShaderKeyTest_cpp {
+
 using namespace jasperengine;
 using editor::Stream;
+
+}  // namespace ShaderKeyTest_cpp
 
 namespace jasperengine {
     // failures print the key as the tools do
@@ -30,6 +34,8 @@ namespace jasperengine {
         *os << ShaderPool::getShaderKeyText(key);
     }
 }
+
+namespace ShaderKeyTest_cpp {
 
 namespace {
 
@@ -567,3 +573,5 @@ TEST(ShaderKey, Light2DStepsBitIsPinned) {
     ASSERT_TRUE(ShaderPool::parseShaderStr("mesh_UltL2dLst", parsed));
     EXPECT_EQ(parsed, ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(0) | shaderPropertyBit(22) | shaderPropertyBit(55)));
 }
+
+}  // namespace ShaderKeyTest_cpp

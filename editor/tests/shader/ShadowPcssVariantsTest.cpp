@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+namespace ShadowPcssVariantsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -88,3 +90,5 @@ TEST(ShadowPcssVariants, StayWithinTheBindLimitsOnEveryBackend){
         }
     }
 }
+
+}  // namespace ShadowPcssVariantsTest_cpp

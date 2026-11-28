@@ -57,12 +57,13 @@
 #include <cmath>
 #include <filesystem>
 
-using namespace jasperengine;
-using namespace jasperengine::editor;
-using Json = nlohmann::json;
-
-// the driver's helpers (inline: the header may be included by several test files)
+// the driver's helpers (inline: the header may be included by several test files); its
+// using-directives stay inside its namespace, so a unity batch's later sources do not see them
 namespace animwindowdriver {
+
+    using namespace jasperengine;
+    using namespace jasperengine::editor;
+    using Json = nlohmann::json;
 
     inline InspectorWindow*& driverInspectorSlot(){
         static InspectorWindow* inspector = nullptr;
@@ -131,23 +132,22 @@ namespace animwindowdriver {
 
 }
 
-using namespace animwindowdriver;
 
 namespace jasperengine::editor {
 
     // the clip mode's actions by name (the functions its buttons, menus and shortcuts run) and its
     // state as JSON
     struct AnimationWindowClipTestAccess {
-        static bool drive(AnimationWindowClip& self, SceneProject* sceneProject, const Json& actions, Json& out, std::string& error);
-        static Json state(AnimationWindowClip& self, SceneProject* sceneProject, bool brief = false);
+        static bool drive(AnimationWindowClip& self, SceneProject* sceneProject, const nlohmann::json& actions, nlohmann::json& out, std::string& error);
+        static nlohmann::json state(AnimationWindowClip& self, SceneProject* sceneProject, bool brief = false);
         // the curves list of state: {track, component, label, visible, key_values, selected}
-        static Json curves(const AnimationWindowClip& self);
+        static nlohmann::json curves(const AnimationWindowClip& self);
     };
 
     // the window's actions (selection, entity Animation, clip, drop and entity frame
     // move), then the clip mode's
     struct AnimationWindowTestAccess {
-        static bool drive(AnimationWindow& self, const Json& actions, Json& out, std::string& error);
+        static bool drive(AnimationWindow& self, const nlohmann::json& actions, nlohmann::json& out, std::string& error);
         // why the selected audio block can't be aligned now ("" when it can; S40)
         static std::string alignProblem(AnimationWindow& self, int align, float* time){ return self.alignActionProblem(align, time); }
         // the explicit lane move (a frame drag released on `lane`)
@@ -156,7 +156,7 @@ namespace jasperengine::editor {
 
 }
 
-inline Json AnimationWindowClipTestAccess::curves(const AnimationWindowClip& self){
+inline nlohmann::json jasperengine::editor::AnimationWindowClipTestAccess::curves(const AnimationWindowClip& self){
     nlohmann::json out = nlohmann::json::array();
     std::shared_ptr<AnimationClipDocument> doc = self.document();
     if (!doc) return out;
@@ -181,7 +181,7 @@ inline Json AnimationWindowClipTestAccess::curves(const AnimationWindowClip& sel
     return out;
 }
 
-inline Json AnimationWindowClipTestAccess::state(AnimationWindowClip& self, SceneProject* sceneProject, bool brief){
+inline nlohmann::json jasperengine::editor::AnimationWindowClipTestAccess::state(AnimationWindowClip& self, SceneProject* sceneProject, bool brief){
     (void)sceneProject;
     AnimationClipController& c = self.controller();
     self.refreshReport();
@@ -189,17 +189,17 @@ inline Json AnimationWindowClipTestAccess::state(AnimationWindowClip& self, Scen
     std::shared_ptr<AnimationClipDocument> doc = self.document();
     SceneProject* bound = self.boundScene();
     const Entity root = c.getRoot();
-    Json out = Json::object();
+    nlohmann::json out = nlohmann::json::object();
     const bool rootAlive = bound && root != NULL_ENTITY && bound->scene->isEntityCreated(root);
     out["mode"] = "clip";
-    out["root"] = rootAlive ? Json(bound->scene->getEntityName(root)) : Json();
+    out["root"] = rootAlive ? nlohmann::json(bound->scene->getEntityName(root)) : nlohmann::json();
     out["has_player"] = c.hasPlayer();
     out["states"] = c.getStateNames();
-    out["state"] = c.getStateName().empty() ? Json() : Json(c.getStateName());
-    out["clip"] = doc ? Json(doc->path()) : Json();
+    out["state"] = c.getStateName().empty() ? nlohmann::json() : nlohmann::json(c.getStateName());
+    out["clip"] = doc ? nlohmann::json(doc->path()) : nlohmann::json();
     out["read_only"] = doc && doc->isReadOnly();
     out["targetless"] = doc && root == NULL_ENTITY;
-    out["preview_model"] = doc ? Json(doc->data().previewModel) : Json();
+    out["preview_model"] = doc ? nlohmann::json(doc->data().previewModel) : nlohmann::json();
     out["empty_state"] = !doc && rootAlive;
     if (!doc && rootAlive) out["empty_text"] = "To begin animating " + bound->scene->getEntityName(root) + ", create an Animation Clip.";
     out["time"] = c.getTime();
@@ -222,24 +222,24 @@ inline Json AnimationWindowClipTestAccess::state(AnimationWindowClip& self, Scen
         const Entity previewRoot = c.getPreviewRoot();
         SceneProject* previewScene = c.getPreviewSceneId() ? self.project->getScene(c.getPreviewSceneId()) : nullptr;
         out["preview_root"] = previewScene && previewRoot != NULL_ENTITY && previewScene->scene->isEntityCreated(previewRoot)
-            ? Json(previewScene->scene->getEntityName(previewRoot)) : Json();
+            ? nlohmann::json(previewScene->scene->getEntityName(previewRoot)) : nlohmann::json();
     }
     out["notice"] = self.notice;
     out["notice_warning"] = self.noticeWarning;
-    Json rows = Json::array();
-    Json missing = Json::array();
+    nlohmann::json rows = nlohmann::json::array();
+    nlohmann::json missing = nlohmann::json::array();
     if (doc){
         const ClipData& data = doc->data();
         for (const AnimationWindowClip::Row& row : self.buildRows()){
             if (row.kind == AnimationWindowClip::Row::Kind::Summary) continue;
             const ClipTrackData& track = data.tracks[(size_t)row.track];
-            Json entry = {{"label", row.label}, {"track", row.track}, {"missing", row.missing}};
+            nlohmann::json entry = {{"label", row.label}, {"track", row.track}, {"missing", row.missing}};
             if (row.kind == AnimationWindowClip::Row::Kind::Component){
                 entry["component"] = row.component;
             }else{
                 entry["path"] = track.path;
                 entry["channel"] = anim::channelName(track.channel);
-                Json times = Json::array();
+                nlohmann::json times = nlohmann::json::array();
                 if (!brief){
                     for (const ClipKey& key : track.keys) times.push_back(key.time);
                 }
@@ -253,10 +253,10 @@ inline Json AnimationWindowClipTestAccess::state(AnimationWindowClip& self, Scen
             }
             rows.push_back(entry);
         }
-        Json events = Json::array();
+        nlohmann::json events = nlohmann::json::array();
         for (size_t i = 0; i < data.events.size(); i++){
-            Json args = Json::array();
-            for (const AnimationEventArg& arg : data.events[i].args) args.push_back(argJson(arg));
+            nlohmann::json args = nlohmann::json::array();
+            for (const AnimationEventArg& arg : data.events[i].args) args.push_back(animwindowdriver::argJson(arg));
             std::string handler = "unchecked";
             for (const EventReport& entry : self.report.events){
                 if (entry.event != i) continue;
@@ -268,9 +268,9 @@ inline Json AnimationWindowClipTestAccess::state(AnimationWindowClip& self, Scen
         self.resolveSelectedEvent();
         out["selected_event"] = self.selectedEvent;
         // the Audio lane (S40): its cues, the selected one, the rows it shows
-        Json audio = Json::array();
+        nlohmann::json audio = nlohmann::json::array();
         for (const ClipAudioCue& cue : data.audio){
-            Json entry = {{"time", cue.time}, {"kind", anim::cueKindName(cue.kind)}, {"stop", anim::cueStopName(cue.stop)}, {"name", cue.name}};
+            nlohmann::json entry = {{"time", cue.time}, {"kind", anim::cueKindName(cue.kind)}, {"stop", anim::cueStopName(cue.stop)}, {"name", cue.name}};
             if (cue.kind == ClipCueKind::Sound){
                 entry["sound"] = cue.sound.path;
                 entry["guid"] = cue.sound.guid.isNull() ? std::string() : cue.sound.guid.str();
@@ -283,7 +283,7 @@ inline Json AnimationWindowClipTestAccess::state(AnimationWindowClip& self, Scen
         out["audio"] = audio;
         self.resolveSelectedCue();
         out["selected_cue"] = self.selectedCue;
-        Json kinds = Json::array();
+        nlohmann::json kinds = nlohmann::json::array();
         for (ClipCueKind kind : self.audioLaneKinds(data)) kinds.push_back(anim::cueKindName(kind));
         out["audio_rows"] = kinds;
         out["preview_audio_voices"] = c.previewAudioVoices();
@@ -293,7 +293,7 @@ inline Json AnimationWindowClipTestAccess::state(AnimationWindowClip& self, Scen
     }
     out["rows"] = rows;
     out["missing"] = missing;
-    Json selected = Json::array();
+    nlohmann::json selected = nlohmann::json::array();
     out["selection_count"] = self.selectedRefs.size();
     if (doc && !brief){
         for (const AnimationClipController::KeyRef& ref : self.selectedRefs){
@@ -318,7 +318,7 @@ inline Json AnimationWindowClipTestAccess::state(AnimationWindowClip& self, Scen
 }
 
 
-inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, SceneProject* sceneProject, const Json& hook, Json& out, std::string& error){
+inline bool jasperengine::editor::AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, SceneProject* sceneProject, const nlohmann::json& hook, nlohmann::json& out, std::string& error){
     AnimationClipController& c = self.controller();
     self.refreshBinding();
     auto fail = [&](const std::string& key, const std::string& message){
@@ -327,7 +327,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
     };
     std::string failure;
     // a key of the open clip: {track, time} or {path, channel, time}
-    auto keyIdOf = [&](const Json& json, AnimationWindowClip::KeyId& id) -> bool{
+    auto keyIdOf = [&](const nlohmann::json& json, AnimationWindowClip::KeyId& id) -> bool{
         std::shared_ptr<AnimationClipDocument> doc = self.document();
         if (!doc || !json.is_object() || !json.contains("time") || !json["time"].is_number()) return false;
         id.time = json["time"].get<float>();
@@ -351,7 +351,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
         id.time = doc->data().tracks[ref.track].keys[ref.key].time;
         return true;
     };
-    auto trackIndex = [&](const Json& json, int& out) -> bool{
+    auto trackIndex = [&](const nlohmann::json& json, int& out) -> bool{
         std::shared_ptr<AnimationClipDocument> doc = self.document();
         if (!doc || !json.is_number_integer()) return false;
         out = json.get<int>();
@@ -390,7 +390,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
     if (hook.contains("select")){
         if (!hook["select"].is_array()) return fail("select", "an array of keys {track, time} or {path, channel, time}");
         std::vector<AnimationWindowClip::KeyId> ids;
-        for (const Json& value : hook["select"]){
+        for (const nlohmann::json& value : hook["select"]){
             AnimationWindowClip::KeyId id;
             if (!keyIdOf(value, id)) return fail("select", "no key " + value.dump());
             ids.push_back(id);
@@ -398,7 +398,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
         self.selectKeys(ids, hook.value("add", false));
     }
     if (hook.contains("box")){
-        const Json& box = hook["box"];
+        const nlohmann::json& box = hook["box"];
         if (!box.is_object() || !box.contains("rows") || !box.contains("times") || !box["rows"].is_array() || box["rows"].size() != 2 ||
             !box["times"].is_array() || box["times"].size() != 2){
             return fail("box", "{rows: [first, last] (0 = the summary row), times: [from, to]}");
@@ -442,13 +442,13 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
     }
     if (hook.contains("add_key")){
         // the context menu's Add Key: {track (-1 / absent: all), time}
-        const Json& add = hook["add_key"];
+        const nlohmann::json& add = hook["add_key"];
         if (!add.is_object() || !add.contains("time") || !add["time"].is_number()) return fail("add_key", "{track?, time}");
         const int track = add.contains("track") ? add["track"].get<int>() : -1;
         if (!self.addKeysAt(track, add["time"].get<float>(), &failure)) return fail("add_key", failure);
     }
     if (hook.contains("add_property")){
-        const Json& add = hook["add_property"];
+        const nlohmann::json& add = hook["add_property"];
         ClipChannel channel;
         if (!add.is_object() || !add.contains("path") || !add["path"].is_string() || !add.contains("channel") || !add["channel"].is_string() ||
             !anim::channelFromName(add["channel"].get<std::string>(), channel)){
@@ -465,7 +465,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
     }
     if (hook.contains("set_value")){
         // the value column: {track, component, value} (rotation components are Euler degrees)
-        const Json& set = hook["set_value"];
+        const nlohmann::json& set = hook["set_value"];
         int track = -1;
         if (!set.is_object() || !set.contains("track") || !trackIndex(set["track"], track) || !set.contains("component") ||
             !set["component"].is_number_integer() || !set.contains("value") || !set["value"].is_number()){
@@ -480,7 +480,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
         self.selection.clear();
     }
     if (hook.contains("rebind")){
-        const Json& rebind = hook["rebind"];
+        const nlohmann::json& rebind = hook["rebind"];
         int track = -1;
         if (!rebind.is_object() || !rebind.contains("track") || !trackIndex(rebind["track"], track) || !rebind.contains("path") ||
             !rebind["path"].is_string()){
@@ -507,10 +507,10 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
         if (!self.setPreviewModel(hook["preview_model"].get<std::string>(), &failure)) return fail("preview_model", failure);
     }
     if (hook.contains("add_event")){
-        const Json& add = hook["add_event"];
+        const nlohmann::json& add = hook["add_event"];
         if (!add.is_object()) return fail("add_event", "{time?, function?, args?}");
         std::vector<AnimationEventArg> args;
-        if (add.contains("args") && !argsFromJson(add["args"], args, failure)) return fail("add_event", failure);
+        if (add.contains("args") && !animwindowdriver::argsFromJson(add["args"], args, failure)) return fail("add_event", failure);
         const float at = add.contains("time") && add["time"].is_number() ? add["time"].get<float>() : self.snapToFrame(c.getTime());
         if (!self.addEvent(at, add.value("function", std::string()), args, &failure)) return fail("add_event", failure);
         self.openEventEditor = true;
@@ -526,14 +526,14 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
     if (hook.contains("event")){
         // the event editor: {function?, args?, time?} of the selected event
         std::shared_ptr<AnimationClipDocument> doc = self.document();
-        const Json& edit = hook["event"];
+        const nlohmann::json& edit = hook["event"];
         self.resolveSelectedEvent();
         if (!doc || self.selectedEvent < 0 || self.selectedEvent >= (int)doc->data().events.size()) return fail("event", "no event selected");
         if (!edit.is_object()) return fail("event", "{function?, args?, time?}");
         ClipEventData event = doc->data().events[(size_t)self.selectedEvent];
         if (edit.contains("function")) event.function = edit["function"].get<std::string>();
         if (edit.contains("time")) event.time = edit["time"].get<float>();
-        if (edit.contains("args") && !argsFromJson(edit["args"], event.args, failure)) return fail("event", failure);
+        if (edit.contains("args") && !animwindowdriver::argsFromJson(edit["args"], event.args, failure)) return fail("event", failure);
         if (!self.editEvent(self.selectedEvent, event, "", &failure)) return fail("event", failure);
     }
     if (hook.contains("drag_event")){
@@ -559,7 +559,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
     // ---- the Audio lane (S40 R9-R11) ----
     if (hook.contains("add_cue")){
         // Add Property's Audio / Source / Snapshot Cue: {kind, sound | source | snapshot, time?}
-        const Json& add = hook["add_cue"];
+        const nlohmann::json& add = hook["add_cue"];
         if (!add.is_object()) return fail("add_cue", "{kind, sound | source | snapshot, time?}");
         ClipAudioCue cue;
         if (!anim::cueKindFromName(add.value("kind", std::string("sound")), cue.kind)) return fail("add_cue", "kind: sound, source or snapshot");
@@ -582,7 +582,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
     if (hook.contains("cue")){
         // the cue's popover: {name?, stop?, volume_db?, pitch_semitones?, spatial?, path?, snapshot?, seconds?}
         std::shared_ptr<AnimationClipDocument> doc = self.document();
-        const Json& edit = hook["cue"];
+        const nlohmann::json& edit = hook["cue"];
         self.resolveSelectedCue();
         if (!doc || self.selectedCue < 0 || !edit.is_object()) return fail("cue", "no cue selected");
         ClipAudioCue cue = doc->data().audio[(size_t)self.selectedCue];
@@ -626,7 +626,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
     }
     if (hook.contains("drop_sounds")){
         // sounds dropped on the lane: {paths, time}
-        const Json& drop = hook["drop_sounds"];
+        const nlohmann::json& drop = hook["drop_sounds"];
         if (!drop.is_object() || !drop.contains("paths")) return fail("drop_sounds", "{paths, time}");
         std::vector<std::string> paths = drop["paths"].get<std::vector<std::string>>();
         if (!self.dropSounds(paths, drop.value("time", 0.0f), &failure)) return fail("drop_sounds", failure);
@@ -646,14 +646,14 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
         if (!self.extract(sceneProject, hook["extract"].get<std::string>(), &failure)) return fail("extract", failure);
     }
     // ---- T3c: curves view, Record and the record sources ----
-    Json extra = Json::object();
-    auto entitiesOf = [&](const Json& json, std::vector<Entity>& out) -> bool{
+    nlohmann::json extra = nlohmann::json::object();
+    auto entitiesOf = [&](const nlohmann::json& json, std::vector<Entity>& out) -> bool{
         out.clear();
-        std::vector<Json> names;
+        std::vector<nlohmann::json> names;
         if (json.is_string()) names.push_back(json);
         else if (json.is_array()) names.assign(json.begin(), json.end());
         else return false;
-        for (const Json& name : names){
+        for (const nlohmann::json& name : names){
             if (!name.is_string()) return false;
             const std::vector<Entity> found = EntityPath::resolve(*sceneProject, name.get<std::string>());
             if (found.size() != 1) return false;
@@ -661,9 +661,9 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
         }
         return !out.empty();
     };
-    auto vectorOf = [](const Json& json, Vector3& out) -> bool{
+    auto vectorOf = [](const nlohmann::json& json, Vector3& out) -> bool{
         if (!json.is_array() || json.size() != 3) return false;
-        for (const Json& v : json) if (!v.is_number()) return false;
+        for (const nlohmann::json& v : json) if (!v.is_number()) return false;
         out = Vector3(json[0].get<float>(), json[1].get<float>(), json[2].get<float>());
         return true;
     };
@@ -675,7 +675,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
     }
     if (hook.contains("curve_visible")){
         // a curve's visibility toggle: {track, component, visible}
-        const Json& toggle = hook["curve_visible"];
+        const nlohmann::json& toggle = hook["curve_visible"];
         int track = -1;
         if (!toggle.is_object() || !toggle.contains("track") || !trackIndex(toggle["track"], track) || !toggle.contains("component") ||
             !toggle["component"].is_number_integer() || !toggle.contains("visible") || !toggle["visible"].is_boolean()){
@@ -691,7 +691,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
         // a transform gizmo drag in 4 steps from the current local value to the given one:
         // {entities, tool: move|rotate|scale, value: [x, y, z] (rotate: Euler degrees)}; each step
         // goes through SceneRender::recordGizmoTransform, else the ObjectTransformCmd the drag builds
-        const Json& drag = hook["gizmo"];
+        const nlohmann::json& drag = hook["gizmo"];
         std::vector<Entity> entities;
         Vector3 target;
         const std::string tool = drag.is_object() && drag.contains("tool") && drag["tool"].is_string() ? drag["tool"].get<std::string>() : std::string();
@@ -734,7 +734,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
     if (hook.contains("inspector")){
         // an Inspector Transform row edit: {entities, property: position|rotation|scale, value: [x, y, z]
         // (rotation: Euler degrees)}, through the rows' Record path, else their PropertyCmd
-        const Json& edit = hook["inspector"];
+        const nlohmann::json& edit = hook["inspector"];
         std::vector<Entity> entities;
         Vector3 value;
         const std::string property = edit.is_object() && edit.contains("property") && edit["property"].is_string() ? edit["property"].get<std::string>() : std::string();
@@ -742,7 +742,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
             !vectorOf(edit["value"], value) || (property != "position" && property != "rotation" && property != "scale")){
             return fail("inspector", "{entities: [names], property: position|rotation|scale, value: [x, y, z]}");
         }
-        InspectorWindow* inspector = driverInspector();
+        InspectorWindow* inspector = animwindowdriver::driverInspector();
         if (!inspector) return fail("inspector", "no Inspector");
         const Quaternion rotation(value.x, value.y, value.z, RotationOrder::ZYX);
         auto valueOf = [&](Entity){
@@ -765,13 +765,13 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
     }
     if (hook.contains("morph")){
         // a Blend Shapes row (MeshComponent morph weight) let go at `value`: {entities, index, value}
-        const Json& edit = hook["morph"];
+        const nlohmann::json& edit = hook["morph"];
         std::vector<Entity> entities;
         if (!edit.is_object() || !edit.contains("entities") || !entitiesOf(edit["entities"], entities) || !edit.contains("index") ||
             !edit["index"].is_number_integer() || !edit.contains("value") || !edit["value"].is_number()){
             return fail("morph", "{entities: [names], index, value}");
         }
-        InspectorWindow* inspector = driverInspector();
+        InspectorWindow* inspector = animwindowdriver::driverInspector();
         if (!inspector) return fail("morph", "no Inspector");
         // a slider drag: two steps, then the release
         const int index = edit["index"].get<int>();
@@ -788,7 +788,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
     if (hook.contains("lattice_drag")){
         // a Scene view drag of lattice points in 4 steps: {entity, points: [i...], offsets: [[x, y, z]...]},
         // through LatticeEditorOps' continuous edit and its end (the drag's release)
-        const Json& drag = hook["lattice_drag"];
+        const nlohmann::json& drag = hook["lattice_drag"];
         std::vector<Entity> entities;
         if (!drag.is_object() || !drag.contains("entity") || !entitiesOf(drag["entity"], entities) || entities.size() != 1 ||
             !drag.contains("points") || !drag["points"].is_array() || !drag.contains("offsets") || !drag["offsets"].is_array() ||
@@ -819,10 +819,10 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
     }
     if (hook.contains("curve_select")){
         // clicks on curve points: [{track, time, component}] (+ add: Shift)
-        const Json& picks = hook["curve_select"];
+        const nlohmann::json& picks = hook["curve_select"];
         if (!picks.is_array()) return fail("curve_select", "an array of {track, time, component}");
         std::vector<AnimationWindowClip::CurveKeyId> points;
-        for (const Json& pick : picks){
+        for (const nlohmann::json& pick : picks){
             AnimationWindowClip::KeyId id;
             if (!keyIdOf(pick, id) || !pick.contains("component") || !pick["component"].is_number_integer()) return fail("curve_select", "no point " + pick.dump());
             points.push_back({id, pick["component"].get<int>()});
@@ -832,7 +832,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
     if (hook.contains("curve_drag")){
         // a mouse drag of a key point in the curves view: {track, time, component, time_delta?,
         // value_delta?} (the point is selected first unless it is, as a click; 4 pointer steps)
-        const Json& drag = hook["curve_drag"];
+        const nlohmann::json& drag = hook["curve_drag"];
         AnimationWindowClip::KeyId id;
         int track = -1;
         if (!drag.is_object() || !drag.contains("track") || !trackIndex(drag["track"], track) || !keyIdOf(drag, id) ||
@@ -864,7 +864,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
     for (auto it = extra.begin(); it != extra.end(); ++it) out[it.key()] = it.value();
     if (hook.value("list_paths", false)){
         // what Add Property offers: the addressable paths under the bound (or previewed) root
-        Json paths = Json::array();
+        nlohmann::json paths = nlohmann::json::array();
         Scene* scene = self.valueScene();
         if (scene && self.valueRoot() != NULL_ENTITY){
             for (const auto& entry : anim::descendantPaths(scene, self.valueRoot())) paths.push_back(entry.first);
@@ -876,7 +876,7 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
 
 // ---- the entity mode's part (AnimationWindow) ----
 
-inline bool AnimationWindowTestAccess::moveFrameToLane(AnimationWindow& self, SceneProject* sceneProject, size_t frameIndex, uint32_t lane, std::string* error){
+inline bool jasperengine::editor::AnimationWindowTestAccess::moveFrameToLane(AnimationWindow& self, SceneProject* sceneProject, size_t frameIndex, uint32_t lane, std::string* error){
     Scene* scene = sceneProject ? sceneProject->scene : nullptr;
     AnimationComponent* anim = scene && self.selectedEntity != NULL_ENTITY && scene->isEntityCreated(self.selectedEntity)
         ? scene->findComponent<AnimationComponent>(self.selectedEntity) : nullptr;
@@ -895,12 +895,12 @@ inline bool AnimationWindowTestAccess::moveFrameToLane(AnimationWindow& self, Sc
     return true;
 }
 
-inline bool AnimationWindowTestAccess::drive(AnimationWindow& self, const nlohmann::json& hook, nlohmann::json& out, std::string& error){
+inline bool jasperengine::editor::AnimationWindowTestAccess::drive(AnimationWindow& self, const nlohmann::json& hook, nlohmann::json& out, std::string& error){
     if (!hook.is_object()){
         error = "an object {entity, clip, root, state, time, preview, select, drag, ...} (see AnimationWindowClipTest.cpp)";
         return false;
     }
-    if (!checkDriverKeys(hook, true, error)) return false;
+    if (!animwindowdriver::checkDriverKeys(hook, true, error)) return false;
     SceneProject* sceneProject = self.project->getSelectedScene();
     if (!sceneProject || !sceneProject->scene){
         error = "no scene is open";
@@ -1029,7 +1029,7 @@ inline bool AnimationWindowTestAccess::drive(AnimationWindow& self, const nlohma
             return false;
         }
     }else{
-        if (!checkDriverKeys(hook, false, error)) return false;
+        if (!animwindowdriver::checkDriverKeys(hook, false, error)) return false;
         out = AnimationWindowClipTestAccess::state(*self.clipMode, sceneProject);
         // entity mode: the clip state is not shown; name the entity Animation
         out["mode"] = "entity";

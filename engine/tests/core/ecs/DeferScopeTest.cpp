@@ -12,6 +12,8 @@
 
 #include <vector>
 
+namespace DeferScopeTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::test::makeTransformEntity;
 
@@ -113,3 +115,5 @@ TEST(DeferScopeTest, ARemovalRecordedTwiceRemovesOnce){
     scene.addComponent<Rigidbody2DComponent>(entity);
     EXPECT_NE(scene.findComponent<Rigidbody2DComponent>(entity), nullptr);
 }
+
+}  // namespace DeferScopeTest_cpp

@@ -25,6 +25,8 @@
 #include <memory>
 #include <vector>
 
+namespace ClipSourceBudgetTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -162,3 +164,5 @@ TEST(ClipSourceBudget, ForceMonoCostsNoMore){
         EXPECT_LE(monoSeconds, stereoSeconds * slack);
     }
 }
+
+}  // namespace ClipSourceBudgetTest_cpp

@@ -27,6 +27,8 @@
 #include <cmath>
 #include <cstdio>
 
+namespace JoltContactCacheTest_cpp {
+
 namespace{
 
     constexpr JPH::ObjectLayer kContactCacheStatic = 0;
@@ -135,5 +137,7 @@ TEST(JoltContactCache, PersistedDepthIsTheDeepestCachedPoint){
         bodies.DestroyBody(floorId);
     }
 }
+
+}  // namespace JoltContactCacheTest_cpp
 
 #endif

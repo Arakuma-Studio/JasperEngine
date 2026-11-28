@@ -35,6 +35,8 @@
 #include <iterator>
 #include <set>
 
+namespace ModelCookTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -912,3 +914,5 @@ TEST(ModelCookBench, ACookedModelLoadsNoSlowerThanItsSource){
         }
     }
 }
+
+}  // namespace ModelCookTest_cpp

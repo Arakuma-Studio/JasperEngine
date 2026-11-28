@@ -32,6 +32,8 @@
 #include <functional>
 #include <thread>
 
+namespace HotReloadServiceTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::test;
@@ -521,3 +523,4 @@ TEST_F(HotReloadServiceTests, DialogueEditInPlayKeepsTheRunner) {
     dialogue::Programs::clear();
 }
 
+}  // namespace HotReloadServiceTest_cpp

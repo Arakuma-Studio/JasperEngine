@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+namespace SearchScorerTest_cpp {
+
 using namespace jasperengine::editor;
 
 TEST(SearchScorer, NormalizeSplitsCamelCaseAcronymsAndPunctuation) {
@@ -122,3 +124,5 @@ TEST(SearchScorerTest, KeepsUtf8) {
     EXPECT_EQ(search::subsequence("い", "あĄ"), -1);
     EXPECT_GT(search::subsequence("あい", "あかい"), 0);
 }
+
+}  // namespace SearchScorerTest_cpp

@@ -29,6 +29,8 @@
     #include <windows.h>
 #endif
 
+namespace TextEncodingTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
@@ -131,3 +133,5 @@ TEST(TextEncoding, ProjectWalksTakeNamesInAnyLanguage) {
     for (SceneProject& scene : project.getScenes()) CommandHandle::remove(scene.id);
     project.releaseScenes();
 }
+
+}  // namespace TextEncodingTest_cpp

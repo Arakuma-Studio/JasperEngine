@@ -18,6 +18,8 @@
 
 #include <set>
 
+namespace StreamSchemaTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -114,3 +116,5 @@ TEST(StreamSchema, UnknownEnumOutsideAComponentIsDropped) {
     EXPECT_EQ(report.issues[0].fate, LoadIssueFate::Dropped);
     EXPECT_EQ(report.issues[0].value, "SUPER");
 }
+
+}  // namespace StreamSchemaTest_cpp

@@ -47,6 +47,8 @@
 #include <string>
 #include <vector>
 
+namespace FoliageGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 using namespace jasperengine::terraincore;
@@ -633,3 +635,5 @@ TEST_F(MeshRaycastFoliageGpu, MatchesDrawnTriangles){
     }
     EXPECT_GE(agreed, checked * 9 / 10) << agreed << " of " << checked;
 }
+
+}  // namespace FoliageGpuTest_cpp

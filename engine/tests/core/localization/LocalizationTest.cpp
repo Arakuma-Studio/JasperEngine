@@ -31,6 +31,8 @@
 #include <string>
 #include <vector>
 
+namespace LocalizationTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::l10n;
 using jasperengine::test::LogCapture;
@@ -469,3 +471,5 @@ TEST_F(LocalizationTest, KeyedTextShowsItsMessageInEditModeAndKeepsTheAuthoredTe
     ui.update(0.0);
     EXPECT_EQ(vertices(), authored);
 }
+
+}  // namespace LocalizationTest_cpp

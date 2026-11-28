@@ -19,6 +19,8 @@
 #include <limits>
 #include <chrono>
 
+namespace TitleRealtimeLanguageTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -183,3 +185,5 @@ TEST_F(TitleRealtimeLanguageGpu, GlyphAtlasShowsEachLanguage) {
         previous = shown;
     }
 }
+
+}  // namespace TitleRealtimeLanguageTest_cpp

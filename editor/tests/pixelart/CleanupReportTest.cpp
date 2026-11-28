@@ -17,8 +17,12 @@
 
 #include <filesystem>
 
+namespace CleanupReportTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::cleanup;
+// the cleanup's own, not pixelart's namesakes: a batch that declares both would be ambiguous
+using jasperengine::editor::pixelart::cleanup::RgbaImage;
 using jasperengine::pixelart::Rgba8;
 
 namespace {
@@ -372,3 +376,5 @@ TEST(CleanupReport, ASheetThatFitsBadlyNeedsAPerson) {
     EXPECT_EQ(report.verdict, Verdict::NeedsPerson) << report.summary;
     EXPECT_TRUE(hasGuard(report, "low_fit"));
 }
+
+}  // namespace CleanupReportTest_cpp

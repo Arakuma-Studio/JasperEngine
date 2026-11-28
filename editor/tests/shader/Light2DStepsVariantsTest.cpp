@@ -27,6 +27,8 @@
 #include <set>
 #include <string>
 
+namespace Light2DStepsVariantsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -167,3 +169,5 @@ TEST_F(Light2DStepsVariantKeys, AmbientWithoutLightsShipsL2dOnlyWhileItTints){
         EXPECT_EQ(before.light2D, 0u) << "Ambient Without Lights off:" << before.names;
     }
 }
+
+}  // namespace Light2DStepsVariantsTest_cpp

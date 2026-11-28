@@ -22,6 +22,8 @@
 #include <sstream>
 #include <string>
 
+namespace StreamProjectDynamicBatchingTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::player::PlayerConfig;
@@ -67,3 +69,5 @@ TEST(StreamProjectDynamicBatching, ExportsCarryIt){
     ASSERT_TRUE(PlayerConfig::fromJson(json, older, error)) << error;
     EXPECT_TRUE(older.dynamicBatching) << "a game.json from before it batches";
 }
+
+}  // namespace StreamProjectDynamicBatchingTest_cpp

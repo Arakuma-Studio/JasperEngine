@@ -42,7 +42,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::pixelart;
+
+namespace jasperengine::editor::pixelart {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -569,32 +571,32 @@ namespace {
 
 }
 
-std::string jasperengine::editor::pixelart::scenePathOf(const Project& project, const SceneProject& scene){
+std::string scenePathOf(const Project& project, const SceneProject& scene){
     if (scene.filepath.empty())
         return scene.name;
     return project.normalizeToProjectRelative(scene.filepath).generic_string();
 }
 
-void jasperengine::editor::pixelart::registerDrawableCollector(std::string id, DrawableCollector collector){
+void registerDrawableCollector(std::string id, DrawableCollector collector){
     collectors()[std::move(id)] = std::move(collector);
     forgetInputCache();
 }
 
-void jasperengine::editor::pixelart::unregisterDrawableCollector(const std::string& id){
+void unregisterDrawableCollector(const std::string& id){
     collectors().erase(id);
     forgetInputCache();
 }
 
-void jasperengine::editor::pixelart::forgetInputCache(){
+void forgetInputCache(){
     inputCache().textures.clear();
     inputCache().scenes.clear();
 }
 
-InputReads jasperengine::editor::pixelart::lastInputReads(){
+InputReads lastInputReads(){
     return reads();
 }
 
-std::vector<uint32_t> jasperengine::editor::pixelart::scopeScenes(Project& project, const Scope& scope, std::vector<PixelProblem>& errors){
+std::vector<uint32_t> scopeScenes(Project& project, const Scope& scope, std::vector<PixelProblem>& errors){
     std::vector<uint32_t> order;
     if (scope.noScenes)
         return order;
@@ -630,7 +632,7 @@ std::vector<uint32_t> jasperengine::editor::pixelart::scopeScenes(Project& proje
     return order;
 }
 
-PixelArtCheckInput jasperengine::editor::pixelart::inputFromProject(Project& project, const Scope& scope, std::vector<PixelProblem>& errors){
+PixelArtCheckInput inputFromProject(Project& project, const Scope& scope, std::vector<PixelProblem>& errors){
     // S50: a Tilemap Layer is drawn: it joins the drawables (R74a)
     tilemap::registerTilemapPixelArtDrawables();
     PixelArtCheckInput input;
@@ -837,3 +839,5 @@ PixelArtCheckInput jasperengine::editor::pixelart::inputFromProject(Project& pro
     }
     return input;
 }
+
+}  // namespace jasperengine::editor::pixelart

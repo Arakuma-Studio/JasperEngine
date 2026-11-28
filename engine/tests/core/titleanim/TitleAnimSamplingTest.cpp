@@ -16,6 +16,8 @@
 #include <random>
 #include <set>
 
+namespace TitleAnimSamplingTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleanim;
 
@@ -365,3 +367,5 @@ TEST(TitleAnimStaggerTest, OverWithEase){
     staggerDelays(each, 4, 1, d);
     EXPECT_NEAR(d[3], 0.12f, 1e-6);
 }
+
+}  // namespace TitleAnimSamplingTest_cpp

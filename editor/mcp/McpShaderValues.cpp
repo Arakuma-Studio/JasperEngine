@@ -26,7 +26,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::mcp;
 
 namespace fs = std::filesystem;
 
@@ -78,12 +77,12 @@ const char* textureDefaultName(ShaderTextureDefault value) {
     return "white";
 }
 
-Json propertyValueJson(const ShaderManifestProperty& property, const Vector4& value) {
+mcp::Json propertyValueJson(const ShaderManifestProperty& property, const Vector4& value) {
     const int count = propertyComponents(property.kind);
-    if (count == 1) return McpValues::number(value.x);
-    Json out = Json::array();
+    if (count == 1) return mcp::McpValues::number(value.x);
+    mcp::Json out = mcp::Json::array();
     const float v[4] = {value.x, value.y, value.z, value.w};
-    for (int i = 0; i < count; i++) out.push_back(McpValues::number(v[i]));
+    for (int i = 0; i < count; i++) out.push_back(mcp::McpValues::number(v[i]));
     return out;
 }
 
@@ -111,7 +110,7 @@ std::string defineNames(const ShaderManifest& manifest) {
 // a "library:" reference whose shader the build does not have: its values cannot be checked
 std::string unknownLibraryShaderText() {
     return "the shader is not a library shader the engine has (set an existing one first); the library shaders: " +
-           McpValues::libraryShaderNamesText() + ".";
+           mcp::McpValues::libraryShaderNamesText() + ".";
 }
 
 bool parseHex(const std::string& text, Vector4& out) {
@@ -131,19 +130,19 @@ bool parseHex(const std::string& text, Vector4& out) {
 
 } // namespace
 
-std::shared_ptr<const ShaderManifest> McpValues::findManifest(const std::string& reference) {
+std::shared_ptr<const ShaderManifest> mcp::McpValues::findManifest(const std::string& reference) {
     if (reference.empty()) return nullptr;
     std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(reference);
     return manifest && manifest->present ? manifest : nullptr;
 }
 
-std::string McpValues::libraryShaderNamesText() {
+std::string mcp::McpValues::libraryShaderNamesText() {
     std::string names;
     for (const std::string& name : ShaderManifests::getLibraryShaderNames()) names += (names.empty() ? "library:" : ", library:") + name;
     return names;
 }
 
-bool McpValues::checkShaderReference(Project* project, const std::string& reference, ShaderType type, std::string& error) {
+bool mcp::McpValues::checkShaderReference(Project* project, const std::string& reference, ShaderType type, std::string& error) {
     if (reference.empty()) return true;
     if (ShaderReference::isLibrary(reference)) {
         std::string vert, frag, why;
@@ -175,14 +174,14 @@ bool McpValues::checkShaderReference(Project* project, const std::string& refere
     return true;
 }
 
-Json McpValues::sceneInputsToJson(uint32_t inputs) {
-    Json names = Json::array();
+mcp::Json mcp::McpValues::sceneInputsToJson(uint32_t inputs) {
+    mcp::Json names = Json::array();
     for (const std::string& name : ShaderManifest::getRequireNames(inputs & ShaderRequire_SceneInputs)) names.push_back(name);
     return names;
 }
 
-Json McpValues::entitySceneInputsToJson(Scene* scene, Entity entity) {
-    Json list = Json::array();
+mcp::Json mcp::McpValues::entitySceneInputsToJson(Scene* scene, Entity entity) {
+    mcp::Json list = Json::array();
     if (!scene) return list;
     // a mesh's submeshes as the checks see them (ProjectChecks::sceneInputFindings: not terrains)
     const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
@@ -214,14 +213,14 @@ Json McpValues::entitySceneInputsToJson(Scene* scene, Entity entity) {
     }
     if (scene->findComponent<PointsComponent>(entity)) {
         if (const uint32_t reads = Catalog::getComponentSceneInputs(scene, entity, ComponentType::PointsComponent)) {
-            list.push_back({{"component", McpRefs::componentName(ComponentType::PointsComponent)}, {"reads", sceneInputsToJson(reads)}});
+            list.push_back({{"component", mcp::McpRefs::componentName(ComponentType::PointsComponent)}, {"reads", sceneInputsToJson(reads)}});
         }
     }
     return list;
 }
 
-Json McpValues::manifestToJson(const std::string& reference, const ShaderManifest& manifest, bool detail) {
-    Json out = {
+mcp::Json mcp::McpValues::manifestToJson(const std::string& reference, const ShaderManifest& manifest, bool detail) {
+    mcp::Json out = {
         {"shader", reference},
         {"name", manifest.name},
         {"type", ShaderManifest::getShaderTypeToken(manifest.type)},
@@ -277,7 +276,7 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
         Json state = Json::object();
         if (s.blend != MaterialBlendMode::AUTO) state["blendMode"] = enumToJson((int)s.blend, *enumTable("material_blend_mode"));
         if (s.blend == MaterialBlendMode::CUSTOM || s.hasBlendOp) {
-            const EnumOptions& factor = *enumTable("material_blend_factor");
+            const McpValues::EnumOptions& factor = *enumTable("material_blend_factor");
             if (s.blend == MaterialBlendMode::CUSTOM) {
                 state["blendSrc"] = enumToJson((int)s.blendFactors.src, factor);
                 state["blendDst"] = enumToJson((int)s.blendFactors.dst, factor);
@@ -302,7 +301,7 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
         // phase 2: the stencil keys this @state sets (a rule replaces only those) and colorwrite=
         if (s.stencilSet != 0) {
             Json stencil = Json::object();
-            const Json full = stencilToJson(s.stencil);
+            const mcp::Json full = stencilToJson(s.stencil);
             const std::pair<uint8_t, const char*> fields[] = {
                 {ShaderStencil_Compare, "compare"}, {ShaderStencil_Ref, "ref"}, {ShaderStencil_ReadMask, "readMask"},
                 {ShaderStencil_WriteMask, "writeMask"}, {ShaderStencil_Pass, "pass"}, {ShaderStencil_Fail, "fail"},
@@ -381,11 +380,11 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
 
 // ------------------------------------------------------------------ parameters
 
-Json McpValues::shaderParamsToJson(const ShaderUniformValues& values) {
+mcp::Json mcp::McpValues::shaderParamsToJson(const ShaderUniformValues& values) {
     return shaderUniformsToJson(values);
 }
 
-bool McpValues::shaderParamFromJson(const ShaderManifestProperty* property, const std::string& member, const Json& value,
+bool mcp::McpValues::shaderParamFromJson(const ShaderManifestProperty* property, const std::string& member, const mcp::Json& value,
                                     Vector4& out, std::string& error) {
     if (value.is_string() && property && property->kind == ShaderPropertyKind::CHOICE) {
         // a choice by its name: the index is the value
@@ -441,7 +440,7 @@ bool McpValues::shaderParamFromJson(const ShaderManifestProperty* property, cons
     return true;
 }
 
-bool McpValues::shaderParamsFromJson(const ShaderManifest* manifest, bool library, const Json& value, ShaderUniformValues& out,
+bool mcp::McpValues::shaderParamsFromJson(const ShaderManifest* manifest, bool library, const mcp::Json& value, ShaderUniformValues& out,
                                      std::string& error, const std::set<std::string>* checkedKeys) {
     out.clear();
     if (value.is_null()) return true;
@@ -475,8 +474,8 @@ bool McpValues::shaderParamsFromJson(const ShaderManifest* manifest, bool librar
 
 // ------------------------------------------------------------------ textures
 
-Json McpValues::shaderTexturesToJson(Project* project, SceneProject* scene, const std::vector<std::pair<std::string, Texture>>& textures) {
-    Json out = Json::object();
+mcp::Json mcp::McpValues::shaderTexturesToJson(Project* project, SceneProject* scene, const std::vector<std::pair<std::string, Texture>>& textures) {
+    mcp::Json out = Json::object();
     for (const auto& [uniform, texture] : textures) {
         Json json = textureToJson(project, scene, texture);
         if (!json.is_null()) out[uniform] = json;
@@ -484,8 +483,8 @@ Json McpValues::shaderTexturesToJson(Project* project, SceneProject* scene, cons
     return out;
 }
 
-bool McpValues::shaderTexturesFromJson(Project* project, SceneProject* scene, const ShaderManifest* manifest, bool library,
-                                       const Json& value, std::vector<std::pair<std::string, Texture>>& out, std::string& error,
+bool mcp::McpValues::shaderTexturesFromJson(Project* project, SceneProject* scene, const ShaderManifest* manifest, bool library,
+                                       const mcp::Json& value, std::vector<std::pair<std::string, Texture>>& out, std::string& error,
                                        const std::set<std::string>* checkedKeys) {
     out.clear();
     if (value.is_null()) return true;
@@ -532,13 +531,13 @@ bool McpValues::shaderTexturesFromJson(Project* project, SceneProject* scene, co
 
 // ------------------------------------------------------------------ features
 
-Json McpValues::shaderFeaturesToJson(const std::vector<std::string>& features) {
-    Json out = Json::array();
+mcp::Json mcp::McpValues::shaderFeaturesToJson(const std::vector<std::string>& features) {
+    mcp::Json out = Json::array();
     for (const std::string& feature : features) out.push_back(feature);
     return out;
 }
 
-bool McpValues::shaderFeaturesFromJson(const std::string& shader, const ShaderManifest* manifest, bool library, const Json& value,
+bool mcp::McpValues::shaderFeaturesFromJson(const std::string& shader, const ShaderManifest* manifest, bool library, const mcp::Json& value,
                                        std::vector<std::string>& inout, std::string& error) {
     auto checkDefine = [&](const std::string& define) {
         const std::string bare = (!define.empty() && define[0] == '!') ? define.substr(1) : define;
@@ -562,7 +561,7 @@ bool McpValues::shaderFeaturesFromJson(const std::string& shader, const ShaderMa
     }
     if (value.is_array()) {
         std::vector<std::string> list;
-        for (const Json& item : value) {
+        for (const mcp::Json& item : value) {
             if (!item.is_string()) {
                 error = "shaderFeatures is a list of define names, or {define: true|false}.";
                 return false;
@@ -590,7 +589,7 @@ bool McpValues::shaderFeaturesFromJson(const std::string& shader, const ShaderMa
 
 // ------------------------------------------------------------------ stencil, colour write
 
-Json McpValues::stencilToJson(const MaterialStencil& stencil) {
+mcp::Json mcp::McpValues::stencilToJson(const MaterialStencil& stencil) {
     return {
         {"compare", enumToJson((int)stencil.compare, *enumTable("material_stencil_compare"))},
         {"ref", stencil.ref},
@@ -602,7 +601,7 @@ Json McpValues::stencilToJson(const MaterialStencil& stencil) {
     };
 }
 
-bool McpValues::stencilFromJson(const Json& value, MaterialStencil& inout, std::string& error) {
+bool mcp::McpValues::stencilFromJson(const mcp::Json& value, MaterialStencil& inout, std::string& error) {
     if (value.is_null()) {
         inout = MaterialStencil();
         return true;
@@ -614,7 +613,7 @@ bool McpValues::stencilFromJson(const Json& value, MaterialStencil& inout, std::
     }
     for (auto it = value.begin(); it != value.end(); ++it) {
         const std::string& key = it.key();
-        const Json& item = it.value();
+        const mcp::Json& item = it.value();
         std::string why;
         int parsed = 0;
         if (key == "compare") {
@@ -643,11 +642,11 @@ bool McpValues::stencilFromJson(const Json& value, MaterialStencil& inout, std::
     return true;
 }
 
-Json McpValues::colorWriteToJson(int colorWrite) {
+mcp::Json mcp::McpValues::colorWriteToJson(int colorWrite) {
     return ShaderManifest::getColorWriteName(colorWrite);
 }
 
-bool McpValues::colorWriteFromJson(const Json& value, int& out, std::string& error) {
+bool mcp::McpValues::colorWriteFromJson(const mcp::Json& value, int& out, std::string& error) {
     if (value.is_null()) {
         out = -1;
         return true;
@@ -676,7 +675,7 @@ bool McpValues::colorWriteFromJson(const Json& value, int& out, std::string& err
 
 // ------------------------------------------------------------------ material keys
 
-bool McpValues::isMaterialShaderLibraryKey(const std::string& key) {
+bool mcp::McpValues::isMaterialShaderLibraryKey(const std::string& key) {
     static const char* const keys[] = {"shader", "shaderParams", "shaderTextures", "shaderFeatures", "shaderGlobalBindings", "blendMode",
                                        "blendSrc", "blendDst", "blendSrcAlpha", "blendDstAlpha", "blendOp", "blendOpAlpha", "cullMode", "depthWrite", "depthTest", "depthOffsetFactor", "depthOffsetUnits", "sortPriority",
                                        "lighting", "stencil", "colorWrite", "extraPass"};
@@ -690,37 +689,37 @@ namespace {
 
 // The shader, its values and the render state shared by a material and its extra pass
 template<typename T>
-void shaderStateToJson(Project* project, SceneProject* scene, const T& value, Json& out, bool all) {
+void shaderStateToJson(Project* project, SceneProject* scene, const T& value, mcp::Json& out, bool all) {
     out["shader"] = value.shader;
-    if (all || !value.shaderParams.empty()) out["shaderParams"] = McpValues::shaderParamsToJson(value.shaderParams);
-    if (all || !value.shaderTextures.empty()) out["shaderTextures"] = McpValues::shaderTexturesToJson(project, scene, value.shaderTextures);
-    if (all || !value.shaderFeatures.empty()) out["shaderFeatures"] = McpValues::shaderFeaturesToJson(value.shaderFeatures);
-    out["blendMode"] = McpValues::enumToJson((int)value.blendMode, *McpValues::enumTable("material_blend_mode"));
+    if (all || !value.shaderParams.empty()) out["shaderParams"] = mcp::McpValues::shaderParamsToJson(value.shaderParams);
+    if (all || !value.shaderTextures.empty()) out["shaderTextures"] = mcp::McpValues::shaderTexturesToJson(project, scene, value.shaderTextures);
+    if (all || !value.shaderFeatures.empty()) out["shaderFeatures"] = mcp::McpValues::shaderFeaturesToJson(value.shaderFeatures);
+    out["blendMode"] = mcp::McpValues::enumToJson((int)value.blendMode, *mcp::McpValues::enumTable("material_blend_mode"));
     // Blend Mode Custom's factors, while it is Custom or they were set
     if (all || value.blendMode == MaterialBlendMode::CUSTOM || value.getBlendFactors() != MaterialBlendFactors()) {
-        const McpValues::EnumOptions& factor = *McpValues::enumTable("material_blend_factor");
-        out["blendSrc"] = McpValues::enumToJson((int)value.blendSrc, factor);
-        out["blendDst"] = McpValues::enumToJson((int)value.blendDst, factor);
-        out["blendSrcAlpha"] = McpValues::enumToJson((int)value.blendSrcAlpha, factor);
-        out["blendDstAlpha"] = McpValues::enumToJson((int)value.blendDstAlpha, factor);
-        out["blendOp"] = McpValues::enumToJson((int)value.blendOp, *McpValues::enumTable("material_blend_op"));
-        out["blendOpAlpha"] = McpValues::enumToJson((int)value.blendOpAlpha, *McpValues::enumTable("material_blend_op"));
+        const mcp::McpValues::EnumOptions& factor = *mcp::McpValues::enumTable("material_blend_factor");
+        out["blendSrc"] = mcp::McpValues::enumToJson((int)value.blendSrc, factor);
+        out["blendDst"] = mcp::McpValues::enumToJson((int)value.blendDst, factor);
+        out["blendSrcAlpha"] = mcp::McpValues::enumToJson((int)value.blendSrcAlpha, factor);
+        out["blendDstAlpha"] = mcp::McpValues::enumToJson((int)value.blendDstAlpha, factor);
+        out["blendOp"] = mcp::McpValues::enumToJson((int)value.blendOp, *mcp::McpValues::enumTable("material_blend_op"));
+        out["blendOpAlpha"] = mcp::McpValues::enumToJson((int)value.blendOpAlpha, *mcp::McpValues::enumTable("material_blend_op"));
     }
-    out["cullMode"] = McpValues::enumToJson((int)value.cullMode, *McpValues::enumTable("material_cull_mode"));
-    out["depthWrite"] = McpValues::enumToJson((int)value.depthWrite, *McpValues::enumTable("material_depth_write"));
-    out["depthTest"] = McpValues::enumToJson((int)value.depthTest, *McpValues::enumTable("material_depth_test"));
+    out["cullMode"] = mcp::McpValues::enumToJson((int)value.cullMode, *mcp::McpValues::enumTable("material_cull_mode"));
+    out["depthWrite"] = mcp::McpValues::enumToJson((int)value.depthWrite, *mcp::McpValues::enumTable("material_depth_write"));
+    out["depthTest"] = mcp::McpValues::enumToJson((int)value.depthTest, *mcp::McpValues::enumTable("material_depth_test"));
     if (all || value.depthOffsetFactor != 0.0f || value.depthOffsetUnits != 0.0f) {
-        out["depthOffsetFactor"] = McpValues::number(value.depthOffsetFactor);
-        out["depthOffsetUnits"] = McpValues::number(value.depthOffsetUnits);
+        out["depthOffsetFactor"] = mcp::McpValues::number(value.depthOffsetFactor);
+        out["depthOffsetUnits"] = mcp::McpValues::number(value.depthOffsetUnits);
     }
-    if (all || value.stencil != MaterialStencil()) out["stencil"] = McpValues::stencilToJson(value.stencil);
-    out["colorWrite"] = McpValues::colorWriteToJson(value.colorWrite);
+    if (all || value.stencil != MaterialStencil()) out["stencil"] = mcp::McpValues::stencilToJson(value.stencil);
+    out["colorWrite"] = mcp::McpValues::colorWriteToJson(value.colorWrite);
 }
 
 // Applies the keys a material and its extra pass share ("shader" first: the others follow its
 // manifest). `where` prefixes the errors ("" or "extraPass.").
 template<typename T>
-bool shaderStateFromJson(Project* project, SceneProject* scene, const Json& value, T& out, const std::string& where, std::string& error) {
+bool shaderStateFromJson(Project* project, SceneProject* scene, const mcp::Json& value, T& out, const std::string& where, std::string& error) {
     constexpr bool isMaterial = std::is_same_v<T, Material>;
     if (value.contains("shader")) {
         if (!value["shader"].is_string()) {
@@ -730,7 +729,7 @@ bool shaderStateFromJson(Project* project, SceneProject* scene, const Json& valu
         }
         const std::string shader = value["shader"].get<std::string>();
         std::string why;
-        if (!McpValues::checkShaderReference(project, shader, ShaderType::MESH, why)) {
+        if (!mcp::McpValues::checkShaderReference(project, shader, ShaderType::MESH, why)) {
             error = where + "shader: " + why;
             return false;
         }
@@ -738,16 +737,16 @@ bool shaderStateFromJson(Project* project, SceneProject* scene, const Json& valu
         out.shader = shader;
         if constexpr (isMaterial) {
             // a lighting mode the new shader does not list would draw its default anyway: auto
-            if (changed && !value.contains("lighting") && !Catalog::supportsLighting(out.lighting, McpValues::findManifest(shader).get())) {
+            if (changed && !value.contains("lighting") && !Catalog::supportsLighting(out.lighting, mcp::McpValues::findManifest(shader).get())) {
                 out.lighting = MaterialLighting::AUTO;
             }
         }
     }
-    const std::shared_ptr<const ShaderManifest> manifest = McpValues::findManifest(out.shader);
+    const std::shared_ptr<const ShaderManifest> manifest = mcp::McpValues::findManifest(out.shader);
     const bool library = ShaderReference::isLibrary(out.shader);
     if (value.contains("shaderParams")) {
         // an object merges into the values set (null removes one), null clears them all
-        const Json& params = value["shaderParams"];
+        const mcp::Json& params = value["shaderParams"];
         if (params.is_null()) {
             out.shaderParams.clear();
         } else if (!params.is_object()) {
@@ -761,7 +760,7 @@ bool shaderStateFromJson(Project* project, SceneProject* scene, const Json& valu
                 }
                 ShaderUniformValues one;
                 std::string why;
-                if (!McpValues::shaderParamsFromJson(manifest.get(), library, Json{{it.key(), it.value()}}, one, why)) {
+                if (!mcp::McpValues::shaderParamsFromJson(manifest.get(), library, mcp::Json{{it.key(), it.value()}}, one, why)) {
                     error = where + "shaderParams: " + why;
                     return false;
                 }
@@ -771,7 +770,7 @@ bool shaderStateFromJson(Project* project, SceneProject* scene, const Json& valu
     }
     if (value.contains("shaderTextures")) {
         // merges like shaderParams: null removes one (the manifest default binds)
-        const Json& textures = value["shaderTextures"];
+        const mcp::Json& textures = value["shaderTextures"];
         if (textures.is_null()) {
             out.shaderTextures.clear();
         } else if (!textures.is_object()) {
@@ -781,7 +780,7 @@ bool shaderStateFromJson(Project* project, SceneProject* scene, const Json& valu
             for (auto it = textures.begin(); it != textures.end(); ++it) {
                 std::vector<std::pair<std::string, Texture>> one;
                 std::string why;
-                if (!McpValues::shaderTexturesFromJson(project, scene, manifest.get(), library, Json{{it.key(), it.value()}}, one, why)) {
+                if (!mcp::McpValues::shaderTexturesFromJson(project, scene, manifest.get(), library, mcp::Json{{it.key(), it.value()}}, one, why)) {
                     error = where + "shaderTextures: " + why;
                     return false;
                 }
@@ -799,7 +798,7 @@ bool shaderStateFromJson(Project* project, SceneProject* scene, const Json& valu
     }
     if (value.contains("shaderFeatures")) {
         std::string why;
-        if (!McpValues::shaderFeaturesFromJson(out.shader, manifest.get(), library, value["shaderFeatures"], out.shaderFeatures, why)) {
+        if (!mcp::McpValues::shaderFeaturesFromJson(out.shader, manifest.get(), library, value["shaderFeatures"], out.shaderFeatures, why)) {
             error = where + "shaderFeatures: " + why;
             return false;
         }
@@ -808,7 +807,7 @@ bool shaderStateFromJson(Project* project, SceneProject* scene, const Json& valu
         if (!value.contains(key)) return true;
         int parsed = 0;
         std::string why;
-        if (!McpValues::enumFromJson(value[key], *McpValues::enumTable(table), parsed, why)) {
+        if (!mcp::McpValues::enumFromJson(value[key], *mcp::McpValues::enumTable(table), parsed, why)) {
             error = where + key + ": " + why;
             return false;
         }
@@ -833,7 +832,7 @@ bool shaderStateFromJson(Project* project, SceneProject* scene, const Json& valu
         if (value.contains("lighting") && !Catalog::supportsLighting(out.lighting, manifest.get())) {
             std::string modes = "auto";
             for (MaterialLighting mode : Catalog::getShaderLightingModes(manifest.get())) {
-                modes += ", " + McpValues::enumToJson((int)mode, *McpValues::enumTable("material_lighting")).template get<std::string>();
+                modes += ", " + mcp::McpValues::enumToJson((int)mode, *mcp::McpValues::enumTable("material_lighting")).template get<std::string>();
             }
             error = "lighting: " + (out.shader.empty() ? std::string("the built-in Lit shader") : out.shader.path) + " takes " + modes + ".";
             return false;
@@ -851,14 +850,14 @@ bool shaderStateFromJson(Project* project, SceneProject* scene, const Json& valu
     }
     if (value.contains("stencil")) {
         std::string why;
-        if (!McpValues::stencilFromJson(value["stencil"], out.stencil, why)) {
+        if (!mcp::McpValues::stencilFromJson(value["stencil"], out.stencil, why)) {
             error = where + why;
             return false;
         }
     }
     if (value.contains("colorWrite")) {
         std::string why;
-        if (!McpValues::colorWriteFromJson(value["colorWrite"], out.colorWrite, why)) {
+        if (!mcp::McpValues::colorWriteFromJson(value["colorWrite"], out.colorWrite, why)) {
             error = where + why;
             return false;
         }
@@ -868,14 +867,14 @@ bool shaderStateFromJson(Project* project, SceneProject* scene, const Json& valu
 
 } // namespace
 
-Json McpValues::materialPassToJson(Project* project, SceneProject* scene, const MaterialPass& pass, bool all) {
-    Json out = Json::object();
+mcp::Json mcp::McpValues::materialPassToJson(Project* project, SceneProject* scene, const MaterialPass& pass, bool all) {
+    mcp::Json out = Json::object();
     shaderStateToJson(project, scene, pass, out, all);
     out["order"] = enumToJson((int)pass.order, *enumTable("material_pass_order"));
     return out;
 }
 
-bool McpValues::materialPassFromJson(Project* project, SceneProject* scene, const Json& value, MaterialPass& inout, std::string& error) {
+bool mcp::McpValues::materialPassFromJson(Project* project, SceneProject* scene, const mcp::Json& value, MaterialPass& inout, std::string& error) {
     if (value.is_null()) {
         inout = MaterialPass();
         return true;
@@ -898,11 +897,11 @@ bool McpValues::materialPassFromJson(Project* project, SceneProject* scene, cons
     return shaderStateFromJson(project, scene, value, inout, "extraPass.", error);
 }
 
-void McpValues::materialShaderLibraryToJson(Project* project, SceneProject* scene, const Material& material, Json& out, bool all) {
+void mcp::McpValues::materialShaderLibraryToJson(Project* project, SceneProject* scene, const Material& material, mcp::Json& out, bool all) {
     shaderStateToJson(project, scene, material, out, all);
     // members following global shader values {member: global}
     if (all || !material.shaderGlobalBindings.empty()) {
-        Json bindings = Json::object();
+        mcp::Json bindings = Json::object();
         for (const auto& binding : material.shaderGlobalBindings) bindings[binding.first] = binding.second;
         out["shaderGlobalBindings"] = bindings;
     }
@@ -913,11 +912,11 @@ void McpValues::materialShaderLibraryToJson(Project* project, SceneProject* scen
     else if (all) out["extraPass"] = nullptr;
 }
 
-bool McpValues::materialShaderLibraryFromJson(Project* project, SceneProject* scene, const Json& value, Material& out, std::string& error) {
+bool mcp::McpValues::materialShaderLibraryFromJson(Project* project, SceneProject* scene, const mcp::Json& value, Material& out, std::string& error) {
     if (!shaderStateFromJson(project, scene, value, out, "", error)) return false;
     if (value.contains("shaderGlobalBindings")) {
         // merged: {member: global | null}
-        const Json& bindings = value["shaderGlobalBindings"];
+        const mcp::Json& bindings = value["shaderGlobalBindings"];
         if (!bindings.is_object()) {
             error = "shaderGlobalBindings is an object {member: global name | null}.";
             return false;

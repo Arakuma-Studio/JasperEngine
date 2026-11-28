@@ -46,6 +46,8 @@
 #include <thread>
 #include <vector>
 
+namespace TexturePoolThreadsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -399,3 +401,5 @@ TEST(TextureDataPoolBench, Lookup){
         TextureDataPool::invalidate(name);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace TexturePoolThreadsTest_cpp

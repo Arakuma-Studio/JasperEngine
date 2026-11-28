@@ -20,6 +20,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ClipPlayersReflectTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -191,3 +193,5 @@ TEST(ClipPlayersReflect, VertexAnimatorDecodeOverKeepsPreviewOnly) {
 }
 
 }
+
+}  // namespace ClipPlayersReflectTest_cpp

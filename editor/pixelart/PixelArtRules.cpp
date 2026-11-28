@@ -22,7 +22,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::pixelart;
+
+namespace jasperengine::editor::pixelart {
+
 using Json = nlohmann::json;
 
 namespace {
@@ -1145,3 +1147,5 @@ RuleResult jasperengine::editor::pixelart::rules::spriteVariants(const PixelArtC
     findings.push_back(std::move(finding));
     return result;
 }
+
+}  // namespace jasperengine::editor::pixelart

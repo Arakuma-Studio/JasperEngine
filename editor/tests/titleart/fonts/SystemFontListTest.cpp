@@ -14,6 +14,8 @@
 #include <chrono>
 #include <thread>
 
+namespace SystemFontListTest_cpp {
+
 using namespace jasperengine::editor::titlefonts;
 
 namespace {
@@ -107,3 +109,5 @@ TEST(SystemFontListTest, PlatformListerFindsFonts) {
         EXPECT_GE(face.faceIndex, 0);
     }
 }
+
+}  // namespace SystemFontListTest_cpp

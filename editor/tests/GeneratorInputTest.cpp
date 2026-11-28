@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+namespace GeneratorInputTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -47,3 +49,4 @@ TEST_F(GeneratorInputTest, WhatTheBuildReadsBackIsTheProjectsDefinition) {
     EXPECT_EQ(InputActions::getManagerActions().back().description, dash.description);
 }
 
+}  // namespace GeneratorInputTest_cpp

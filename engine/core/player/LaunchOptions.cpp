@@ -13,7 +13,8 @@
 #include <system_error>
 
 using namespace jasperengine;
-using namespace jasperengine::player;
+
+namespace jasperengine::player {
 
 namespace {
 
@@ -51,7 +52,7 @@ namespace {
 
 }
 
-bool jasperengine::player::parseUint64(const std::string& text, uint64_t& out) {
+bool parseUint64(const std::string& text, uint64_t& out) {
     if (text.empty() || text[0] < '0' || text[0] > '9') return false;
     errno = 0;
     char* end = nullptr;
@@ -61,7 +62,7 @@ bool jasperengine::player::parseUint64(const std::string& text, uint64_t& out) {
     return true;
 }
 
-bool jasperengine::player::parseDouble(const std::string& text, double& out) {
+bool parseDouble(const std::string& text, double& out) {
     if (text.empty() || std::isspace(static_cast<unsigned char>(text[0]))) return false;
     errno = 0;
     char* end = nullptr;
@@ -71,7 +72,7 @@ bool jasperengine::player::parseDouble(const std::string& text, double& out) {
     return true;
 }
 
-std::string jasperengine::player::usage() {
+std::string usage() {
     return
         "Options:\n"
         "  --headless              never show the window, no audio output, no input; renders offscreen\n"
@@ -106,15 +107,15 @@ std::string jasperengine::player::usage() {
         "  -- ARGS...              passed to the game's Lua (System.args)\n";
 }
 
-bool jasperengine::player::testRunnerCompiled() {
+bool testRunnerCompiled() {
     return JASPERENGINE_TEST_RUNNER != 0;
 }
 
-const char* jasperengine::player::commandsOffRefusal() {
+const char* commandsOffRefusal() {
     return "--command needs a development player or Project Settings > Debug > Console Commands: Always.";
 }
 
-std::vector<std::string> jasperengine::player::argsFromQuery(const std::string& query) {
+std::vector<std::string> argsFromQuery(const std::string& query) {
     std::vector<std::string> args;
     size_t start = (!query.empty() && query[0] == '?') ? 1 : 0;
     while (start < query.size()) {
@@ -141,7 +142,7 @@ std::vector<std::string> jasperengine::player::argsFromQuery(const std::string& 
     return args;
 }
 
-std::variant<LaunchOptions, ParseError> jasperengine::player::parse(std::span<const std::string> args, ParseMode mode) {
+std::variant<LaunchOptions, ParseError> parse(std::span<const std::string> args, ParseMode mode) {
     LaunchOptions options;
     bool quitAfterGiven = false;
     bool screenshotFrameGiven = false;
@@ -344,3 +345,5 @@ std::variant<LaunchOptions, ParseError> jasperengine::player::parse(std::span<co
                     std::to_string(options.quitAfter) + ": the game quits first; use a frame up to " + std::to_string(options.quitAfter));
     return options;
 }
+
+}  // namespace jasperengine::player

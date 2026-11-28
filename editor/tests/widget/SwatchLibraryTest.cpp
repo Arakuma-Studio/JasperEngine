@@ -11,6 +11,8 @@
 
 #include <fstream>
 
+namespace SwatchLibraryTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -124,3 +126,5 @@ TEST(SwatchLibrary, AGradientPresetKeepsAGraphRampsKeys) {
     EXPECT_EQ(read.gradients[0].gradient.alphaKeys.size(), 32u);
     EXPECT_EQ(read.gradients[0].gradient, ramp);
 }
+
+}  // namespace SwatchLibraryTest_cpp

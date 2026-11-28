@@ -19,6 +19,8 @@
 
 #include <string>
 
+namespace PointsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -160,3 +162,5 @@ TEST_F(PointsTest, OwnPointsDoNotForward){
     EXPECT_EQ(both.system.getEffectDocument().renderer.blend, particles::ParticleBlend::Alpha);
     EXPECT_EQ(log.count(D_LOG_WARN, kForwardNote), 0u);
 }
+
+}  // namespace PointsTest_cpp

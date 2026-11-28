@@ -17,6 +17,8 @@
 #include <cmath>
 #include <functional>
 
+namespace PhysicsMaterial3DTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::physics3dtest;
 
@@ -136,3 +138,5 @@ TEST(PhysicsMaterial3D, SharedMaterialEditReachesEveryColliderAndInstancesStayAp
     EXPECT_GT((world.rb(a).getPosition() - restA).length(), 0.1f) << "a slides on its copy (0 by Maximum with the slope's 0.2)";
     EXPECT_LT((world.rb(b).getPosition() - restB).length(), 0.02f) << "b still sticks";
 }
+
+}  // namespace PhysicsMaterial3DTest_cpp

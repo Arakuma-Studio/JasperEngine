@@ -16,6 +16,8 @@
 #include <fstream>
 #include <string>
 
+namespace SaveGameFormatTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -199,3 +201,5 @@ TEST(SaveGameFormat, DamagedFormatFieldIsCorrupt){
     EXPECT_EQ(error.code, savegame::SaveErrorCode::Corrupt) << error.message;
     EXPECT_EQ(error.message, "checksum mismatch");
 }
+
+}  // namespace SaveGameFormatTest_cpp

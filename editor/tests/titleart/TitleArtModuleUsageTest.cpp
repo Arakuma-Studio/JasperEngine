@@ -24,6 +24,8 @@
 #include <string>
 #include "support/PosixCompat.h"
 
+namespace TitleArtModuleUsageTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -150,3 +152,5 @@ TEST(TitleArtModuleUsage, ThreeDSubOptions) {
     EXPECT_NE(why.find("depth"), std::string::npos) << why;
     EXPECT_NE(why.find("Title Art Renderer (Realtime) on Logo"), std::string::npos) << why;
 }
+
+}  // namespace TitleArtModuleUsageTest_cpp

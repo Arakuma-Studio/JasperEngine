@@ -12,6 +12,8 @@
 
 #include <cmath>
 
+namespace Matrix4Test_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -292,3 +294,5 @@ TEST(Matrix4, ObliqueNearClipPerspective){
 TEST(Matrix4, ObliqueNearClipOrthographic){
     m4ExpectObliqueNearClip(Matrix4::orthoMatrix(-4.0f, 4.0f, -3.0f, 3.0f, 0.1f, 100.0f));
 }
+
+}  // namespace Matrix4Test_cpp

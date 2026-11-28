@@ -17,6 +17,8 @@
 #include <cmath>
 #include <memory>
 
+namespace NavPathTesterTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -269,3 +271,5 @@ TEST(NavPathTester, LocateRunsTheProbe){
     tester.release(world.sceneProject);
     EXPECT_TRUE(tester.getResult().probe.reasons.empty()) << "on the plain floor nothing applies";
 }
+
+}  // namespace NavPathTesterTest_cpp

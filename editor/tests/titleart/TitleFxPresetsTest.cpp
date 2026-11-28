@@ -23,6 +23,8 @@
 #include <cctype>
 #include <set>
 
+namespace TitleFxPresetsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using TitleFxPresetsJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
@@ -176,3 +178,5 @@ TEST(TitleFxPresetsTest, ApplyRecipeIsOneNamedStep) {
     ASSERT_FALSE(bad.ok);
     EXPECT_EQ(titleFxPresetsFailure(bad)->nearest, "long_shadow");
 }
+
+}  // namespace TitleFxPresetsTest_cpp

@@ -19,6 +19,8 @@
 #include <memory>
 #include <thread>
 
+namespace AnimatorHotPathTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::anim;
 using namespace animatortest;
@@ -362,3 +364,5 @@ TEST_F(AnimatorHotPath, ThreadPoolFirstUseMatchesTheCallingThread){
     EXPECT_EQ(asyncEvents, syncEvents) << "the clip's events from its start";
     EXPECT_GT(syncEvents, 0u);
 }
+
+}  // namespace AnimatorHotPathTest_cpp

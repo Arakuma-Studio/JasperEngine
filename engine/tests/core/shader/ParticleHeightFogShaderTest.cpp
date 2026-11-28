@@ -18,9 +18,10 @@
 #include <string>
 #include <vector>
 
+namespace particle_height_fog_shader_test {
+
 using namespace jasperengine;
 
-namespace particle_height_fog_shader_test {
 
     // PARTICLES 'Pcl' and 'Pxs': the post colour and the pixel snap, set by the scene, not the effect
     constexpr uint64_t POST_COLOR_BIT = 1u << 10;
@@ -141,6 +142,8 @@ namespace particle_height_fog_shader_test {
 
 }
 
+namespace particle_height_fog_shader_test {
+
 using namespace particle_height_fog_shader_test;
 
 TEST(ParticleHeightFogShader, FoggedVariantsChooseTheHeightFogAtRunTime){
@@ -190,3 +193,5 @@ TEST(ParticleHeightFogShader, FoggedVariantsFitGles3){
     }
     std::printf("[particles] the most fragment uniform vectors of a fogged variant on GLES3: %zu of 224, %s\n", worst, worstName.c_str());
 }
+
+}  // namespace particle_height_fog_shader_test

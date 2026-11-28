@@ -25,6 +25,8 @@
 #include <fstream>
 #include <iterator>
 
+namespace DialogueEditTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -166,3 +168,5 @@ TEST_F(DialogueEditTest, ExportShipsTheCompiledProgram) {
     EXPECT_NE(error.find("is not a dialogue"), std::string::npos) << error;
     EXPECT_FALSE(fs::exists(broken));
 }
+
+}  // namespace DialogueEditTest_cpp

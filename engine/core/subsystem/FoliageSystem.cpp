@@ -43,7 +43,6 @@
 #include <sstream>
 
 using namespace jasperengine;
-using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -87,13 +86,13 @@ namespace {
         return platform == Platform::Web || platform == Platform::Android || platform == Platform::iOS ? 4 : 16;
     }
 
-    FoliageTier foliageTierOf(FoliageQuality quality) {
+    terraincore::FoliageTier foliageTierOf(FoliageQuality quality) {
         switch (quality) {
-            case FoliageQuality::LOW: return FoliageTier::Low;
-            case FoliageQuality::MEDIUM: return FoliageTier::Medium;
-            case FoliageQuality::HIGH: return FoliageTier::High;
+            case FoliageQuality::LOW: return terraincore::FoliageTier::Low;
+            case FoliageQuality::MEDIUM: return terraincore::FoliageTier::Medium;
+            case FoliageQuality::HIGH: return terraincore::FoliageTier::High;
         }
-        return FoliageTier::High;
+        return terraincore::FoliageTier::High;
     }
 
     inline uint8_t foliageColorByte(float linear) {
@@ -122,13 +121,13 @@ namespace {
     }
 
     // T5 ships this one: one Terrain, one region
-    class TerrainFoliageRegion final : public FoliageRegion {
+    class TerrainFoliageRegion final : public terraincore::FoliageRegion {
     public:
         TerrainFoliageRegion(Scene* scene, Entity entity): scene(scene), entity(entity) {}
 
         uint32_t regionKey() const override { return 0; }
 
-        TerrainMapStore& maps() override {
+        terraincore::TerrainMapStore& maps() override {
             TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
             if (!store || component != &terrain) {
                 store = std::make_unique<TerrainComponentStore>(scene, entity, terrain);
@@ -137,7 +136,7 @@ namespace {
             return *store;
         }
 
-        const TerrainSurfaceQuery& surface() const override {
+        const terraincore::TerrainSurfaceQuery& surface() const override {
             TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
             if (!query || queryComponent != &terrain) {
                 query = std::make_unique<TerrainComponentQuery>(terrain);
@@ -146,7 +145,7 @@ namespace {
             return *query;
         }
 
-        std::shared_ptr<TreeStore> trees() override { return nullptr; }
+        std::shared_ptr<terraincore::TreeStore> trees() override { return nullptr; }
         void cellOffset(int& x, int& z) const override { x = 0; z = 0; }
 
         Matrix4 localToWorld() const override {
@@ -165,20 +164,20 @@ namespace {
 
     // One cell of a job: copies of the texels it reads, and what it leaves
     struct DetailCellJob {
-        FoliageCellInput input;
+        terraincore::FoliageCellInput input;
         std::vector<uint8_t> heightTexels;
         std::vector<uint8_t> densityTexels;
         std::shared_ptr<const std::vector<uint8_t>> holeTexels;
         struct Disc { float x, z, radius; };
         std::vector<Disc> discs;
 
-        std::vector<FoliageInstance> result;
+        std::vector<terraincore::FoliageInstance> result;
         float minY = 0.0f, maxY = 0.0f;
 
         void run() {
-            scatterFoliageCell(input, result);
+            terraincore::scatterFoliageCell(input, result);
             if (!discs.empty()) {
-                result.erase(std::remove_if(result.begin(), result.end(), [&](const FoliageInstance& instance) {
+                result.erase(std::remove_if(result.begin(), result.end(), [&](const terraincore::FoliageInstance& instance) {
                     for (const Disc& disc : discs) {
                         const float dx = instance.position[0] - disc.x;
                         const float dz = instance.position[2] - disc.z;
@@ -189,7 +188,7 @@ namespace {
             }
             minY = 1e30f;
             maxY = -1e30f;
-            for (const FoliageInstance& instance : result) {
+            for (const terraincore::FoliageInstance& instance : result) {
                 minY = std::min(minY, instance.position[1]);
                 maxY = std::max(maxY, instance.position[1]);
             }
@@ -200,7 +199,7 @@ namespace {
         int x = FOLIAGE_NO_CELL, z = FOLIAGE_NO_CELL;
         bool assigned = false;
         float minY = 0.0f, maxY = 0.0f;
-        std::shared_ptr<const std::vector<FoliageInstance>> instances;
+        std::shared_ptr<const std::vector<terraincore::FoliageInstance>> instances;
         std::shared_ptr<DetailCellJob> job;
         jobs::Task<void> task;
     };
@@ -226,7 +225,7 @@ namespace {
         std::chrono::steady_clock::time_point cpuReadSince;
         std::string cpuReadError;
         std::vector<int> pending;   // slots with a job
-        FoliageLayerParams params;
+        terraincore::FoliageLayerParams params;
         float distance = 0.0f;
         bool boundsDirty = true;
         uint64_t resident = 0;
@@ -244,7 +243,7 @@ namespace {
         std::vector<uint32_t> ids;
         bool resident = false;
         bool cpuDirty = true;
-        std::vector<FoliageInstance> instances;
+        std::vector<terraincore::FoliageInstance> instances;
         std::vector<uint32_t> slotIds;
         std::vector<TreeProtoRange> ranges;
         float boxMin[3] = {0.0f, 0.0f, 0.0f};
@@ -279,19 +278,19 @@ namespace {
 
     struct TreeRuntimeState {
         std::unordered_set<uint32_t> removed;
-        std::vector<TreeRecord> added;
-        uint32_t nextAdded = TREE_RUNTIME_ID_BASE;
+        std::vector<terraincore::TreeRecord> added;
+        uint32_t nextAdded = terraincore::TREE_RUNTIME_ID_BASE;
         struct Disc { float x, z, radius; int layer; };
         std::vector<Disc> discs;
     };
 
     struct RegionState {
         Entity owner = NULL_ENTITY;
-        std::shared_ptr<FoliageRegion> region;
+        std::shared_ptr<terraincore::FoliageRegion> region;
         std::vector<DetailLayerState> layers;
         std::vector<TreePrototypeState> prototypes;
 
-        std::shared_ptr<TreeStore> store;
+        std::shared_ptr<terraincore::TreeStore> store;
         bool storeShared = false;       // a clone's: copied before its first write
         bool storeDirty = false;
         bool storeRefused = false;
@@ -299,13 +298,13 @@ namespace {
         bool storeOverwriteAllowed = false;
         std::string storeError;
         std::string storePath;
-        jobs::Task<std::shared_ptr<TreeStore>> storeTask;
+        jobs::Task<std::shared_ptr<terraincore::TreeStore>> storeTask;
         std::shared_ptr<std::string> storeTaskError;
 
         TreeCellMap cells;
         bool cellsReady = false;
         jobs::Task<std::shared_ptr<TreeCellMap>> indexTask;
-        std::shared_ptr<TreeStore> indexing;
+        std::shared_ptr<terraincore::TreeStore> indexing;
         std::vector<int64_t> residentOrder;     // resident cells, for the views
         float treeScaleMax = 0.0f;              // the largest range.maxScale a cell has had: how far a tree reaches
         bool residentDirty = true;
@@ -322,7 +321,7 @@ namespace {
         float heightDirtyMin[2] = {0.0f, 0.0f};
         float heightDirtyMax[2] = {0.0f, 0.0f};
         float heightDirtyAge = 0.0f;
-        std::vector<std::pair<int, TexelRect>> densityDirty;
+        std::vector<std::pair<int, terraincore::TexelRect>> densityDirty;
 
         bool refill = true;
         bool active = true;
@@ -380,8 +379,8 @@ namespace {
         for (size_t i = 0; i < removed.size(); i++) out << (i ? "," : "") << removed[i];
         out << ";";
         for (size_t i = 0; i < runtime.added.size(); i++) {
-            const TreeRecord& record = runtime.added[i];
-            out << (i ? "," : "") << record.id << ":" << record.prototypeId << ":" << foliageTreeLocalX(record, size) << ":" << foliageTreeLocalZ(record, size)
+            const terraincore::TreeRecord& record = runtime.added[i];
+            out << (i ? "," : "") << record.id << ":" << record.prototypeId << ":" << terraincore::foliageTreeLocalX(record, size) << ":" << terraincore::foliageTreeLocalZ(record, size)
                 << ":" << record.scale << ":" << record.rotation[1] << ":" << record.rotation[3] << ":" << record.yOffset;
         }
         out << ";";
@@ -417,7 +416,7 @@ namespace {
                     if (fields.size() != 8) return false;
                     ParsedFoliageOverlay::Added entry;
                     entry.id = static_cast<uint32_t>(std::stoul(fields[0]));
-                    if (entry.id < TREE_RUNTIME_ID_BASE) return false;
+                    if (entry.id < terraincore::TREE_RUNTIME_ID_BASE) return false;
                     entry.prototype = static_cast<uint16_t>(std::stoul(fields[1]));
                     entry.x = std::stof(fields[2]);
                     entry.z = std::stof(fields[3]);
@@ -441,21 +440,21 @@ namespace {
         return true;
     }
 
-    TreeRuntimeState placeFoliageOverlay(const ParsedFoliageOverlay& parsed, const TerrainSurfaceQuery& surface, float size, float maxHeight) {
+    TreeRuntimeState placeFoliageOverlay(const ParsedFoliageOverlay& parsed, const terraincore::TerrainSurfaceQuery& surface, float size, float maxHeight) {
         TreeRuntimeState next;
         next.removed.insert(parsed.removed.begin(), parsed.removed.end());
         for (const ParsedFoliageOverlay::Added& entry : parsed.added) {
-            TreeRecord record{};
+            terraincore::TreeRecord record{};
             record.id = entry.id;
             record.prototypeId = entry.prototype;
-            const SurfaceSample sample = surface.sample(entry.x, entry.z);
-            foliageSetTreeSurface(record, size, maxHeight, entry.x, entry.z, sample.height);
+            const terraincore::SurfaceSample sample = surface.sample(entry.x, entry.z);
+            terraincore::foliageSetTreeSurface(record, size, maxHeight, entry.x, entry.z, sample.height);
             record.scale = entry.scale;
             record.rotation[1] = entry.rotation1;
             record.rotation[3] = entry.rotation3;
             record.yOffset = entry.yOffset;
             record.heightRatio = 128;
-            record.flags = TREE_SNAP_TO_TERRAIN;
+            record.flags = terraincore::TREE_SNAP_TO_TERRAIN;
             std::memset(record.color, 255, sizeof(record.color));
             next.added.push_back(record);
             next.nextAdded = std::max(next.nextAdded, record.id + 1);
@@ -486,7 +485,7 @@ struct FoliageSystem::Impl {
     // One pair per Terrain, whatever regions it has now or later: a World's serves every tile
     struct Handlers {
         std::function<void(const TreeHitEvent&)> hit;
-        std::function<void(TreeId, const FoliageInstanceInfo&)> removed;
+        std::function<void(terraincore::TreeId, const FoliageInstanceInfo&)> removed;
     };
     std::unordered_map<Entity, Handlers> handlers;
     // T4 R27: a World's tile out of memory keeps its overlay as text, until it returns
@@ -543,11 +542,11 @@ struct FoliageSystem::Impl {
         return loneRegion(owner);
     }
 
-    std::shared_ptr<TreeStore> writableStore(RegionState* state) {
+    std::shared_ptr<terraincore::TreeStore> writableStore(RegionState* state) {
         if (!state) return nullptr;
         if (state->storeRefused && !state->storeOverwriteAllowed) return nullptr;
         if (!state->store) {
-            state->store = std::make_shared<TreeStore>();
+            state->store = std::make_shared<terraincore::TreeStore>();
             state->indexing = state->store;
             state->cellsReady = true;
         }
@@ -555,16 +554,16 @@ struct FoliageSystem::Impl {
         return state->store;
     }
 
-    void noteTreesChanged(RegionState* state, const TreeDelta& delta) {
+    void noteTreesChanged(RegionState* state, const terraincore::TreeDelta& delta) {
         if (!state) return;
         state->storeDirty = true;
         if (!state->cellsReady) return;
-        for (const TreeRecord& record : delta.removed) markTreeCellDirtyForRecord(*state, record, false, true);
-        for (const TreeRecord& record : delta.added) markTreeCellDirtyForRecord(*state, record, true, false);
+        for (const terraincore::TreeRecord& record : delta.removed) markTreeCellDirtyForRecord(*state, record, false, true);
+        for (const terraincore::TreeRecord& record : delta.added) markTreeCellDirtyForRecord(*state, record, true, false);
         self->residencyRevision++;
     }
 
-    void replaceStore(RegionState* state, std::shared_ptr<TreeStore> store) {
+    void replaceStore(RegionState* state, std::shared_ptr<terraincore::TreeStore> store) {
         if (!state) return;
         if (store) {
             state->store = std::move(store);
@@ -590,9 +589,9 @@ struct FoliageSystem::Impl {
 
     void clearOverlay(RegionState& state) {
         for (uint32_t id : state.runtime.removed) {
-            if (const TreeRecord* record = findRecord(state, id)) markTreeCellDirtyForRecord(state, *record, false, false);
+            if (const terraincore::TreeRecord* record = findRecord(state, id)) markTreeCellDirtyForRecord(state, *record, false, false);
         }
-        for (const TreeRecord& record : state.runtime.added) markTreeCellDirtyForRecord(state, record, false, true);
+        for (const terraincore::TreeRecord& record : state.runtime.added) markTreeCellDirtyForRecord(state, record, false, true);
         const bool hadDiscs = !state.runtime.discs.empty();
         state.runtime = TreeRuntimeState();
         if (hadDiscs) rescanDetails(state);
@@ -601,9 +600,9 @@ struct FoliageSystem::Impl {
     // An overlay on a region with nothing in its own (cleared first)
     void applyOverlay(RegionState& state, TreeRuntimeState next) {
         state.runtime = std::move(next);
-        for (const TreeRecord& record : state.runtime.added) markTreeCellDirtyForRecord(state, record, true, false);
+        for (const terraincore::TreeRecord& record : state.runtime.added) markTreeCellDirtyForRecord(state, record, true, false);
         for (uint32_t id : state.runtime.removed) {
-            if (const TreeRecord* record = findRecord(state, id)) {
+            if (const terraincore::TreeRecord* record = findRecord(state, id)) {
                 markTreeCellDirtyForRecord(state, *record, false, false);
                 self->rebuildCellNow(state.owner, state.region->regionKey(), *record);
             }
@@ -651,11 +650,11 @@ struct FoliageSystem::Impl {
             Attribute attribute(dataType, buffer.getName(), 4, offset, 0, normalized, true);
             buffer.addAttribute(type, attribute);
         };
-        add(AttributeType::INSTANCEPACKED0, AttributeDataType::FLOAT, offsetof(FoliageInstance, position), false);
-        add(AttributeType::INSTANCEPACKED1, AttributeDataType::SHORT, offsetof(FoliageInstance, rotation), true);
-        add(AttributeType::INSTANCEPACKED2, AttributeDataType::UNSIGNED_BYTE, offsetof(FoliageInstance, color), true);
-        add(AttributeType::INSTANCEPACKED3, AttributeDataType::UNSIGNED_BYTE, offsetof(FoliageInstance, heightRatio), true);
-        buffer.setStride(sizeof(FoliageInstance));
+        add(AttributeType::INSTANCEPACKED0, AttributeDataType::FLOAT, offsetof(terraincore::FoliageInstance, position), false);
+        add(AttributeType::INSTANCEPACKED1, AttributeDataType::SHORT, offsetof(terraincore::FoliageInstance, rotation), true);
+        add(AttributeType::INSTANCEPACKED2, AttributeDataType::UNSIGNED_BYTE, offsetof(terraincore::FoliageInstance, color), true);
+        add(AttributeType::INSTANCEPACKED3, AttributeDataType::UNSIGNED_BYTE, offsetof(terraincore::FoliageInstance, heightRatio), true);
+        buffer.setStride(sizeof(terraincore::FoliageInstance));
         buffer.setRenderAttributes(true);
         buffer.setInstanceBuffer(true);
         buffer.setUsage(BufferUsage::STREAM);
@@ -744,8 +743,8 @@ struct FoliageSystem::Impl {
         return scaledDistance(std::max(0.0f, terrain.treeDistance), false);
     }
 
-    static FoliageLayerParams paramsOf(const TerrainFoliageLayer& layer) {
-        FoliageLayerParams params;
+    static terraincore::FoliageLayerParams paramsOf(const TerrainFoliageLayer& layer) {
+        terraincore::FoliageLayerParams params;
         params.seed = layer.seed;
         params.density = layer.density;
         params.minScale = layer.minScale;
@@ -768,7 +767,7 @@ struct FoliageSystem::Impl {
         return params;
     }
 
-    static bool sameParams(const FoliageLayerParams& a, const FoliageLayerParams& b) {
+    static bool sameParams(const terraincore::FoliageLayerParams& a, const terraincore::FoliageLayerParams& b) {
         return a.seed == b.seed && a.density == b.density && a.minScale == b.minScale && a.maxScale == b.maxScale &&
                a.rotationJitter == b.rotationJitter && a.alignToNormal == b.alignToNormal && a.minSlope == b.minSlope &&
                a.maxSlope == b.maxSlope && a.minHeight == b.minHeight && a.maxHeight == b.maxHeight &&
@@ -871,26 +870,26 @@ struct FoliageSystem::Impl {
         if (state.holeCopyValid) return;
         state.holeCopyValid = true;
         state.holeCopy.reset();
-        TerrainMapStore& maps = state.region->maps();
-        const MapId holes{MapKind::Hole, 0};
-        const MapFormat format = maps.format(holes);
+        terraincore::TerrainMapStore& maps = state.region->maps();
+        const terraincore::MapId holes{terraincore::MapKind::Hole, 0};
+        const terraincore::MapFormat format = maps.format(holes);
         if (!format.exists || format.bounds.empty()) return;
-        auto copy = std::make_shared<std::vector<uint8_t>>(static_cast<size_t>(format.bounds.area()) * bytesPerTexel(format));
+        auto copy = std::make_shared<std::vector<uint8_t>>(static_cast<size_t>(format.bounds.area()) * terraincore::bytesPerTexel(format));
         if (maps.readBytes(holes, format.bounds, *copy)) {
             state.holeCopy = std::move(copy);
         }
     }
 
     bool fillCellInput(RegionState& state, DetailLayerState& layerState, int layerIndex, int cellX, int cellZ, DetailCellJob& job) {
-        TerrainMapStore& maps = state.region->maps();
-        const MapId heightId{MapKind::Height, 0};
-        const MapId densityId{MapKind::Density, layerIndex};
-        const MapFormat heightFormat = maps.format(heightId);
-        const MapFormat densityFormat = maps.format(densityId);
+        terraincore::TerrainMapStore& maps = state.region->maps();
+        const terraincore::MapId heightId{terraincore::MapKind::Height, 0};
+        const terraincore::MapId densityId{terraincore::MapKind::Density, layerIndex};
+        const terraincore::MapFormat heightFormat = maps.format(heightId);
+        const terraincore::MapFormat densityFormat = maps.format(densityId);
         if (!heightFormat.exists || !densityFormat.exists) return false;
 
         const float size = state.terrainSize;
-        FoliageCellInput& input = job.input;
+        terraincore::FoliageCellInput& input = job.input;
         input.layer = layerState.params;
         input.cellX = cellX;
         input.cellZ = cellZ;
@@ -900,9 +899,9 @@ struct FoliageSystem::Impl {
         input.terrainMaxHeight = state.terrainMaxHeight;
 
         const float heightSize = state.heightMapSize > 0.0f ? state.heightMapSize : size;
-        const FoliagePatchRect heightRect = foliageHeightPatchRect(cellX, cellZ, heightSize, heightFormat.bounds.w, heightFormat.bounds.h);
-        job.heightTexels.resize(static_cast<size_t>(heightRect.width) * heightRect.height * bytesPerTexel(heightFormat));
-        if (!maps.readBytes(heightId, TexelRect{heightRect.x, heightRect.y, heightRect.width, heightRect.height}, job.heightTexels)) return false;
+        const terraincore::FoliagePatchRect heightRect = terraincore::foliageHeightPatchRect(cellX, cellZ, heightSize, heightFormat.bounds.w, heightFormat.bounds.h);
+        job.heightTexels.resize(static_cast<size_t>(heightRect.width) * heightRect.height * terraincore::bytesPerTexel(heightFormat));
+        if (!maps.readBytes(heightId, terraincore::TexelRect{heightRect.x, heightRect.y, heightRect.width, heightRect.height}, job.heightTexels)) return false;
         input.heightMap.texels = job.heightTexels.data();
         input.heightMap.mapWidth = heightFormat.bounds.w;
         input.heightMap.mapHeight = heightFormat.bounds.h;
@@ -911,11 +910,11 @@ struct FoliageSystem::Impl {
         input.heightMap.width = heightRect.width;
         input.heightMap.height = heightRect.height;
         input.heightMap.channels = heightFormat.channels;
-        input.heightMap.bytesPerChannel = bytesPerChannelOf(heightFormat.bitsPerChannel);
+        input.heightMap.bytesPerChannel = terraincore::bytesPerChannelOf(heightFormat.bitsPerChannel);
 
-        const FoliagePatchRect densityRect = foliageDensityPatchRect(cellX, cellZ, size, densityFormat.bounds.w, densityFormat.bounds.h);
+        const terraincore::FoliagePatchRect densityRect = terraincore::foliageDensityPatchRect(cellX, cellZ, size, densityFormat.bounds.w, densityFormat.bounds.h);
         job.densityTexels.resize(static_cast<size_t>(densityRect.width) * densityRect.height * bytesPerTexel(densityFormat));
-        if (!maps.readBytes(densityId, TexelRect{densityRect.x, densityRect.y, densityRect.width, densityRect.height}, job.densityTexels)) return false;
+        if (!maps.readBytes(densityId, terraincore::TexelRect{densityRect.x, densityRect.y, densityRect.width, densityRect.height}, job.densityTexels)) return false;
         input.densityMap.texels = job.densityTexels.data();
         input.densityMap.mapWidth = densityFormat.bounds.w;
         input.densityMap.mapHeight = densityFormat.bounds.h;
@@ -924,21 +923,21 @@ struct FoliageSystem::Impl {
         input.densityMap.width = densityRect.width;
         input.densityMap.height = densityRect.height;
         input.densityMap.channels = densityFormat.channels;
-        input.densityMap.bytesPerChannel = bytesPerChannelOf(densityFormat.bitsPerChannel);
+        input.densityMap.bytesPerChannel = terraincore::bytesPerChannelOf(densityFormat.bitsPerChannel);
 
         ensureHoleCopy(state);
         if (state.holeCopy) {
             job.holeTexels = state.holeCopy;
-            const MapFormat holes = maps.format(MapId{MapKind::Hole, 0});
-            input.holes = HoleMapView{state.holeCopy->data(), holes.bounds.w, holes.bounds.h};
+            const terraincore::MapFormat holes = maps.format(terraincore::MapId{terraincore::MapKind::Hole, 0});
+            input.holes = terraincore::HoleMapView{state.holeCopy->data(), holes.bounds.w, holes.bounds.h};
         }
 
-        const float originX = static_cast<float>(cellX) * FOLIAGE_DETAIL_CELL_SIZE;
-        const float originZ = static_cast<float>(cellZ) * FOLIAGE_DETAIL_CELL_SIZE;
+        const float originX = static_cast<float>(cellX) * terraincore::FOLIAGE_DETAIL_CELL_SIZE;
+        const float originZ = static_cast<float>(cellZ) * terraincore::FOLIAGE_DETAIL_CELL_SIZE;
         for (const TreeRuntimeState::Disc& disc : state.runtime.discs) {
             if (disc.layer >= 0 && disc.layer != layerIndex) continue;
-            const float nearestX = std::clamp(disc.x, originX, originX + FOLIAGE_DETAIL_CELL_SIZE);
-            const float nearestZ = std::clamp(disc.z, originZ, originZ + FOLIAGE_DETAIL_CELL_SIZE);
+            const float nearestX = std::clamp(disc.x, originX, originX + terraincore::FOLIAGE_DETAIL_CELL_SIZE);
+            const float nearestZ = std::clamp(disc.z, originZ, originZ + terraincore::FOLIAGE_DETAIL_CELL_SIZE);
             const float dx = disc.x - nearestX;
             const float dz = disc.z - nearestZ;
             if (dx * dx + dz * dz <= disc.radius * disc.radius) {
@@ -953,7 +952,7 @@ struct FoliageSystem::Impl {
         if (slot.instances) {
             layer.resident -= slot.instances->size();
         }
-        slot.instances = std::make_shared<const std::vector<FoliageInstance>>(std::move(job->result));
+        slot.instances = std::make_shared<const std::vector<terraincore::FoliageInstance>>(std::move(job->result));
         layer.resident += slot.instances->size();
         slot.minY = job->minY;
         slot.maxY = job->maxY;
@@ -989,8 +988,8 @@ struct FoliageSystem::Impl {
         // the cells that enter, and a slot outside the span stays as it is
         const float distance = layerState.distance;
         const int side = preview
-            ? std::max(1, static_cast<int>(std::ceil(state.terrainSize / FOLIAGE_DETAIL_CELL_SIZE)) + 1)
-            : std::max(1, static_cast<int>(std::ceil(2.0f * distance / FOLIAGE_DETAIL_CELL_SIZE)) + 1);
+            ? std::max(1, static_cast<int>(std::ceil(state.terrainSize / terraincore::FOLIAGE_DETAIL_CELL_SIZE)) + 1)
+            : std::max(1, static_cast<int>(std::ceil(2.0f * distance / terraincore::FOLIAGE_DETAIL_CELL_SIZE)) + 1);
         if (side != layerState.side) {
             for (DetailSlot& slot : layerState.ring) cancelSlot(slot);
             layerState.pending.clear();
@@ -1003,8 +1002,8 @@ struct FoliageSystem::Impl {
             self->residencyRevision++;
         }
 
-        const int viewCellX = preview ? 0 : static_cast<int>(std::floor(state.viewLocal.x / FOLIAGE_DETAIL_CELL_SIZE));
-        const int viewCellZ = preview ? 0 : static_cast<int>(std::floor(state.viewLocal.z / FOLIAGE_DETAIL_CELL_SIZE));
+        const int viewCellX = preview ? 0 : static_cast<int>(std::floor(state.viewLocal.x / terraincore::FOLIAGE_DETAIL_CELL_SIZE));
+        const int viewCellZ = preview ? 0 : static_cast<int>(std::floor(state.viewLocal.z / terraincore::FOLIAGE_DETAIL_CELL_SIZE));
         if (viewCellX != layerState.viewCellX || viewCellZ != layerState.viewCellZ) {
             layerState.viewCellX = viewCellX;
             layerState.viewCellZ = viewCellZ;
@@ -1014,7 +1013,7 @@ struct FoliageSystem::Impl {
 
         const int jobCap = foliageJobCap();
         const float half = state.terrainSize * 0.5f;
-        const int lastCell = static_cast<int>(std::ceil(half / FOLIAGE_DETAIL_CELL_SIZE));
+        const int lastCell = static_cast<int>(std::ceil(half / terraincore::FOLIAGE_DETAIL_CELL_SIZE));
         bool complete = true;
         for (const std::pair<int, int>& offset : foliageRingOrder(side)) {
             const int cellX = viewCellX + offset.first;
@@ -1058,9 +1057,9 @@ struct FoliageSystem::Impl {
     void markDetailRectDirty(DetailLayerState& layer, float minX, float minZ, float maxX, float maxZ) {
         for (DetailSlot& slot : layer.ring) {
             if (!slot.assigned) continue;
-            const float originX = static_cast<float>(slot.x) * FOLIAGE_DETAIL_CELL_SIZE;
-            const float originZ = static_cast<float>(slot.z) * FOLIAGE_DETAIL_CELL_SIZE;
-            if (originX > maxX || originX + FOLIAGE_DETAIL_CELL_SIZE < minX || originZ > maxZ || originZ + FOLIAGE_DETAIL_CELL_SIZE < minZ) continue;
+            const float originX = static_cast<float>(slot.x) * terraincore::FOLIAGE_DETAIL_CELL_SIZE;
+            const float originZ = static_cast<float>(slot.z) * terraincore::FOLIAGE_DETAIL_CELL_SIZE;
+            if (originX > maxX || originX + terraincore::FOLIAGE_DETAIL_CELL_SIZE < minX || originZ > maxZ || originZ + terraincore::FOLIAGE_DETAIL_CELL_SIZE < minZ) continue;
             cancelSlot(slot);
             slot.assigned = false;
             layer.needScan = true;
@@ -1076,10 +1075,10 @@ struct FoliageSystem::Impl {
         const float reach = (layer.radius + layer.center.length()) * std::max(layer.params.maxScale, 0.001f) * std::max(1.0f, layer.params.maxHeightRatio);
         for (const DetailSlot& slot : layer.ring) {
             if (!slot.instances || slot.instances->empty()) continue;
-            const float x = static_cast<float>(slot.x) * FOLIAGE_DETAIL_CELL_SIZE;
-            const float z = static_cast<float>(slot.z) * FOLIAGE_DETAIL_CELL_SIZE;
+            const float x = static_cast<float>(slot.x) * terraincore::FOLIAGE_DETAIL_CELL_SIZE;
+            const float z = static_cast<float>(slot.z) * terraincore::FOLIAGE_DETAIL_CELL_SIZE;
             box.merge(AABB(Vector3(x - reach, slot.minY - reach, z - reach),
-                           Vector3(x + FOLIAGE_DETAIL_CELL_SIZE + reach, slot.maxY + reach, z + FOLIAGE_DETAIL_CELL_SIZE + reach)));
+                           Vector3(x + terraincore::FOLIAGE_DETAIL_CELL_SIZE + reach, slot.maxY + reach, z + terraincore::FOLIAGE_DETAIL_CELL_SIZE + reach)));
         }
         mesh.aabb = box;
         mesh.needUpdateAABB = true;
@@ -1112,8 +1111,8 @@ struct FoliageSystem::Impl {
         auto error = std::make_shared<std::string>();
         state.storeTaskError = error;
 
-        const auto decode = [error](std::vector<uint8_t>&& bytes) -> std::shared_ptr<TreeStore> {
-            auto store = std::make_shared<TreeStore>();
+        const auto decode = [error](std::vector<uint8_t>&& bytes) -> std::shared_ptr<terraincore::TreeStore> {
+            auto store = std::make_shared<terraincore::TreeStore>();
             std::string message;
             if (!store->decode(bytes, &message, treeFileDecompress)) {
                 *error = message;
@@ -1132,9 +1131,9 @@ struct FoliageSystem::Impl {
     void pollStoreLoad(RegionState& state) {
         if (!state.storeLoading || !state.storeTask.isReady()) return;
         state.storeLoading = false;
-        std::shared_ptr<TreeStore> loaded;
+        std::shared_ptr<terraincore::TreeStore> loaded;
         if (state.storeTask.status() == jobs::TaskStatus::Completed) loaded = state.storeTask.get();
-        state.storeTask = jobs::Task<std::shared_ptr<TreeStore>>();
+        state.storeTask = jobs::Task<std::shared_ptr<terraincore::TreeStore>>();
         if (!loaded) {
             state.storeRefused = true;
             state.storeError = state.storeTaskError && !state.storeTaskError->empty() ? *state.storeTaskError : "the file could not be read";
@@ -1151,9 +1150,9 @@ struct FoliageSystem::Impl {
         startIndex(state);
     }
 
-    static void addToIndex(TreeCellMap& cells, const TreeRecord& record, float size) {
-        const int x = static_cast<int>(std::floor(foliageTreeLocalX(record, size) / FOLIAGE_TREE_CELL_SIZE));
-        const int z = static_cast<int>(std::floor(foliageTreeLocalZ(record, size) / FOLIAGE_TREE_CELL_SIZE));
+    static void addToIndex(TreeCellMap& cells, const terraincore::TreeRecord& record, float size) {
+        const int x = static_cast<int>(std::floor(terraincore::foliageTreeLocalX(record, size) / terraincore::FOLIAGE_TREE_CELL_SIZE));
+        const int z = static_cast<int>(std::floor(terraincore::foliageTreeLocalZ(record, size) / terraincore::FOLIAGE_TREE_CELL_SIZE));
         TreeCell& cell = cells[foliageTreeCellKey(x, z)];
         cell.x = x;
         cell.z = z;
@@ -1166,16 +1165,16 @@ struct FoliageSystem::Impl {
         for (auto& entry : state.cells) releaseCell(entry.second);
         state.cells.clear();
         state.residentDirty = true;
-        std::shared_ptr<TreeStore> store = state.store;
+        std::shared_ptr<terraincore::TreeStore> store = state.store;
         state.indexing = store;
         const float size = state.terrainSize;
-        std::vector<TreeRecord> added = state.runtime.added;
+        std::vector<terraincore::TreeRecord> added = state.runtime.added;
         const auto build = [store, size, added]() {
             auto cells = std::make_shared<TreeCellMap>();
             if (store) {
-                for (const TreeRecord& record : store->records()) addToIndex(*cells, record, size);
+                for (const terraincore::TreeRecord& record : store->records()) addToIndex(*cells, record, size);
             }
-            for (const TreeRecord& record : added) addToIndex(*cells, record, size);
+            for (const terraincore::TreeRecord& record : added) addToIndex(*cells, record, size);
             return cells;
         };
         if (jobs::hasSystem()) {
@@ -1205,9 +1204,9 @@ struct FoliageSystem::Impl {
         state.treeViewCellX = FOLIAGE_NO_CELL;
     }
 
-    const TreeRecord* findRecord(const RegionState& state, uint32_t id) const {
-        if (id >= TREE_RUNTIME_ID_BASE) {
-            for (const TreeRecord& record : state.runtime.added) {
+    const terraincore::TreeRecord* findRecord(const RegionState& state, uint32_t id) const {
+        if (id >= terraincore::TREE_RUNTIME_ID_BASE) {
+            for (const terraincore::TreeRecord& record : state.runtime.added) {
                 if (record.id == id) return &record;
             }
             return nullptr;
@@ -1234,8 +1233,8 @@ struct FoliageSystem::Impl {
         entries.reserve(cell.ids.size());
         for (uint32_t id : cell.ids) {
             if (state.runtime.removed.count(id)) continue;
-            const TreeRecord* record = findRecord(state, id);
-            if (!record || (record->flags & TREE_HIDDEN_BY_HOLE)) continue;
+            const terraincore::TreeRecord* record = findRecord(state, id);
+            if (!record || (record->flags & terraincore::TREE_HIDDEN_BY_HOLE)) continue;
             const int prototype = prototypeIndexOf(terrain, record->prototypeId);
             if (prototype < 0) continue;
             entries.push_back(Entry{prototype, id});
@@ -1245,27 +1244,27 @@ struct FoliageSystem::Impl {
         });
 
         const float size = state.terrainSize;
-        cell.boxMin[0] = static_cast<float>(cell.x) * FOLIAGE_TREE_CELL_SIZE;
-        cell.boxMin[2] = static_cast<float>(cell.z) * FOLIAGE_TREE_CELL_SIZE;
-        cell.boxMax[0] = cell.boxMin[0] + FOLIAGE_TREE_CELL_SIZE;
-        cell.boxMax[2] = cell.boxMin[2] + FOLIAGE_TREE_CELL_SIZE;
+        cell.boxMin[0] = static_cast<float>(cell.x) * terraincore::FOLIAGE_TREE_CELL_SIZE;
+        cell.boxMin[2] = static_cast<float>(cell.z) * terraincore::FOLIAGE_TREE_CELL_SIZE;
+        cell.boxMax[0] = cell.boxMin[0] + terraincore::FOLIAGE_TREE_CELL_SIZE;
+        cell.boxMax[2] = cell.boxMin[2] + terraincore::FOLIAGE_TREE_CELL_SIZE;
         float minY = 1e30f, maxY = -1e30f;
 
         cell.instances.resize(entries.size());
         cell.slotIds.resize(entries.size());
         for (size_t i = 0; i < entries.size(); i++) {
-            const TreeRecord* record = findRecord(state, entries[i].id);
+            const terraincore::TreeRecord* record = findRecord(state, entries[i].id);
             const TerrainTreePrototype& prototype = terrain.treePrototypes[entries[i].prototype];
             float normal[3] = {0.0f, 1.0f, 0.0f};
-            const bool leans = (record->flags & TREE_ALIGN_TO_NORMAL) != 0;
+            const bool leans = (record->flags & terraincore::TREE_ALIGN_TO_NORMAL) != 0;
             if (leans) {
-                const SurfaceSample sample = state.region->surface().sample(foliageTreeLocalX(*record, size), foliageTreeLocalZ(*record, size));
+                const terraincore::SurfaceSample sample = state.region->surface().sample(foliageTreeLocalX(*record, size), foliageTreeLocalZ(*record, size));
                 normal[0] = sample.normal.x;
                 normal[1] = sample.normal.y;
                 normal[2] = sample.normal.z;
             }
             const uint8_t bend = static_cast<uint8_t>(std::clamp(std::floor(prototype.bendFactor * 255.0f + 0.5f), 0.0f, 255.0f));
-            foliageInstanceFromTree(*record, size, state.terrainMaxHeight, bend, leans ? normal : nullptr, cell.instances[i]);
+            terraincore::foliageInstanceFromTree(*record, size, state.terrainMaxHeight, bend, leans ? normal : nullptr, cell.instances[i]);
             cell.slotIds[i] = entries[i].id;
             minY = std::min(minY, cell.instances[i].position[1]);
             maxY = std::max(maxY, cell.instances[i].position[1]);
@@ -1296,9 +1295,9 @@ struct FoliageSystem::Impl {
 
     // Which cells hold CPU arrays: within Tree Distance plus one cell (R14)
     void updateTreeResidency(RegionState& state, const TerrainComponent& terrain, double startMs) {
-        const float distance = treeDistanceOf(terrain) + FOLIAGE_TREE_CELL_SIZE;
-        const int viewX = static_cast<int>(std::floor(state.viewLocal.x / FOLIAGE_TREE_CELL_SIZE));
-        const int viewZ = static_cast<int>(std::floor(state.viewLocal.z / FOLIAGE_TREE_CELL_SIZE));
+        const float distance = treeDistanceOf(terrain) + terraincore::FOLIAGE_TREE_CELL_SIZE;
+        const int viewX = static_cast<int>(std::floor(state.viewLocal.x / terraincore::FOLIAGE_TREE_CELL_SIZE));
+        const int viewZ = static_cast<int>(std::floor(state.viewLocal.z / terraincore::FOLIAGE_TREE_CELL_SIZE));
         if (viewX != state.treeViewCellX || viewZ != state.treeViewCellZ || distance != state.residencyDistance) {
             state.treeViewCellX = viewX;
             state.treeViewCellZ = viewZ;
@@ -1311,10 +1310,10 @@ struct FoliageSystem::Impl {
             const float distanceSquared = distance * distance;
             for (auto& entry : state.cells) {
                 TreeCell& cell = entry.second;
-                const float centerX = (static_cast<float>(cell.x) + 0.5f) * FOLIAGE_TREE_CELL_SIZE;
-                const float centerZ = (static_cast<float>(cell.z) + 0.5f) * FOLIAGE_TREE_CELL_SIZE;
-                const float dx = std::max(std::abs(centerX - state.viewLocal.x) - FOLIAGE_TREE_CELL_SIZE * 0.5f, 0.0f);
-                const float dz = std::max(std::abs(centerZ - state.viewLocal.z) - FOLIAGE_TREE_CELL_SIZE * 0.5f, 0.0f);
+                const float centerX = (static_cast<float>(cell.x) + 0.5f) * terraincore::FOLIAGE_TREE_CELL_SIZE;
+                const float centerZ = (static_cast<float>(cell.z) + 0.5f) * terraincore::FOLIAGE_TREE_CELL_SIZE;
+                const float dx = std::max(std::abs(centerX - state.viewLocal.x) - terraincore::FOLIAGE_TREE_CELL_SIZE * 0.5f, 0.0f);
+                const float dz = std::max(std::abs(centerZ - state.viewLocal.z) - terraincore::FOLIAGE_TREE_CELL_SIZE * 0.5f, 0.0f);
                 const bool inRange = dx * dx + dz * dz <= distanceSquared;
                 if (inRange) {
                     if (!cell.resident) {
@@ -1324,7 +1323,7 @@ struct FoliageSystem::Impl {
                     state.residentOrder.push_back(entry.first);
                 } else if (cell.resident) {
                     cell.resident = false;
-                    std::vector<FoliageInstance>().swap(cell.instances);
+                    std::vector<terraincore::FoliageInstance>().swap(cell.instances);
                     std::vector<uint32_t>().swap(cell.slotIds);
                     cell.ranges.clear();
                     if (cell.gpu) {
@@ -1352,18 +1351,18 @@ struct FoliageSystem::Impl {
     }
 
     void prepareWritableStore(RegionState& state) {
-        if (!state.store) state.store = std::make_shared<TreeStore>();
+        if (!state.store) state.store = std::make_shared<terraincore::TreeStore>();
         if (state.storeShared) {
-            state.store = std::make_shared<TreeStore>(*state.store);
+            state.store = std::make_shared<terraincore::TreeStore>(*state.store);
             state.storeShared = false;
             state.indexing = state.store;
         }
     }
 
-    void markTreeCellDirtyForRecord(RegionState& state, const TreeRecord& record, bool add, bool remove) {
+    void markTreeCellDirtyForRecord(RegionState& state, const terraincore::TreeRecord& record, bool add, bool remove) {
         const float size = state.terrainSize;
-        const int x = static_cast<int>(std::floor(foliageTreeLocalX(record, size) / FOLIAGE_TREE_CELL_SIZE));
-        const int z = static_cast<int>(std::floor(foliageTreeLocalZ(record, size) / FOLIAGE_TREE_CELL_SIZE));
+        const int x = static_cast<int>(std::floor(terraincore::foliageTreeLocalX(record, size) / terraincore::FOLIAGE_TREE_CELL_SIZE));
+        const int z = static_cast<int>(std::floor(terraincore::foliageTreeLocalZ(record, size) / terraincore::FOLIAGE_TREE_CELL_SIZE));
         const int64_t key = foliageTreeCellKey(x, z);
         auto it = state.cells.find(key);
         if (it == state.cells.end()) {
@@ -1387,15 +1386,15 @@ struct FoliageSystem::Impl {
     // R25: touched cells' records take the surface's height again; a hole hides without deleting
     void resnapTrees(RegionState& state, float minX, float minZ, float maxX, float maxZ) {
         if (!state.cellsReady) return;
-        const TerrainSurfaceQuery& surface = state.region->surface();
+        const terraincore::TerrainSurfaceQuery& surface = state.region->surface();
         const float size = state.terrainSize;
         const float maxHeight = state.terrainMaxHeight;
-        const int firstX = static_cast<int>(std::floor((minX - 1.0f) / FOLIAGE_TREE_CELL_SIZE));
-        const int lastX = static_cast<int>(std::floor((maxX + 1.0f) / FOLIAGE_TREE_CELL_SIZE));
-        const int firstZ = static_cast<int>(std::floor((minZ - 1.0f) / FOLIAGE_TREE_CELL_SIZE));
-        const int lastZ = static_cast<int>(std::floor((maxZ + 1.0f) / FOLIAGE_TREE_CELL_SIZE));
+        const int firstX = static_cast<int>(std::floor((minX - 1.0f) / terraincore::FOLIAGE_TREE_CELL_SIZE));
+        const int lastX = static_cast<int>(std::floor((maxX + 1.0f) / terraincore::FOLIAGE_TREE_CELL_SIZE));
+        const int firstZ = static_cast<int>(std::floor((minZ - 1.0f) / terraincore::FOLIAGE_TREE_CELL_SIZE));
+        const int lastZ = static_cast<int>(std::floor((maxZ + 1.0f) / terraincore::FOLIAGE_TREE_CELL_SIZE));
 
-        std::vector<TreeRecord> changed;
+        std::vector<terraincore::TreeRecord> changed;
         bool storeWrites = false;
         for (int z = firstZ; z <= lastZ; z++) {
             for (int x = firstX; x <= lastX; x++) {
@@ -1403,18 +1402,18 @@ struct FoliageSystem::Impl {
                 if (it == state.cells.end()) continue;
                 TreeCell& cell = it->second;
                 for (uint32_t id : cell.ids) {
-                    const TreeRecord* record = findRecord(state, id);
+                    const terraincore::TreeRecord* record = findRecord(state, id);
                     if (!record) continue;
-                    const SurfaceSample sample = surface.sample(foliageTreeLocalX(*record, size), foliageTreeLocalZ(*record, size));
-                    TreeRecord next = *record;
-                    if (record->flags & TREE_SNAP_TO_TERRAIN) {
+                    const terraincore::SurfaceSample sample = surface.sample(foliageTreeLocalX(*record, size), foliageTreeLocalZ(*record, size));
+                    terraincore::TreeRecord next = *record;
+                    if (record->flags & terraincore::TREE_SNAP_TO_TERRAIN) {
                         next.height = maxHeight != 0.0f ? sample.height / maxHeight : 0.0f;
                     }
-                    if (sample.hole) next.flags |= TREE_HIDDEN_BY_HOLE;
-                    else next.flags &= static_cast<uint8_t>(~TREE_HIDDEN_BY_HOLE);
-                    if (std::memcmp(&next, record, sizeof(TreeRecord)) != 0) {
+                    if (sample.hole) next.flags |= terraincore::TREE_HIDDEN_BY_HOLE;
+                    else next.flags &= static_cast<uint8_t>(~terraincore::TREE_HIDDEN_BY_HOLE);
+                    if (std::memcmp(&next, record, sizeof(terraincore::TreeRecord)) != 0) {
                         changed.push_back(next);
-                        storeWrites = storeWrites || next.id < TREE_RUNTIME_ID_BASE;
+                        storeWrites = storeWrites || next.id < terraincore::TREE_RUNTIME_ID_BASE;
                     }
                 }
                 cell.cpuDirty = true;
@@ -1423,9 +1422,9 @@ struct FoliageSystem::Impl {
         if (changed.empty()) return;
 
         if (storeWrites) prepareWritableStore(state);
-        for (const TreeRecord& record : changed) {
-            if (record.id >= TREE_RUNTIME_ID_BASE) {
-                for (TreeRecord& added : state.runtime.added) {
+        for (const terraincore::TreeRecord& record : changed) {
+            if (record.id >= terraincore::TREE_RUNTIME_ID_BASE) {
+                for (terraincore::TreeRecord& added : state.runtime.added) {
                     if (added.id == record.id) added = record;
                 }
             } else if (state.store->update(record)) {
@@ -1437,10 +1436,10 @@ struct FoliageSystem::Impl {
     // Takes what events left: partial rebuilds (R25, R26)
     void applyDirty(RegionState& state, float dt) {
         if (!state.densityDirty.empty()) {
-            TerrainMapStore& maps = state.region->maps();
+            terraincore::TerrainMapStore& maps = state.region->maps();
             for (const auto& [layerIndex, rect] : state.densityDirty) {
                 if (layerIndex < 0 || layerIndex >= static_cast<int>(state.layers.size())) continue;
-                const MapFormat format = maps.format(MapId{MapKind::Density, layerIndex});
+                const terraincore::MapFormat format = maps.format(terraincore::MapId{terraincore::MapKind::Density, layerIndex});
                 if (!format.exists) continue;
                 const float size = state.terrainSize;
                 const float half = size * 0.5f;
@@ -1470,18 +1469,18 @@ struct FoliageSystem::Impl {
         }
     }
 
-    void onEdit(Entity owner, MapId map, TexelRect rect) {
+    void onEdit(Entity owner, terraincore::MapId map, terraincore::TexelRect rect) {
         RegionState* state = regionOf(owner);
         // a world's tiles hear of their edits from TerrainWorldSystem (regionChanged)
         if (!state || state->tile) return;
-        if (map.kind == MapKind::Density) {
+        if (map.kind == terraincore::MapKind::Density) {
             state->densityDirty.emplace_back(map.index, rect);
             return;
         }
-        if (map.kind != MapKind::Height && map.kind != MapKind::Hole) return;
-        if (map.kind == MapKind::Hole) state->holeCopyValid = false;
+        if (map.kind != terraincore::MapKind::Height && map.kind != terraincore::MapKind::Hole) return;
+        if (map.kind == terraincore::MapKind::Hole) state->holeCopyValid = false;
 
-        const MapFormat format = state->region->maps().format(map);
+        const terraincore::MapFormat format = state->region->maps().format(map);
         const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(owner);
         const float size = terrain ? terrain->terrainSize : state->terrainSize;
         const float half = size * 0.5f;
@@ -1634,7 +1633,7 @@ struct FoliageSystem::Impl {
         if (state.tile) {
             int cellX = 0, cellZ = 0;
             state.region->cellOffset(cellX, cellZ);
-            offset = Vector3(static_cast<float>(cellX) * FOLIAGE_DETAIL_CELL_SIZE, 0.0f, static_cast<float>(cellZ) * FOLIAGE_DETAIL_CELL_SIZE);
+            offset = Vector3(static_cast<float>(cellX) * terraincore::FOLIAGE_DETAIL_CELL_SIZE, 0.0f, static_cast<float>(cellZ) * terraincore::FOLIAGE_DETAIL_CELL_SIZE);
         }
         std::vector<foliagephysics::TreeCapsule> capsules;
         for (const TreeProtoRange& range : cell.ranges) {
@@ -1642,7 +1641,7 @@ struct FoliageSystem::Impl {
             const TerrainTreePrototype& prototype = terrain.treePrototypes[range.prototype];
             if (prototype.collision != TerrainTreeCollision::Capsule) continue;
             for (uint32_t i = range.first; i < range.first + range.count; i++) {
-                const FoliageInstance& instance = cell.instances[i];
+                const terraincore::FoliageInstance& instance = cell.instances[i];
                 foliagephysics::TreeCapsule capsule;
                 capsule.id = cell.slotIds[i];
                 capsule.base = Vector3(instance.position[0], instance.position[1], instance.position[2]) + offset;
@@ -1725,7 +1724,7 @@ struct FoliageSystem::Impl {
 
         // T4 R27: a world's tile has its frame and is in memory whole; a lone Terrain waits for its
         // heightmap and rebuild before placing instances
-        FoliageRegion::Frame frame;
+        terraincore::FoliageRegion::Frame frame;
         state.tile = state.region->frame(frame);
         if (!state.tile && (!terrain.heightMapLoaded || terrain.needUpdateTerrain)) {
             return;
@@ -1769,7 +1768,7 @@ struct FoliageSystem::Impl {
         }
         state.layers.resize(terrain.foliageLayers.size());
 
-        const FoliageTierLimits limits = foliageTierLimits(foliageTierOf(Engine::getFoliageQuality()));
+        const terraincore::FoliageTierLimits limits = foliageTierLimits(foliageTierOf(Engine::getFoliageQuality()));
         const bool uncapped = Engine::isFoliageQualityUncapped();
 
         int inFlight = 0;
@@ -1828,7 +1827,7 @@ struct FoliageSystem::Impl {
             mesh.castShadows = layer.castShadows && (uncapped || limits.detailShadows);
 
             // what placement depends on
-            const FoliageLayerParams params = paramsOf(layer);
+            const terraincore::FoliageLayerParams params = paramsOf(layer);
             const float distance = effectiveDetailDistance(terrain, layer, preview);
             const bool paramsChanged = !sameParams(params, layerState.params);
             layerState.params = params;
@@ -1955,7 +1954,7 @@ struct FoliageSystem::Impl {
         }
         state.stats.cells = cells;
         state.stats.treesResident = resident;
-        state.stats.cpuBytes = (detail + resident) * sizeof(FoliageInstance) + state.stats.treesTotal * sizeof(TreeRecord);
+        state.stats.cpuBytes = (detail + resident) * sizeof(terraincore::FoliageInstance) + state.stats.treesTotal * sizeof(terraincore::TreeRecord);
         state.stats.mainThreadMs = foliageNowMs() - startMs;
     }
 
@@ -1970,7 +1969,7 @@ struct FoliageSystem::Impl {
         for (size_t i = 0; i < regions.size(); i++) {
             RegionState& state = *regions[i];
             if (state.owner != owner) continue;
-            FoliageRegion::Frame frame;
+            terraincore::FoliageRegion::Frame frame;
             if (!state.region->frame(frame)) {
                 // the lone region it had before it was a world
                 destroyRegion(state);
@@ -2018,7 +2017,7 @@ struct FoliageSystem::Impl {
 
     // -------------------------------------------------------------------------------- views
 
-    static void localFrustum(const Plane* planes, float farClip, const Matrix4& model, FoliageFrustum& frustum) {
+    static void localFrustum(const Plane* planes, float farClip, const Matrix4& model, terraincore::FoliageFrustum& frustum) {
         frustum.count = 0;
         for (int p = 0; p < 6; p++) {
             if (p == FRUSTUM_PLANE_FAR && farClip == 0.0f) continue;
@@ -2038,11 +2037,11 @@ struct FoliageSystem::Impl {
         }
     }
 
-    FoliageLodTable lodTableOf(const MeshComponent& mesh, const FoliageViewRequest& request) const {
-        FoliageLodTable table;
+    terraincore::FoliageLodTable lodTableOf(const MeshComponent& mesh, const FoliageViewRequest& request) const {
+        terraincore::FoliageLodTable table;
         table.enabled = request.lodEnabled && mesh.lodEnabled && mesh.numLods > 1;
         table.numLods = mesh.numLods;
-        for (unsigned int l = 0; l < MAX_MESH_LODS && l < FOLIAGE_MAX_LODS; l++) table.error[l] = mesh.lodError[l];
+        for (unsigned int l = 0; l < MAX_MESH_LODS && l < terraincore::FOLIAGE_MAX_LODS; l++) table.error[l] = mesh.lodError[l];
         table.threshold = request.lodThreshold;
         table.perUnit = request.lodPerUnit;
         table.constant = request.lodConstant;
@@ -2053,29 +2052,29 @@ struct FoliageSystem::Impl {
     // F4: cells on the main thread, survivors written by jobs into ranges reserved by prefix sum,
     // then compacted and sorted into their LOD buckets on the main thread
     struct DetailCandidate {
-        const FoliageInstance* instances;
+        const terraincore::FoliageInstance* instances;
         size_t count;
-        FoliageCellVisibility visibility;
+        terraincore::FoliageCellVisibility visibility;
         float nearest;
         size_t reserved;    // first in scratch
         size_t kept;
-        const FoliageDetailCull* cull;
-        const FoliageFrustum* frustum;
+        const terraincore::FoliageDetailCull* cull;
+        const terraincore::FoliageFrustum* frustum;
     };
 
     struct LayerView {
         DetailLayerState* state;
-        FoliageDetailCull cull;
+        terraincore::FoliageDetailCull cull;
         size_t firstCandidate = 0;
         size_t candidateCount = 0;
         bool transparent = false;
         unsigned int submeshes = 1;
     };
 
-    void buildDetailDraws(FoliageViewList& list, const FoliageViewRequest& request, const FoliageTierLimits& limits, bool uncapped) {
+    void buildDetailDraws(FoliageViewList& list, const FoliageViewRequest& request, const terraincore::FoliageTierLimits& limits, bool uncapped) {
         static thread_local std::vector<LayerView> layerViews;
         static thread_local std::vector<DetailCandidate> candidates;
-        static thread_local std::vector<FoliageFrustum> frusta;
+        static thread_local std::vector<terraincore::FoliageFrustum> frusta;
         layerViews.clear();
         candidates.clear();
         frusta.clear();
@@ -2089,7 +2088,7 @@ struct FoliageSystem::Impl {
             if (!terrain) continue;
             frusta.emplace_back();
             localFrustum(request.planes, request.farClip, region.model, frusta.back());
-            const FoliageFrustum& frustum = frusta.back();
+            const terraincore::FoliageFrustum& frustum = frusta.back();
 
             const bool preview = region.owner == previewEntity;
             const Vector3 eye = region.inverseModel * request.eye;
@@ -2110,16 +2109,16 @@ struct FoliageSystem::Impl {
                 view.submeshes = std::max(mesh.numSubmeshes, 1u);
                 view.firstCandidate = candidates.size();
 
-                FoliageDetailCull& cull = view.cull;
+                terraincore::FoliageDetailCull& cull = view.cull;
                 cull.eye[0] = eye.x; cull.eye[1] = eye.y; cull.eye[2] = eye.z;
                 cull.lodOrigin[0] = lodOrigin.x; cull.lodOrigin[1] = lodOrigin.y; cull.lodOrigin[2] = lodOrigin.z;
                 cull.terrainScale = region.terrainScale;
                 cull.limitDistance = !preview;
                 cull.drawDistance = state.distance;
-                cull.fadeStart = state.distance * FOLIAGE_FADE_START;
+                cull.fadeStart = state.distance * terraincore::FOLIAGE_FADE_START;
                 const float scale = preview ? 1.0f : Engine::getFoliageDistanceScale();
                 cull.minDistance = preview ? 0.0f : std::clamp(layer.minDrawDistance * scale, 0.0f, std::max(state.distance, 0.0f));
-                cull.nearFadeStart = cull.minDistance * FOLIAGE_FADE_START;
+                cull.nearFadeStart = cull.minDistance * terraincore::FOLIAGE_FADE_START;
                 cull.density = terrain->detailDensity * layer.densityScale * (uncapped ? 1.0f : limits.detailDensity);
                 cull.falloffStart = layer.densityFalloffStart * state.distance;
                 cull.falloffEnd = state.distance;
@@ -2131,14 +2130,14 @@ struct FoliageSystem::Impl {
                 const float reach = (state.radius + state.center.length()) * std::max(state.params.maxScale, 0.001f) * std::max(1.0f, state.params.maxHeightRatio);
                 for (const DetailSlot& slot : state.ring) {
                     if (!slot.instances || slot.instances->empty()) continue;
-                    const float boxMin[3] = {static_cast<float>(slot.x) * FOLIAGE_DETAIL_CELL_SIZE, slot.minY, static_cast<float>(slot.z) * FOLIAGE_DETAIL_CELL_SIZE};
-                    const float boxMax[3] = {boxMin[0] + FOLIAGE_DETAIL_CELL_SIZE, slot.maxY, boxMin[2] + FOLIAGE_DETAIL_CELL_SIZE};
-                    if (!foliageCellInDistance(cull, boxMin, boxMax)) continue;
-                    const FoliageCellVisibility visibility = classifyFoliageBox(frustum, boxMin, boxMax, reach);
-                    if (visibility == FoliageCellVisibility::Outside) continue;
+                    const float boxMin[3] = {static_cast<float>(slot.x) * terraincore::FOLIAGE_DETAIL_CELL_SIZE, slot.minY, static_cast<float>(slot.z) * terraincore::FOLIAGE_DETAIL_CELL_SIZE};
+                    const float boxMax[3] = {boxMin[0] + terraincore::FOLIAGE_DETAIL_CELL_SIZE, slot.maxY, boxMin[2] + terraincore::FOLIAGE_DETAIL_CELL_SIZE};
+                    if (!terraincore::foliageCellInDistance(cull, boxMin, boxMax)) continue;
+                    const terraincore::FoliageCellVisibility visibility = terraincore::classifyFoliageBox(frustum, boxMin, boxMax, reach);
+                    if (visibility == terraincore::FoliageCellVisibility::Outside) continue;
 
                     float nearest, farthest;
-                    foliageBoxDistancesXZ(cull.eye, boxMin, boxMax, nearest, farthest);
+                    terraincore::foliageBoxDistancesXZ(cull.eye, boxMin, boxMax, nearest, farthest);
                     DetailCandidate candidate;
                     candidate.instances = slot.instances->data();
                     candidate.count = slot.instances->size();
@@ -2164,12 +2163,12 @@ struct FoliageSystem::Impl {
             list.scratch.resize(reservedTotal + reservedTotal / 4);
             list.scratchLods.resize(list.scratch.size());
         }
-        FoliageInstance* scratch = list.scratch.data();
+        terraincore::FoliageInstance* scratch = list.scratch.data();
         uint8_t* scratchLods = list.scratchLods.data();
         DetailCandidate* candidateData = candidates.data();
         const auto cullOne = [scratch, scratchLods, candidateData](size_t index) {
             DetailCandidate& candidate = candidateData[index];
-            candidate.kept = cullFoliageCell(candidate.instances, candidate.count, *candidate.cull, *candidate.frustum,
+            candidate.kept = terraincore::cullFoliageCell(candidate.instances, candidate.count, *candidate.cull, *candidate.frustum,
                                              candidate.visibility, scratch + candidate.reserved, scratchLods + candidate.reserved);
         };
         // the output does not depend on who ran which unit: each writes its own range
@@ -2180,11 +2179,11 @@ struct FoliageSystem::Impl {
         }
 
         // R21's caps: the farthest cells go first
-        static thread_local std::vector<FoliageCapCandidate> caps;
+        static thread_local std::vector<terraincore::FoliageCapCandidate> caps;
         caps.clear();
         caps.reserve(candidates.size());
         for (size_t i = 0; i < candidates.size(); i++) {
-            FoliageCapCandidate cap;
+            terraincore::FoliageCapCandidate cap;
             cap.distance = candidates[i].nearest;
             cap.order = static_cast<uint32_t>(i);
             cap.instances = static_cast<uint32_t>(candidates[i].kept);
@@ -2192,18 +2191,18 @@ struct FoliageSystem::Impl {
             caps.push_back(cap);
         }
         const uint32_t maxInstances = uncapped ? UINT32_MAX : limits.maxDetailInstances;
-        if (applyFoliageCaps(caps, maxInstances, UINT32_MAX)) list.capped = true;
+        if (terraincore::applyFoliageCaps(caps, maxInstances, UINT32_MAX)) list.capped = true;
 
         // compact sequentially, sorted by LOD, per layer
         static thread_local std::vector<uint32_t> byDistance;
         for (const LayerView& view : layerViews) {
-            unsigned int lodCounts[FOLIAGE_MAX_LODS] = {};
+            unsigned int lodCounts[terraincore::FOLIAGE_MAX_LODS] = {};
             for (size_t c = 0; c < view.candidateCount; c++) {
                 const size_t index = view.firstCandidate + c;
                 if (!caps[index].kept) continue;
                 const DetailCandidate& candidate = candidates[index];
                 for (size_t i = 0; i < candidate.kept; i++) {
-                    lodCounts[std::min<unsigned>(scratchLods[candidate.reserved + i], FOLIAGE_MAX_LODS - 1)]++;
+                    lodCounts[std::min<unsigned>(scratchLods[candidate.reserved + i], terraincore::FOLIAGE_MAX_LODS - 1)]++;
                 }
             }
             uint32_t total = 0;
@@ -2223,10 +2222,10 @@ struct FoliageSystem::Impl {
 
             const InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(view.state->entity);
             const bool expanded = instmesh.foliageExpanded;
-            uint32_t bucketFirst[FOLIAGE_MAX_LODS];
-            uint32_t cursor[FOLIAGE_MAX_LODS];
+            uint32_t bucketFirst[terraincore::FOLIAGE_MAX_LODS];
+            uint32_t cursor[terraincore::FOLIAGE_MAX_LODS];
             uint32_t running = static_cast<uint32_t>(expanded ? list.expanded.size() : list.stream.size());
-            for (int l = 0; l < FOLIAGE_MAX_LODS; l++) {
+            for (int l = 0; l < terraincore::FOLIAGE_MAX_LODS; l++) {
                 bucketFirst[l] = running;
                 cursor[l] = running;
                 running += lodCounts[l];
@@ -2240,8 +2239,8 @@ struct FoliageSystem::Impl {
                 if (!caps[index].kept) continue;
                 const DetailCandidate& candidate = candidates[index];
                 for (size_t i = 0; i < candidate.kept; i++) {
-                    const unsigned int lod = std::min<unsigned>(scratchLods[candidate.reserved + i], FOLIAGE_MAX_LODS - 1);
-                    const FoliageInstance& instance = scratch[candidate.reserved + i];
+                    const unsigned int lod = std::min<unsigned>(scratchLods[candidate.reserved + i], terraincore::FOLIAGE_MAX_LODS - 1);
+                    const terraincore::FoliageInstance& instance = scratch[candidate.reserved + i];
                     if (expanded) {
                         expandInstance(instance, list.expanded[cursor[lod]++]);
                     } else {
@@ -2251,7 +2250,7 @@ struct FoliageSystem::Impl {
             }
 
             const uint32_t firstItem = static_cast<uint32_t>(list.items.size());
-            for (int l = 0; l < FOLIAGE_MAX_LODS; l++) {
+            for (int l = 0; l < terraincore::FOLIAGE_MAX_LODS; l++) {
                 if (lodCounts[l] == 0) continue;
                 FoliageDrawItem item;
                 item.buffer = expanded ? list.expandedBuffer.getRender() : list.buffer.getRender();
@@ -2266,7 +2265,7 @@ struct FoliageSystem::Impl {
         }
     }
 
-    static void expandInstance(const FoliageInstance& instance, InstanceRenderData& out) {
+    static void expandInstance(const terraincore::FoliageInstance& instance, InstanceRenderData& out) {
         const float x = instance.rotation[0] / 32767.0f;
         const float y = instance.rotation[1] / 32767.0f;
         const float z = instance.rotation[2] / 32767.0f;
@@ -2298,14 +2297,14 @@ struct FoliageSystem::Impl {
         out.textureRect = Rect(0.0f, 0.0f, 1.0f, 1.0f);
     }
 
-    void buildTreeDraws(FoliageViewList& list, const FoliageViewRequest& request, const FoliageTierLimits& limits, bool uncapped) {
+    void buildTreeDraws(FoliageViewList& list, const FoliageViewRequest& request, const terraincore::FoliageTierLimits& limits, bool uncapped) {
         for (const std::unique_ptr<RegionState>& regionPtr : regions) {
             RegionState& region = *regionPtr;
             if (!region.active || region.residentOrder.empty() || region.prototypes.empty()) continue;
             TerrainComponent* terrain = scene->findComponent<TerrainComponent>(region.owner);
             if (!terrain || terrain->treePrototypes.empty()) continue;
 
-            FoliageFrustum frustum;
+            terraincore::FoliageFrustum frustum;
             localFrustum(request.planes, request.farClip, region.model, frustum);
             const Vector3 eye = region.inverseModel * request.eye;
             const float eyeArray[3] = {eye.x, eye.y, eye.z};
@@ -2328,7 +2327,7 @@ struct FoliageSystem::Impl {
                 TreeCell& cell = it->second;
                 if (cell.instances.empty()) continue;
                 float nearest, farthest;
-                foliageBoxDistancesXZ(eyeArray, cell.boxMin, cell.boxMax, nearest, farthest);
+                terraincore::foliageBoxDistancesXZ(eyeArray, cell.boxMin, cell.boxMax, nearest, farthest);
                 if (nearest >= treeDistance) continue;
                 float reach = 0.0f;
                 for (const TreeProtoRange& range : cell.ranges) {
@@ -2336,7 +2335,7 @@ struct FoliageSystem::Impl {
                     const TreePrototypeState& prototype = region.prototypes[range.prototype];
                     reach = std::max(reach, (prototype.radius + prototype.center.length()) * range.maxScale);
                 }
-                if (classifyFoliageBox(frustum, cell.boxMin, cell.boxMax, reach) == FoliageCellVisibility::Outside) continue;
+                if (terraincore::classifyFoliageBox(frustum, cell.boxMin, cell.boxMax, reach) == terraincore::FoliageCellVisibility::Outside) continue;
                 visible.push_back(Visible{&cell, nearest, farthest});
             }
             std::stable_sort(visible.begin(), visible.end(), [](const Visible& a, const Visible& b) { return a.nearest < b.nearest; });
@@ -2369,13 +2368,13 @@ struct FoliageSystem::Impl {
                     if (prototype.lods.empty() || !prototype.ready[0]) continue;
 
                     const MeshComponent& mesh = scene->getComponent<MeshComponent>(prototype.lods[0]);
-                    FoliageTreeBandSettings settings;
+                    terraincore::FoliageTreeBandSettings settings;
                     settings.treeDistance = treeDistance;
                     settings.billboardStart = billboard;
                     settings.fadeLength = fade;
                     settings.hasImpostor = prototype.impostorReady;
                     settings.explicitLods = static_cast<unsigned int>(prototype.lods.size()) - 1;
-                    settings.lodDistanceCount = std::min<unsigned int>(static_cast<unsigned int>(authored.lodDistances.size()), FOLIAGE_MAX_EXPLICIT_LODS);
+                    settings.lodDistanceCount = std::min<unsigned int>(static_cast<unsigned int>(authored.lodDistances.size()), terraincore::FOLIAGE_MAX_EXPLICIT_LODS);
                     for (unsigned int l = 0; l < settings.lodDistanceCount; l++) settings.lodDistances[l] = scaledDistance(authored.lodDistances[l], false);
                     settings.lod = lodTableOf(mesh, request);
                     settings.prototypeError = range.maxScale * region.terrainScale;
@@ -2388,7 +2387,7 @@ struct FoliageSystem::Impl {
                     const bool overMeshCap = meshTrees + range.count > maxMesh;
                     if (overMeshCap && !settings.hasImpostor) list.capped = true;
                     const bool allowMesh = !overDraws && (!overMeshCap || !settings.hasImpostor);
-                    FoliageTreeBands bands = selectFoliageTreeBands(settings, entry.nearest, entry.farthest, allowMesh);
+                    terraincore::FoliageTreeBands bands = selectFoliageTreeBands(settings, entry.nearest, entry.farthest, allowMesh);
 
                     if (request.shadow) {
                         // R17: a band whose bit is clear casts nothing
@@ -2468,7 +2467,7 @@ FoliageSystem::FoliageSystem(Scene* scene): SubSystem(scene), impl(std::make_uni
     declareHookType(scene->getComponentId<TerrainComponent>());
 #if JASPERENGINE_TERRAIN_EDIT
     // the foliage ops run through the operation engine, the runtime terrain edit module's (T1 R54)
-    registerFoliageOps();
+    terraincore::registerFoliageOps();
 #endif
 }
 
@@ -2568,7 +2567,7 @@ void FoliageSystem::update(double dt) {
             state = created.get();
             impl->regions.push_back(std::move(created));
             Impl* owner = impl.get();
-            state->events = TerrainEditEvents::subscribe(scene, [owner](Entity from, MapId map, TexelRect rect) { owner->onEdit(from, map, rect); });
+            state->events = TerrainEditEvents::subscribe(scene, [owner](Entity from, terraincore::MapId map, terraincore::TexelRect rect) { owner->onEdit(from, map, rect); });
         }
 
         Transform* transform = scene->findComponent<Transform>(entity);
@@ -2709,14 +2708,14 @@ std::string FoliageSystem::getLayerError(Entity terrainEntity, int layer) const 
     return std::string();
 }
 
-void FoliageSystem::addRegion(Entity owner, std::shared_ptr<FoliageRegion> region) {
+void FoliageSystem::addRegion(Entity owner, std::shared_ptr<terraincore::FoliageRegion> region) {
     auto created = std::make_unique<RegionState>();
     created->owner = owner;
     created->region = std::move(region);
     created->store = created->region->trees();
     // the region keeps the store it gave: a write copies it first
     created->storeShared = created->store != nullptr;
-    FoliageRegion::Frame frame;
+    terraincore::FoliageRegion::Frame frame;
     created->tile = created->region->frame(frame);
     if (created->tile) {
         // its square from the start, so a position finds it before its first update
@@ -2783,7 +2782,7 @@ bool FoliageSystem::hasRegion(Entity owner, uint32_t regionKey) const {
     return impl->regionOf(owner, regionKey) != nullptr;
 }
 
-void FoliageSystem::forEachTreeStore(Entity owner, const std::function<void(const TreeStore& store)>& visit) const {
+void FoliageSystem::forEachTreeStore(Entity owner, const std::function<void(const terraincore::TreeStore& store)>& visit) const {
     for (const std::unique_ptr<RegionState>& region : impl->regions) {
         if (region->owner == owner && region->store) visit(*region->store);
     }
@@ -2791,36 +2790,36 @@ void FoliageSystem::forEachTreeStore(Entity owner, const std::function<void(cons
 
 // ---- trees
 
-std::shared_ptr<TreeStore> FoliageSystem::getTreeStore(Entity terrainEntity) {
+std::shared_ptr<terraincore::TreeStore> FoliageSystem::getTreeStore(Entity terrainEntity) {
     RegionState* state = impl->loneRegion(terrainEntity);
     return state ? state->store : nullptr;
 }
 
-std::shared_ptr<const TreeStore> FoliageSystem::getTreeStore(Entity terrainEntity) const {
+std::shared_ptr<const terraincore::TreeStore> FoliageSystem::getTreeStore(Entity terrainEntity) const {
     RegionState* state = impl->loneRegion(terrainEntity);
     return state ? state->store : nullptr;
 }
 
-std::shared_ptr<TreeStore> FoliageSystem::getTreeStore(Entity terrainEntity, const Vector3& worldPosition) {
+std::shared_ptr<terraincore::TreeStore> FoliageSystem::getTreeStore(Entity terrainEntity, const Vector3& worldPosition) {
     RegionState* state = impl->regionAt(terrainEntity, worldPosition);
     return state ? state->store : nullptr;
 }
 
-std::shared_ptr<const TreeStore> FoliageSystem::getTreeStore(Entity terrainEntity, const Vector3& worldPosition) const {
+std::shared_ptr<const terraincore::TreeStore> FoliageSystem::getTreeStore(Entity terrainEntity, const Vector3& worldPosition) const {
     RegionState* state = impl->regionAt(terrainEntity, worldPosition);
     return state ? state->store : nullptr;
 }
 
-std::shared_ptr<TreeStore> FoliageSystem::getOrCreateTreeStore(Entity terrainEntity) {
+std::shared_ptr<terraincore::TreeStore> FoliageSystem::getOrCreateTreeStore(Entity terrainEntity) {
     return impl->writableStore(impl->loneRegion(terrainEntity));
 }
 
-std::shared_ptr<TreeStore> FoliageSystem::getRegionTreeStore(Entity owner, uint32_t regionKey) const {
+std::shared_ptr<terraincore::TreeStore> FoliageSystem::getRegionTreeStore(Entity owner, uint32_t regionKey) const {
     RegionState* state = impl->regionOf(owner, regionKey);
     return state ? state->store : nullptr;
 }
 
-std::shared_ptr<TreeStore> FoliageSystem::getOrCreateTreeStore(Entity owner, uint32_t regionKey) {
+std::shared_ptr<terraincore::TreeStore> FoliageSystem::getOrCreateTreeStore(Entity owner, uint32_t regionKey) {
     return impl->writableStore(impl->regionOf(owner, regionKey));
 }
 
@@ -2857,7 +2856,7 @@ void FoliageSystem::treeFileWritten(Entity terrainEntity, const std::string& pat
     }
 }
 
-void FoliageSystem::shareTreeStore(Entity terrainEntity, std::shared_ptr<TreeStore> store) {
+void FoliageSystem::shareTreeStore(Entity terrainEntity, std::shared_ptr<terraincore::TreeStore> store) {
     // a World's tiles each load their own file (T4 R27)
     if (impl->isWorld(terrainEntity)) return;
     RegionState* state = impl->loneRegion(terrainEntity);
@@ -2868,7 +2867,7 @@ void FoliageSystem::shareTreeStore(Entity terrainEntity, std::shared_ptr<TreeSto
         state = created.get();
         impl->regions.push_back(std::move(created));
         Impl* owner = impl.get();
-        state->events = TerrainEditEvents::subscribe(scene, [owner](Entity from, MapId map, TexelRect rect) { owner->onEdit(from, map, rect); });
+        state->events = TerrainEditEvents::subscribe(scene, [owner](Entity from, terraincore::MapId map, terraincore::TexelRect rect) { owner->onEdit(from, map, rect); });
     }
     state->store = std::move(store);
     state->storeShared = true;
@@ -2877,45 +2876,45 @@ void FoliageSystem::shareTreeStore(Entity terrainEntity, std::shared_ptr<TreeSto
     state->indexing.reset();
 }
 
-void FoliageSystem::treesChanged(Entity terrainEntity, const TreeDelta& delta) {
+void FoliageSystem::treesChanged(Entity terrainEntity, const terraincore::TreeDelta& delta) {
     impl->noteTreesChanged(impl->loneRegion(terrainEntity), delta);
 }
 
-void FoliageSystem::treesChanged(Entity owner, uint32_t regionKey, const TreeDelta& delta) {
+void FoliageSystem::treesChanged(Entity owner, uint32_t regionKey, const terraincore::TreeDelta& delta) {
     impl->noteTreesChanged(impl->regionOf(owner, regionKey), delta);
 }
 
-void FoliageSystem::treeStoreReplaced(Entity terrainEntity, std::shared_ptr<TreeStore> store) {
+void FoliageSystem::treeStoreReplaced(Entity terrainEntity, std::shared_ptr<terraincore::TreeStore> store) {
     impl->replaceStore(impl->loneRegion(terrainEntity), std::move(store));
 }
 
-void FoliageSystem::treeStoreReplaced(Entity owner, uint32_t regionKey, std::shared_ptr<TreeStore> store) {
+void FoliageSystem::treeStoreReplaced(Entity owner, uint32_t regionKey, std::shared_ptr<terraincore::TreeStore> store) {
     impl->replaceStore(impl->regionOf(owner, regionKey), std::move(store));
 }
 
 // ---- runtime overlay
 
-bool FoliageSystem::getTreePose(Entity terrainEntity, TreeId id, FoliageInstanceInfo& out) const {
-    RegionState* state = impl->regionOf(terrainEntity, treeIdRegion(id));
+bool FoliageSystem::getTreePose(Entity terrainEntity, terraincore::TreeId id, FoliageInstanceInfo& out) const {
+    RegionState* state = impl->regionOf(terrainEntity, terraincore::treeIdRegion(id));
     if (!state) return false;
-    const uint32_t recordId = treeIdRecord(id);
+    const uint32_t recordId = terraincore::treeIdRecord(id);
     if (state->runtime.removed.count(recordId)) return false;
-    const TreeRecord* record = impl->findRecord(*state, recordId);
+    const terraincore::TreeRecord* record = impl->findRecord(*state, recordId);
     if (!record) return false;
     const TerrainComponent& terrain = scene->getComponent<TerrainComponent>(terrainEntity);
     // a world's tile has its own square and origin (T4 R27)
     const float size = state->tile ? state->terrainSize : terrain.terrainSize;
     const float maxHeight = state->tile ? state->terrainMaxHeight : terrain.maxHeight;
-    FoliageInstance instance;
+    terraincore::FoliageInstance instance;
     float normal[3] = {0.0f, 1.0f, 0.0f};
-    const bool leans = (record->flags & TREE_ALIGN_TO_NORMAL) != 0;
+    const bool leans = (record->flags & terraincore::TREE_ALIGN_TO_NORMAL) != 0;
     if (leans) {
-        const SurfaceSample sample = state->region->surface().sample(foliageTreeLocalX(*record, size), foliageTreeLocalZ(*record, size));
+        const terraincore::SurfaceSample sample = state->region->surface().sample(foliageTreeLocalX(*record, size), foliageTreeLocalZ(*record, size));
         normal[0] = sample.normal.x;
         normal[1] = sample.normal.y;
         normal[2] = sample.normal.z;
     }
-    foliageInstanceFromTree(*record, size, maxHeight, 0, leans ? normal : nullptr, instance);
+    terraincore::foliageInstanceFromTree(*record, size, maxHeight, 0, leans ? normal : nullptr, instance);
 
     const Transform& transform = scene->getComponent<Transform>(terrainEntity);
     const Matrix4& model = state->tile ? state->model : transform.modelMatrix;
@@ -2929,13 +2928,13 @@ bool FoliageSystem::getTreePose(Entity terrainEntity, TreeId id, FoliageInstance
 }
 
 // R30: in the same frame: its cell's array, buffer and body
-void FoliageSystem::rebuildCellNow(Entity terrainEntity, uint32_t regionKey, const TreeRecord& record) {
+void FoliageSystem::rebuildCellNow(Entity terrainEntity, uint32_t regionKey, const terraincore::TreeRecord& record) {
     RegionState* state = impl->regionOf(terrainEntity, regionKey);
     if (!state) return;
     const TerrainComponent& terrain = scene->getComponent<TerrainComponent>(terrainEntity);
     const float size = state->tile ? state->terrainSize : terrain.terrainSize;
-    const int x = static_cast<int>(std::floor(foliageTreeLocalX(record, size) / FOLIAGE_TREE_CELL_SIZE));
-    const int z = static_cast<int>(std::floor(foliageTreeLocalZ(record, size) / FOLIAGE_TREE_CELL_SIZE));
+    const int x = static_cast<int>(std::floor(foliageTreeLocalX(record, size) / terraincore::FOLIAGE_TREE_CELL_SIZE));
+    const int z = static_cast<int>(std::floor(foliageTreeLocalZ(record, size) / terraincore::FOLIAGE_TREE_CELL_SIZE));
     const auto it = state->cells.find(foliageTreeCellKey(x, z));
     if (it != state->cells.end() && it->second.resident) {
         impl->buildCell(*state, it->second, terrain);
@@ -2945,22 +2944,22 @@ void FoliageSystem::rebuildCellNow(Entity terrainEntity, uint32_t regionKey, con
     }
 }
 
-std::optional<FoliageInstanceInfo> FoliageSystem::removeTreeInstance(Entity terrainEntity, TreeId id, bool updateNavigation) {
+std::optional<FoliageInstanceInfo> FoliageSystem::removeTreeInstance(Entity terrainEntity, terraincore::TreeId id, bool updateNavigation) {
     FoliageInstanceInfo pose;
     if (!getTreePose(terrainEntity, id, pose)) return std::nullopt;
-    RegionState* state = impl->regionOf(terrainEntity, treeIdRegion(id));
-    const uint32_t recordId = treeIdRecord(id);
+    RegionState* state = impl->regionOf(terrainEntity, terraincore::treeIdRegion(id));
+    const uint32_t recordId = terraincore::treeIdRecord(id);
     state->runtime.removed.insert(recordId);
-    if (const TreeRecord* record = impl->findRecord(*state, recordId)) {
+    if (const terraincore::TreeRecord* record = impl->findRecord(*state, recordId)) {
         impl->markTreeCellDirtyForRecord(*state, *record, false, false);
-        rebuildCellNow(terrainEntity, treeIdRegion(id), *record);
+        rebuildCellNow(terrainEntity, terraincore::treeIdRegion(id), *record);
     }
     residencyRevision++;
     onTreeRemoved(terrainEntity, id, pose);
     // a copy: the handler may set another while it runs
     const auto handlers = impl->handlers.find(terrainEntity);
     if (handlers != impl->handlers.end() && handlers->second.removed) {
-        const std::function<void(TreeId, const FoliageInstanceInfo&)> handler = handlers->second.removed;
+        const std::function<void(terraincore::TreeId, const FoliageInstanceInfo&)> handler = handlers->second.removed;
         handler(id, pose);
     }
     if (updateNavigation) {
@@ -2969,20 +2968,20 @@ std::optional<FoliageInstanceInfo> FoliageSystem::removeTreeInstance(Entity terr
     return pose;
 }
 
-bool FoliageSystem::restoreTreeInstance(Entity terrainEntity, TreeId id) {
-    RegionState* state = impl->regionOf(terrainEntity, treeIdRegion(id));
+bool FoliageSystem::restoreTreeInstance(Entity terrainEntity, terraincore::TreeId id) {
+    RegionState* state = impl->regionOf(terrainEntity, terraincore::treeIdRegion(id));
     if (!state) return false;
-    const uint32_t recordId = treeIdRecord(id);
+    const uint32_t recordId = terraincore::treeIdRecord(id);
     if (state->runtime.removed.erase(recordId) == 0) return false;
-    if (const TreeRecord* record = impl->findRecord(*state, recordId)) {
+    if (const terraincore::TreeRecord* record = impl->findRecord(*state, recordId)) {
         impl->markTreeCellDirtyForRecord(*state, *record, false, false);
-        rebuildCellNow(terrainEntity, treeIdRegion(id), *record);
+        rebuildCellNow(terrainEntity, terraincore::treeIdRegion(id), *record);
     }
     residencyRevision++;
     return true;
 }
 
-TreeId FoliageSystem::addTreeInstance(Entity terrainEntity, int prototype, const Vector3& position, float yawDegrees, float scale) {
+terraincore::TreeId FoliageSystem::addTreeInstance(Entity terrainEntity, int prototype, const Vector3& position, float yawDegrees, float scale) {
     RegionState* state = impl->regionAt(terrainEntity, position);
     if (!state) return 0;
     const TerrainComponent& terrain = scene->getComponent<TerrainComponent>(terrainEntity);
@@ -2993,19 +2992,19 @@ TreeId FoliageSystem::addTreeInstance(Entity terrainEntity, int prototype, const
 
     const float size = state->tile ? state->terrainSize : terrain.terrainSize;
     const float maxHeight = state->tile ? state->terrainMaxHeight : terrain.maxHeight;
-    const SurfaceSample sample = state->region->surface().sample(local.x, local.z);
-    TreeRecord record{};
+    const terraincore::SurfaceSample sample = state->region->surface().sample(local.x, local.z);
+    terraincore::TreeRecord record{};
     record.id = state->runtime.nextAdded++;
-    foliageSetTreeSurface(record, size, maxHeight, local.x, local.z, sample.height);
+    terraincore::foliageSetTreeSurface(record, size, maxHeight, local.x, local.z, sample.height);
     record.yOffset = local.y > sample.height ? local.y - sample.height : 0.0f;
     record.scale = scale;
     float rotation[4];
     const float up[3] = {0.0f, 1.0f, 0.0f};
-    foliageOrientation(yawDegrees / 360.0f, 0.0f, up, rotation);
-    foliageQuantizeRotation(rotation, record.rotation);
+    terraincore::foliageOrientation(yawDegrees / 360.0f, 0.0f, up, rotation);
+    terraincore::foliageQuantizeRotation(rotation, record.rotation);
     record.prototypeId = static_cast<uint16_t>(terrain.treePrototypes[prototype].id);
     record.heightRatio = 128;
-    record.flags = TREE_SNAP_TO_TERRAIN;
+    record.flags = terraincore::TREE_SNAP_TO_TERRAIN;
     std::memset(record.color, 255, sizeof(record.color));
     state->runtime.added.push_back(record);
 
@@ -3013,7 +3012,7 @@ TreeId FoliageSystem::addTreeInstance(Entity terrainEntity, int prototype, const
     state->residentDirty = true;
     if (!state->store && !state->storeLoading) state->cellsReady = true;
     residencyRevision++;
-    return makeTreeId(state->region->regionKey(), record.id);
+    return terraincore::makeTreeId(state->region->regionKey(), record.id);
 }
 
 void FoliageSystem::clearDetailsInRadius(Entity terrainEntity, const Vector3& position, float radius, int layer) {
@@ -3032,17 +3031,17 @@ void FoliageSystem::clearDetailsInRadius(Entity terrainEntity, const Vector3& po
             DetailLayerState& layerState = state->layers[l];
             for (DetailSlot& slot : layerState.ring) {
                 if (!slot.instances || slot.instances->empty()) continue;
-                const float originX = static_cast<float>(slot.x) * FOLIAGE_DETAIL_CELL_SIZE;
-                const float originZ = static_cast<float>(slot.z) * FOLIAGE_DETAIL_CELL_SIZE;
-                const float nearestX = std::clamp(local.x, originX, originX + FOLIAGE_DETAIL_CELL_SIZE);
-                const float nearestZ = std::clamp(local.z, originZ, originZ + FOLIAGE_DETAIL_CELL_SIZE);
+                const float originX = static_cast<float>(slot.x) * terraincore::FOLIAGE_DETAIL_CELL_SIZE;
+                const float originZ = static_cast<float>(slot.z) * terraincore::FOLIAGE_DETAIL_CELL_SIZE;
+                const float nearestX = std::clamp(local.x, originX, originX + terraincore::FOLIAGE_DETAIL_CELL_SIZE);
+                const float nearestZ = std::clamp(local.z, originZ, originZ + terraincore::FOLIAGE_DETAIL_CELL_SIZE);
                 const float dx = local.x - nearestX;
                 const float dz = local.z - nearestZ;
                 if (dx * dx + dz * dz > radius * radius) continue;
 
-                auto kept = std::make_shared<std::vector<FoliageInstance>>();
+                auto kept = std::make_shared<std::vector<terraincore::FoliageInstance>>();
                 kept->reserve(slot.instances->size());
-                for (const FoliageInstance& instance : *slot.instances) {
+                for (const terraincore::FoliageInstance& instance : *slot.instances) {
                     const float ix = instance.position[0] - local.x;
                     const float iz = instance.position[2] - local.z;
                     if (ix * ix + iz * iz > radius * radius) kept->push_back(instance);
@@ -3192,7 +3191,7 @@ std::vector<FoliageInstanceInfo> FoliageSystem::getInstancesInRadius(Entity terr
         if (!inverse.isValid()) continue;
         const Vector3 local = inverse * position;
 
-        const auto makeInfo = [&](const FoliageInstance& instance, FoliageInstanceInfo& info) {
+        const auto makeInfo = [&](const terraincore::FoliageInstance& instance, FoliageInstanceInfo& info) {
             info.position = model * Vector3(instance.position[0], instance.position[1], instance.position[2]);
             info.rotation = transform->worldRotation * Quaternion(instance.rotation[3] / 32767.0f, instance.rotation[0] / 32767.0f, instance.rotation[1] / 32767.0f, instance.rotation[2] / 32767.0f);
             info.scale = instance.scale;
@@ -3208,7 +3207,7 @@ std::vector<FoliageInstanceInfo> FoliageSystem::getInstancesInRadius(Entity terr
                 if (closestX * closestX + closestZ * closestZ > radiusSquared) continue;
                 for (const TreeProtoRange& range : cell.ranges) {
                     for (uint32_t i = range.first; i < range.first + range.count; i++) {
-                        const FoliageInstance& instance = cell.instances[i];
+                        const terraincore::FoliageInstance& instance = cell.instances[i];
                         const float dx = instance.position[0] - local.x;
                         const float dz = instance.position[2] - local.z;
                         const float squared = dx * dx + dz * dz;
@@ -3216,7 +3215,7 @@ std::vector<FoliageInstanceInfo> FoliageSystem::getInstancesInRadius(Entity terr
                         Near entry;
                         entry.distance = squared;
                         entry.info.tree = true;
-                        entry.info.id = makeTreeId(state->region->regionKey(), cell.slotIds[i]);
+                        entry.info.id = terraincore::makeTreeId(state->region->regionKey(), cell.slotIds[i]);
                         entry.info.prototype = range.prototype;
                         makeInfo(instance, entry.info);
                         near.push_back(std::move(entry));
@@ -3229,12 +3228,12 @@ std::vector<FoliageInstanceInfo> FoliageSystem::getInstancesInRadius(Entity terr
             for (size_t l = 0; l < state->layers.size(); l++) {
                 for (const DetailSlot& slot : state->layers[l].ring) {
                     if (!slot.instances || slot.instances->empty()) continue;
-                    const float originX = static_cast<float>(slot.x) * FOLIAGE_DETAIL_CELL_SIZE;
-                    const float originZ = static_cast<float>(slot.z) * FOLIAGE_DETAIL_CELL_SIZE;
-                    const float cx = std::clamp(local.x, originX, originX + FOLIAGE_DETAIL_CELL_SIZE) - local.x;
-                    const float cz = std::clamp(local.z, originZ, originZ + FOLIAGE_DETAIL_CELL_SIZE) - local.z;
+                    const float originX = static_cast<float>(slot.x) * terraincore::FOLIAGE_DETAIL_CELL_SIZE;
+                    const float originZ = static_cast<float>(slot.z) * terraincore::FOLIAGE_DETAIL_CELL_SIZE;
+                    const float cx = std::clamp(local.x, originX, originX + terraincore::FOLIAGE_DETAIL_CELL_SIZE) - local.x;
+                    const float cz = std::clamp(local.z, originZ, originZ + terraincore::FOLIAGE_DETAIL_CELL_SIZE) - local.z;
                     if (cx * cx + cz * cz > radiusSquared) continue;
-                    for (const FoliageInstance& instance : *slot.instances) {
+                    for (const terraincore::FoliageInstance& instance : *slot.instances) {
                         const float dx = instance.position[0] - local.x;
                         const float dz = instance.position[2] - local.z;
                         const float squared = dx * dx + dz * dz;
@@ -3262,7 +3261,7 @@ std::vector<FoliageInstanceInfo> FoliageSystem::getInstancesInRadius(Entity terr
 namespace {
 
     // The instance's matrix in terrain-local space: what foliage_instance.glsl builds
-    Matrix4 foliageInstanceMatrix(const FoliageInstance& instance) {
+    Matrix4 foliageInstanceMatrix(const terraincore::FoliageInstance& instance) {
         const float x = instance.rotation[0] / 32767.0f;
         const float y = instance.rotation[1] / 32767.0f;
         const float z = instance.rotation[2] / 32767.0f;
@@ -3305,8 +3304,8 @@ namespace {
 
 }
 
-void FoliageSystem::forEachTreeAlongRay(const Ray& ray, float maxDistance, const std::function<bool(Entity, TreeId, int, const Matrix4&, float)>& visit) const {
-    struct Candidate { float distance; Entity terrain; TreeId id; int prototype; Matrix4 world; };
+void FoliageSystem::forEachTreeAlongRay(const Ray& ray, float maxDistance, const std::function<bool(Entity, terraincore::TreeId, int, const Matrix4&, float)>& visit) const {
+    struct Candidate { float distance; Entity terrain; terraincore::TreeId id; int prototype; Matrix4 world; };
     std::vector<Candidate> candidates;
 
     for (const std::unique_ptr<RegionState>& regionPtr : impl->regions) {
@@ -3340,7 +3339,7 @@ void FoliageSystem::forEachTreeAlongRay(const Ray& ray, float maxDistance, const
                 if (range.prototype >= static_cast<int>(region.prototypes.size())) continue;
                 const TreePrototypeState& prototype = region.prototypes[range.prototype];
                 for (uint32_t i = range.first; i < range.first + range.count; i++) {
-                    const FoliageInstance& instance = cell.instances[i];
+                    const terraincore::FoliageInstance& instance = cell.instances[i];
                     const float tall = instance.scale * std::max(1.0f, static_cast<float>(instance.heightRatio) / 128.0f);
                     const Matrix4 local = foliageInstanceMatrix(instance);
                     const Vector3 center = local * prototype.center;
@@ -3350,7 +3349,7 @@ void FoliageSystem::forEachTreeAlongRay(const Ray& ray, float maxDistance, const
                     if (along < -radius || along - radius > localMax) continue;
                     const float squared = toCenter.squaredLength() - along * along;
                     if (squared > radius * radius) continue;
-                    candidates.push_back(Candidate{std::max(along - radius, 0.0f) / scale, region.owner, makeTreeId(region.region->regionKey(), cell.slotIds[i]), range.prototype, region.model * local});
+                    candidates.push_back(Candidate{std::max(along - radius, 0.0f) / scale, region.owner, terraincore::makeTreeId(region.region->regionKey(), cell.slotIds[i]), range.prototype, region.model * local});
                 }
             }
         }
@@ -3380,10 +3379,10 @@ void FoliageSystem::forEachDetailAlongRay(const Ray& ray, float maxDistance, con
             const float reach = (layer.radius + layer.center.length()) * std::max(layer.params.maxScale, 0.001f) * std::max(1.0f, layer.params.maxHeightRatio);
             for (const DetailSlot& slot : layer.ring) {
                 if (!slot.instances || slot.instances->empty()) continue;
-                const float boxMin[3] = {static_cast<float>(slot.x) * FOLIAGE_DETAIL_CELL_SIZE - reach, slot.minY - reach, static_cast<float>(slot.z) * FOLIAGE_DETAIL_CELL_SIZE - reach};
-                const float boxMax[3] = {boxMin[0] + FOLIAGE_DETAIL_CELL_SIZE + 2.0f * reach, slot.maxY + reach, boxMin[2] + FOLIAGE_DETAIL_CELL_SIZE + 2.0f * reach};
+                const float boxMin[3] = {static_cast<float>(slot.x) * terraincore::FOLIAGE_DETAIL_CELL_SIZE - reach, slot.minY - reach, static_cast<float>(slot.z) * terraincore::FOLIAGE_DETAIL_CELL_SIZE - reach};
+                const float boxMax[3] = {boxMin[0] + terraincore::FOLIAGE_DETAIL_CELL_SIZE + 2.0f * reach, slot.maxY + reach, boxMin[2] + terraincore::FOLIAGE_DETAIL_CELL_SIZE + 2.0f * reach};
                 if (!foliageRayBox(origin, direction, boxMin, boxMax, localMax)) continue;
-                for (const FoliageInstance& instance : *slot.instances) {
+                for (const terraincore::FoliageInstance& instance : *slot.instances) {
                     const float tall = instance.scale * std::max(1.0f, static_cast<float>(instance.heightRatio) / 128.0f);
                     const Matrix4 local = foliageInstanceMatrix(instance);
                     const Vector3 center = local * layer.center;
@@ -3433,7 +3432,7 @@ namespace {
     // The world box of a local box under the terrain's affine matrix times foliageInstanceMatrix(instance),
     // written out (Arvo's interval form, as AABB::transform): an overlap makes one per tree its cube test
     // keeps, and the two 4x4 products and the box's transform were most of what each cost
-    AABB foliageWorldBounds(const float model[4][3], const FoliageInstance& instance, const AABB& bounds) {
+    AABB foliageWorldBounds(const float model[4][3], const terraincore::FoliageInstance& instance, const AABB& bounds) {
         const float x = instance.rotation[0] / 32767.0f;
         const float y = instance.rotation[1] / 32767.0f;
         const float z = instance.rotation[2] / 32767.0f;
@@ -3479,7 +3478,7 @@ namespace {
 
     // foliageInstanceMatrix(instance) applied to a point, without making the matrix: the same terms,
     // rounded in another order
-    Vector3 foliageInstancePoint(const FoliageInstance& instance, const Vector3& point) {
+    Vector3 foliageInstancePoint(const terraincore::FoliageInstance& instance, const Vector3& point) {
         const float x = instance.rotation[0] / 32767.0f;
         const float y = instance.rotation[1] / 32767.0f;
         const float z = instance.rotation[2] / 32767.0f;
@@ -3558,7 +3557,7 @@ void FoliageSystem::forEachFoliageInBox(const AABB& box, bool trees, bool detail
                     if (prototype.ready.empty() || !prototype.ready[0] || !(prototype.radius > 0.0f)) continue;
                     const float pad = foliageLocalReach(prototype.center, prototype.radius, padScale) * range.maxScale + localSlack;
                     for (uint32_t i = range.first; i < range.first + range.count; i++) {
-                        const FoliageInstance& instance = cell.instances[i];
+                        const terraincore::FoliageInstance& instance = cell.instances[i];
                         if (!foliagePointTouches(instance.position, pad, lo, hi)) continue;
                         const float tall = instance.scale * std::max(1.0f, static_cast<float>(instance.heightRatio) / 128.0f);
                         // the sphere's world centre without the matrices, which only a tree the cube
@@ -3568,7 +3567,7 @@ void FoliageSystem::forEachFoliageInBox(const AABB& box, bool trees, bool detail
                         const float reachWorld = foliageCenterReach(prototype.radius * tall * axisMax, localCenter, center, axisMax);
                         if (!foliageCubeTouches(center, reachWorld, mn, mx)) continue;
                         found.tree = true;
-                        found.id = makeTreeId(region.region->regionKey(), cell.slotIds[i]);
+                        found.id = terraincore::makeTreeId(region.region->regionKey(), cell.slotIds[i]);
                         found.prototype = range.prototype;
                         found.bounds = affine && prototype.bounds.isFinite() ? foliageWorldBounds(modelColumns, instance, prototype.bounds)
                                                                              : (region.model * foliageInstanceMatrix(instance)) * prototype.bounds;
@@ -3577,10 +3576,10 @@ void FoliageSystem::forEachFoliageInBox(const AABB& box, bool trees, bool detail
                 }
             };
             // the cells under the padded box, or the resident ones when they are fewer
-            const float firstX = std::floor((lo.x - regionPad) / FOLIAGE_TREE_CELL_SIZE);
-            const float lastX = std::floor((hi.x + regionPad) / FOLIAGE_TREE_CELL_SIZE);
-            const float firstZ = std::floor((lo.z - regionPad) / FOLIAGE_TREE_CELL_SIZE);
-            const float lastZ = std::floor((hi.z + regionPad) / FOLIAGE_TREE_CELL_SIZE);
+            const float firstX = std::floor((lo.x - regionPad) / terraincore::FOLIAGE_TREE_CELL_SIZE);
+            const float lastX = std::floor((hi.x + regionPad) / terraincore::FOLIAGE_TREE_CELL_SIZE);
+            const float firstZ = std::floor((lo.z - regionPad) / terraincore::FOLIAGE_TREE_CELL_SIZE);
+            const float lastZ = std::floor((hi.z + regionPad) / terraincore::FOLIAGE_TREE_CELL_SIZE);
             const double span = (static_cast<double>(lastX) - firstX + 1.0) * (static_cast<double>(lastZ) - firstZ + 1.0);
             const bool inRange = std::max({std::fabs(firstX), std::fabs(lastX), std::fabs(firstZ), std::fabs(lastZ)}) < 1.0e9f;
             if (inRange && span <= static_cast<double>(region.residentOrder.size())) {
@@ -3605,10 +3604,10 @@ void FoliageSystem::forEachFoliageInBox(const AABB& box, bool trees, bool detail
                 const float reach = (layer.radius + layer.center.length()) * std::max(layer.params.maxScale, 0.001f) * std::max(1.0f, layer.params.maxHeightRatio);
                 for (const DetailSlot& slot : layer.ring) {
                     if (!slot.instances || slot.instances->empty()) continue;
-                    const float slotMin[3] = {static_cast<float>(slot.x) * FOLIAGE_DETAIL_CELL_SIZE, slot.minY, static_cast<float>(slot.z) * FOLIAGE_DETAIL_CELL_SIZE};
-                    const float slotMax[3] = {slotMin[0] + FOLIAGE_DETAIL_CELL_SIZE, slot.maxY, slotMin[2] + FOLIAGE_DETAIL_CELL_SIZE};
+                    const float slotMin[3] = {static_cast<float>(slot.x) * terraincore::FOLIAGE_DETAIL_CELL_SIZE, slot.minY, static_cast<float>(slot.z) * terraincore::FOLIAGE_DETAIL_CELL_SIZE};
+                    const float slotMax[3] = {slotMin[0] + terraincore::FOLIAGE_DETAIL_CELL_SIZE, slot.maxY, slotMin[2] + terraincore::FOLIAGE_DETAIL_CELL_SIZE};
                     if (!foliageBoxTouches(slotMin, slotMax, reach * padScale, lo, hi)) continue;
-                    for (const FoliageInstance& instance : *slot.instances) {
+                    for (const terraincore::FoliageInstance& instance : *slot.instances) {
                         if (!foliagePointTouches(instance.position, reach * padScale, lo, hi)) continue;
                         const float tall = instance.scale * std::max(1.0f, static_cast<float>(instance.heightRatio) / 128.0f);
                         const Matrix4 world = region.model * foliageInstanceMatrix(instance);
@@ -3661,8 +3660,8 @@ void FoliageSystem::forEachNavObstacle(Entity terrainEntity, const std::function
         const float size = state->tile ? state->terrainSize : terrain->terrainSize;
         const float maxHeight = state->tile ? state->terrainMaxHeight : terrain->maxHeight;
         const Matrix4& model = state->tile ? state->model : transform->modelMatrix;
-        const auto emit = [&](const TreeRecord& record) {
-            if ((record.flags & TREE_HIDDEN_BY_HOLE) || state->runtime.removed.count(record.id)) return;
+        const auto emit = [&](const terraincore::TreeRecord& record) {
+            if ((record.flags & terraincore::TREE_HIDDEN_BY_HOLE) || state->runtime.removed.count(record.id)) return;
             const int prototype = Impl::prototypeIndexOf(*terrain, record.prototypeId);
             if (prototype < 0 || !terrain->treePrototypes[prototype].navObstacle) return;
             const TerrainTreePrototype& authored = terrain->treePrototypes[prototype];
@@ -3671,13 +3670,13 @@ void FoliageSystem::forEachNavObstacle(Entity terrainEntity, const std::function
             visit(base, authored.collisionRadius * record.scale * worldScale, authored.collisionHeight * record.scale * heightRatio * std::abs(transform->worldScale.y));
         };
         if (state->store) {
-            for (const TreeRecord& record : state->store->records()) emit(record);
+            for (const terraincore::TreeRecord& record : state->store->records()) emit(record);
         }
-        for (const TreeRecord& record : state->runtime.added) emit(record);
+        for (const terraincore::TreeRecord& record : state->runtime.added) emit(record);
     }
 }
 
-void FoliageSystem::forEachResidentCell(Entity terrainEntity, const std::function<void(int cellX, int cellZ, std::span<const FoliageInstance> instances, std::span<const uint32_t> ids)>& visit) const {
+void FoliageSystem::forEachResidentCell(Entity terrainEntity, const std::function<void(int cellX, int cellZ, std::span<const terraincore::FoliageInstance> instances, std::span<const uint32_t> ids)>& visit) const {
     if (!impl->isWorld(terrainEntity)) {
         RegionState* state = impl->loneRegion(terrainEntity);
         if (!state) return;
@@ -3689,24 +3688,24 @@ void FoliageSystem::forEachResidentCell(Entity terrainEntity, const std::functio
         return;
     }
     // T4 R27: each tile's cells moved from its frame (centred on it) to the World's
-    std::vector<FoliageInstance> moved;
+    std::vector<terraincore::FoliageInstance> moved;
     for (RegionState* state : impl->regionsByKey(terrainEntity)) {
         if (!state->tile) continue;
         int offsetX = 0, offsetZ = 0;
         state->region->cellOffset(offsetX, offsetZ);
-        const float centreX = static_cast<float>(offsetX) * FOLIAGE_DETAIL_CELL_SIZE;
-        const float centreZ = static_cast<float>(offsetZ) * FOLIAGE_DETAIL_CELL_SIZE;
+        const float centreX = static_cast<float>(offsetX) * terraincore::FOLIAGE_DETAIL_CELL_SIZE;
+        const float centreZ = static_cast<float>(offsetZ) * terraincore::FOLIAGE_DETAIL_CELL_SIZE;
         for (int64_t key : state->residentOrder) {
             const auto it = state->cells.find(key);
             if (it == state->cells.end()) continue;
             const TreeCell& cell = it->second;
             moved.assign(cell.instances.begin(), cell.instances.end());
-            for (FoliageInstance& instance : moved) {
+            for (terraincore::FoliageInstance& instance : moved) {
                 instance.position[0] += centreX;
                 instance.position[2] += centreZ;
             }
-            const int cellX = static_cast<int>(std::floor((centreX + static_cast<float>(cell.x) * FOLIAGE_TREE_CELL_SIZE) / FOLIAGE_TREE_CELL_SIZE));
-            const int cellZ = static_cast<int>(std::floor((centreZ + static_cast<float>(cell.z) * FOLIAGE_TREE_CELL_SIZE) / FOLIAGE_TREE_CELL_SIZE));
+            const int cellX = static_cast<int>(std::floor((centreX + static_cast<float>(cell.x) * terraincore::FOLIAGE_TREE_CELL_SIZE) / terraincore::FOLIAGE_TREE_CELL_SIZE));
+            const int cellZ = static_cast<int>(std::floor((centreZ + static_cast<float>(cell.z) * terraincore::FOLIAGE_TREE_CELL_SIZE) / terraincore::FOLIAGE_TREE_CELL_SIZE));
             visit(cellX, cellZ, moved, cell.slotIds);
         }
     }
@@ -3721,7 +3720,7 @@ const FoliageStats& FoliageSystem::getStats(Entity terrainEntity) const {
 }
 
 uint64_t FoliageSystem::getPlacementHash(Entity terrainEntity) const {
-    uint64_t hash = foliageHash({});
+    uint64_t hash = terraincore::foliageHash({});
     const auto mix = [&hash](const RegionState& state) {
         for (const DetailLayerState& layer : state.layers) {
             std::vector<const DetailSlot*> slots;
@@ -3776,7 +3775,7 @@ Vector3 FoliageSystem::getWindVector(const TerrainComponent& terrain, double tim
         if (field.pulseFrequency > 0.0f) {
             // a pulse in cycles, wrapped before its sine
             const double cycle = timeSeconds * field.pulseFrequency;
-            pulse = 0.5f + 0.5f * detSin(static_cast<float>(cycle - std::floor(cycle)) * DET_TWO_PI);
+            pulse = 0.5f + 0.5f * terraincore::detSin(static_cast<float>(cycle - std::floor(cycle)) * terraincore::DET_TWO_PI);
         }
         strength *= field.strength * pulse;
         break;
@@ -3812,7 +3811,7 @@ bool FoliageSystem::getPrototypeDraw(Entity prototypeEntity, PrototypeDraw& out)
     if (ref.prototype < 0 || ref.prototype >= static_cast<int>(terrain->treePrototypes.size())) return false;
     const TerrainTreePrototype& authored = terrain->treePrototypes[ref.prototype];
     const TreePrototypeState& prototype = region.prototypes[ref.prototype];
-    const FoliageTierLimits limits = foliageTierLimits(foliageTierOf(Engine::getFoliageQuality()));
+    const terraincore::FoliageTierLimits limits = foliageTierLimits(foliageTierOf(Engine::getFoliageQuality()));
     const bool uncapped = Engine::isFoliageQualityUncapped();
     const float fade = terrain->fadeLength * (uncapped ? 1.0f : limits.fadeLength);
     const float billboard = Impl::scaledDistance(terrain->billboardStart, false);
@@ -3882,7 +3881,7 @@ void FoliageSystem::buildView(FoliageViewList& list, const FoliageViewRequest& r
     list.draws = 0;
     list.capped = false;
 
-    const FoliageTierLimits limits = foliageTierLimits(foliageTierOf(quality));
+    const terraincore::FoliageTierLimits limits = foliageTierLimits(foliageTierOf(quality));
     const bool uncapped = Engine::isFoliageQualityUncapped();
 
     impl->buildDetailDraws(list, request, limits, uncapped);
@@ -3897,18 +3896,18 @@ void FoliageSystem::buildView(FoliageViewList& list, const FoliageViewRequest& r
             region->stats.meshTrees = list.meshTrees;
             region->stats.draws = list.draws;
             region->stats.budgetExceeded = list.capped;
-            region->stats.streamBytes = list.stream.size() * sizeof(FoliageInstance) + list.expanded.size() * sizeof(InstanceRenderData);
+            region->stats.streamBytes = list.stream.size() * sizeof(terraincore::FoliageInstance) + list.expanded.size() * sizeof(InstanceRenderData);
         }
     }
 }
 
-bool FoliageSystem::getTreeFromBody(Entity bodyEntity, size_t colliderIndex, Entity& terrainEntity, TreeId& id) const {
+bool FoliageSystem::getTreeFromBody(Entity bodyEntity, size_t colliderIndex, Entity& terrainEntity, terraincore::TreeId& id) const {
     const auto it = impl->bodyCells.find(bodyEntity);
     if (it == impl->bodyCells.end()) return false;
     const std::vector<uint32_t>& ids = *it->second.ids;
     if (colliderIndex >= ids.size()) return false;
     terrainEntity = it->second.terrain;
-    id = makeTreeId(it->second.regionKey, ids[colliderIndex]);
+    id = terraincore::makeTreeId(it->second.regionKey, ids[colliderIndex]);
     return true;
 }
 
@@ -3923,7 +3922,7 @@ void FoliageSystem::setTreeHitHandler(Entity terrainEntity, std::function<void(c
     updateContactSubscription();
 }
 
-void FoliageSystem::setTreeRemovedHandler(Entity terrainEntity, std::function<void(TreeId, const FoliageInstanceInfo&)> handler) {
+void FoliageSystem::setTreeRemovedHandler(Entity terrainEntity, std::function<void(terraincore::TreeId, const FoliageInstanceInfo&)> handler) {
     Impl::Handlers& handlers = impl->handlers[terrainEntity];
     handlers.removed = std::move(handler);
     if (!handlers.hit && !handlers.removed) impl->handlers.erase(terrainEntity);
@@ -3943,7 +3942,7 @@ void FoliageSystem::updateContactSubscription() {
     FoliageSystem* self = this;
     impl->contactSubscription = foliagephysics::subscribeContacts(*scene, [self](Entity treeBody, size_t collider, Entity other, const Vector3& point, const Vector3& normal, float speed) {
         Entity terrainEntity = NULL_ENTITY;
-        TreeId id = 0;
+        terraincore::TreeId id = 0;
         if (!self->getTreeFromBody(treeBody, collider, terrainEntity, id)) return;
         FoliageInstanceInfo pose;
         TreeHitEvent event;
@@ -3988,7 +3987,7 @@ void FoliageSystem::uploadTreeBuffers() {
                 continue;
             }
             budget--;
-            const size_t bytes = cell.instances.size() * sizeof(FoliageInstance);
+            const size_t bytes = cell.instances.size() * sizeof(terraincore::FoliageInstance);
             if (!cell.gpu) cell.gpu = std::make_shared<ExternalBuffer>();
             BufferRender* render = cell.gpu->getRender();
             if (render->isCreated() && cell.gpuCapacity < bytes) render->destroyBuffer();
