@@ -1745,25 +1745,23 @@ unless the repository variable `NAMESPACE_RUNNERS` says otherwise:
 - **Where jobs run**: on a first attempt (and any rerun the watchdog did not make), `changes` gives each
   job of those OSes a Namespace machine, labelled in the workflow, so no dashboard profile is needed:
   `nscloud-ubuntu-24.04-amd64-<vCPU>x<GB>`, `nscloud-windows-2022-amd64-...`, `nscloud-macos-tahoe-arm64-...`.
-  The shapes are in `tools/ci/plan_lanes.py` `NAMESPACE_SHAPES`: 16x32 for `linux`, `unit` and
-  `asan-core`, 16x64 for `asan-editor`, 8x16 for `htmlui` and `web`, 8x32 for `smoke` and `android`, 4x16
-  for each MCP shard, 4x8 for `lint` and `changes`; 16x32 for the Windows editor and OpenGL legs, 8x16 for
-  the other legs; 12x28 for `macos` and 6x14 for `ios`. The disk comes with the shape (32 GB plus 8 GB per
-  vCPU or per 2 GB of memory, whichever is more), and `free-disk` does nothing there, so each Linux shape
-  holds its job's measured use (Job setup). Namespace queues a job past the plan's concurrency limit
-  (Business: Linux 160 vCPU, Windows 80, macOS 48), so a larger shape costs parallelism, not failures. A
-  fork's pull request stays on GitHub's runners. `Check`, `report` and the housekeeping jobs always do,
-  so a Namespace outage cannot hold the required status. An overflow runner takes no job that is on
-  Namespace, and the dispatcher counts none of them as GitHub's.
+  The shapes are in `tools/ci/plan_lanes.py` `NAMESPACE_SHAPES`: no Linux or Windows job gets more than
+  16 GB, the memory of GitHub's hosted runner where every lane passed, and no macOS job more than 14, since
+  memory is what the plan's concurrency limit (Linux 160 vCPU and 320 GB, Windows 80 and 160, macOS 48 and
+  112) runs out of first. So 8x16 for every build and test lane (`linux`, `unit`, `asan`, `htmlui`,
+  `smoke`, `web`, `android`, every Windows leg), 4x8 for each MCP shard, `lint` and `changes`, and 8x14
+  for `macos` and `ios`. The disk comes with the shape (32 GB plus 8 GB per vCPU or per 2 GB of memory,
+  whichever is more: 96 GB at 8x16), and `free-disk` does nothing there, so each Linux shape holds its
+  job's measured use (Job setup). Namespace queues a job past the concurrency limit, so a larger shape
+  costs parallelism, not failures. A fork's pull request stays on GitHub's runners. `Check`, `report`
+  and the housekeeping jobs always do, so a Namespace outage cannot hold the required status. An
+  overflow runner takes no job that is on Namespace, and the dispatcher counts none of them as GitHub's.
 - **The nightly and the release build**: their long jobs are routed the same way, by
   `tools/ci/plan_lanes.py runners` (`WORKFLOW_JOBS`, through `.github/actions/runners` in `nightly.yml`'s
   `runners` job and `build-release.yml`'s `check-inputs`), on a schedule too. Their keys are their own, so
   no overflow runner takes one, and they have no cache volume: they restore the Actions cache and commit
-  nothing. The release gets 16x32 for its Linux and Windows builds (8x32 for the end-to-end checks, for the
-  disk) and 12x28 for the Apple ones, which then build 3 at a time; the
-  nightly's suites get the shape of the ci.yml lane of their kind (8x32 for the slow suites, as 4 GB a
-  core as GitHub's). The nightly's MCP and coverage shards (about 40 jobs) and the housekeeping jobs
-  stay on GitHub's runners.
+  nothing. Their Linux and Windows jobs get 8x16 and their Apple ones 8x14, under the same caps. The
+  nightly's MCP and coverage shards (about 40 jobs) and the housekeeping jobs stay on GitHub's runners.
 - **Caches**: each Linux lane and `macos` has its own cache volume (tag `jasperengine-<lane>`, 20 GB).
   Namespace forks it for each job and commits it only from `main`'s jobs
   (`nscloud-cache-allow-commit-from-main`): the push to `main` and the advisory run write it, pull

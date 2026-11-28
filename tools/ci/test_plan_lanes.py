@@ -881,6 +881,13 @@ EVERY_JOB = {**JOBS, "unit-editor-2": "linux", "asan-core": "linux", "htmlui": "
              "android": "linux", "mcp-2": "linux"}
 
 
+# the shapes Namespace's docs list (namespace.so/docs/architecture/compute/machine-shapes) at no more memory
+# than a job may take: GitHub's hosted runner's 16 GB, where every lane passed, and 14 on macOS. More memory
+# filled the plan's concurrency (Linux 320 GB) while its vCPU sat unused, and jobs queued for hours
+NAMESPACE_LISTED = {"linux": {"1x2", "2x4", "2x8", "4x8", "4x16", "8x16"}, "windows": {"1x2", "2x4", "2x8", "4x8", "4x16", "8x16"},
+                    "macos": {"4x7", "6x14", "8x14"}}
+
+
 def on_namespace(runs_on):
     return {job: pl.namespace_os(labels) for job, labels in runs_on.items() if pl.namespace_os(labels)}
 
@@ -913,16 +920,16 @@ class Namespace(unittest.TestCase):
         runs_on = route(state(), namespace="on", jobs=EVERY_JOB)[0]
         # each job's shape, and its lane's cache volume that only main's jobs commit
         volume = ["nscloud-cache-size-20gb", "nscloud-cache-allow-commit-from-main"]
-        self.assertEqual(runs_on["linux"], ["nscloud-ubuntu-24.04-amd64-16x32-with-cache", "nscloud-cache-tag-jasperengine-linux",
+        self.assertEqual(runs_on["linux"], ["nscloud-ubuntu-24.04-amd64-8x16-with-cache", "nscloud-cache-tag-jasperengine-linux",
                                             *volume, "nscloud-container-image-cache"])
-        self.assertEqual(runs_on["asan-editor"][:2], ["nscloud-ubuntu-24.04-amd64-16x64-with-cache",
+        self.assertEqual(runs_on["asan-editor"][:2], ["nscloud-ubuntu-24.04-amd64-8x16-with-cache",
                                                       "nscloud-cache-tag-jasperengine-asan-editor"])
-        self.assertEqual(runs_on["mcp-2"][:2], ["nscloud-ubuntu-24.04-amd64-4x16-with-cache", "nscloud-cache-tag-jasperengine-mcp"])
-        self.assertEqual(runs_on["macos"], ["nscloud-macos-tahoe-arm64-12x28-with-cache", "nscloud-cache-tag-jasperengine-macos", *volume])
+        self.assertEqual(runs_on["mcp-2"][:2], ["nscloud-ubuntu-24.04-amd64-4x8-with-cache", "nscloud-cache-tag-jasperengine-mcp"])
+        self.assertEqual(runs_on["macos"], ["nscloud-macos-tahoe-arm64-8x14-with-cache", "nscloud-cache-tag-jasperengine-macos", *volume])
         self.assertEqual(runs_on["lint"], "nscloud-ubuntu-24.04-amd64-4x8")
-        self.assertEqual(runs_on["ios"], "nscloud-macos-tahoe-arm64-6x14")
-        self.assertEqual(runs_on["windows-editor"], "nscloud-windows-2022-amd64-16x32")
-        self.assertEqual(runs_on["windows-engine-glcore"], "nscloud-windows-2022-amd64-16x32")
+        self.assertEqual(runs_on["ios"], "nscloud-macos-tahoe-arm64-8x14")
+        self.assertEqual(runs_on["windows-editor"], "nscloud-windows-2022-amd64-8x16")
+        self.assertEqual(runs_on["windows-engine-glcore"], "nscloud-windows-2022-amd64-8x16")
         self.assertEqual(runs_on["windows-engine-d3d11"], "nscloud-windows-2022-amd64-8x16")
         # both editor parts share the editor's volume; only the first (it trims and holds both parts) commits
         self.assertEqual(runs_on["unit-editor-1"][1], "nscloud-cache-tag-jasperengine-unit-editor")
@@ -980,7 +987,6 @@ class Namespace(unittest.TestCase):
         # one machine label (Namespace schedules no job with two), of a shape its docs list, and tags of
         # [a-z0-9.-]; each lane's volume its own tag (a shared one would mix the lanes' ccache)
         machine = re.compile(r"nscloud-(ubuntu-24\.04-amd64|windows-2022-amd64|macos-tahoe-arm64)-(\d+)x(\d+)(-with-cache)?")
-        mac_shapes = {"6x14", "12x28", "12x56"}
         tags = {}
         for job, os_ in EVERY_JOB.items():
             labels = pl.namespace_labels(job, os_)
@@ -988,8 +994,7 @@ class Namespace(unittest.TestCase):
             machines = [l for l in labels if machine.fullmatch(l)]
             self.assertEqual(len(machines), 1, (job, labels))
             m = machine.fullmatch(machines[0])
-            if os_ == "macos":
-                self.assertIn(f"{m.group(2)}x{m.group(3)}", mac_shapes, job)
+            self.assertIn(f"{m.group(2)}x{m.group(3)}", NAMESPACE_LISTED[os_], job)
             self.assertEqual(bool(m.group(4)), any(l.startswith("nscloud-cache-tag-") for l in labels), job)
             for label in labels:
                 self.assertRegex(label, r"^(nscloud|namespace)-[a-z0-9.-]+$")
@@ -1055,8 +1060,7 @@ class WorkflowRunners(unittest.TestCase):
                 self.assertTrue(m, (job, label))
                 self.assertEqual(pl.namespace_os(label), os_)
                 self.assertIn(job, pl.NAMESPACE_SHAPES, job)
-                if os_ == "macos":
-                    self.assertIn(f"{m.group(2)}x{m.group(3)}", {"6x14", "12x28", "12x56"}, job)
+                self.assertIn(f"{m.group(2)}x{m.group(3)}", NAMESPACE_LISTED[os_], job)
 
     def test_the_workflows_read_every_key_with_their_hosted_fallback(self):
         root = HERE.parent.parent
@@ -1081,9 +1085,9 @@ class WorkflowRunners(unittest.TestCase):
             line = out.read_text()
             self.assertTrue(line.startswith("runs_on=") and line.endswith("\n"), line)
             runs_on = json.loads(line[len("runs_on="):])
-            self.assertEqual(runs_on["release-players-apple"], "nscloud-macos-tahoe-arm64-12x28")
-            self.assertEqual(runs_on["release-editor-windows"], "nscloud-windows-2022-amd64-16x32")
-            self.assertIn("release-players-linux: nscloud-ubuntu-24.04-amd64-16x32", printed.getvalue())
+            self.assertEqual(runs_on["release-players-apple"], "nscloud-macos-tahoe-arm64-8x14")
+            self.assertEqual(runs_on["release-editor-windows"], "nscloud-windows-2022-amd64-8x16")
+            self.assertIn("release-players-linux: nscloud-ubuntu-24.04-amd64-8x16", printed.getvalue())
 
 
 class Selection(unittest.TestCase):
