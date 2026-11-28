@@ -34,6 +34,7 @@ case "$1 $2" in
     commit=""; args=("$@"); for i in "${!args[@]}"; do [[ "${args[$i]}" == --target ]] && commit="${args[$((i+1))]}"; done
     echo "$3 true $commit" >> "$S/releases.txt" ;;
 "release edit")
+    args=("$@"); for i in "${!args[@]}"; do [[ "${args[$i]}" == --target ]] && sed -i "s/^\($3 [a-z]*\) .*/\1 ${args[$((i+1))]}/" "$S/releases.txt"; done
     if [[ "$*" == *--draft=false* ]]; then sed -i "s/^$3 true /$3 false /" "$S/releases.txt"; fi ;;
 "release upload")
     seen=0
@@ -123,6 +124,16 @@ class ReleaseTest(unittest.TestCase):
         p = self.run_script("publish", "nightly", VERSION, COMMIT, str(self.assets))
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertEqual(self.calls().count("release create"), 1)
+        self.assertEqual(self.releases()[VERSION], ("false", COMMIT))
+
+    def test_a_draft_of_another_commit_is_taken_at_this_commit(self):
+        # (a dry run of a branch leaves nightly-<today> a draft at the branch's head: that night's nightly
+        # takes it, and must tag main's commit, not the branch's)
+        branch = "b" * 40
+        p = self.run_script("publish", "nightly", VERSION, branch, str(self.assets), "--dry-run")
+        self.assertEqual((p.returncode, self.releases()[VERSION]), (0, ("true", branch)), p.stdout + p.stderr)
+        p = self.run_script("publish", "nightly", VERSION, COMMIT, str(self.assets))
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertEqual(self.releases()[VERSION], ("false", COMMIT))
 
     def test_a_published_release_of_another_commit_is_refused(self):

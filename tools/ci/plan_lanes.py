@@ -64,6 +64,12 @@ cost (SHARD_SETUP_SECONDS); at most MAX_PLANNED_SHARDS, except for full and nigh
 Writes <out-dir>/lanes.json, <out-dir>/check-changed.json (the plan) and <out-dir>/mcp-plan/
 (plan-<shard>.json, tests.txt). Exit 0 whenever lanes.json was written, widened or not; 2 on
 unusable arguments.
+
+    python3 tools/ci/plan_lanes.py runners --workflow <nightly|build-release> [--runner-state FILE] \\
+        [--namespace on] [--trigger schedule] [--repo R] [--run-attempt N] [--run-id N] [--github-output FILE]
+
+prints (and writes as runs_on) where each job of the nightly or the release build runs (WORKFLOW_JOBS),
+routed as ci.yml's jobs are.
 """
 
 from __future__ import annotations
@@ -1044,7 +1050,17 @@ NAMESPACE_FORCE = "namespace"
 # (Linux 160 vCPU on Business), so a larger shape only costs a run its parallelism
 NAMESPACE_SHAPES = {"lint": "4x8", "linux": "16x32", "unit-": "16x32", "asan-core": "16x32", "asan-editor": "16x64",
                     "htmlui": "8x16", "smoke": "8x32", "web": "8x16", "android": "8x32", "mcp-": "4x16",
-                    "windows-editor": "16x32", "windows-engine-glcore": "16x32", "macos": "12x28", "ios": "6x14"}
+                    "windows-editor": "16x32", "windows-engine-glcore": "16x32", "macos": "12x28", "ios": "6x14",
+                    # the nightly's and the release build's (WORKFLOW_JOBS): the builds as ci.yml's of the same
+                    # kind (the slow suites 4 GB a core as on a hosted runner: the unity builds' units), the
+                    # release's the most cores (it is what users wait for), its end-to-end checks smoke's disk
+                    "nightly-slow": "8x32", "nightly-web-threads": "8x16", "nightly-parity": "8x32",
+                    "nightly-windows-engine": "8x16", "nightly-mcp-editor": "16x32", "nightly-ios": "6x14",
+                    "nightly-export-checks": "8x32", "nightly-coverage-editor": "16x32",
+                    "release-players-linux": "16x32", "release-players-web": "16x32", "release-players-android": "8x32",
+                    "release-players-windows": "16x32", "release-players-apple": "12x28", "release-editor-linux": "16x32",
+                    "release-editor-windows": "16x32", "release-editor-macos": "12x28", "release-prebuilt": "8x32",
+                    "release-prebuilt-android": "8x32"}
 NAMESPACE_DEFAULT_SHAPE = {"linux": "4x16", "windows": "8x16", "macos": "6x14"}
 # the jobs with a cache volume, by tag (its ccache lane; mcp's holds the images only). Not Windows: the
 # docs name no cache volume there (its lanes keep the Actions cache), nor ios (its Xcode cache is the
@@ -1054,6 +1070,23 @@ NAMESPACE_CACHE = {"linux": "linux", "unit-core": "unit-core", "unit-editor-": "
                    "mcp-": "mcp", "macos": "macos"}
 # the smallest volume Namespace makes; the largest lane holds an image (2.3-4.1 GB) and a 2.2 GB ccache
 NAMESPACE_CACHE_GB = 20
+# The jobs of the nightly and the release build (.github/workflows/nightly.yml, build-release.yml) that
+# `plan_lanes.py runners` routes as ci.yml's, by workflow: one key per job (a matrix's entries share it)
+# and its OS. Keys of their own: no overflow runner takes one (OVERFLOW names ci.yml's jobs: a release is
+# built on clean machines), and none has a cache volume (NAMESPACE_CACHE): they restore the Actions cache
+# as on GitHub's runners and commit nothing, so a nightly on main never writes into a CI lane's volume.
+# Not routed: their housekeeping jobs (as Check and report), and the nightly's MCP and coverage shards,
+# about 40 jobs of a hosted runner's size, which would take Namespace's vCPU from the merge queue while
+# GitHub's runners, which CI no longer fills, are free
+WORKFLOW_JOBS = {
+    "nightly": {"nightly-slow": "linux", "nightly-web-threads": "linux", "nightly-parity": "linux",
+                "nightly-windows-engine": "windows", "nightly-mcp-editor": "linux", "nightly-ios": "macos",
+                "nightly-export-checks": "linux", "nightly-coverage-editor": "linux"},
+    "build-release": {"release-players-linux": "linux", "release-players-web": "linux", "release-players-android": "linux",
+                      "release-players-windows": "windows", "release-players-apple": "macos",
+                      "release-editor-linux": "linux", "release-editor-windows": "windows", "release-editor-macos": "macos",
+                      "release-prebuilt": "linux", "release-prebuilt-android": "linux"},
+}
 
 
 def by_job(table: dict, job: str):
@@ -1178,7 +1211,8 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
     down for that OS; an overflow runner then takes none of them."""
     runs_on = {job: HOSTED[os_] for job, os_ in jobs.items()}
     why = trusted(trigger, head_repo, repo)
-    if why:
+    # (a schedule runs main's code: Namespace's machines may take it, a person's overflow machine not)
+    if why and trigger != "schedule":
         return runs_on, [f"hosted only: {why}"]
     # a run the watchdog moved off a runner that went away (the state's hosted_only) stays on GitHub's
     # runners, as does a forced dispatch's rerun; its rerun for an idle runner routes again
@@ -1220,6 +1254,8 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
         return runs_on, notes
     off = set(disabled.replace(",", " ").split())
     lead = "no overflow runner" if on else "hosted only"
+    if why:
+        return runs_on, notes + [f"{lead}: {why}"]
     if "all" in off:
         return runs_on, notes + [f"{lead}: {DISABLED_VARIABLE} is all"]
     if not fresh:
@@ -1249,6 +1285,31 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
                 notes.append(f"{job} on {label}: hosted {os_} {'saturated' if hosted.get('saturated') else 'has a job waiting'} "
                              f"({hosted.get('running', 0)} running, {hosted.get('queued', 0)} queued), {label} idle")
     return runs_on, notes
+
+
+def runners_main(argv: list[str]) -> int:
+    """`plan_lanes.py runners --workflow <nightly|build-release> ...`: route's runs_on of that workflow's
+    WORKFLOW_JOBS (its first job writes them to $GITHUB_OUTPUT; .github/actions/runners)."""
+    ap = argparse.ArgumentParser(prog="plan_lanes.py runners", description=runners_main.__doc__)
+    ap.add_argument("--workflow", required=True, choices=sorted(WORKFLOW_JOBS))
+    ap.add_argument("--runner-state", type=Path, help=f"state.json of the branch {STATE_BRANCH} (tools/ci/runner_dispatch.py)")
+    ap.add_argument("--namespace", default="", help=f"{NAMESPACE_VARIABLE}")
+    ap.add_argument("--trigger", default="", help="github.event_name")
+    ap.add_argument("--repo", default="", help="github.repository")
+    ap.add_argument("--run-attempt", type=int, default=1, help="github.run_attempt")
+    ap.add_argument("--run-id", default="", help="github.run_id (a rerun the watchdog made stays hosted)")
+    ap.add_argument("--github-output", type=Path, help="append runs_on=<JSON> here ($GITHUB_OUTPUT)")
+    args = ap.parse_args(argv)
+    runs_on, notes = route(WORKFLOW_JOBS[args.workflow], load_state(args.runner_state), time.time(), args.trigger, "",
+                           args.repo, args.run_attempt, run_id=args.run_id, namespace=args.namespace)
+    for job, label in sorted(runs_on.items()):
+        print(f"{job}: {label if isinstance(label, str) else ' '.join(label)}")
+    for line in notes:
+        print(f"runner: {line}")
+    if args.github_output:
+        with args.github_output.open("a") as f:
+            f.write(f"runs_on={json.dumps(runs_on, separators=(',', ':'))}\n")
+    return 0
 
 
 def load_state(path: Path | None):
@@ -1355,6 +1416,8 @@ def head_checkout(head: str) -> tuple[Path, Path | None, str]:
 
 
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["runners"]:
+        return runners_main(argv[1:])
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--event", required=True, choices=EVENTS)
     ap.add_argument("--base", required=True, help="the commit the change is against (a PR's base, the queue's base_sha)")

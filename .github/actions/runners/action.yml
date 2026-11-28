@@ -1,0 +1,35 @@
+name: Route the jobs
+description: >
+  Where each job of the nightly or the release build runs (tools/ci/plan_lanes.py runners, WORKFLOW_JOBS):
+  Namespace's machines when NAMESPACE_RUNNERS names the job's OS and the runner state does not say
+  Namespace is down for it, else GitHub's runners, exactly as ci.yml's `changes` routes its jobs
+  (docs/testing.md "Namespace runners"). After the checkout; each routed job reads
+  fromJSON(<this job>.outputs.runs_on)['<key>'] with its GitHub-hosted label as the fallback.
+inputs:
+  workflow:
+    description: nightly or build-release (a WORKFLOW_JOBS key)
+    required: true
+  namespace:
+    description: vars.NAMESPACE_RUNNERS
+    required: false
+    default: ''
+outputs:
+  runs_on:
+    description: JSON, each job key's runs-on
+    value: ${{ steps.route.outputs.runs_on }}
+runs:
+  using: composite
+  steps:
+    - name: Route the jobs
+      id: route
+      shell: bash
+      env:
+        WORKFLOW: ${{ inputs.workflow }}
+        NAMESPACE: ${{ inputs.namespace }}
+      run: |
+        # the runner state of this minute (tools/ci/runner_dispatch.py; none: Namespace by the variable alone)
+        { git fetch -q --depth 1 origin ci-runner-state && git show FETCH_HEAD:state.json; } > "$RUNNER_TEMP/runner-state.json" \
+            || echo "no runner state: NAMESPACE_RUNNERS alone decides"
+        python3 tools/ci/plan_lanes.py runners --workflow "$WORKFLOW" --runner-state "$RUNNER_TEMP/runner-state.json" \
+            --namespace "$NAMESPACE" --trigger "$GITHUB_EVENT_NAME" --repo "$GITHUB_REPOSITORY" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" --run-id "$GITHUB_RUN_ID" --github-output "$GITHUB_OUTPUT"

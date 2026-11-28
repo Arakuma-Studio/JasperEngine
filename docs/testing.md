@@ -1483,6 +1483,10 @@ it; the next run's `changes` reads it.
 - Both build through `build-release.yml`: every player variant of `engine/player/variants.json`, then
   the editors embedding their hashes, launch checks, `SHA256SUMS`, and a draft release that is
   published once every asset is attached. Everything is unsigned.
+- **A nightly's dry run**: `gh workflow run nightly.yml --ref <branch> -f dry_run=true` builds only the
+  release of the branch's head and stops at a complete draft `nightly-YYYYMMDD`: no suite, no pruning,
+  no issue. Delete the draft afterwards (`gh release delete nightly-YYYYMMDD --yes`); a nightly that
+  finds a draft of its version takes it at its own commit.
 
 ### The report
 
@@ -1718,6 +1722,15 @@ unless the repository variable `NAMESPACE_RUNNERS` says otherwise:
   fork's pull request stays on GitHub's runners. `Check`, `report` and the housekeeping jobs always do,
   so a Namespace outage cannot hold the required status. An overflow runner takes no job that is on
   Namespace, and the dispatcher counts none of them as GitHub's.
+- **The nightly and the release build**: their long jobs are routed the same way, by
+  `tools/ci/plan_lanes.py runners` (`WORKFLOW_JOBS`, through `.github/actions/runners` in `nightly.yml`'s
+  `runners` job and `build-release.yml`'s `check-inputs`), on a schedule too. Their keys are their own, so
+  no overflow runner takes one, and they have no cache volume: they restore the Actions cache and commit
+  nothing. The release gets 16x32 for its Linux and Windows builds (8x32 for the Android players and the
+  end-to-end checks, for the disk) and 12x28 for the Apple ones, which then build 3 at a time; the
+  nightly's suites get the shape of the ci.yml lane of their kind (8x32 for the slow suites, as 4 GB a
+  core as GitHub's). The nightly's MCP and coverage shards (about 40 jobs) and the housekeeping jobs
+  stay on GitHub's runners.
 - **Caches**: each Linux lane and `macos` has its own cache volume (tag `jasperengine-<lane>`, 20 GB).
   Namespace forks it for each job and commits it only from `main`'s jobs
   (`nscloud-cache-allow-commit-from-main`): the push to `main` and the advisory run write it, pull

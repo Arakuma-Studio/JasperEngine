@@ -539,7 +539,8 @@ class Rules(unittest.TestCase):
         end = re.search(r"\n  [A-Za-z0-9_-]+:\n", nightly[start + 1:])
         job = nightly[start:start + 1 + end.start()] if end else nightly[start:]
         self.assertIn("run: tools/ci/macos.sh xcode ios", job)
-        self.assertNotIn("if:", job.split("steps:")[0])
+        # (but a dry run's, which builds the release only)
+        self.assertNotIn("if:", job.split("steps:")[0].replace("\n    if: ${{ !inputs.dry_run }}", ""))
 
     def test_a_pr_runs_its_blocking_lanes_only_while_the_variable_is_off(self):
         # PR_ADVISORY_LANES=off while GitHub's 60 concurrent jobs are the bottleneck: as the merge queue,
@@ -872,7 +873,7 @@ class Routing(unittest.TestCase):
         job = job[:job.index("\n  # ---")]
         self.assertIn("backend: [d3d11, vulkan]", job)
         self.assertIn('run: tools/ci/windows.sh engine "$BACKEND"', job)
-        self.assertNotIn("\n    if:", job)
+        self.assertNotIn("\n    if:", job.replace("\n    if: ${{ !inputs.dry_run }}", ""))
         self.assertIn("windows-engine,", nightly[nightly.index("\n  report:"):])
 
 
@@ -934,7 +935,7 @@ class Namespace(unittest.TestCase):
         self.assertEqual(set(on_namespace(route(state(), namespace="Windows", jobs=EVERY_JOB)[0]).values()), {"windows"})
 
     def test_never_a_forks_pull_request_nor_a_rerun_the_watchdog_moved_off(self):
-        for trigger, head in (("pull_request", "someone/JasperEngine"), ("pull_request", ""), ("schedule", REPO)):
+        for trigger, head in (("pull_request", "someone/JasperEngine"), ("pull_request", ""), ("pull_request_target", REPO)):
             self.assertEqual(on_namespace(route(state(), trigger=trigger, head=head, namespace="on")[0]), {}, (trigger, head))
         held = dict(state(), hosted_only=["42"])
         runs_on, notes = route(held, attempt=2, namespace="on")
@@ -942,8 +943,12 @@ class Namespace(unittest.TestCase):
         self.assertIn("attempt 2", notes[0])
         # anyone else's rerun stays where the variable puts it
         self.assertEqual(on_namespace(route(held, attempt=2, run_id="43", namespace="on")[0]), JOBS)
-        for trigger in ("pull_request", "push", "merge_group", "workflow_dispatch"):
+        for trigger in ("pull_request", "push", "merge_group", "workflow_dispatch", "schedule"):
             self.assertEqual(on_namespace(route(state(), trigger=trigger, namespace="on")[0]), JOBS, trigger)
+        # a schedule (the nightly: main's code) on Namespace's machines, never on a person's overflow one
+        runs_on, notes = route(state(), trigger="schedule", namespace="linux")
+        self.assertEqual(overflowed({j: l for j, l in runs_on.items() if not pl.namespace_os(l)}), {})
+        self.assertIn("no overflow runner: a schedule event", notes)
 
     def test_down_for_an_os_keeps_its_jobs_on_github(self):
         st = dict(state(saturated=("windows",)), namespace={"windows": {"down": True, "why": "a job waited 10 min"},
@@ -1012,6 +1017,73 @@ class Namespace(unittest.TestCase):
         for job in ("check", "report"):
             block = text[text.index(f"\n  {job}:"):]
             self.assertIn("runs-on: ubuntu-slim", block[:block.index("steps:")], job)
+
+
+class WorkflowRunners(unittest.TestCase):
+    """`plan_lanes.py runners`: the nightly's and the release build's jobs (WORKFLOW_JOBS) routed as ci.yml's.
+    Before it they named GitHub's labels only, so NAMESPACE_RUNNERS moved none of them: the release's
+    Apple players waited up to 293 min behind GitHub's 5 macOS runners (nightly 45999497506)."""
+
+    def runs(self, workflow, st=None, trigger="schedule", namespace="on", attempt=1):
+        return pl.route(pl.WORKFLOW_JOBS[workflow], st, NOW, trigger, "", REPO, attempt, run_id="42", namespace=namespace)
+
+    def test_off_is_github_and_on_is_namespace(self):
+        for workflow, jobs in pl.WORKFLOW_JOBS.items():
+            for trigger in ("schedule", "workflow_dispatch", "push"):
+                runs_on = self.runs(workflow, state(), trigger, namespace="")[0]
+                self.assertEqual(runs_on, {job: pl.HOSTED[os_] for job, os_ in jobs.items()}, (workflow, trigger))
+                runs_on = self.runs(workflow, state(), trigger)[0]
+                self.assertEqual(on_namespace(runs_on), jobs, (workflow, trigger))
+            # a fork's pull request never calls these, but would stay on GitHub's runners
+            self.assertEqual(on_namespace(self.runs(workflow, trigger="pull_request")[0]), {})
+            # down for an OS: its jobs on GitHub's runners; a rerun the watchdog moved off, all of them
+            down = dict(state(), namespace={"macos": {"down": True, "why": "a job waited 10 min"}})
+            runs_on = self.runs(workflow, down)[0]
+            self.assertEqual(set(on_namespace(runs_on).values()), set(jobs.values()) - {"macos"})
+            self.assertTrue(all(runs_on[j] == "macos-latest" for j, o in jobs.items() if o == "macos"))
+            self.assertEqual(on_namespace(self.runs(workflow, dict(state(), hosted_only=["42"]), attempt=2)[0]), {})
+
+    def test_labels_are_machines_of_listed_shapes_without_a_volume(self):
+        machine = re.compile(r"nscloud-(ubuntu-24\.04-amd64|windows-2022-amd64|macos-tahoe-arm64)-(\d+)x(\d+)")
+        for workflow, jobs in pl.WORKFLOW_JOBS.items():
+            for job, os_ in jobs.items():
+                # (no overflow runner may take one: a release is built on clean machines)
+                self.assertFalse(any(job in order for _os, order in pl.OVERFLOW.values()), job)
+                label = pl.namespace_labels(job, os_)
+                # no cache volume: a nightly on main would commit its objects into a CI lane's
+                m = machine.fullmatch(label) if isinstance(label, str) else None
+                self.assertTrue(m, (job, label))
+                self.assertEqual(pl.namespace_os(label), os_)
+                self.assertIn(job, pl.NAMESPACE_SHAPES, job)
+                if os_ == "macos":
+                    self.assertIn(f"{m.group(2)}x{m.group(3)}", {"6x14", "12x28", "12x56"}, job)
+
+    def test_the_workflows_read_every_key_with_their_hosted_fallback(self):
+        root = HERE.parent.parent
+        for workflow, (path, producer) in {"nightly": (".github/workflows/nightly.yml", "runners"),
+                                           "build-release": (".github/workflows/build-release.yml", "check-inputs")}.items():
+            text = (root / path).read_text()
+            read = dict(re.findall(r"fromJSON\(needs\." + producer + r"\.outputs\.runs_on\)\['([a-z0-9-]+)'\] \|\| '([a-z-]+)'", text))
+            self.assertEqual(read, {job: pl.HOSTED[os_] for job, os_ in pl.WORKFLOW_JOBS[workflow].items()}, workflow)
+            self.assertIn(f"uses: ./.github/actions/runners\n        id: runners\n        with:\n          workflow: {workflow}\n"
+                          "          namespace: ${{ vars.NAMESPACE_RUNNERS }}", text)
+            self.assertIn("runs_on: ${{ steps.runners.outputs.runs_on }}", text)
+
+    def test_the_command_writes_runs_on(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "out"
+            st = Path(d) / "state.json"
+            st.write_text(json.dumps(dict(state(), t=time.time())))
+            with redirect_stdout(io.StringIO()) as printed:
+                code = pl.main(["runners", "--workflow", "build-release", "--runner-state", str(st), "--namespace", "on",
+                                "--trigger", "workflow_dispatch", "--repo", REPO, "--run-id", "7", "--github-output", str(out)])
+            self.assertEqual(code, 0)
+            line = out.read_text()
+            self.assertTrue(line.startswith("runs_on=") and line.endswith("\n"), line)
+            runs_on = json.loads(line[len("runs_on="):])
+            self.assertEqual(runs_on["release-players-apple"], "nscloud-macos-tahoe-arm64-12x28")
+            self.assertEqual(runs_on["release-editor-windows"], "nscloud-windows-2022-amd64-16x32")
+            self.assertIn("release-players-linux: nscloud-ubuntu-24.04-amd64-16x32", printed.getvalue())
 
 
 class Selection(unittest.TestCase):

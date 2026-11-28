@@ -116,7 +116,8 @@ publish() {
         gh release create "$version" --repo "$REPO" --draft --target "$commit" --title "$version" \
             --notes-file "$notes" ${kind[@]+"${kind[@]}"}
     else
-        gh release edit "$version" --repo "$REPO" --notes-file "$notes"
+        # (a draft left by another run, a dry run's of a branch too, is taken at this run's commit)
+        gh release edit "$version" --repo "$REPO" --target "$commit" --notes-file "$notes"
     fi
     (cd "$dir" && gh release upload "$version" --repo "$REPO" --clobber -- "${files[@]}")
 

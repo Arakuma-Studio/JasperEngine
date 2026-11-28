@@ -11,6 +11,8 @@ name: Build release
 #      (dry_run: left a complete draft); then the published AppImage downloads its own player (AC9)
 # (step 3's Linux launch check is tools/ci/package-linux.sh's own)
 # Every step is a script that runs the same way locally (the repro of each job is its env JASPER_CI_REPRO).
+# Where each build runs: check-inputs routes them as ci.yml's (NAMESPACE_RUNNERS: Namespace's machines,
+# else GitHub's; .github/actions/runners); the housekeeping jobs stay on GitHub's runners.
 on:
   workflow_call:
     inputs:
@@ -49,6 +51,8 @@ jobs:
     name: Release inputs
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      runs_on: ${{ steps.runners.outputs.runs_on }}
     steps:
       # every commit and tag (git describe stamps the build) but no old blob: they are never read
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,12 +66,17 @@ jobs:
           VERSION: ${{ inputs.version }}
           COMMIT: ${{ inputs.commit }}
         run: tools/ci/release.sh check "$CHANNEL" "$VERSION" "$COMMIT"
+      - uses: ./.github/actions/runners
+        id: runners
+        with:
+          workflow: build-release
+          namespace: ${{ vars.NAMESPACE_RUNNERS }}
 
   # ------------------------------------------------------------------ players ---
   players-linux:
     name: Players (Linux ${{ matrix.backend }})
     needs: check-inputs
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-inputs.outputs.runs_on)['release-players-linux'] || 'ubuntu-latest' }}
     timeout-minutes: 330
     strategy:
       fail-fast: false
@@ -115,7 +124,7 @@ jobs:
   players-web:
     name: Players (web)
     needs: check-inputs
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-inputs.outputs.runs_on)['release-players-web'] || 'ubuntu-latest' }}
     timeout-minutes: 300
     env:
       PLAYER_PLATFORM: web
@@ -159,7 +168,7 @@ jobs:
   players-android:
     name: Players (Android)
     needs: check-inputs
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-inputs.outputs.runs_on)['release-players-android'] || 'ubuntu-latest' }}
     timeout-minutes: 330
     env:
       PLAYER_PLATFORM: android
@@ -203,7 +212,7 @@ jobs:
   players-windows:
     name: Players (Windows ${{ matrix.backend }})
     needs: check-inputs
-    runs-on: windows-latest
+    runs-on: ${{ fromJSON(needs.check-inputs.outputs.runs_on)['release-players-windows'] || 'windows-latest' }}
     timeout-minutes: 330
     strategy:
       fail-fast: false
@@ -264,12 +273,12 @@ jobs:
   players-apple:
     name: Players (${{ matrix.target }})
     needs: check-inputs
-    runs-on: macos-latest
+    runs-on: ${{ fromJSON(needs.check-inputs.outputs.runs_on)['release-players-apple'] || 'macos-latest' }}
     timeout-minutes: 345
     strategy:
       fail-fast: false
-      # macOS runners are 5 per account: a run takes at most 2
-      max-parallel: 2
+      # GitHub's macOS runners are 5 per account: a run takes at most 2 of them; on Namespace, all 3
+      max-parallel: ${{ fromJSON(needs.check-inputs.outputs.runs_on)['release-players-apple'] != 'macos-latest' && 3 || 2 }}
       matrix:
         target: [macos-metal, macos-glcore, ios]
     env:
@@ -347,8 +356,8 @@ jobs:
   # ------------------------------------------------------------------ editors ---
   editor-linux:
     name: Editor (Linux)
-    needs: player-hashes
-    runs-on: ubuntu-latest
+    needs: [check-inputs, player-hashes]
+    runs-on: ${{ fromJSON(needs.check-inputs.outputs.runs_on)['release-editor-linux'] || 'ubuntu-latest' }}
     timeout-minutes: 150
     env:
       JASPER_CI_REPRO: JASPERENGINE_VERSION=${{ inputs.version }} SKIP_ENGINE=1 tools/build.sh linux && tools/ci/package-linux.sh ${{ inputs.version }}
@@ -405,8 +414,8 @@ jobs:
 
   editor-windows:
     name: Editor (Windows)
-    needs: player-hashes
-    runs-on: windows-latest
+    needs: [check-inputs, player-hashes]
+    runs-on: ${{ fromJSON(needs.check-inputs.outputs.runs_on)['release-editor-windows'] || 'windows-latest' }}
     timeout-minutes: 180
     defaults:
       run:
@@ -469,8 +478,8 @@ jobs:
 
   editor-macos:
     name: Editor (macOS universal)
-    needs: player-hashes
-    runs-on: macos-latest
+    needs: [check-inputs, player-hashes]
+    runs-on: ${{ fromJSON(needs.check-inputs.outputs.runs_on)['release-editor-macos'] || 'macos-latest' }}
     timeout-minutes: 240
     env:
       ARCHS: universal
@@ -521,8 +530,8 @@ jobs:
   # in the no-compiler image; every archive of every platform installed against the embedded table
   prebuilt:
     name: Prebuilt players end to end (release editor, no compiler)
-    needs: [player-hashes, editor-linux]
-    runs-on: ubuntu-latest
+    needs: [check-inputs, player-hashes, editor-linux]
+    runs-on: ${{ fromJSON(needs.check-inputs.outputs.runs_on)['release-prebuilt'] || 'ubuntu-latest' }}
     timeout-minutes: 150
     env:
       JASPER_CI_REPRO: tools/build.sh exec runtime tools/ci/release-players.sh ${{ inputs.version }} build/player-archives build/players linux- web- && tools/build.sh exec runtime python3 tools/ci/test_player_cli.py && SMOKE_METHOD=prebuilt tools/smoke-test.sh tools/fixtures/unified-lighting
@@ -579,8 +588,8 @@ jobs:
   # NDK, CMake or Gradle): the App Bundle, one APK per ABI and the universal APK, checked
   prebuilt-android:
     name: Prebuilt Android player (release editor, no NDK, CMake or Gradle)
-    needs: [player-hashes, editor-linux]
-    runs-on: ubuntu-latest
+    needs: [check-inputs, player-hashes, editor-linux]
+    runs-on: ${{ fromJSON(needs.check-inputs.outputs.runs_on)['release-prebuilt-android'] || 'ubuntu-latest' }}
     timeout-minutes: 90
     env:
       JASPER_CI_REPRO: tools/build.sh exec android tools/ci/release-players.sh ${{ inputs.version }} build/player-archives build/players android- && tools/ci/android_ac7.sh
