@@ -43,8 +43,10 @@ namespace jasperengine::editor {
     void paintedModelChanged(Project& project, const std::string& modelAssetPath);
 
     // R92: with every scene of the build loaded, a target whose topology fingerprint differs from its
-    // mesh's stops the export: one problem per target, naming the GameObject and the fix
-    std::vector<std::string> vertexColorExportProblems(Project& project);
+    // mesh's stops the export: one problem per target, naming the GameObject and the fix. A Data file
+    // that cannot be read is one too, unless unreadable is given (Export Anyway): then it is listed
+    // there, a missing asset like a missing texture, and the game draws the mesh's own colors
+    std::vector<std::string> vertexColorExportProblems(Project& project, std::vector<std::string>* unreadable = nullptr);
     bool isVertexColorsFile(const std::filesystem::path& path);
     // the file without its editor-only section (R92), written through AtomicFile. Any thread.
     bool cookVertexColorsFile(const std::filesystem::path& source, const std::filesystem::path& destination, std::string& error);

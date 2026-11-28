@@ -202,6 +202,30 @@ TEST_F(VertexColorOutput, ExportShipsNoSnapshotAndRefusesStaleTargets) {
     ASSERT_EQ(problems.size(), 1u);
     EXPECT_NE(problems[0].find("'Box'"), std::string::npos) << problems[0];
     EXPECT_NE(problems[0].find("save it"), std::string::npos) << problems[0];
+    // and Export Anyway still stops at a stale target (R92): only an unreadable file is a missing asset
+    std::vector<std::string> unreadable;
+    EXPECT_EQ(vertexColorExportProblems(*project, &unreadable).size(), 1u);
+    EXPECT_TRUE(unreadable.empty());
+}
+
+TEST_F(VertexColorOutput, ExportAnywayListsAnUnreadableFileAsMissing) {
+    // (tools/fixtures/reflection-parity names a .vcolors it does not hold: the release's prebuilt check
+    // builds it with --allow-missing-assets, which let a missing texture through but not this file)
+    const Entity box = addBox();
+    ASSERT_TRUE(edit(box, {fillAll(kRed)}).ok);
+    ASSERT_TRUE(project->saveSceneNow(sceneId));
+    const fs::path file = project->getAssetsPath() / colorsOf(box)->data.path;
+    std::error_code ec;
+    ASSERT_TRUE(fs::remove(file, ec)) << file;
+    // without Export Anyway the export stops, naming the GameObject and the fix
+    const std::vector<std::string> problems = vertexColorExportProblems(*project);
+    ASSERT_EQ(problems.size(), 1u);
+    EXPECT_NE(problems[0].find("'Box'"), std::string::npos) << problems[0];
+    EXPECT_NE(problems[0].find("clear the component's Data"), std::string::npos) << problems[0];
+    // with it, the same line is a missing asset the export warns of and goes on past
+    std::vector<std::string> unreadable;
+    EXPECT_TRUE(vertexColorExportProblems(*project, &unreadable).empty());
+    EXPECT_EQ(unreadable, problems);
 }
 
 // ---- Export as Model (R61)

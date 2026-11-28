@@ -1516,9 +1516,10 @@ it; the next run's `changes` reads it.
   export re-signs the player's bundle (`editor/platform/MacBundle.cpp`: the user's identity, else
   ad-hoc) and Xcode signs an iOS game. The Windows and Linux editors are unsigned.
 - **A nightly's dry run**: `gh workflow run nightly.yml --ref <branch> -f dry_run=true` builds only the
-  release of the branch's head and stops at a complete draft `nightly-YYYYMMDD`: no suite, no pruning,
-  no issue. Delete the draft afterwards (`gh release delete nightly-YYYYMMDD --yes`); a nightly that
-  finds a draft of its version takes it at its own commit.
+  release of the branch's head and stops at a complete draft of its own, `nightly-YYYYMMDD-dry-run-<run id>`
+  (its assets keep the version's names): no suite, no pruning, no issue, and no wait for another run of
+  the version. Delete the draft afterwards (`gh release delete <tag> --yes`, as the publish step's log
+  says). A run that finds a failed run's draft of its version takes it at its own commit.
 
 ### The report
 

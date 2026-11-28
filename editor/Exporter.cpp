@@ -2865,8 +2865,12 @@ bool editor::Exporter::loadAndCookAllScenes() {
                     importError = voxelProblems.front();
                     imported = false;
                 }
-                // V1 R92: a painted target that no longer fits its mesh would draw without its colors
-                const std::vector<std::string> vertexColorProblems = vertexColorExportProblems(*project);
+                // V1 R92: a painted target that no longer fits its mesh would draw without its colors. An
+                // unreadable Data file is a missing asset: Export Anyway warns of it as of a missing texture
+                std::vector<std::string> unreadableVertexColors;
+                const std::vector<std::string> vertexColorProblems =
+                    vertexColorExportProblems(*project, config.allowMissingAssets ? &unreadableVertexColors : nullptr);
+                for (const std::string& line : unreadableVertexColors) Out::warning("%s", line.c_str());
                 if (imported && !vertexColorProblems.empty()) {
                     importError = vertexColorProblems.front();
                     imported = false;

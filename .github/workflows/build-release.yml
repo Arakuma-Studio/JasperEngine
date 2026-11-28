@@ -51,8 +51,9 @@ on:
 permissions:
   contents: read
 
+# (a dry run's draft is its own, <version>-dry-run-<run id>: it waits for no run of the version, nor cancels one waiting)
 concurrency:
-  group: build-release-${{ inputs.version }}
+  group: build-release-${{ inputs.dry_run && format('{0}-dry-run-{1}', inputs.version, github.run_id) || inputs.version }}
   cancel-in-progress: false
 
 env:
