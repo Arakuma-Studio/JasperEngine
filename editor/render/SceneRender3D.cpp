@@ -12,6 +12,7 @@
 #include "component/Transform.h"
 #include "component/BoneComponent.h"
 #include "component/CharacterControllerComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/Joint3DComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/TranslateTracksComponent.h"
@@ -100,7 +101,7 @@ editor::SceneRender3D::~SceneRender3D(){
 
 std::vector<editor::GizmoLineBatch*> editor::SceneRender3D::lineBatches(){
     return {&lightLines, &cameraLines, &bodyLines, &jointLines, &boneLines, &linePointLines, &polygonPointLines, &trackLines,
-            &reflectionProbeLines, &fogVolumeLines, &controllerLines, &waterVolumeLines, &waterExcluderLines, &waterWakeLines,
+            &reflectionProbeLines, &fogVolumeLines, &fogZoneLines, &controllerLines, &waterVolumeLines, &waterExcluderLines, &waterWakeLines,
             &buoyancyLines, &wheelLines, &particleLines, &forceFieldLines, &animatorLines, &capsuleShadowLines};
 }
 
@@ -377,6 +378,87 @@ void editor::SceneRender3D::createOrUpdateFogVolumeLines(Entity entity, const Tr
     drawShape(half, outerColor);
     if (blend > 0.0f && inner.x > 0.0f && inner.y > 0.0f && inner.z > 0.0f)
         drawShape(inner, innerColor);
+}
+
+// A Fog Zone: its box or sphere (the Transform's frame, the size times its scale, as the resolve
+// measures it: FogResolve's fogZoneDistance) and, fainter, the surface Blend Distance out from it,
+// where the zone's weight reaches 0. A box's shell is rounded at its edges and corners.
+void editor::SceneRender3D::createOrUpdateFogZoneLines(Entity entity, const Transform& transform, const FogZoneComponent& zone, bool visible){
+    GizmoLineBatch* lines = &fogZoneLines;
+    if (!transform.visible || !visible) return;
+
+    const Vector3 half(std::fabs(zone.size.x * transform.worldScale.x) * 0.5f,
+                       std::fabs(zone.size.y * transform.worldScale.y) * 0.5f,
+                       std::fabs(zone.size.z * transform.worldScale.z) * 0.5f);
+    const Matrix4 rotation = transform.worldRotation.getRotationMatrix();
+    auto world = [&](const Vector3& local){ return transform.worldPosition + rotation * local; };
+    const Vector4 shapeColor(0.8f, 0.7f, 1.0f, 1.0f);
+    const Vector4 shellColor(0.8f, 0.7f, 1.0f, 0.55f);
+    const float blend = std::max(zone.blendDistance, 0.0f);
+    const int segments = 48;
+    const float pi = 3.14159265f;
+
+    auto ellipses = [&](const Vector3& e, const Vector4& color){
+        for (int axis = 0; axis < 3; axis++){
+            Vector3 previous;
+            for (int i = 0; i <= segments; i++){
+                const float a = 2.0f * pi * (float)i / (float)segments;
+                const float c = std::cos(a);
+                const float s = std::sin(a);
+                const Vector3 local = axis == 0 ? Vector3(0.0f, c * e.y, s * e.z) : (axis == 1 ? Vector3(c * e.x, 0.0f, s * e.z) : Vector3(c * e.x, s * e.y, 0.0f));
+                const Vector3 point = world(local);
+                if (i > 0) lines->addLine(previous, point, color);
+                previous = point;
+            }
+        }
+    };
+
+    if (zone.shape == FogZoneShape::SPHERE){
+        ellipses(half, shapeColor);
+        // the resolve's distance is (|q| - 1) x the smallest semi-axis: the shell scales the shape
+        const float smallest = std::min(half.x, std::min(half.y, half.z));
+        if (blend > 0.0f && smallest > 1e-6f) ellipses(half * (1.0f + blend / smallest), shellColor);
+        return;
+    }
+
+    const Vector3& h = half;
+    const Vector3 p[8] = {
+        world(Vector3(-h.x, -h.y, -h.z)), world(Vector3(h.x, -h.y, -h.z)), world(Vector3(h.x, h.y, -h.z)), world(Vector3(-h.x, h.y, -h.z)),
+        world(Vector3(-h.x, -h.y, h.z)), world(Vector3(h.x, -h.y, h.z)), world(Vector3(h.x, h.y, h.z)), world(Vector3(-h.x, h.y, h.z))
+    };
+    const int edges[12][2] = {{0,1}, {1,2}, {2,3}, {3,0}, {4,5}, {5,6}, {6,7}, {7,4}, {0,4}, {1,5}, {2,6}, {3,7}};
+    for (const auto& edge : edges) lines->addLine(p[edge[0]], p[edge[1]], shapeColor);
+    if (blend <= 0.0f) return;
+
+    // the points at the blend distance from the box: each face moved out along its normal, joined
+    // by quarter circles round the edges (the corners' arcs meet there)
+    const int arc = 8;
+    for (unsigned axis = 0; axis < 3; axis++){
+        const unsigned u = (axis + 1) % 3;
+        const unsigned v = (axis + 2) % 3;
+        for (int su = -1; su <= 1; su += 2){
+            for (int sv = -1; sv <= 1; sv += 2){
+                // the box edge parallel to `axis` at (su, sv): its two faces' shifted copies and the arc
+                Vector3 normalU(0.0f, 0.0f, 0.0f), normalV(0.0f, 0.0f, 0.0f), corner(0.0f, 0.0f, 0.0f), along(0.0f, 0.0f, 0.0f);
+                normalU[u] = (float)su;
+                normalV[v] = (float)sv;
+                corner[u] = su * h[u];
+                corner[v] = sv * h[v];
+                along[axis] = h[axis];
+                lines->addLine(world(corner - along + normalU * blend), world(corner + along + normalU * blend), shellColor);
+                lines->addLine(world(corner - along + normalV * blend), world(corner + along + normalV * blend), shellColor);
+                for (int end = -1; end <= 1; end += 2){
+                    Vector3 previous;
+                    for (int i = 0; i <= arc; i++){
+                        const float a = 0.5f * pi * (float)i / (float)arc;
+                        const Vector3 point = world(corner + along * (float)end + (normalU * std::cos(a) + normalV * std::sin(a)) * blend);
+                        if (i > 0) lines->addLine(previous, point, shellColor);
+                        previous = point;
+                    }
+                }
+            }
+        }
+    }
 }
 
 // A Water Volume: the box of water under its surface (in the GameObject's frame, as WaterSystem
@@ -1468,6 +1550,13 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             LocalVolumetricFogComponent& volume = scene->getComponent<LocalVolumetricFogComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
             createOrUpdateFogVolumeLines(entity, transform, volume, selectedEntities.find(entity) != selectedEntities.end());
+        }
+
+        if (scene->isComponentRegistered<FogZoneComponent>() && signature.test(scene->getComponentId<FogZoneComponent>()) &&
+            signature.test(scene->getComponentId<Transform>())) {
+            const FogZoneComponent& zone = scene->getComponent<FogZoneComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            createOrUpdateFogZoneLines(entity, transform, zone, selectedEntities.find(entity) != selectedEntities.end());
         }
 
         if (signature.test(scene->getComponentId<WaterVolumeComponent>()) && signature.test(scene->getComponentId<Transform>())) {

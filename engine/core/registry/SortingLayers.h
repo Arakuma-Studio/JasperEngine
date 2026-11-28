@@ -24,11 +24,17 @@ namespace jasperengine{
         bool operator!=(const SortingLayerInfo& o) const { return !(*this == o); }
     };
 
-    // Unity's Graphics > Transparency Sort Mode: Default has no axis term in 2D passes; Custom Axis
-    // draws a larger dot(axis, point) first
+    // Unity's Graphics > Transparency Sort Mode. The distance a 3D pass sorts transparent draws by
+    // (far first): Perspective, the distance to the camera; Orthographic, the depth along the
+    // camera's view axis; Default, Orthographic for an orthographic camera and Perspective
+    // otherwise (Unity's rule). Custom Axis adds the axis term below and keeps Perspective's
+    // distance. In 2D passes only Custom Axis adds a term: a larger dot(axis, point) first.
+    // (Old projects, which sorted by the distance, load as Perspective: project format 2.)
     enum class TransparencySortMode : uint8_t{
         DEFAULT,
-        CUSTOM_AXIS
+        CUSTOM_AXIS,
+        PERSPECTIVE,
+        ORTHOGRAPHIC
     };
 
     // Project-wide Sorting Layers (Unity's Tags and Layers > Sorting Layers, spec S52 R1) and the
@@ -73,6 +79,19 @@ namespace jasperengine{
         // Project Settings > Graphics > Transparency Sort Mode / Axis
         static void setTransparencySortMode(TransparencySortMode mode);
         static TransparencySortMode getTransparencySortMode();
+        // "default", "custom_axis", "perspective", "orthographic" (project.yaml, the player's
+        // config, MCP); false for any other text
+        static const char* transparencySortModeToken(TransparencySortMode mode);
+        static bool transparencySortModeFromToken(const std::string& token, TransparencySortMode& mode);
+        // whether the mode sorts a camera's transparent draws by depth along its view axis
+        static bool sortsByViewDepth(TransparencySortMode mode, bool orthographicCamera){
+            return mode == TransparencySortMode::ORTHOGRAPHIC || (mode == TransparencySortMode::DEFAULT && orthographicCamera);
+        }
+        // the distance a transparent draw at `point` sorts by (larger: farther, drawn first), from a
+        // camera at cameraPosition whose view looks along -cameraBack (CameraComponent::worldDirection)
+        static float sortDistance(bool viewDepth, const Vector3& cameraPosition, const Vector3& cameraBack, const Vector3& point){
+            return viewDepth ? (cameraPosition - point).dotProduct(cameraBack) : (cameraPosition - point).length();
+        }
         static void setTransparencySortAxis(const Vector3& axis);
         static Vector3 getTransparencySortAxis();
 

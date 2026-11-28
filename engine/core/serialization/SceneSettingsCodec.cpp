@@ -185,6 +185,8 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     write(w, scene.getAmbientSkyColor());
     write(w, scene.getAmbientEquatorColor());
     write(w, scene.getAmbientGroundColor());
+    // format 1.13 (S95): the Fixed Timestep override
+    w.f32(scene.getFixedTimestep());
 }
 
 void cook::readSceneSettings(Reader& r, Scene& scene) {
@@ -358,4 +360,7 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     scene.setAmbientSkyColor(sky);
     scene.setAmbientEquatorColor(equator);
     scene.setAmbientGroundColor(ground);
+    // a 1.10 to 1.12 record ends here: the project's fixed step (format 1.13)
+    if (r.atEnd()) return;
+    scene.setFixedTimestep(r.f32());
 }

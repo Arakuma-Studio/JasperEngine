@@ -185,6 +185,10 @@ namespace jasperengine{
             Framebuffer* getFramebuffer() const;
             bool isFramebuffer() const;
             bool isFramebufferOutdated() const;
+            // Its GPU texture exists (Lua Texture.ready): a draw binding it shows its pixels, not
+            // a stand-in. Asks without loading: load() decodes the image, the first draw (or
+            // getRender) makes the GPU texture
+            bool isReady() const;
 
             void setMinFilter(TextureFilter filter);
             TextureFilter getMinFilter() const;

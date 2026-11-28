@@ -22,7 +22,7 @@ local InputCounter = { properties = {} }
 
 local function zero()
     counts = { down = 0, up = 0, held = 0, fixedDown = 0, fixedUp = 0, mouseDown = 0, mouseUp = 0,
-               padDown = 0, padUp = 0, touchDown = 0, touchUp = 0, touchEnded = 0, any = 0,
+               padDown = 0, padUp = 0, touchDown = 0, touchUp = 0, touchEnded = 0, touchStart = 0, any = 0,
                deltaX = 0, deltaY = 0, downFrame = -1, upFrame = -1 }
 end
 
@@ -31,6 +31,11 @@ function InputCounter:init()
     resetCounts = zero
     RegisterEngineEvent(self, "onUpdate")
     RegisterEngineEvent(self, "onFixedUpdate")
+    RegisterEngineEvent(self, "onTouchStart")
+end
+
+function InputCounter:onTouchStart(pointer)
+    if pointer == 0 then counts.touchStart = counts.touchStart + 1 end
 end
 
 function InputCounter:onUpdate()
@@ -257,6 +262,37 @@ async def test_play_start_resets_input(ed: Editor):
         ed.check_eq(held, [False], "nothing held from the last Play")
         state = await ed.call("get_input_state", fields=["raw"])
         ed.check(not state["raw"]["keys"]["held"], f"{state['raw']['keys']}")
+    finally:
+        await stop(ed)
+
+
+async def test_simulate_touch_from_mouse(ed: Editor):
+    """S95 REQ-12 (AC-13): Project Settings > Input > Simulate Touch From Mouse makes a mouse click in Play
+    also finger 0 (onTouchStart), as in desktop and web builds; off (the default) it does not."""
+    await setup(ed)
+    await ed.call("set_project_settings", values={"input.simulate_touch_from_mouse": True})
+    try:
+        await start(ed)
+        try:
+            await send(ed, {"type": "mouse", "action": "click", "x": 100, "y": 100, "hold_frames": 0})
+            await ed.call("wait", frames=2)
+            c = await counts(ed)
+            ed.check_eq((c["mouseDown"], c["touchStart"]), (1, 1), f"the click is also finger 0: {c}")
+            on = (await ed.call("eval_lua", code="return Engine.callTouchInMouseEvent"))["values"][0]
+            ed.check(on is True, "Engine.callTouchInMouseEvent at Play start")
+        finally:
+            await stop(ed)
+        off = (await ed.call("eval_lua", code="return Engine.callTouchInMouseEvent", allow_edit_mode=True))["values"][0]
+        ed.check(off is False, "Play stop turns it off for the editor")
+    finally:
+        await ed.call("set_project_settings", values={"input.simulate_touch_from_mouse": False})
+
+    await start(ed)
+    try:
+        await send(ed, {"type": "mouse", "action": "click", "x": 100, "y": 100, "hold_frames": 0})
+        await ed.call("wait", frames=2)
+        c = await counts(ed)
+        ed.check_eq((c["mouseDown"], c["touchStart"]), (1, 0), f"off: a mouse click only: {c}")
     finally:
         await stop(ed)
 

@@ -8,6 +8,13 @@
 //   v_worldDirection  instead, with SKY_WORLD_DIRECTION (defined in both stages): the
 //                     view direction in world space, the space of the frame block's main
 //                     light; the Skybox's rotation does not apply to it
+//   v_skyUV           instead, with SKY_SPHERE_UV (defined in both stages): the engine draws a
+//                     64 x 32 longitude-latitude sphere (a duplicated seam column, a fan at each
+//                     pole) and this is a_texcoord1, the equirectangular coordinate of the
+//                     vertex's direction in the sky's space: x the longitude in turns, 0.5 at
+//                     -Z, +X a quarter turn on (0.75), wrapping from 1 to 0 at +Z; y the
+//                     latitude, 0 straight up, 1 straight down. Interpolated across the grid,
+//                     it matches the per-pixel mapping but within the pole fans
 
 uniform u_vs_skyParams {
     mat4 vpMatrix;
@@ -15,7 +22,10 @@ uniform u_vs_skyParams {
 
 in vec3 a_position;
 
-#ifndef SKY_WORLD_DIRECTION
+#if defined(SKY_SPHERE_UV)
+    in vec2 a_texcoord1;
+    out vec2 v_skyUV;
+#elif !defined(SKY_WORLD_DIRECTION)
     out vec3 v_direction;
 #else
     #ifndef FRAME_VS
@@ -29,7 +39,9 @@ in vec3 a_position;
 void main(){
     vec4 clip = skyParams.vpMatrix * vec4(a_position, 1.0);
 
-    #ifndef SKY_WORLD_DIRECTION
+    #if defined(SKY_SPHERE_UV)
+        v_skyUV = a_texcoord1;
+    #elif !defined(SKY_WORLD_DIRECTION)
         v_direction = a_position;
     #else
         // back through the camera's projection (flipped like the sky's for offscreen

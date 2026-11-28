@@ -164,18 +164,23 @@ in vec3 a_position;
 #endif
 // the vertex colour attribute is declared only where something reads it (a GL driver drops
 // an unread attribute): the surface, or a lattice's vertex colour mask
+// (VERTEX_COLOR_ATTRIBUTE: declared, for the Draw Mode's view, includes/vertex_color_view.glsl)
 #if !defined(SURFACE_NO_VERTEX_COLOR) || defined(SURFACE_RAW_COLOR) || defined(SURFACE_DISPLACE_COLOR)
     #if defined(HAS_VERTEX_COLOR_VEC3)
         #define SURFACE_VERTEX_COLOR_INPUT
+        #define VERTEX_COLOR_ATTRIBUTE
         in vec3 a_color;
     #elif defined(HAS_VERTEX_COLOR_VEC4)
         #define SURFACE_VERTEX_COLOR_INPUT
+        #define VERTEX_COLOR_ATTRIBUTE
         in vec4 a_color;
     #endif
 #elif defined(HAS_LATTICE)
     #if defined(HAS_VERTEX_COLOR_VEC3)
+        #define VERTEX_COLOR_ATTRIBUTE
         in vec3 a_color;
     #elif defined(HAS_VERTEX_COLOR_VEC4)
+        #define VERTEX_COLOR_ATTRIBUTE
         in vec4 a_color;
     #endif
 #endif

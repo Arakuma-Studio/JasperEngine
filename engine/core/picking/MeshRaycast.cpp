@@ -19,9 +19,6 @@
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "subsystem/MeshSystem.h"
-#include "util/STBText.h"
-#include "pixelart/BitmapFont.h"
-#include "pixelart/BitmapText.h"
 
 #include <algorithm>
 #include <cmath>
@@ -397,9 +394,7 @@ namespace {
             // the rect, in its plane
             Vector2 center(0, 0);
             if (const TextComponent* text = scene->findComponent<TextComponent>(leaf.entity)){
-                if (text->pivotBaseline && text->stbtext) center.y = (float)text->stbtext->getAscent();
-                if (text->pivotBaseline && text->bitmapText) center.y = text->bitmapText->getAscent(text->pixelUnit);
-                if (text->pivotCentered) center.x = layout->width / 2.0f;
+                center = Vector2(-text->boxMin.x, -text->boxMin.y);
             }
             const Matrix4 inverse = transform.modelMatrix.inverse();
             const Vector3 localOrigin = inverse * origin;

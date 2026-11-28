@@ -15,7 +15,8 @@ namespace TransformUtilities {
 	void SetIdentity(TransformPrimitive& primitive) noexcept;
 
 	// Resolve the primitive into a transformation matrix, given the current element properties and layout.
-	Matrix4f ResolveTransform(const TransformPrimitive& primitive, Element& e) noexcept;
+	// The SVG plugin also resolves individual CSS transforms before rasterizing its descendants.
+	RMLUICORE_API Matrix4f ResolveTransform(const TransformPrimitive& primitive, Element& e) noexcept;
 
 	// Prepares the primitive for interpolation. This must be done before calling InterpolateWith().
 	// Promote units to basic types which can be interpolated, that is, convert 'length -> pixel' for unresolved primitives.

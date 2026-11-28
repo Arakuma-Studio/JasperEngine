@@ -109,6 +109,11 @@ namespace jasperengine{
         static uint64_t getFrameCount();
         // cached on the first call after setup (defaults before it)
         static const RenderFeatures& getFeatures();
+        // whether the swapchain's depth buffer has a stencil plane: every platform asks for one,
+        // and says so when it did not get it (a WebGL canvas, an EGL config without one); the
+        // Outline then draws its camera offscreen (S94 F-PB2). Tests set it to try that path
+        static void setSwapchainStencil(bool stencil);
+        static bool hasSwapchainStencil();
         // sg_query_pixelformat(f).sample && .filter of the format's one sokol format, cached at
         // device creation, or what setTextureFormatSupportOverride says (spec S14 R15)
         static bool isTextureFormatSupported(GpuTextureFormat format);

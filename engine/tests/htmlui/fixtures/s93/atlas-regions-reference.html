@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>atlas regions: the same pixels as separate files</title>
+  <style>
+    body { margin: 0; background: transparent; }
+    .row { position: absolute; left: 0; height: 64px; }
+    .cell { position: absolute; top: 0; width: 64px; height: 64px; }
+    img.cell { image-rendering: pixelated; }
+    .bg { background-repeat: repeat; background-size: 16px 16px; image-rendering: pixelated; }
+    .border { box-sizing: border-box; border: 16px solid transparent; image-rendering: pixelated; }
+    .mask { background: #ff8000; mask-size: 64px 64px; mask-repeat: no-repeat; }
+  </style>
+</head>
+<body>
+  <div class="row" style="top: 20px; width: 640px">
+    <img class="cell" style="left: 20px" src="images/quad1.png">
+    <img class="cell" style="left: 100px" src="images/quad2.png">
+    <img class="cell" style="left: 180px" src="images/quad3.png">
+  </div>
+  <div class="row" style="top: 100px; width: 640px">
+    <div class="cell bg" style="left: 20px; background-image: url('images/quad1.png')"></div>
+    <div class="cell bg" style="left: 100px; background-image: url('images/quad2.png')"></div>
+    <div class="cell bg" style="left: 180px; background-image: url('images/quad3.png')"></div>
+  </div>
+  <div class="row" style="top: 180px; width: 640px">
+    <div class="cell border" style="left: 20px; border-image: url('images/quad1.png') 4 fill / 16px"></div>
+    <div class="cell border" style="left: 100px; border-image: url('images/quad2.png') 4 fill / 16px"></div>
+    <div class="cell border" style="left: 180px; border-image: url('images/quad3.png') 4 fill / 16px"></div>
+  </div>
+  <div class="row" style="top: 260px; width: 640px">
+    <div class="cell mask" style="left: 20px; mask-image: url('images/quad1.png')"></div>
+    <div class="cell mask" style="left: 100px; mask-image: url('images/quad2.png')"></div>
+    <div class="cell mask" style="left: 180px; mask-image: url('images/quad3.png')"></div>
+  </div>
+</body>
+</html>

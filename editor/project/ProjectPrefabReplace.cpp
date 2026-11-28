@@ -900,7 +900,9 @@ bool editor::Project::buildReplacedPrefabNode(uint32_t sceneId, Entity root, con
             if (newName.empty()) {
                 newName = newPath.stem().string();
             }
-            outNode["name"] = ProjectUtils::makeUniqueEntityName(sceneProject->scene, sceneProject->entities, newName, {root});
+            const Transform* rootTransform = sceneProject->scene->findComponent<Transform>(root);
+            const Entity rootParent = rootTransform ? rootTransform->parent : NULL_ENTITY;
+            outNode["name"] = ProjectUtils::makeUniqueEntityName(sceneProject->scene, sceneProject->entities, rootParent, newName, {root});
         }
     }
 

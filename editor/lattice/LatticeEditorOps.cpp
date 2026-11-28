@@ -193,7 +193,8 @@ namespace{
     }
 
     bool hasMesh(Scene* scene, Entity entity){
-        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+        // a Model made of parts (Preserve Hierarchy, S94 F44) has an empty Mesh of its own
+        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity); mesh && mesh->numSubmeshes > 0){
             AABB aabb = SceneRender::getMeshLocalAABB(*mesh);
             return !aabb.isNull() && !aabb.isInfinite();
         }

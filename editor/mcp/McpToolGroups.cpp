@@ -38,10 +38,10 @@ std::vector<ToolGroupInfo> buildGroups() {
                          ".input.json at several sizes."},
         {"vcs", "Version control: status, locks, commits and scene diffs."},
         {"testing", "The project's tests (Tests/*.test.lua): run, list, import player results, accept goldens (jasper://docs/testing)."},
-        {"scripting", "Script hot reload and status, editor-script menus, numeric expressions, PlayerPrefs and save slots (user_settings)."},
+        {"scripting", "Script hot reload and status, editor-script menus, numeric expressions, Data Assets, PlayerPrefs and save slots (user_settings)."},
         {"graphs", "Graph files (Procedural Materials and other node graphs): kinds, node catalog, read, validate, edit."},
         {"materials", "Procedural Materials: preview any material with checks, bake a graph to PNGs and a .material (jasper://docs/procedural-materials)."},
-        {"html_ui", "HTML UI views in play: scroll, select, activate, expand, collapse and sort list/grid/tree/table views."},
+        {"html_ui", "HTML UI: preview exact frames without Play and watch for saves; interactive list, grid, tree and table views."},
         {"shipping", "Player runtimes, native plugins, build shader overrides, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
         // the pixel-art family's sprites (S44 adds the row; S45 and S47 add their tools)
         {"tilemaps", "Tilesets (tiles, collision, terrains, animation, properties) and Tiled/LDtk map import (jasper://docs/tilemaps)."},

@@ -204,6 +204,12 @@ work, a mode) or a plain number field recompiles, keeping the particles.
 (collisions capped by the Collision module's `maxCollisionEvents`). The old setters
 (`rate`, `setLifeInitializer`, `addBurst`, `start()`...) still work on the inline effect and
 log a deprecation warning once.
+An old script's wrappers of a migrated scene keep working: `ParticleSystem(scene, e)` of the
+old system's GameObject is the moved system, and `Points(scene, target)` on the GameObject the
+system moved to (its empty Points is gone) sends `addSpriteFrame` / `removeSpriteFrame` to the
+effect's `textureSheetAnimation` sprites (UV rects; a pixel rect is refused) and `blendMode` /
+`depthWrite` to its Renderer, with one deprecation note per GameObject. New scripts use
+`ps.textureSheetAnimation` and `ps.renderer`.
 
 ## From origin/main and Unity
 

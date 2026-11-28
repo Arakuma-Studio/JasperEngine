@@ -23,6 +23,7 @@
 #include "htmlui/compat/css/CssParser.h"
 #include "htmlui/compat/css/CssSerialize.h"
 #include "htmlui/compat/css/RcssGrammar.h"
+#include "htmlui/compat/css/StaticCalc.h"
 #include "htmlui/compat/css/Units.h"
 #include "htmlui/compat/css/ValueNormalizer.h"
 #include "htmlui/effects/EffectCompat.h"
@@ -151,11 +152,18 @@ namespace {
         return written == "0";
     }
 
+    // calc(), min(), max(), clamp() left by the static folding (a percentage with a length or an angle): the fork resolves
+    // them in a gradient (stops against its line, positions and sizes against its box;
+    // the normalizer keeps them only inside gradient functions) (S93 R25)
+    bool isStopCalc(const ComponentValue& v){
+        return v.kind == ComponentValue::Kind::Function && StaticCalc::isCalcFamily(v.name().view());
+    }
+
     // CSS <position> (1-4 values) into x and y
     bool parsePosition(Session& session, const Words& w, Axis& x, Axis& y){
         if (w.empty() || w.size() > 4)
             return false;
-        auto isLP = [&](const ComponentValue& v){ return isLength(session, v, true) || isVar(v); };
+        auto isLP = [&](const ComponentValue& v){ return isLength(session, v, true) || isVar(v) || isStopCalc(v); };
         auto setLP = [&](Axis& axis, const ComponentValue& v){
             if (v.isToken(TokenType::Percentage)){
                 axis.percent = v.token.number;
@@ -327,7 +335,8 @@ namespace {
             for (const ComponentValue* v : w){
                 if (!color && (isColor(scope.session, *v) || isVar(*v))){
                     color = v;
-                }else if (v->isToken(TokenType::Percentage) || isLength(scope.session, *v) || (angular && isAngle(*v)) || (native && isVar(*v))){
+                }else if (v->isToken(TokenType::Percentage) || isLength(scope.session, *v) || (angular && isAngle(*v)) || (native && isVar(*v)) ||
+                          isStopCalc(*v)){
                     if (positionCount < 2)
                         positions[positionCount] = v;
                     positionCount++;
@@ -500,7 +509,7 @@ namespace {
                         sizeKeyword[0] = "closest-side";
                         sizeValue[0] = nullptr;
                         sizeSet[0] = true;
-                    }else if (isLength(scope.session, *v, true)){
+                    }else if (isLength(scope.session, *v, true) || isStopCalc(*v)){
                         // (the first length, or the second one, replaced by any later one)
                         const int at = sizeSet[0] ? 1 : 0;
                         sizeKeyword[at] = v->isToken(TokenType::Number) ? "0px" : std::string_view();

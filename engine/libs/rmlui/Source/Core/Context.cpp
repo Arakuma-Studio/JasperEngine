@@ -653,6 +653,10 @@ bool Context::ProcessMouseMove(int x, int y, int key_modifier_state)
 	const bool mouse_moved = (mouse_position != old_mouse_position || !mouse_active);
 	mouse_active = true;
 
+	// a mouse pan (fork, S93 R9) is not passed on
+	if (mouse_moved && UpdateMousePan(key_modifier_state))
+		return false;
+
 	// Update the current hover chain. This will send all necessary 'onmouseout', 'onmouseover', 'ondragout' and 'ondragover' messages.
 	ProcessPendingCapture(MousePointerId);
 	Dictionary parameters, drag_parameters;
@@ -781,6 +785,13 @@ bool Context::ProcessMouseButtonDown(int button_index, int key_modifier_state)
 
 				break;
 			}
+			// a press on a 'scroll-drag: pointer' container may pan it (fork, S93 R9)
+			PrepareMousePan();
+		}
+		else
+		{
+			mouse_pan = TouchState();
+			mouse_panning = false;
 		}
 	}
 	else
@@ -811,6 +822,24 @@ bool Context::ProcessMouseButtonDown(int button_index, int key_modifier_state)
 
 bool Context::ProcessMouseButtonUp(int button_index, int key_modifier_state)
 {
+	// The release of a mouse pan (fork, S93 R9): inertia, and no pointerup, mouseup or click (the pan cancelled the press).
+	if (button_index == 0 && mouse_panning)
+	{
+		EndMousePan();
+		mouse_buttons &= ~1;
+		if (mouse_buttons == 0 && (mouse_capture || mouse_pending_capture_set))
+		{
+			mouse_pending_capture = nullptr;
+			mouse_pending_capture_set = true;
+			ProcessPendingCapture(MousePointerId);
+		}
+		// the hover follows the mouse again
+		ProcessMouseMove(mouse_position.x, mouse_position.y, key_modifier_state);
+		return false;
+	}
+	if (button_index == 0)
+		EndMousePan();
+
 	// We want to return the interaction state before handling the mouse up events, so that any active element that is released is considered to
 	// capture the event.
 	const bool result = !IsMouseInteracting();
@@ -951,7 +980,8 @@ bool Context::ProcessMouseLeave()
 
 bool Context::IsMouseInteracting() const
 {
-	return (hover && hover != root.get()) || (active && active != root.get()) || scroll_controller->GetMode() == ScrollController::Mode::Autoscroll;
+	return (hover && hover != root.get()) || (active && active != root.get()) || scroll_controller->GetMode() == ScrollController::Mode::Autoscroll ||
+		mouse_panning;
 }
 
 void Context::SetDefaultScrollBehavior(ScrollBehavior scroll_behavior, float speed_factor)
@@ -1427,16 +1457,26 @@ Element* Context::GetElementAtPoint(Vector2f point, const Element* ignore_elemen
 		return nullptr;
 
 	// Projection may fail if we have a singular transformation matrix.
+	const Vector2f window_point = point;
 	bool projection_result = element->Project(point);
 
 	// Check if the point is actually within this element.
 	bool within_element = (projection_result && element->IsPointWithinElement(point) && IsPointWithinBorderRadius(element, point));
+	// The element may have been clipped out of view if it overflows an ancestor: the hit test follows the paint, each
+	// clipping ancestor tested in its own projected space (fork, S93 R6; 6.3 compared this element's projected point with
+	// the ancestors' untransformed rectangles).
 	if (within_element)
+		within_element = ElementUtilities::IsPointWithinClip(element, window_point);
+	// Fork (S93 R7): the shapes that clip the element and its ancestors (CSS clip-path clips hit testing).
+	if (within_element && hit_test_shape)
 	{
-		// The element may have been clipped out of view if it overflows an ancestor, so check its clipping region.
-		Rectanglei clip_region;
-		if (ElementUtilities::GetClippingRegion(element, clip_region))
-			within_element = clip_region.Contains(Vector2i(point));
+		for (Element* masked = element; masked && within_element; masked = masked->GetParentNode())
+		{
+			if (!masked->GetComputedValues().has_mask_image())
+				continue;
+			Vector2f local = window_point;
+			within_element = masked->Project(local) && hit_test_shape(masked, local);
+		}
 	}
 
 	// A hit on a pseudo-element (or inside one) is a hit on its originating element (phase 3): events target it and its
@@ -1457,6 +1497,11 @@ void Context::SetPointerPassThrough(Function<bool(Element*)> filter)
 {
 	pointer_pass_through = std::move(filter);
 	// The hover chain follows at the next update or pointer event.
+}
+
+void Context::SetHitTestShape(Function<bool(Element*, Vector2f)> hook)
+{
+	hit_test_shape = std::move(hook);
 }
 
 void Context::CreateDragClone(Element* element)

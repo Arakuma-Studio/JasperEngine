@@ -1886,6 +1886,7 @@ void ActionSystem::update(double dt){
         JE_PROFILE_SCOPE("Animation");
         updatePlayers(dt);
         flushPoseBlend();
+        applyPlayersRootMotion(dt);
     }else{
         flushPoseBlend();
     }

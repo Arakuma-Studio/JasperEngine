@@ -169,35 +169,45 @@ TEST(PlayerInstall, APlayerOfAnOlderContentMinorIsNotUsed) {
 
 // Content of a build without a Build Profile is laid out as the cooked files' minor (FORMAT_MINOR):
 // game.json's buildProfile and defines are the only thing BUILD_PROFILE_MINOR adds. A player runtime
-// of that layout (every one released before Build Profiles) still serves such a build
+// of that layout still serves such a build; a runtime older than BUILD_PROFILE_MINOR (every one
+// released before Build Profiles) refuses a Build Profile's build. (Once a later cooked minor passed
+// BUILD_PROFILE_MINOR, S95's 1.12 and 1.13, a runtime of the layout reads the profile too.)
 TEST(PlayerInstall, APlayerOfTheContentBeforeBuildProfilesServesABuildWithoutOne) {
     TestTempDir dir("players");
     const std::vector<PlayerArchiveHash> none;
     std::string installed, error;
     std::vector<std::string> warnings;
-    PlayerInfo before = info(sha256Hex(BINARY));
-    before.contentFormatVersion = jasperengine::cook::buildContentFormatVersion(false);
-    const std::string layout = std::to_string(jasperengine::cook::FORMAT_MAJOR) + "." + std::to_string(jasperengine::cook::FORMAT_MINOR);
-    ASSERT_EQ(before.contentFormatVersion, layout);
-    ASSERT_TRUE(PlayerRuntimes::install(writeArchive(dir / "before.zip", BINARY, before), dir / "before", installed, warnings, error, &none)) << error;
-    EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "before", false, error).has_value()) << error;
-    EXPECT_EQ(PlayerRuntimes::findVariants(ID, dir / "before", false).size(), 1u);
+    const std::string major = std::to_string(jasperengine::cook::FORMAT_MAJOR) + ".";
+    PlayerInfo layoutInfo = info(sha256Hex(BINARY));
+    layoutInfo.contentFormatVersion = jasperengine::cook::buildContentFormatVersion(false);
+    const std::string layout = major + std::to_string(jasperengine::cook::FORMAT_MINOR);
+    ASSERT_EQ(layoutInfo.contentFormatVersion, layout);
+    ASSERT_TRUE(PlayerRuntimes::install(writeArchive(dir / "layout.zip", BINARY, layoutInfo), dir / "layout", installed, warnings, error, &none)) << error;
+    EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "layout", false, error).has_value()) << error;
+    EXPECT_EQ(PlayerRuntimes::findVariants(ID, dir / "layout", false).size(), 1u);
 
-    // a build of a Build Profile needs game.json's profile and defines read: the same runtime is
-    // refused, --allow-player-mismatch too (it would run a demo as the full game), naming the fix
+    // a build of a Build Profile needs game.json's profile and defines read: a runtime before
+    // BUILD_PROFILE_MINOR is refused, --allow-player-mismatch too (it would run a demo as the full
+    // game), naming the fix
     const std::string profile = jasperengine::cook::buildContentFormatVersion(true);
+    PlayerInfo before = info(sha256Hex(BINARY));
+    before.contentFormatVersion = major + std::to_string(jasperengine::cook::BUILD_PROFILE_MINOR - 1);
+    ASSERT_TRUE(PlayerRuntimes::install(writeArchive(dir / "before.zip", BINARY, before), dir / "before", installed, warnings, error, &none)) << error;
     for (bool allowMismatch : {false, true}) {
-        EXPECT_FALSE(PlayerRuntimes::find(ID, dir / "before", allowMismatch, error, profile).has_value());
-        EXPECT_NE(error.find("reads content format " + layout + ", older than the " + profile +
+        EXPECT_FALSE(PlayerRuntimes::find(ID, dir / "before", allowMismatch, error, profile, true).has_value());
+        EXPECT_NE(error.find("reads content format " + before.contentFormatVersion + ", older than the " + profile +
                              " a Build Profile's build needs (its game.json's profile and defines): update the player runtime"),
                   std::string::npos)
             << error;
-        EXPECT_TRUE(PlayerRuntimes::findVariants(ID, dir / "before", allowMismatch, profile).empty());
+        EXPECT_TRUE(PlayerRuntimes::findVariants(ID, dir / "before", allowMismatch, profile, true).empty());
     }
+    // the layout's runtime serves a profile's build when the layout is no older than BUILD_PROFILE_MINOR
+    EXPECT_EQ(PlayerRuntimes::find(ID, dir / "layout", false, error, profile, true).has_value(),
+              jasperengine::cook::FORMAT_MINOR >= jasperengine::cook::BUILD_PROFILE_MINOR) << error;
     // and a runtime of this editor serves both
     PlayerInfo current = info(sha256Hex(BINARY));
     ASSERT_TRUE(PlayerRuntimes::install(writeArchive(dir / "current.zip", BINARY, current), dir / "current", installed, warnings, error, &none)) << error;
-    EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "current", false, error, profile).has_value()) << error;
+    EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "current", false, error, profile, true).has_value()) << error;
     EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "current", false, error).has_value()) << error;
 }
 

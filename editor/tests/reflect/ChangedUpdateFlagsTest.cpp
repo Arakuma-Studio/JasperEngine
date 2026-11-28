@@ -405,7 +405,9 @@ TEST(ChangedUpdateFlags, FixedCases) {
         {"the last slot's shader", [](MeshComponent& mesh) { mesh.submeshes[15].material.shader = ShaderRef("a"); }, kMeshAlways | UpdateFlags_Shader_Reload},
         {"a slot's base color", [](MeshComponent& mesh) { mesh.submeshes[3].material.baseColorFactor.x = 0.5f; }, kMeshAlways},
         {"a slot's extra pass", [](MeshComponent& mesh) { mesh.submeshes[3].material.extraPass.edit().shader = ShaderRef("a"); }, kMeshAlways},
-        {"no slots to compare", [](MeshComponent& mesh) { setSlots(mesh, 0); }, UpdateFlags_Shader_Uniforms},
+        // S94's Mesh-level Property Overrides (a Custom value, counted as changed) bring the submesh
+        // flags even without slots: a deliberate change of this pin
+        {"no slots to compare", [](MeshComponent& mesh) { setSlots(mesh, 0); }, kMeshAlways},
     };
     for (const Case& fixed : cases) {
         MeshComponent a;

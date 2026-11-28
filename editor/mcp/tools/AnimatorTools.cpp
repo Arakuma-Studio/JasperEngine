@@ -49,6 +49,7 @@
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
+#include "unity/UnityControllerImport.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1095,6 +1096,65 @@ bool applyOp(Project* project, ControllerDef& def, const Json& op, std::vector<s
     return false;
 }
 
+// create: {unity}: a Unity YAML .controller or .mask imported with the clips and masks it names,
+// one project undo step (S94 F36); true when `create` asked for it (the call is answered)
+bool importUnityAnimatorAsset(const CallPtr& call, Project* project, const fs::path& absolute, const std::string& stored, bool exists,
+                              const char* kind) {
+    const Json& args = call->args();
+    if (!args.contains("create") || !args["create"].is_object()) return false;
+    const Json& create = args["create"];
+    const std::string ext = std::string(".") + kind;
+    for (auto it = create.begin(); it != create.end(); ++it) {
+        if (it.key() != "unity") {
+            call->fail("create: unknown key \"" + it.key() + "\" (create is true, or {unity: \"<absolute Unity " + ext + " path>\"}).");
+            return true;
+        }
+    }
+    for (const char* other : {"ops", "from_player", "default", "body_parts", "root_hierarchy", "paths", "from_model", "preview_model"}) {
+        if (args.contains(other)) {
+            call->fail(std::string("create.unity imports the file as it is: edit it with ") + other + " in a second call.");
+            return true;
+        }
+    }
+    const fs::path file = create.contains("unity") && create["unity"].is_string() ? FileUtils::pathFromUtf8(create["unity"].get<std::string>()) : fs::path();
+    std::string fileExt = file.extension().string();
+    std::transform(fileExt.begin(), fileExt.end(), fileExt.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    if (file.empty() || !file.is_absolute() || !unity::isUnityAnimationAsset(file) || fileExt != ext) {
+        call->fail("create.unity: give the absolute path of a Unity YAML " + ext + " (inside its Unity project, so its GUIDs resolve).");
+        return true;
+    }
+    if (exists) {
+        call->fail("create: " + stored + " already exists; choose another path.");
+        return true;
+    }
+    unity::AssetImportOptions options;
+    options.file = file;
+    options.dest = absolute;
+    const unity::AssetImportResult result = unity::importUnityAnimationIntoProject(project, options);
+    if (!result.ok) {
+        call->fail("create.unity: " + result.error);
+        return true;
+    }
+    Json files = Json::array();
+    for (const auto& written : result.files) files.push_back(FileUtils::pathToGenericUtf8(written.first.lexically_relative(project->getProjectPath())));
+    Json out = {{"path", stored}, {"created", true}, {"files", files}, {"unity", result.report}};
+    std::string text = stored + ": imported " + result.report.value("source", std::string()) + " (" + std::to_string(files.size()) +
+                       " file(s), one project undo step)";
+    const size_t unmapped = result.report.contains("unmapped") ? result.report["unmapped"].size() : 0;
+    if (unmapped) {
+        out["next"] = "unity.unmapped lists what has no engine equivalent: fix each with edit_animator_controller ops (a model's clip: "
+                      "set_state {clip: \"<model>#<clip>\"} once the model is in the project)";
+        text += "; " + std::to_string(unmapped) + " unmapped item(s): see unity.unmapped";
+        size_t shown = 0;
+        for (const Json& miss : result.report["unmapped"]) {
+            if (shown++ >= 8) break;
+            text += "\n" + miss.value("what", std::string()) + ": " + miss.value("reason", std::string());
+        }
+    }
+    call->ok(text, out);
+    return true;
+}
+
 void editAnimatorControllerTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -1112,6 +1172,7 @@ void editAnimatorControllerTool(const CallPtr& call) {
     std::vector<std::string> changes;
     SceneProject* playerScene = nullptr;
     Entity playerEntity = NULL_ENTITY;
+    if (importUnityAnimatorAsset(call, project, absolute, stored, exists, "controller")) return;
     if (args.value("create", false) && !exists) {
         LayerDef layer;
         layer.name = "Base Layer";
@@ -1389,6 +1450,7 @@ void editAvatarMaskTool(const CallPtr& call) {
     }
     std::error_code ec;
     std::shared_ptr<AnimatorAssetDocument> document;
+    if (importUnityAnimatorAsset(call, project, absolute, stored, fs::exists(absolute, ec), "mask")) return;
     if (!fs::exists(absolute, ec)) {
         if (!args.value("create", false)) {
             call->fail("No mask at \"" + args.value("path", std::string()) + "\": pass create: true to make it.");
@@ -1521,6 +1583,7 @@ void editMontageTool(const CallPtr& call) {
     }
     std::error_code ec;
     std::shared_ptr<AnimatorAssetDocument> document;
+    if (importUnityAnimatorAsset(call, project, absolute, stored, fs::exists(absolute, ec), "mask")) return;
     if (!fs::exists(absolute, ec)) {
         if (!args.value("create", false)) {
             call->fail("No montage at \"" + args.value("path", std::string()) + "\": pass create: true to make it.");
@@ -1756,7 +1819,7 @@ void registerAnimatorTools(McpRegistry& registry) {
             "from_player: a state per Animation Player clip.";
         tool.inputSchema = object({
             {"path", assetPath("")},
-            {"create", boolean("")},
+            {"create", any("true, or {unity: an absolute Unity .controller}")},
             {"from_player", entityRef("A GameObject with an Animation Player.")},
             {"ops", array(anyObject("{op, ...fields}"), "")},
             {"scene", sceneRef()}
@@ -1803,7 +1866,7 @@ void registerAnimatorTools(McpRegistry& registry) {
             "left_/right_ arm, hand, fingers, leg: 0..1 | bool | null unsets}, root_hierarchy, paths {\"Hips/Spine\": weight | "
             "{weight, children} | null removes} from the masked GameObject, from_model (every path under a GameObject, "
             "from_model_weight), preview_model. Rules: jasper://docs/animator. One project undo step.";
-        tool.inputSchema = object({{"path", assetPath("")}, {"create", boolean("")}, {"default", number("", 0, 1)}, {"body_parts", anyObject("")},
+        tool.inputSchema = object({{"path", assetPath("")}, {"create", any("true, or {unity: an absolute Unity .mask}")}, {"default", number("", 0, 1)}, {"body_parts", anyObject("")},
                                    {"root_hierarchy", boolean("")}, {"paths", anyObject("")}, {"from_model", entityRef()},
                                    {"from_model_weight", number("", 0, 1)}, {"preview_model", string("")}, {"scene", sceneRef()}}, {"path"});
         tool.annotations.readOnly = false;

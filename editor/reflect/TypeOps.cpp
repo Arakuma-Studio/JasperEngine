@@ -11,9 +11,11 @@
 
 #include <algorithm>
 #include <bit>
+#include <cstddef>
 #include <limits>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -438,6 +440,30 @@ bool reflect::detail::arrayFromYaml(const FieldDesc& field, const YAML::Node& no
     }
     for (size_t i = 0; i < node.size(); i++) {
         field.arrayOps->resize(value, i + 1);
+        void* element = field.arrayOps->at(value, i);
+        if (field.structDesc) {
+            decode(*field.structDesc, node[i], element, ctx);
+        } else {
+            std::string reason;
+            field.elementOps->fromYaml(field, node[i], element, ctx, reason);
+        }
+    }
+    return true;
+}
+
+bool reflect::detail::fixedArrayFromYaml(const FieldDesc& field, const YAML::Node& node, void* value, const DecodeContext& ctx, std::string&) {
+    // every element is reset, then the node's first elements are read in order: a shorter list
+    // leaves the rest at their default, a longer one has its extra elements ignored
+    const size_t size = field.arrayOps->size(value);
+    for (size_t i = 0; i < size; i++) {
+        void* element = field.arrayOps->at(value, i);
+        field.elementOps->destroy(element);
+        field.elementOps->construct(element);
+    }
+    if (!node || !node.IsSequence()) {
+        return true;
+    }
+    for (size_t i = 0; i < size && i < node.size(); i++) {
         void* element = field.arrayOps->at(value, i);
         if (field.structDesc) {
             decode(*field.structDesc, node[i], element, ctx);

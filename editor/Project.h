@@ -1054,6 +1054,11 @@ namespace jasperengine::editor{
         std::filesystem::path inputActionsAsset;
         GamepadCursorSettings gamepadCursorSettings;
         float inputDeadzone = 0.15f;
+        // Input > Simulate Touch From Mouse: Engine::callTouchInMouseEvent at the game's start and Play's
+        bool simulateTouchFromMouse = false;
+        // Time: the fixed step and the frame delta cap, set before init in games and at Play start
+        double fixedTimestep = 1.0 / 60.0;
+        double maximumDeltaTime = 0.25;
         // Pixel Art: the palette used where none is named (S43 R4b), project-relative, empty for none
         std::filesystem::path defaultPalette;
         PlayerCrashSettings playerCrash;
@@ -1808,6 +1813,8 @@ namespace jasperengine::editor{
         // htmlUiGlyphAtlasMiB: 0 (the platform's default) or this range
         static constexpr int minHtmlUiGlyphAtlasMiB = 4;
         static constexpr int maxHtmlUiGlyphAtlasMiB = 256;
+        // htmlUiImageCacheMiB: -1 (the platform's default) or 0-this
+        static constexpr int maxHtmlUiImageCacheMiB = 1024;
         static constexpr WindowMode defaultWindowMode = WindowMode::WINDOWED;
         static constexpr unsigned int defaultWindowWidth = defaultCanvasWidth;
         static constexpr unsigned int defaultWindowHeight = defaultCanvasHeight;
@@ -1974,6 +1981,21 @@ namespace jasperengine::editor{
         std::string getInputActionsEnginePath() const;
         void setInputDeadzone(float deadzone);
         float getInputDeadzone() const;
+        void setSimulateTouchFromMouse(bool simulate) { simulateTouchFromMouse = simulate; }
+        bool isSimulateTouchFromMouse() const { return simulateTouchFromMouse; }
+
+        // Project Settings > Time (Unity's Fixed Timestep, Maximum Allowed Timestep), seconds; the
+        // defaults are the engine's (Engine::updateTime, maxDeltatime). Play stop gives the editor
+        // the defaults back
+        static constexpr double defaultFixedTimestep = 1.0 / 60.0;
+        static constexpr double defaultMaximumDeltaTime = 0.25;
+        static constexpr double minFixedTimestep = 0.0001;
+        static constexpr double maxFixedTimestep = 10.0;
+        void setFixedTimestep(double seconds) { fixedTimestep = seconds; }
+        double getFixedTimestep() const { return fixedTimestep; }
+        void setMaximumDeltaTime(double seconds) { maximumDeltaTime = seconds; }
+        double getMaximumDeltaTime() const { return maximumDeltaTime; }
+
         // Project Settings > Input > Gamepad Cursor (GamepadCursor's defaults at Play and in the game)
         void setGamepadCursorSettings(const GamepadCursorSettings& settings);
         const GamepadCursorSettings& getGamepadCursorSettings() const;
@@ -1999,7 +2021,8 @@ namespace jasperengine::editor{
         int getBitmapTextCacheMiB() const;
         static bool isValidHtmlUiMsaaSamples(int samples);
         // HTML UI rendering (S16): htmlUiGlyphAtlasMiB (clamped into its range, 0 = the
-        // platform's default), htmlUiSdfPrimitives, htmlUiTransformAwareText; applied to the
+        // platform's default), htmlUiSdfPrimitives, htmlUiTransformAwareText, and S93's
+        // htmlUiImageCacheMiB (-1 = the platform's default, clamped to 1024); applied to the
         // editor's documents at once and written into exports
         void setHtmlUiRenderSettings(const HtmlUiRenderSettings& settings);
         const HtmlUiRenderSettings& getHtmlUiRenderSettings() const;

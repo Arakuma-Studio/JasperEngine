@@ -1286,3 +1286,8 @@ void SceneManager::endStartingScenes() {
 bool SceneManager::isStartingScenes() {
     return factoryRunning || startingScenes > 0;
 }
+
+void SceneManager::mainSceneStarting(Scene* scene) {
+    if (!scene || scene == persistentScene || currentId == 0 || getScenePtr(currentId) != scene) return;
+    Engine::applySceneUpdateTime(scene->getFixedTimestep());
+}

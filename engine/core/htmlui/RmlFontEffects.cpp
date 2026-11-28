@@ -13,6 +13,17 @@ size_t RmlFontEffects::effectId(const Rml::FontEffect& effect){
     return fingerprint ? fingerprint : (size_t)(uintptr_t)&effect;
 }
 
+size_t RmlFontEffects::bitmapId(const Rml::FontEffect& effect, Rml::Vector2i& offset){
+    Rml::FontEffect::BitmapKey key;
+    if (!effect.GetBitmapKey(key)){
+        offset = Rml::Vector2i(0, 0);
+        return effectId(effect);
+    }
+    offset = key.offset;
+    // (apart from the fingerprints, which hash the effect's type and properties)
+    return (size_t)((unsigned long long)key.shape * 0x9e3779b97f4a7c15ull + 0x5bd1e995ull);
+}
+
 Rml::FontGlyph RmlFontEffects::wrapCoverage(const unsigned char* coverage, int width, int height, int xoff, int yoff, int advance){
     Rml::FontGlyph glyph;
     glyph.bearing = Rml::Vector2i(xoff, -yoff);

@@ -60,6 +60,7 @@
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
+#include "unity/UnityControllerImport.h"
 
 #include "command/type/ClipSceneActions.h"
 
@@ -67,6 +68,8 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <limits>
@@ -387,6 +390,12 @@ bool resolveSoundRef(Project* project, const Json& value, const std::string& whe
     }
     out.path = assetForm(project, relative);
     out.guid = project->getAssetDatabase().getAssetGuid(FileUtils::pathFromUtf8(relative));
+    if (out.guid.isNull()) {
+        // a sound written since the database last looked (its walk is a Background job) has no
+        // entry yet, and a cue without the GUID does not follow a move (S40 R3)
+        project->refreshAssetDatabase(true);
+        out.guid = project->getAssetDatabase().getAssetGuid(FileUtils::pathFromUtf8(relative));
+    }
     return true;
 }
 
@@ -2029,28 +2038,54 @@ std::string rejectedArgument(const Json& args, bool fileMode) {
 
 namespace {
 
+// a float offset as the file writes it (0.1, not 0.10000000149)
+double rootMotionNumber(float value) {
+    char text[32];
+    std::snprintf(text, sizeof(text), "%.7g", value);
+    return std::strtod(text, nullptr);
+}
+
 Json rootMotionJson(const std::optional<anim::ClipRootMotion>& rootMotion) {
     if (!rootMotion) return nullptr;
     return {{"bone", rootMotion->bone}, {"bake_rotation", rootMotion->bakeRotation}, {"bake_position_y", rootMotion->bakePositionY},
-            {"bake_position_xz", rootMotion->bakePositionXZ}};
+            {"bake_position_xz", rootMotion->bakePositionXZ},
+            {"rotation_based_upon", anim::rootRotationBasisName(rootMotion->rotationBasedUpon)},
+            {"rotation_offset", rootMotionNumber(rootMotion->rotationOffset)},
+            {"position_y_based_upon", anim::rootPositionYBasisName(rootMotion->positionYBasedUpon)},
+            {"position_y_offset", rootMotionNumber(rootMotion->positionYOffset)},
+            {"position_xz_based_upon", anim::rootPositionXZBasisName(rootMotion->positionXZBasedUpon)}};
 }
 
 // root_motion's members onto `rootMotion` (the others kept); false + `error` when it is not that shape
 bool applyRootMotionArg(const Json& arg, anim::ClipRootMotion& rootMotion, std::string& error) {
+    anim::ClipRootMotion changed = rootMotion;
     bool valid = arg.is_object();
     for (auto it = arg.begin(); valid && it != arg.end(); ++it) {
-        valid = it.key() == "bone" ? it.value().is_string()
-              : (it.key() == "bake_rotation" || it.key() == "bake_position_y" || it.key() == "bake_position_xz") && it.value().is_boolean();
+        const std::string& key = it.key();
+        const Json& value = it.value();
+        if (key == "bone") valid = value.is_string();
+        else if (key == "bake_rotation" || key == "bake_position_y" || key == "bake_position_xz") valid = value.is_boolean();
+        else if (key == "rotation_offset" || key == "position_y_offset") valid = value.is_number() && std::isfinite(value.get<double>());
+        else if (key == "rotation_based_upon") valid = value.is_string() && anim::rootRotationBasisFromName(value.get<std::string>(), changed.rotationBasedUpon);
+        else if (key == "position_y_based_upon") valid = value.is_string() && anim::rootPositionYBasisFromName(value.get<std::string>(), changed.positionYBasedUpon);
+        else if (key == "position_xz_based_upon") valid = value.is_string() && anim::rootPositionXZBasisFromName(value.get<std::string>(), changed.positionXZBasedUpon);
+        else valid = false;
     }
     if (!valid) {
-        error = "root_motion must be {bone: \"<path>\" (\"\": auto), bake_rotation, bake_position_y, bake_position_xz: true or false}.";
+        error = "root_motion must be {bone: \"<path>\" (\"\": auto), bake_rotation, bake_position_y, bake_position_xz: true or false, "
+                "rotation_based_upon: original|body_orientation, rotation_offset: degrees, "
+                "position_y_based_upon: original|center_of_mass|feet, position_y_offset: meters, "
+                "position_xz_based_upon: original|center_of_mass}.";
         return false;
     }
-    rootMotion.present = true;
-    rootMotion.bone = arg.value("bone", rootMotion.bone);
-    rootMotion.bakeRotation = arg.value("bake_rotation", rootMotion.bakeRotation);
-    rootMotion.bakePositionY = arg.value("bake_position_y", rootMotion.bakePositionY);
-    rootMotion.bakePositionXZ = arg.value("bake_position_xz", rootMotion.bakePositionXZ);
+    changed.present = true;
+    changed.bone = arg.value("bone", changed.bone);
+    changed.bakeRotation = arg.value("bake_rotation", changed.bakeRotation);
+    changed.bakePositionY = arg.value("bake_position_y", changed.bakePositionY);
+    changed.bakePositionXZ = arg.value("bake_position_xz", changed.bakePositionXZ);
+    changed.rotationOffset = arg.value("rotation_offset", changed.rotationOffset);
+    changed.positionYOffset = arg.value("position_y_offset", changed.positionYOffset);
+    rootMotion = changed;
     return true;
 }
 
@@ -2165,6 +2200,8 @@ void editClip(const CallPtr& call) {
     bool makeFolder = false;
     bool humanoidCreate = false;    // create.humanoid: Convert to Humanoid Clip (anim-retarget 10)
     std::string humanoidModel;
+    fs::path unityFile;             // create.unity: a Unity .anim imported (S94 F35)
+    bool unityMirrorX = true;
     if (creating) {
         const Json& create = args["create"];
         if (create.is_boolean() && create.get<bool>()) {
@@ -2174,10 +2211,31 @@ void editClip(const CallPtr& call) {
             return;
         } else {
             for (auto it = create.begin(); it != create.end(); ++it) {
-                if (it.key() != "from" && it.key() != "remove_tracks" && it.key() != "humanoid") {
-                    call->fail("create: unknown key \"" + it.key() + "\" (create is {from?, remove_tracks?, humanoid?}).");
+                if (it.key() != "from" && it.key() != "remove_tracks" && it.key() != "humanoid" && it.key() != "unity" && it.key() != "mirror_x") {
+                    call->fail("create: unknown key \"" + it.key() + "\" (create is {from?, remove_tracks?, humanoid?, unity?, mirror_x?}).");
                     return;
                 }
+            }
+            if (create.contains("unity")) {
+                // a Unity YAML .anim, imported (S94 F35)
+                if (!create["unity"].is_string() || create.contains("from") || create.contains("humanoid") || create.contains("remove_tracks")) {
+                    call->fail("create.unity is the absolute path of a Unity .anim (alone: not with from, humanoid or remove_tracks).");
+                    return;
+                }
+                if (create.contains("mirror_x") && !create["mirror_x"].is_boolean()) {
+                    call->fail("create.mirror_x must be true (the default: Unity's left-handed X mirrored) or false.");
+                    return;
+                }
+                unityFile = FileUtils::pathFromUtf8(create["unity"].get<std::string>());
+                if (!unityFile.is_absolute() || !unity::isUnityAnimationAsset(unityFile) || lower(unityFile.extension().string()) != ".anim") {
+                    call->fail("create.unity: \"" + create["unity"].get<std::string>() + "\" is not a Unity YAML .anim at an absolute path "
+                               "(an engine clip is copied with move_asset {path, to, copy: true}).");
+                    return;
+                }
+                unityMirrorX = create.value("mirror_x", true);
+            } else if (create.contains("mirror_x")) {
+                call->fail("create.mirror_x applies to create.unity (a Unity .anim).");
+                return;
             }
             if (create.contains("from")) from = create["from"];
             if (create.contains("humanoid")) {
@@ -2237,7 +2295,18 @@ void editClip(const CallPtr& call) {
     std::vector<ClipWarning> sourceWarnings;
     std::string extractedFrom;      // Extract: the model clip (project-relative)
     Json humanoidReport;
-    if (creating && humanoidCreate) {
+    Json unityReport;
+    if (creating && !unityFile.empty()) {
+        const unity::AnimImportResult imported = unity::importUnityClip(unityFile, unityMirrorX);
+        if (!imported.ok) {
+            call->fail("create.unity: " + imported.error);
+            return;
+        }
+        data = imported.clip;
+        unityReport = imported.report;
+        ctx.changes.push_back("imported the Unity clip " + imported.report.value("source", std::string()) + " (" +
+                              plural(data.tracks.size(), "track") + ", " + plural(data.events.size(), "event") + ")");
+    } else if (creating && humanoidCreate) {
         // the source clip (a file or a model clip) converted on its source rig
         std::string fromRelative;
         fs::path fromAbsolute;
@@ -2432,6 +2501,7 @@ void editClip(const CallPtr& call) {
         // written by the scene step above
     } else if (creating) {
         document = AnimationClipDocument::create(project, relative, data, humanoidCreate ? "Convert to Humanoid Clip" :
+                                                 !unityFile.empty() ? "Import Unity Animation" :
                                                  from.is_null() ? "Create Animation Clip" : "Extract to .anim", &error);
         if (!document) {
             madeFolders.removeNow();
@@ -2451,6 +2521,13 @@ void editClip(const CallPtr& call) {
     out["created"] = creating;
     out["changes"] = ctx.changes;
     if (!humanoidReport.is_null()) out["humanoid"] = humanoidReport;
+    if (!unityReport.is_null()) {
+        out["unity"] = unityReport;
+        if (!unityReport["unmapped"].empty()) {
+            out["next"] = "unity.unmapped lists the Unity bindings with no engine property: key their engine equivalents with tracks "
+                          "(get_animation {root, list_properties} lists what a GameObject can animate)";
+        }
+    }
     Json warningList = warningsJson(warnings);
     if (!insideAssets(project, absolute)) {
         warningList.push_back(relative + " is outside the assets folder: an Animation Player in a game cannot load it");

@@ -24,6 +24,40 @@
 
 namespace jasperengine::editor::reflect {
 
+namespace enums {
+
+    namespace {
+        constexpr int textValue(TextAnchorHorizontal alignment) { return static_cast<int>(alignment); }
+        constexpr int textValue(TextAnchorVertical alignment) { return static_cast<int>(alignment); }
+        constexpr int textValue(TextFontSizeUnit unit) { return static_cast<int>(unit); }
+
+        constexpr EnumItem kTextAnchorHorizontalItems[] = {
+            {textValue(TextAnchorHorizontal::LEFT), "left", "Left", "TextAnchorHorizontal::LEFT"},
+            {textValue(TextAnchorHorizontal::CENTER), "center", "Center", "TextAnchorHorizontal::CENTER"},
+            {textValue(TextAnchorHorizontal::RIGHT), "right", "Right", "TextAnchorHorizontal::RIGHT"},
+        };
+
+        constexpr EnumItem kTextAnchorVerticalItems[] = {
+            {textValue(TextAnchorVertical::TOP), "top", "Top", "TextAnchorVertical::TOP"},
+            {textValue(TextAnchorVertical::MIDDLE), "middle", "Middle", "TextAnchorVertical::MIDDLE"},
+            {textValue(TextAnchorVertical::BOTTOM), "bottom", "Bottom", "TextAnchorVertical::BOTTOM"},
+            {textValue(TextAnchorVertical::BASELINE), "baseline", "Baseline", "TextAnchorVertical::BASELINE"},
+            {textValue(TextAnchorVertical::CAPLINE), "capline", "Capline", "TextAnchorVertical::CAPLINE"},
+            {textValue(TextAnchorVertical::MIDLINE), "midline", "Midline", "TextAnchorVertical::MIDLINE"},
+        };
+
+        constexpr EnumItem kTextFontSizeUnitItems[] = {
+            {textValue(TextFontSizeUnit::PIXEL_HEIGHT), "pixel_height", "Pixel Height", "TextFontSizeUnit::PIXEL_HEIGHT"},
+            {textValue(TextFontSizeUnit::EM), "em", "Em", "TextFontSizeUnit::EM"},
+        };
+    }
+
+    const EnumDesc kTextAnchorHorizontal{"TextAnchorHorizontal", kTextAnchorHorizontalItems, textValue(TextAnchorHorizontal::LEFT)};
+    const EnumDesc kTextAnchorVertical{"TextAnchorVertical", kTextAnchorVerticalItems, textValue(TextAnchorVertical::BOTTOM)};
+    const EnumDesc kTextFontSizeUnit{"TextFontSizeUnit", kTextFontSizeUnitItems, textValue(TextFontSizeUnit::PIXEL_HEIGHT)};
+
+}
+
 namespace {
 
     template<typename T, bool T::*flag>
@@ -271,6 +305,7 @@ namespace {
     // a bitmap font's rows (S51 R22): pixel outline neighbours; a vector font's: SDF softness, dilate
     // (the bitmap rows are the Text drawer's own: InspectorPixelFont.cpp)
     bool textIsVector(const void* text) { return !::jasperengine::pixelart::isBitmapFontPath(static_cast<const TextComponent*>(text)->font[0]); }
+    bool textAutoSizes(const void* text) { return static_cast<const TextComponent*>(text)->autoSize; }
 
     constexpr FieldDesc kTextFields[] = {
         JE_FIELD(TextComponent, font, .updateFlags = UpdateFlags_Text_Atlas, .asset = AssetKind::Font, .uiOrder = 1),
@@ -285,8 +320,30 @@ namespace {
                  .uiOrder = 10),
         JE_FIELD(TextComponent, fixedWidth, .updateFlags = kText, .label = "Width", .group = "Fixed size"),
         JE_FIELD(TextComponent, fixedHeight, .updateFlags = kText, .label = "Height", .group = "Fixed size"),
-        JE_FIELD(TextComponent, pivotBaseline, .updateFlags = kText, .label = "Baseline", .group = "Pivot"),
-        JE_FIELD(TextComponent, pivotCentered, .updateFlags = kText, .label = "Center", .group = "Pivot"),
+        // S94 F24: Unity TextMesh's Anchor (the box point on the origin), drawn as the Text drawer's button rows (InspectorPixelFont.cpp)
+        JE_FIELD(TextComponent, anchorHorizontal, .enumDesc = &enums::kTextAnchorHorizontal, .flags = Hidden, .updateFlags = kText,
+                 .label = "Anchor Horizontal", .group = "Anchor"),
+        JE_FIELD(TextComponent, anchorVertical, .enumDesc = &enums::kTextAnchorVertical, .flags = Hidden, .updateFlags = kText,
+                 .label = "Anchor Vertical", .group = "Anchor"),
+        // S94 F26: written only when Em
+        JE_FIELD(TextComponent, fontSizeUnit, .enumDesc = &enums::kTextFontSizeUnit, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas,
+                 .label = "Font Size Unit", .tooltip = "Pixel Height: Font Size is ascender to descender. Em: the em square, as CSS and TextMesh Pro.",
+                 .visibleIf = &textIsVector, .uiOrder = 2),
+        // S93 R37 (TMP): drawn by the Text drawer's two Alignment button rows; Auto Size's rows here
+        JE_FIELD(TextComponent, horizontalAlignment, .enumDesc = &enums::kTextHorizontalAlignment, .flags = OmitIfDefault | Hidden,
+                 .updateFlags = kText, .label = "Horizontal Alignment",
+                 .tooltip = "Each line inside the fixed width: Left, Center, Right or Justified (a paragraph's last line stays left)."),
+        JE_FIELD(TextComponent, verticalAlignment, .enumDesc = &enums::kTextVerticalAlignment, .flags = OmitIfDefault | Hidden,
+                 .updateFlags = kText, .label = "Vertical Alignment",
+                 .tooltip = "The lines inside the fixed height: Top, Middle, Bottom, or Baseline (the first baseline on the middle)."),
+        JE_FIELD(TextComponent, autoSize, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas, .label = "Auto Size",
+                 .tooltip = "The largest whole font size from Min to Max whose text fits the fixed width and height "
+                            "(a bitmap font: the largest multiple of its native size).",
+                 .group = "Auto Size"),
+        JE_FIELD(TextComponent, fontSizeMin, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas,
+                 .unit = Unit::Pixels, .min = 1.0f, .step = 1.0f, .label = "Min", .group = "Auto Size", .visibleIf = &textAutoSizes),
+        JE_FIELD(TextComponent, fontSizeMax, .flags = OmitIfDefault, .updateFlags = UpdateFlags_Text_Atlas,
+                 .unit = Unit::Pixels, .min = 1.0f, .step = 1.0f, .label = "Max", .group = "Auto Size", .visibleIf = &textAutoSizes),
         // upstream (ui-scaling-text): outline, shadow and visible characters, written only when set;
         // the widths read finite and not below 0, the visible characters not below -1 (its decode)
         JE_FIELD(TextComponent, outlineWidth, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Outline",
@@ -324,7 +381,15 @@ namespace {
     // ---------------------------------------------------------------- UI Document
 
     bool documentInTexture(const void* document) {
+        return rendersToTexture(static_cast<const UIDocumentComponent*>(document)->renderMode);
+    }
+
+    bool documentOnMesh(const void* document) {
         return static_cast<const UIDocumentComponent*>(document)->renderMode == UIDocumentRenderMode::TEXTURE;
+    }
+
+    bool documentInWorld(const void* document) {
+        return static_cast<const UIDocumentComponent*>(document)->renderMode == UIDocumentRenderMode::WORLD;
     }
 
     constexpr uint64_t kDocumentReload = UpdateFlags_UIDocument_Reload;
@@ -341,14 +406,15 @@ namespace {
                  .tooltip = "Receives pointer, keyboard and text input. Off: the game gets every event."),
         JE_FIELD(UIDocumentComponent, renderMode, .enumDesc = &enums::kUIDocumentRenderMode,
                  .flags = OmitIfDefault | EmptyIsDefault, .updateFlags = kDocumentReload,
-                 .tooltip = "Screen: drawn over the scene. Texture: rendered into a texture that a material, Mesh or Image shows."),
+                 .tooltip = "Screen: drawn over the scene. Texture: rendered into a texture that a material, Mesh or Image shows. "
+                            "World Space: drawn as a quad at this GameObject, hidden behind what is in front of it."),
         JE_FIELD(UIDocumentComponent, textureWidth, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | Clamped,
                  .updateFlags = kDocumentReload, .unit = Unit::Pixels, .min = 1.0f, .max = 8192.0f, .visibleIf = &documentInTexture),
         JE_FIELD(UIDocumentComponent, textureHeight, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | EmptyIsDefault | Clamped,
                  .updateFlags = kDocumentReload, .unit = Unit::Pixels, .min = 1.0f, .max = 8192.0f, .visibleIf = &documentInTexture),
         JE_FIELD(UIDocumentComponent, inputSurface, .ops = &ops::Entity, .flags = OmitIfDefault | EmptyIsDefault,
                  .tooltip = "Mesh whose surface receives the pointer (hit test on its UVs). None: this GameObject's own mesh.",
-                 .visibleIf = &documentInTexture),
+                 .visibleIf = &documentOnMesh),
         JE_FIELD(UIDocumentComponent, pixelRatio, .ops = &ops::NonNegativeFiniteFloat,
                  .flags = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault | NonStructural, .updateFlags = kDocumentReload,
                  .min = 0.0f, .tooltip = "Document pixels per CSS pixel. 0 = Auto: the canvas-to-screen scale (1 in Texture mode)."),
@@ -361,6 +427,16 @@ namespace {
                  .min = 0.0f, .max = 8.0f, .label = "Anti-aliasing (MSAA)",
                  .tooltip = "Texture mode: MSAA samples of the document's texture, 0 (the scene's), 1, 2, 4 or 8. Screen documents use the scene's.",
                  .visibleIf = &documentInTexture),
+        // S93: optional, the defaults keep the old behaviour
+        JE_FIELD(UIDocumentComponent, updateMode, .enumDesc = &enums::kUIDocumentUpdateMode,
+                 .flags = OmitIfDefault | EmptyIsDefault | NonStructural,
+                 .tooltip = "Unscaled Time: animations run while the game is paused or slowed. Game Time: they follow Time Scale and stop with the game."),
+        JE_FIELD(UIDocumentComponent, pixelsPerUnit, .ops = &ops::FiniteFloat,
+                 .flags = OmitIfDefault | EmptyIsDefault | NonStructural, .min = 0.01f,
+                 .label = "Pixels Per Unit", .tooltip = "Texture pixels per world unit: the quad is Texture Width x Height / Pixels Per Unit.",
+                 .visibleIf = &documentInWorld),
+        JE_FIELD(UIDocumentComponent, billboard, .flags = OmitIfDefault | EmptyIsDefault | NonStructural,
+                 .tooltip = "Turns the quad to the camera.", .visibleIf = &documentInWorld),
     };
 
     // the old one's runtime state (its loaded document) stays while the file and render settings do
@@ -403,7 +479,7 @@ namespace {
         JE_FIELD(UIComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
-        JE_FIELD(UIComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload),
+        JE_FIELD(UIComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kShaderReload, .enumMask = enums::kComponentBlendModes),
         JE_FIELD(UIComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, stencil, .flags = ListWhole, .updateFlags = kShaderReload),
         JE_FIELD(UIComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kShaderReload, .min = -1.0f, .max = 15.0f),

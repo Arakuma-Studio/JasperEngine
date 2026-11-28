@@ -79,6 +79,8 @@ namespace jasperengine { namespace test {
         void clearPathProvider();
         bool syncFileSystem() override;           // counts the calls
         int fileSystemSyncs = 0;
+        // the URLs System::openURL handed to the platform (recorded, nothing opens; taken as opened)
+        std::vector<std::string> openedUrls;
         std::string getCachePath() override;      // <binary>/userdata
         std::string getCrashReportPath() override;   // "": the unit tests install no crash handler
         std::string getLuaPath() override;        // TestPaths::assetDir
@@ -86,6 +88,11 @@ namespace jasperengine { namespace test {
         bool isUserDataLoaded() override;
 
         void platformLog(const int type, const char* fmt, va_list args) override;
+
+    protected:
+        bool platformOpenURL(const std::string& url) override;
+
+    public:
         // the engine's log reaches platformLog through a PlatformSink; the readers below
         // flush the logger first, so what was logged before them is there
         void installLogSinks() override;

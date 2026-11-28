@@ -651,7 +651,8 @@ namespace {
             static const std::pair<const char*, ActionType> appActions[] = {
                 {"pause", ActionType::AppPause}, {"resume", ActionType::AppResume}, {"focus_lost", ActionType::AppFocusLost},
                 {"focus_gained", ActionType::AppFocusGained}, {"low_memory", ActionType::AppLowMemory},
-                {"hide", ActionType::AppHide}, {"show", ActionType::AppShow}};
+                {"hide", ActionType::AppHide}, {"show", ActionType::AppShow},
+                {"view_lost", ActionType::AppViewLost}, {"view_restored", ActionType::AppViewRestored}};
             for (const auto& [name, actionType] : appActions) {
                 if (action == name) {
                     b.add(actionType, gap);
@@ -678,7 +679,7 @@ namespace {
                 b.add(ActionType::AppBack, gap).code = static_cast<int>(source == "back_button" ? BackSource::BackButton : BackSource::Agent);
                 return true;
             }
-            error = "app action must be pause, resume, focus_lost, focus_gained, low_memory, hide, show, orientation or back";
+            error = "app action must be pause, resume, focus_lost, focus_gained, low_memory, hide, show, view_lost, view_restored, orientation or back";
             return false;
         }
 
@@ -791,6 +792,8 @@ const char* actionTypeName(ActionType type){
         case ActionType::AppLowMemory: return "app low_memory";
         case ActionType::AppHide: return "app hide";
         case ActionType::AppShow: return "app show";
+        case ActionType::AppViewLost: return "app view_lost";
+        case ActionType::AppViewRestored: return "app view_restored";
         case ActionType::AppOrientation: return "app orientation";
         case ActionType::AppBack: return "app back";
         case ActionType::GamepadCursor: return "gamepad cursor";
@@ -1235,6 +1238,8 @@ namespace {
             case ActionType::AppLowMemory: e = {{"type", "app"}, {"action", "low_memory"}}; break;
             case ActionType::AppHide: e = {{"type", "app"}, {"action", "hide"}}; break;
             case ActionType::AppShow: e = {{"type", "app"}, {"action", "show"}}; break;
+            case ActionType::AppViewLost: e = {{"type", "app"}, {"action", "view_lost"}}; break;
+            case ActionType::AppViewRestored: e = {{"type", "app"}, {"action", "view_restored"}}; break;
             case ActionType::AppOrientation: e = {{"type", "app"}, {"action", "orientation"}, {"orientation", text}}; break;
             case ActionType::AppBack:
                 e = {{"type", "app"}, {"action", "back"}};
@@ -1815,6 +1820,14 @@ bool ScriptPlayer::runAction(const ScriptAction& a, std::string& error){
             Engine::systemVisibilityChanged(!hidden);
             return true;
         }
+        case ActionType::AppViewLost:
+        case ActionType::AppViewRestored:
+            if (!host_.appViewLost) {
+                error = "app view_lost / view_restored simulate a lost GPU view: they run in the editor's Play";
+                return false;
+            }
+            error = host_.appViewLost(a.type == ActionType::AppViewLost);
+            return error.empty();
         case ActionType::AppOrientation:
             if (!host_.appOrientation) {
                 // a recording's turn was the device's: replayed where none can be simulated, the

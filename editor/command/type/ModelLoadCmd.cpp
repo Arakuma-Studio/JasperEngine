@@ -3,6 +3,7 @@
 
 #include "ModelLoadCmd.h"
 #include "component/BoneComponent.h"
+#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 #include "sceneview/SurfacePlacement.h"
@@ -18,6 +19,9 @@
 #include "util/ProjectUtils.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/AnimatorComponent.h"
+#include "command/type/MultiPropertyCmd.h"
 #include "Engine.h"
 #include "subsystem/MeshSystem.h"
 #include "io/FileData.h"
@@ -30,6 +34,10 @@
 
 using namespace jasperengine;
 namespace fs = std::filesystem;
+
+struct editor::ModelLoadCmd::SavedSubmeshes {
+    MeshSystem::SubmeshOverrides overrides;
+};
 
 editor::ModelLoadCmd::ModelLoadCmd(Project* project, uint32_t sceneId, Entity entity, const std::string& modelPath){
     this->project = project;
@@ -535,7 +543,7 @@ void editor::ModelLoadCmd::finalizeLoad(){
     }
 
     // Put back on whichever mesh the primitive ended up in, which a merge change moves.
-    scene->getSystem<MeshSystem>()->applySubmeshOverrides(savedSubmeshOverrides, entity, newModel);
+    if (savedSubmeshOverrides) scene->getSystem<MeshSystem>()->applySubmeshOverrides(savedSubmeshOverrides->overrides, entity, newModel);
 
     sceneProject->isModified = true;
 
@@ -572,9 +580,21 @@ void editor::ModelLoadCmd::schedulePoll(){
 
 void editor::ModelLoadCmd::applyAutoAnimationEntities(ModelComponent& model){
     // Project Settings > Animation > Animation Entities: Auto (S77 R38): a model placed with many
-    // clips makes no Animation entity per clip. Only a first load: a reload keeps the user's choice.
+    // clips, or one an Animator or Animation Player plays (on it or an ancestor, S94 F47), makes no
+    // Animation entity per clip. Only a first load: a reload keeps the user's choice.
     if (!isNewModel || !model.animationEntities || project->getModelSettings().animationEntities != AnimationEntitiesMode::Auto) {
         return;
+    }
+    {
+        Scene* scene = project->getScene(sceneId)->scene;
+        for (Entity current = entity; current != NULL_ENTITY && scene->isEntityCreated(current);) {
+            if (scene->findComponent<AnimatorComponent>(current) || scene->findComponent<AnimationPlayerComponent>(current)) {
+                autoClipCount = kAutoAnimationEntitiesClips;
+                break;
+            }
+            const Transform* parent = scene->findComponent<Transform>(current);
+            current = parent ? parent->parent : NULL_ENTITY;
+        }
     }
     if (autoClipCount < 0) {
         const fs::path absolute = project->resolveAssetPath(FileUtils::pathFromUtf8(modelPath));
@@ -631,6 +651,26 @@ void editor::ModelLoadCmd::finishPendingLoad(){
 
 bool editor::ModelLoadCmd::isLoadPending(uint32_t sceneId, Entity entity){
     return getPendingLoads().count({sceneId, entity}) > 0;
+}
+
+bool editor::ModelLoadCmd::isLoadOption(const std::string& property){
+    return property == "animationEntities" || property == "preserveHierarchy";
+}
+
+editor::Command* editor::ModelLoadCmd::setLoadOption(Project* project, uint32_t sceneId, Entity entity, const std::string& property, bool value){
+    if (!isLoadOption(property)) {
+        return nullptr;
+    }
+    SceneProject* sceneProject = project->getScene(sceneId);
+    const ModelComponent* model = sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<ModelComponent>(entity) : nullptr;
+    auto* multi = new MultiPropertyCmd();
+    multi->addPropertyCmd<bool>(project, sceneId, entity, ComponentType::ModelComponent, property, value);
+    // the value, then the reload that reads it (its undo puts the old entities back, the value's the old value)
+    if (model && !model->filename.empty()) {
+        multi->addCommand(std::make_unique<ModelLoadCmd>(project, sceneId, entity, model->filename.str(), model->mergeStaticMeshes));
+    }
+    multi->setNoMerge();
+    return multi;
 }
 
 void editor::ModelLoadCmd::completePendingLoad(uint32_t sceneId, Entity entity){
@@ -745,7 +785,8 @@ bool editor::ModelLoadCmd::execute(){
     // the submesh edits, taken now because the meshes holding them are deleted below. A reuse keeps
     // those meshes, so the loader restores them and these ordinals would be the pre-remap ones.
     if (sameModelFile && !reuseHierarchy) {
-        savedSubmeshOverrides = scene->getSystem<MeshSystem>()->collectSubmeshOverrides(entity, model);
+        savedSubmeshOverrides = std::make_unique<SavedSubmeshes>();
+        savedSubmeshOverrides->overrides = scene->getSystem<MeshSystem>()->collectSubmeshOverrides(entity, model);
     } else if (!sameModelFile) {
         for (unsigned int i = 0; i < mesh.numSubmeshes; i++) {
             mesh.submeshes[i].overrideFields = 0;

@@ -32,10 +32,13 @@
 #include "Catalog.h"
 #include "Stream.h"
 #include "shader/ShaderVariantCompiler.h"
+#include "shader/ShaderManifest.h"
 #include "util/Util.h"
 #include "texture/TextureData.h"
 #include "util/ProjectChecks.h"
 #include "script/LuaBinding.h"
+#include "script/DataAsset.h"
+#include "dataasset/DataAssets.h"
 #include "System.h"
 #include "pool/TextureDataPool.h"
 
@@ -66,6 +69,7 @@
 #include "component/SkyboxComponent.h"
 #include "component/FogComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/ForceFieldComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "component/LightComponent.h"
@@ -371,6 +375,30 @@ editor::ProjectUtils::ShaderForkPlan editor::ProjectUtils::prepareShaderFork(
             plan.error = "A fork target already exists: " +
                          std::filesystem::relative(collision, projectRoot, ec).generic_string();
             return plan;
+        }
+    }
+
+    // a library shader with its own depth program (@depth): the fork takes its <name>_depth
+    // files too, as <base>_depth.vert / .frag beside it, so its shadows keep following it
+    // (a file the library leaves to the generic surface_depth stays that)
+    if (!librarySource.empty()) {
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(librarySource);
+        std::string depthVert, depthFrag;
+        if (manifest && manifest->depth &&
+                ShaderVariantCompiler::getLibraryShaderPaths(librarySource, ShaderType::DEPTH, depthVert, depthFrag, nullptr)) {
+            const std::pair<std::string, const char*> depthFiles[] = {{depthVert, ".vert"}, {depthFrag, ".frag"}};
+            for (const auto& [key, extension] : depthFiles) {
+                auto source = ShaderVariantCompiler::getLibrarySources().find(key);
+                if (key.rfind("library/surface_depth", 0) == 0 || source == ShaderVariantCompiler::getLibrarySources().end())
+                    continue;
+                const std::filesystem::path path = forkDir / (baseName + "_depth" + extension);
+                std::error_code ec;
+                if (!forkIncludes && std::filesystem::exists(path, ec) && !ec) {
+                    plan.error = "A fork target already exists: " + std::filesystem::relative(path, projectRoot, ec).generic_string();
+                    return plan;
+                }
+                plan.includeFiles.push_back({path, source->second});
+            }
         }
     }
 
@@ -919,21 +947,32 @@ std::string editor::UniqueEntityNames::make(const std::string& baseName) {
     return uniqueName;
 }
 
-std::string editor::ProjectUtils::makeUniqueEntityName(Scene* scene, const std::vector<Entity>& entities, const std::string& baseName, const std::unordered_set<Entity>& ignoredEntities) {
-    if (!scene || baseName.empty()) {
-        return baseName;
+std::unordered_set<std::string> editor::ProjectUtils::siblingNames(Scene* scene, const std::vector<Entity>& entities, Entity parent, const std::unordered_set<Entity>& ignoredEntities) {
+    std::unordered_set<std::string> names;
+    if (!scene) {
+        return names;
     }
-
-    std::unordered_set<std::string> existingNames;
     for (Entity sceneEntity : entities) {
         if (ignoredEntities.find(sceneEntity) != ignoredEntities.end()) {
             continue;
         }
+        // the Hierarchy's parent of a user GameObject (getEffectiveParent's generated owners
+        // left out: they never hold a name a user picks)
+        const Transform* transform = scene->findComponent<Transform>(sceneEntity);
+        const Entity sceneParent = transform ? transform->parent : getVirtualParent(scene, sceneEntity);
+        if (sceneParent == parent) {
+            names.insert(scene->getEntityName(sceneEntity));
+        }
+    }
+    return names;
+}
 
-        existingNames.insert(scene->getEntityName(sceneEntity));
+std::string editor::ProjectUtils::makeUniqueEntityName(Scene* scene, const std::vector<Entity>& entities, Entity parent, const std::string& baseName, const std::unordered_set<Entity>& ignoredEntities) {
+    if (!scene || baseName.empty()) {
+        return baseName;
     }
 
-    return makeUniqueEntityName(baseName, existingNames);
+    return makeUniqueEntityName(baseName, siblingNames(scene, entities, parent, ignoredEntities));
 }
 
 size_t editor::ProjectUtils::getTransformIndex(EntityRegistry* registry, Entity entity){
@@ -1554,6 +1593,10 @@ ScriptPropertyValue editor::ProjectUtils::luaValueToScriptPropertyValue(lua_Stat
         // a default path ("textures/hero.png"), else None
         return ScriptPropertyValue(AssetRef(lua_isstring(L, idx) ? std::string(lua_tostring(L, idx)) : std::string()));
     }
+
+    case ScriptPropertyType::List:
+        // its elements are read by the caller, which knows their type
+        return ScriptPropertyValue(ScriptPropertyList());
     }
 
     return ScriptPropertyValue{};
@@ -1662,6 +1705,20 @@ static bool parseLuaPropertiesTableProtected(lua_State* L, ScriptEntry& entry, s
     return ok;
 }
 
+// A `type` (or a list's `of`) string: a built-in type, a data class of the project (a Data Asset
+// reference: S95 REQ-22), else a wrapper or script class name (an entity reference of that class)
+static void readLuaPropertyType(const std::string& typeName, ScriptPropertyType& type, std::string& ptrTypeName, std::string& assetType) {
+    if (scriptPropertyTypeFromName(typeName, type)) return;
+    editor::DataAssets::Class dataClass;
+    if (editor::DataAssets::findClass(std::filesystem::path(System::instance().getLuaPath()), typeName, dataClass)) {
+        type = ScriptPropertyType::Asset;
+        assetType = DataAsset::ASSET_TYPE;
+    } else {
+        type = ScriptPropertyType::EntityReference;
+    }
+    ptrTypeName = typeName;
+}
+
 static void parseLuaPropertiesTable(lua_State* L, ScriptEntry& entry) {
 
     lua_getfield(L, -1, "properties");  // Stack: script_table, properties_table
@@ -1684,50 +1741,56 @@ static void parseLuaPropertiesTable(lua_State* L, ScriptEntry& entry) {
 
                 lua_getfield(L, -1, "type");
                 if (lua_isstring(L, -1)) {
-                    std::string typeStr = lua_tostring(L, -1);
-                    std::string typeLower = typeStr;
-                    std::transform(typeLower.begin(), typeLower.end(), typeLower.begin(), 
-                                [](unsigned char c){ return (char)std::tolower(c); });
-
-                    if (typeLower == "bool" || typeLower == "boolean"){
-                        prop.type = ScriptPropertyType::Bool;
-                    }else if (typeLower == "int"  || typeLower == "integer"){
-                        prop.type = ScriptPropertyType::Int;
-                    }else if (typeLower == "float" || typeLower == "number"){
-                        prop.type = ScriptPropertyType::Float;
-                    }else if (typeLower == "string"){
-                        prop.type = ScriptPropertyType::String;
-                    }else if (typeLower == "vector2" || typeLower == "vec2"){
-                        prop.type = ScriptPropertyType::Vector2;
-                    }else if (typeLower == "vector3" || typeLower == "vec3"){
-                        prop.type = ScriptPropertyType::Vector3;
-                    }else if (typeLower == "vector4" || typeLower == "vec4"){
-                        prop.type = ScriptPropertyType::Vector4;
-                    }else if (typeLower == "color3"){
-                        prop.type = ScriptPropertyType::Color3;
-                    }else if (typeLower == "color4"){
-                        prop.type = ScriptPropertyType::Color4;
-                    }else if (typeLower == "prefab" || typeLower == "prefabasset"){
-                        prop.type = ScriptPropertyType::Prefab;
-                    }else if (typeLower == "asset" || typeLower == "assetref"){
-                        prop.type = ScriptPropertyType::Asset;
-                    }else if (typeLower == "entity" || typeLower == "entitypointer" || typeLower == "pointer"){
-                        prop.type = ScriptPropertyType::EntityReference;
-                    }else{
-                        prop.type = ScriptPropertyType::EntityReference;
-                        prop.ptrTypeName = typeStr;
-                    }
+                    readLuaPropertyType(lua_tostring(L, -1), prop.type, prop.ptrTypeName, prop.assetType);
                 } else {
                     prop.type = ScriptPropertyType::Float;
                 }
                 lua_pop(L, 1);
 
-                // Asset properties: the asset type they take (assetType = "texture", ...)
+                // a list (S95 REQ-20): `of` is the type of its elements, any type but a list
+                if (prop.type == ScriptPropertyType::List) {
+                    lua_getfield(L, -1, "of");
+                    if (!lua_isstring(L, -1)) {
+                        luaL_error(L, "property '%s' (list): `of` names the type of its elements (of = \"int\", \"ItemData\", ...)", prop.name.c_str());
+                    }
+                    std::string elementAssetType;
+                    readLuaPropertyType(lua_tostring(L, -1), prop.elementType, prop.ptrTypeName, elementAssetType);
+                    if (prop.elementType == ScriptPropertyType::List) {
+                        luaL_error(L, "property '%s': a list cannot hold lists", prop.name.c_str());
+                    }
+                    if (!elementAssetType.empty()) prop.assetType = elementAssetType;
+                    lua_pop(L, 1);
+                }
+
+                // Asset properties: the asset type they take (assetType = "texture", ...; "dataasset")
                 lua_getfield(L, -1, "assetType");
-                if (prop.type == ScriptPropertyType::Asset && lua_isstring(L, -1)) {
-                    prop.assetType = lua_tostring(L, -1);
+                const bool assetValues = prop.type == ScriptPropertyType::Asset ||
+                                         (prop.type == ScriptPropertyType::List && prop.elementType == ScriptPropertyType::Asset);
+                if (assetValues && prop.assetType.empty() && lua_isstring(L, -1)) {
+                    prop.assetType = DataAsset::normalizedAssetType(lua_tostring(L, -1));
                 }
                 lua_pop(L, 1);
+
+                if (prop.type == ScriptPropertyType::List) {
+                    lua_getfield(L, -1, "default");
+                    const int defaultIndex = lua_gettop(L);
+                    ScriptPropertyList list;
+                    if (lua_istable(L, defaultIndex)) {
+                        const lua_Integer count = static_cast<lua_Integer>(lua_rawlen(L, defaultIndex));
+                        for (lua_Integer i = 1; i <= count; i++) {
+                            lua_rawgeti(L, defaultIndex, i);
+                            list.items.push_back(scriptPropertyElementOf(
+                                editor::ProjectUtils::luaValueToScriptPropertyValue(L, -1, prop.elementType)));
+                            lua_pop(L, 1);
+                        }
+                    }
+                    prop.defaultValue = list;
+                    prop.value = prop.defaultValue;
+                    lua_pop(L, 1);
+                    entry.properties.push_back(std::move(prop));
+                    lua_pop(L, 1);  // pop value, keep key
+                    continue;
+                }
 
                 lua_getfield(L, -1, "default");
                 if (!lua_isnoneornil(L, -1) && (prop.type == ScriptPropertyType::Int || prop.type == ScriptPropertyType::Float)) {
@@ -1958,6 +2021,7 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<FogComponent>()))         return handleClass("Fog");
     if (signature.test(scene->getComponentId<VolumetricCloudsComponent>())) return handleClass("VolumetricClouds");
     if (signature.test(scene->getComponentId<LocalVolumetricFogComponent>())) return objectClass("LocalVolumetricFog");
+    if (signature.test(scene->getComponentId<FogZoneComponent>()))    return objectClass("FogZone");
     if (signature.test(scene->getComponentId<AudioSourceComponent>()))       return handleClass("AudioSource");
     if (signature.test(scene->getComponentId<OnScreenStickComponent>()))  return objectClass("OnScreenStick");
     if (signature.test(scene->getComponentId<OnScreenButtonComponent>())) return objectClass("OnScreenButton");

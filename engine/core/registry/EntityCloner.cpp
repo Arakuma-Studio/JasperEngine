@@ -32,6 +32,7 @@
 #include "component/Light2DComponent.h"
 #include "component/LightComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/MirrorComponent.h"
 #include "component/MorphTracksComponent.h"
 #include "component/NavGridComponent.h"
@@ -56,6 +57,7 @@
 #include "component/AudioSnapshotComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
+#include "component/OutlineComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"
 #include "component/GridComponent.h"
@@ -82,6 +84,7 @@
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
+#include "component/VertexColorsComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterVolumeComponent.h"
@@ -97,6 +100,7 @@
 #include "component/MeshPolygonComponent.h"
 #include "component/ModelComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/SpriteSkinComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
 #include "component/TerrainComponent.h"
@@ -797,6 +801,7 @@ void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity
         for (Entity& plane : particles.collisionPlanes) {
             plane = ctx.remap(plane);
         }
+        particles.legacyFrom = ctx.remap(particles.legacyFrom);
         return;
     }
     // the copy simulates on its own (its runtime is made at its first update)
@@ -805,6 +810,7 @@ void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity
     for (Entity& plane : particles.collisionPlanes) {
         plane = ctx.remap(plane);
     }
+    particles.legacyFrom = ctx.remap(particles.legacyFrom);
     particles.onCollision.clear();
     particles.onParticleDeath.clear();
     particles.onSubEmit.clear();
@@ -1008,6 +1014,17 @@ void prepare<TilemapCollider2DComponent>(TilemapCollider2DComponent& collider, E
 }
 
 template<>
+void prepare<VertexColorsComponent>(VertexColorsComponent& colors, Entity, CloneContext& ctx) {
+    // the copy shares the .vcolors asset and its decoded values until either is edited (V1 R132,
+    // copy-on-write in the editor); gameplay paint (R80) is the original's own unless it moves, and
+    // the copy binds its own streams at its first draw
+    if (!ctx.move) colors.runtimeLayers.clear();
+    colors.boundRevision = 0;
+    colors.needUpdate = true;
+    colors.cpuGeometryLogged = false;
+}
+
+template<>
 void prepare<RectTransformComponent>(RectTransformComponent& layout, Entity, CloneContext& ctx) {
     layout.panel = ctx.remap(layout.panel);
     layout.needUpdateSizes = true;
@@ -1064,11 +1081,25 @@ void prepare<CameraFollowComponent>(CameraFollowComponent& follow, Entity, Clone
     follow.foreignWriteDetected = false;
     follow.warnedForeignWrite = false;
     follow.warnedMissingTarget = false;
+    follow.frameStep = CameraFollowStep();
 }
 
 template<>
 void prepare<SpriteComponent>(SpriteComponent& sprite, Entity, CloneContext&) {
     sprite.needUpdateSprite = true;
+}
+
+template<>
+void prepare<SpriteSkinComponent>(SpriteSkinComponent& skin, Entity, CloneContext& ctx) {
+    // a copied skeleton drives the copy; the copy's mesh is built on its own
+    skin.rootBone = ctx.remap(skin.rootBone);
+    for (Entity& bone : skin.bones) bone = ctx.remap(bone);
+    skin.builtSkin.reset();
+    skin.inverseBindMatrices.clear();
+    skin.builtSkinned = false;
+    skin.builtFlipX = false;
+    skin.paletteDirty = false;
+    skin.paletteBones.clear();
 }
 
 template<>
@@ -1443,6 +1474,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<SkyboxComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<FogComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LocalVolumetricFogComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<FogZoneComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ForceFieldComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<VolumetricCloudsComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<MirrorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
@@ -1452,10 +1484,12 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<AudioSnapshotComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TitleArtRendererComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SpriteSkinComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteAnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PixelPerfectCameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SortingGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<OutlineComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteBatchComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<HitStopExemptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SimulationCullingComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
@@ -1542,6 +1576,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<AnimationPlayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<VertexAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<VertexColorsComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraShakerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraFollowComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TextEffectComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

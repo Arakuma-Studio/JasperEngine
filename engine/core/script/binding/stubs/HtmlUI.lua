@@ -55,6 +55,15 @@ function UIDataModel:get(path) end
 ---@param value any
 function UIDataModel:set(path, value) end
 
+---What HtmlUI.prewarmText makes ready: the font as CSS names it, and its font-effect.
+---@class UIPrewarmTextOptions
+---@field family string|nil a font-family list (default "sans-serif")
+---@field size number|nil px (default 16)
+---@field weight number|"normal"|"bold"|nil (default 400)
+---@field style "normal"|"italic"|nil
+---@field effect string|nil a font-effect value: "outline(15px #000)", "glow(4px 12px 0px 8px #000)"
+---@field text string the characters to make ready
+
 ---The input scheme on every document's `<html>` (`data-input-scheme`), set the frame the player
 ---switches device (InputActions.currentScheme): `html[data-input-scheme="touch"] .hint` in CSS,
 ---`element:getAttribute("data-input-scheme")` in a script. A script's own value is overwritten at

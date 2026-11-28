@@ -629,3 +629,33 @@ TEST(TextEffectProperty, GrowAndUnfoldAmplitude){
     ASSERT_EQ(half.layers.size(), 1u);
     EXPECT_FLOAT_EQ(half.layers[0].amplitude, 0.5f);
 }
+
+// S93 R35: text-effect-time auto (the default) runs on the document's Update Mode clock; ui and
+// game name a clock whatever the document's
+TEST_F(TextEffectDocumentTest, AutoTimeFollowsTheDocumentClock){
+    load("<p id='auto' style='text-effect: wave(0.1em 100s)'>Hi there</p><p id='ui' style='text-effect: wave(0.1em 100s); text-effect-time: ui'>Hi there</p>");
+    auto cycle = [&](const char* id){
+        std::vector<Rml::ElementText*> found = texts(document->GetElementById(id));
+        int first = 0;
+        EXPECT_NE(HtmlTextEffects::get().GetTextEffect(*found[0], first), nullptr) << id;
+        return HtmlTextEffects::get().lastGlyphs()->cycleTime;
+    };
+
+    // an Unscaled Time document: both on the UI clock
+    HtmlUIClock::setFixedTime(15.0);
+    frame();
+    EXPECT_NEAR(cycle("auto"), 5.0f, 1e-3f);
+    EXPECT_NEAR(cycle("ui"), 5.0f, 1e-3f);
+
+    // Game Time: auto moves to the game clock (from now on), ui stays
+    document->SetAnimationClock(HtmlUIClock::animationClockOf(UIDocumentUpdateMode::GAME_TIME));
+    frame();
+    HtmlUIClock::setFixedTime(20.0);
+    frame();
+    EXPECT_NEAR(cycle("auto"), 0.0f, 1e-3f) << "the game clock held";
+    EXPECT_NEAR(cycle("ui"), 10.0f, 1e-3f);
+    HtmlUIClock::setFixedTime(std::nullopt);
+    HtmlUIClock::advanceGame(2.0);
+    frame();
+    EXPECT_NEAR(cycle("auto"), 2.0f, 1e-3f) << "two seconds of game time";
+}

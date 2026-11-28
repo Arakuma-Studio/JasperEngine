@@ -1,0 +1,7 @@
+{
+ "comment": "S93 R23 (U10): filter applies to an element whose only paint is a border-image (a 9-slice with fill): brightness and hue-rotate, opacity and grayscale, next to the unfiltered one.",
+ "viewport": [
+  430,
+  100
+ ]
+}

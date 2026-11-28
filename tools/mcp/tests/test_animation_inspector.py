@@ -23,6 +23,7 @@ import asyncio
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 
 from harness import Editor, REPO
@@ -71,38 +72,73 @@ class Ui:
     async def frames(self, n: int = 3):
         await self.ed.call("wait", frames=n)
 
+    def state(self) -> tuple[dict, list[float]]:
+        """The UI probe's widgets and the Inspector's scroll [y, max_y] of the last frame"""
+        probe = self.ed.ui_probe_state()
+        return probe.get("items", {}), probe.get("scroll", {}).get("inspector", [0.0, 0.0])
+
+    async def settled(self, name: str) -> tuple[dict, list[float]]:
+        """The widgets and scroll once three reads in a row (2 frames apart) agree on the scroll and on
+        `name`'s rect: the layout is done and the last wheel notch applied"""
+        last, same = None, 0
+        for _ in range(150):
+            await self.frames(2)
+            items, scroll = self.state()
+            now = (items.get(name), scroll)
+            same = same + 1 if now == last else 0
+            if same >= 2:
+                return items, scroll
+            last = now
+        self.ed.fail(f"the Inspector never settles: {last}")
+
+    async def notch(self, at, down: bool, scroll: list[float], name: str, notches: int = 1, until=None,
+                    limit: float = 30.0) -> tuple[dict, list[float]]:
+        """Wheel notches, then the state once the Inspector's scroll has moved (or until(scroll) holds).
+        xdotool's notches reach the editor some frames later (more under load): waited for, never
+        assumed applied after a number of frames. Under load a notch can also be lost: the scroll
+        not moving for a while sends the notches again."""
+        await self.wheel(at, down, notches)
+        deadline = time.monotonic() + limit
+        resend = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            await self.frames(2)
+            now = self.state()[1]
+            if until(now) if until else now[0] != scroll[0]:
+                return await self.settled(name)
+            if time.monotonic() > resend:
+                await self.wheel(at, down, notches)
+                resend = time.monotonic() + 5.0
+        self.ed.fail(f"{notches} wheel notch(es) {'down' if down else 'up'} never scrolled the Inspector from {scroll}")
+
     async def reveal(self, name: str, top: bool = True) -> list[float]:
+        """Scrolls the Inspector with real wheel notches until `name` is drawn whole near its top, or as
+        near as the Inspector scrolls. top: from the Inspector's top."""
         await self.frames()
         panel = await self.ed.ui_rect("inspector")
         self.ed.check(panel, "the inspector is drawn")
         at = ((panel[0] + panel[2]) / 2, (panel[1] + panel[3]) / 2)
-        if top:
-            await self.wheel(at, False, 80)
-        for _ in range(80):
-            await self.frames()
-            rect = self.ed.ui_items().get(name)
+        items, scroll = await self.settled(name)
+        if top and scroll[0] > 0:
+            items, scroll = await self.notch(at, False, scroll, name, notches=80, until=lambda s: s[0] <= 0)
+        seen = False
+        for _ in range(200):
+            rect = items.get(name)
+            at_end = scroll[0] >= scroll[1]
             if rect:
-                # bring it near the top of the panel (until it no longer moves)
-                for _ in range(40):
-                    if rect[1] < panel[1] + 60:
-                        break
-                    await self.wheel(at, True, 1)
-                    await self.frames()
-                    moved = self.ed.ui_items().get(name)
-                    if not moved:
-                        # that notch scrolled it past the panel's top, and the rect from before it
-                        # is stale: a click there lands on whatever row took its place
-                        await self.wheel(at, False, 1)
-                        await self.frames()
-                        moved = self.ed.ui_items().get(name)
-                        self.ed.check(moved, f"{name} is drawn again a notch back up")
-                        return moved
-                    if moved[1] == rect[1]:
-                        break
-                    rect = moved
+                seen = True
+                if rect[1] < panel[1] + 60 or at_end:
+                    return rect
+            elif seen:
+                # the last notch scrolled it past the panel's top, and the rect from before it is
+                # stale (a click there lands on whatever row took its place): one notch back up
+                items, scroll = await self.notch(at, False, scroll, name)
+                rect = items.get(name)
+                self.ed.check(rect, f"{name} is drawn again a notch back up: {sorted(items)}")
                 return rect
-            await self.wheel(at, True, 2)
-        self.ed.fail(f"{name} is never drawn: {sorted(self.ed.ui_items())}")
+            elif at_end:
+                break
+            items, scroll = await self.notch(at, True, scroll, name)
+        self.ed.fail(f"{name} is never drawn (Inspector scroll {scroll}): {sorted(items)}")
 
 
 def center(rect):
@@ -241,9 +277,11 @@ async def test_player_layers_mesh_space_rotation(ed: Editor):
     header = await ui.reveal("player.layers")
     if "player.layer.1.mask" not in ed.ui_items():
         await ui.click(*center(header))
-    box = await ui.reveal("player.layer.1.meshSpaceRotation")
-    mask = ed.ui_items().get("player.layer.1.mask")
-    ed.check(mask, f"the Mask field is drawn with it: {sorted(ed.ui_items())}")
+    # the Mask row to the panel's top, so the row under it is drawn too (revealing the checkbox itself
+    # scrolls Mask out above it now that each wheel notch is waited for)
+    mask = await ui.reveal("player.layer.1.mask")
+    box = ed.ui_items().get("player.layer.1.meshSpaceRotation")
+    ed.check(box, f"the checkbox is drawn with Mask: {sorted(ed.ui_items())}")
     ed.check(mask[3] <= box[1] < mask[3] + 0.8 * (mask[3] - mask[1]) + 12, f"the checkbox is the row under Mask: mask {mask}, box {box}")
     await ui.click(*center(box))
     layers = (await player(ed))["layers"]

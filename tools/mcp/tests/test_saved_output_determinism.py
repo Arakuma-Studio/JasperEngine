@@ -82,6 +82,15 @@ async def open_and_save_undrawn(ed: Editor, rel: str) -> None:
     ed.check_eq(r.get("failed"), 0, f"{rel}: opened and saved in one batch: {[x for x in r['results'] if not x.get('ok')]}")
 
 
+async def write_image(ed: Editor, rel: str, data: bytes) -> None:
+    """A new image the asset database knows before any save names it. The editor picks a file up in
+    a Background walk: a save before the walk lands writes the reference without its GUID, a later
+    save with it, and the two saves a test compares would differ by when the walk ended."""
+    (ed.project / rel).parent.mkdir(parents=True, exist_ok=True)
+    (ed.project / rel).write_bytes(data)
+    await ed.call("resolve_asset", asset=rel)
+
+
 async def draw_with_assets(ed: Editor, sid) -> None:
     """Both views drawn with every texture and model loaded (a screenshot waits for them)"""
     for view in ("scene", "game"):
@@ -144,8 +153,7 @@ async def test_sprite_frames_generate_as_authored(ed: Editor):
     """A Sprite with frames in pixels: drawn and saved, opened and saved in one batch (its texture not
     loaded), drawn and saved again. The same file and cooked scene each time, with the pixels the
     user authored. A later editor holding the texture back on its worker generates the same."""
-    (ed.project / SHEET).parent.mkdir(parents=True, exist_ok=True)
-    (ed.project / SHEET).write_bytes(sheet_png())
+    await write_image(ed, SHEET, sheet_png())
     rel = "Frames.scene"
     path = ed.project / rel
     sid = (await ed.call("create_scene", name="Frames", type="2D", path=rel))["scene"]["id"]
@@ -175,8 +183,7 @@ async def test_sprite_frames_generate_as_authored(ed: Editor):
 async def test_a_save_while_the_texture_loads_generates_the_same(ed: Editor):
     """A save with the sheet's decode held on its worker (a frame ran, the size is not known yet)
     writes what a save with it loaded writes"""
-    (ed.project / SHEET).parent.mkdir(parents=True, exist_ok=True)
-    (ed.project / SHEET).write_bytes(sheet_png())
+    await write_image(ed, SHEET, sheet_png())
     rel = "Held.scene"
     path = ed.project / rel
     sid = (await ed.call("create_scene", name="Held", type="2D", path=rel))["scene"]["id"]
@@ -275,8 +282,7 @@ async def test_weather_map_wrap_stays_authored(ed: Editor):
     file and in the cooked scene after the clouds were drawn (they tile whatever the wrap:
     AtmosphereGpu.AWeatherMapTilesWhateverItsWrap)"""
     weather = "assets/weather.png"
-    (ed.project / weather).parent.mkdir(parents=True, exist_ok=True)
-    (ed.project / weather).write_bytes(pngdiff.encode(8, 8, bytes([200, 200, 200, 255]) * 64))
+    await write_image(ed, weather, pngdiff.encode(8, 8, bytes([200, 200, 200, 255]) * 64))
     rel = "Weather.scene"
     path = ed.project / rel
     sid = (await ed.call("create_scene", name="Weather", type="3D", path=rel))["scene"]["id"]

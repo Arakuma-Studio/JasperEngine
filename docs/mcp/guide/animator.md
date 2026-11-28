@@ -22,7 +22,8 @@ says `animator.hands_over`).
 Tools (group `animation`): `get_animator` (read), `edit_animator_controller`, `edit_avatar_mask`,
 `edit_montage` (each call one project undo step: `undo {scope: "project"}`), `control_animator`
 (drive it: play mode or the edit preview) and `sample_animation_pose` (bone transforms, world or `space:
-"model"`). The
+"model"`). A Unity `.controller` or `.mask` comes in with `create: {unity: "<absolute path>"}`, its clips and
+masks beside it. The
 files are canonical JSON: read them if you like, edit them with the tools (they validate, keep
 unknown keys and the undo history).
 
@@ -138,7 +139,8 @@ events also call the scripts' methods of the same name (`sendEventsToScripts`).
 ## Component settings
 
 `speed`, `applyRootMotion` (the clips' root motion moves the GameObject, or its Character
-Controller), `rootMotionBone`, `updateMode` (normal, animate_physics, unscaled_time),
+Controller), `legacyRootDrift` (true on Animators saved before off meant in place: they keep the
+drift), `rootMotionBone`, `updateMode` (normal, animate_physics, unscaled_time),
 `cullingMode` (always_animate, cull_update_transforms, cull_completely), `writeBones` (all,
 exposed + `exposedBones`), `eventMode` (leader_only, all), `retarget` (auto, off), `clipOverrides`
 ([{original, replacement}]: the same controller with other clips) and `ik` (two_bone, fabrik,

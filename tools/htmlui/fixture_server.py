@@ -211,9 +211,11 @@ class Handler(BaseHTTPRequestHandler):
             if relative.endswith(".ttf"):
                 return self.send(200, self.base_font(), "font/ttf")
             if relative.endswith(".woff2"):
-                return self.send(200, b"wOF2" + b"\0" * 60, "font/woff2")
+                with open(os.path.join(self.server.root, "..", "..", "fonts", "webfonts", "webfont.woff2"), "rb") as font:
+                    return self.send(200, font.read(), "font/woff2")
             if relative.endswith(".woff"):
-                return self.send(200, b"wOFF" + b"\0" * 60, "font/woff")
+                with open(os.path.join(self.server.root, "..", "..", "fonts", "webfonts", "webfont.woff"), "rb") as font:
+                    return self.send(200, font.read(), "font/woff")
             if relative.endswith(".css"):
                 return self.file(os.path.join("cdn", relative), "text/css; charset=utf-8")
             if relative.endswith(".png"):

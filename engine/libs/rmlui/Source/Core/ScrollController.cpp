@@ -3,6 +3,7 @@
 #include "../../Include/RmlUi/Core/Core.h"
 #include "../../Include/RmlUi/Core/Element.h"
 #include "../../Include/RmlUi/Core/SystemInterface.h"
+#include <cmath>
 
 namespace Rml {
 
@@ -65,6 +66,7 @@ static Vector2f CalculateSmoothscrollVelocity(Vector2f target_delta, Vector2f sc
 
 void ScrollController::ActivateAutoscroll(Element* in_target, Vector2i start_position)
 {
+	SettleOverscroll();
 	Reset();
 	if (!in_target)
 		return;
@@ -76,6 +78,7 @@ void ScrollController::ActivateAutoscroll(Element* in_target, Vector2i start_pos
 
 void ScrollController::ActivateSmoothscroll(Element* in_target, Vector2f delta_distance, ScrollBehavior scroll_behavior)
 {
+	SettleOverscroll();
 	Reset();
 	if (!in_target)
 		return;
@@ -99,16 +102,40 @@ void ScrollController::ActivateSmoothscroll(Element* in_target, Vector2f delta_d
 		Reset();
 }
 
-void ScrollController::ActivateInertia(Element* in_target, Vector2f velocity)
+void ScrollController::ActivateInertia(Element* in_target, Vector2f velocity, const ScrollPhysics& physics)
 {
 	Reset();
-	if (!in_target || (velocity.x == 0 && velocity.y == 0))
+	if (!physics.inertia)
+		velocity = Vector2f(0.f);
+	// (an elastic overscroll springs back without a velocity)
+	const bool springs = (in_target && physics.movement == ScrollPhysics::Movement::Elastic && in_target->GetScrollOverscroll() != Vector2f(0.f));
+	if (!in_target || (velocity.x == 0 && velocity.y == 0 && !springs))
 		return;
 
 	target = in_target;
 	inertia_scroll_velocity = velocity;
+	inertia_physics = physics;
+	inertia_position = Vector2f(target->GetScrollLeft(), target->GetScrollTop());
 	mode = Mode::Inertia;
 	UpdateTime();
+}
+
+void ScrollController::StopInertia()
+{
+	if (mode != Mode::Inertia)
+	{
+		Reset();
+		return;
+	}
+	inertia_scroll_velocity = Vector2f(0.f);
+	if (inertia_physics.movement != ScrollPhysics::Movement::Elastic || target->GetScrollOverscroll() == Vector2f(0.f))
+		Reset();
+}
+
+void ScrollController::SettleOverscroll()
+{
+	if (mode == Mode::Inertia && target && inertia_physics.movement == ScrollPhysics::Movement::Elastic)
+		target->SetScrollOverscroll(Vector2f(0.f));
 }
 
 void ScrollController::InstantScrollOnTarget(Element* in_target, Vector2f delta_distance)
@@ -204,6 +231,12 @@ void ScrollController::UpdateInertia(float dt)
 {
 	RMLUI_ASSERT(mode == Mode::Inertia && target);
 
+	if (!inertia_physics.IsDefault())
+	{
+		UpdatePhysics(dt);
+		return;
+	}
+
 	if (inertia_scroll_velocity.x == 0.0f && inertia_scroll_velocity.y == 0.0f)
 	{
 		Reset();
@@ -221,6 +254,92 @@ void ScrollController::UpdateInertia(float dt)
 		inertia_scroll_velocity.x = 0.0f;
 	if (Math::Absolute(inertia_scroll_velocity.y) < INERTIA_VELOCITY_CUTOFF)
 		inertia_scroll_velocity.y = 0.0f;
+}
+
+// Unity's Mathf.SmoothDamp (Game Programming Gems 4, 1.10: a critically damped spring), without a speed limit.
+static float SmoothDamp(float current, float target, float& velocity, float smooth_time, float dt)
+{
+	smooth_time = Math::Max(0.0001f, smooth_time);
+	const float omega = 2.f / smooth_time;
+	const float x = omega * dt;
+	const float exp = 1.f / (1.f + x + 0.48f * x * x + 0.235f * x * x * x);
+	const float change = current - target;
+	const float temp = (velocity + omega * change) * dt;
+	velocity = (velocity - omega * temp) * exp;
+	float output = target + (change + temp) * exp;
+	// no overshoot
+	if ((target - current > 0.f) == (output > target))
+	{
+		output = target;
+		velocity = 0.f;
+	}
+	return output;
+}
+
+void ScrollController::UpdatePhysics(float dt)
+{
+	// uGUI ScrollRect.LateUpdate, per axis: an elastic overscroll springs back with a SmoothDamp over the elasticity, else
+	// the velocity decelerates (v *= rate^dt, stopping below 1 px/s; 'auto': 6.3's friction) and moves the content, which
+	// stops at a clamped edge, goes past an elastic one (then springs back) and anywhere when unrestricted.
+	auto overflow_is_scrollable = [](Style::Overflow overflow) { return overflow == Style::Overflow::Auto || overflow == Style::Overflow::Scroll; };
+	const ScrollPhysics& physics = inertia_physics;
+	const bool elastic = (physics.movement == ScrollPhysics::Movement::Elastic);
+	const Vector2f scroll = {target->GetScrollLeft(), target->GetScrollTop()};
+	const Vector2f max_offset = {Math::Max(target->GetScrollWidth() - target->GetClientWidth(), 0.f),
+		Math::Max(target->GetScrollHeight() - target->GetClientHeight(), 0.f)};
+	const bool scrollable[2] = {overflow_is_scrollable(target->GetComputedValues().overflow_x()),
+		overflow_is_scrollable(target->GetComputedValues().overflow_y())};
+	Vector2f overscroll = target->GetScrollOverscroll();
+	bool moving = false;
+
+	for (int axis = 0; axis < 2; axis++)
+	{
+		float& velocity = inertia_scroll_velocity[axis];
+		// a script scrolled meanwhile: go on from there
+		if (Math::Absolute(scroll[axis] - Math::Round(inertia_position[axis])) >= 1.f)
+			inertia_position[axis] = scroll[axis];
+		if (!scrollable[axis])
+		{
+			velocity = 0.f;
+			continue;
+		}
+
+		if (elastic && overscroll[axis] != 0.f)
+		{
+			overscroll[axis] = SmoothDamp(overscroll[axis], 0.f, velocity, physics.elasticity, dt);
+			if (Math::Absolute(velocity) < 1.f)
+				velocity = 0.f;
+			if (velocity == 0.f && Math::Absolute(overscroll[axis]) < 0.5f)
+				overscroll[axis] = 0.f;
+		}
+		else if (velocity != 0.f)
+		{
+			const bool rate_auto = (physics.deceleration_rate < 0.f);
+			velocity *= (rate_auto ? Math::Max(1.f - INERTIA_FRICTION_FACTOR * dt, 0.f) : std::pow(physics.deceleration_rate, dt));
+			if (Math::Absolute(velocity) < (rate_auto ? INERTIA_VELOCITY_CUTOFF : 1.f))
+				velocity = 0.f;
+
+			const float position = inertia_position[axis] + overscroll[axis] + velocity * dt;
+			const float clamped = Math::Clamp(position, 0.f, max_offset[axis]);
+			inertia_position[axis] = clamped;
+			if (physics.movement == ScrollPhysics::Movement::Clamped)
+			{
+				overscroll[axis] = 0.f;
+				if (clamped != position)
+					velocity = 0.f;
+			}
+			else
+				overscroll[axis] = position - clamped;
+		}
+
+		moving = moving || velocity != 0.f || (elastic && overscroll[axis] != 0.f);
+	}
+
+	target->SetScrollLeft(inertia_position.x);
+	target->SetScrollTop(inertia_position.y);
+	target->SetScrollOverscroll(overscroll);
+	if (!moving)
+		Reset();
 }
 
 bool ScrollController::HasSmoothscrollReachedTarget() const
@@ -282,6 +401,8 @@ void ScrollController::Reset()
 	// Keep smoothscroll configuration parameters.
 
 	inertia_scroll_velocity = Vector2f{};
+	inertia_physics = ScrollPhysics();
+	inertia_position = Vector2f{};
 }
 
 void ScrollController::SetDefaultScrollBehavior(ScrollBehavior scroll_behavior, float speed_factor)

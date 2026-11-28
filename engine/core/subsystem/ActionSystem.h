@@ -271,6 +271,13 @@ namespace jasperengine{
 		void advancePlayer(Entity entity, AnimationPlayerComponent& player, float dt);
 		void startQueuedState(Entity entity, AnimationPlayerComponent& player, const anim::QueuedState& head, float offset, float dt);
 		void samplePlayerStates(Entity entity, AnimationPlayerComponent& player);
+		// S94 F34 (ActionSystemRootMotion.cpp): the base layer's root motion of this update
+		// (after advancePlayer), then, after flushPoseBlend, the root out of the written pose
+		// and the delta on the GameObject (Apply Root Motion)
+		void stepPlayerRootMotion(Entity entity, AnimationPlayerComponent& player);
+		void applyPlayersRootMotion(double dt);
+		// players whose root motion this update has to apply
+		std::vector<Entity> playersWithRootMotion;
 		// the audio cues its states crossed this update, then the state_exit stops (S40 R4-R7)
 		void firePlayerCues(Entity entity, AnimationPlayerComponent& player, float dt);
 		// one clip at `clipTime` with `weight` into the pose blend, rest values from `rest` (taken
@@ -408,6 +415,9 @@ namespace jasperengine{
 		void resetRunningActions();
 		void draw() override;
 		void destroy() override;
+		// no GPU objects: running actions and tweens go on after a view loss (destroy stops them)
+		void releaseGpu() override {}
+		void restoreGpu() override {}
 		void update(double dt) override;
 
 		// the unscaled delta of an update whose scaled delta is dt (Tween.useUnscaledTime)

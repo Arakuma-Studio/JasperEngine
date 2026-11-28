@@ -148,6 +148,10 @@ namespace jasperengine{
         float getPoseFrameRate() const;
         void setApplyRootMotion(bool apply);
         bool isApplyRootMotion() const;
+        // Apply Root Motion off: clips with a root_motion block keep their drift (Animators saved
+        // before S94); false plays them in place
+        void setLegacyRootDrift(bool keep);
+        bool isLegacyRootDrift() const;
         // the last update's root motion, world space
         Vector3 getDeltaPosition() const;
         Quaternion getDeltaRotation() const;

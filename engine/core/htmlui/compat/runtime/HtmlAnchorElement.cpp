@@ -6,6 +6,9 @@
 #include "htmlui/compat/UrlResolver.h"
 #include "htmlui/compat/runtime/HtmlFormSupport.h"
 
+#include "System.h"
+
+#include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/Event.h>
 #include <RmlUi/Core/Input.h>
@@ -137,7 +140,14 @@ void HtmlAnchorElement::follow(){
     parameters["fragment"] = Rml::Variant(target.fragment);
     parameters["document"] = Rml::Variant(target.kind == AnchorTarget::Kind::Document);
     parameters["external"] = Rml::Variant(target.kind == AnchorTarget::Kind::External);
-    document->DispatchEvent("htmlnavigate", parameters, true, true);
+    // (registered again each time: the ids of custom events are those of the current Rml::Initialise)
+    const Rml::EventId navigate = Rml::RegisterEventType("htmlnavigate", true, true);
+    bool prevented = false;
+    document->DispatchEvent(navigate, parameters, &prevented);
+    // a remote link opens in the system browser, as in a browser (S93 R32); on the web this runs inside the click's
+    // handler, so the popup is allowed
+    if (target.kind == AnchorTarget::Kind::External && !prevented)
+        System::instance().openURL(target.path);
 }
 
 void HtmlAnchorElement::ProcessDefaultAction(Rml::Event& event){

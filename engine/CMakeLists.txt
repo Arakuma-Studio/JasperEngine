@@ -1549,6 +1549,7 @@ set(JASPERENGINE_SRCS
     core/animation/AnimatorPose.cpp
     core/animation/AnimatorRetarget.cpp
     core/animation/AnimatorRig.cpp
+    core/animation/RootMotion.cpp
     core/animation/BlendTree.cpp
     core/animation/VertexAnimatorRuntime.cpp
     core/animation/ClipBinding.cpp
@@ -1611,12 +1612,14 @@ set(JASPERENGINE_SRCS
     core/picking/SceneBvh.cpp
     core/htmlui/HtmlUI.cpp
     core/htmlui/HtmlUIClock.cpp
+    core/htmlui/HtmlUIClockElement.cpp
     core/htmlui/HtmlTextEffects.cpp
     core/htmlui/UIParticleSystemElement.cpp
     core/htmlui/HtmlUIContext.cpp
     core/htmlui/HtmlL10n.cpp
     core/htmlui/HtmlUIContextRender.cpp
     core/htmlui/HtmlUIDependencies.cpp
+    core/htmlui/HtmlUIImageCache.cpp
     core/htmlui/HtmlUITexture.cpp
     core/htmlui/RmlFile.cpp
     core/htmlui/RmlFontEffects.cpp
@@ -1625,10 +1628,13 @@ set(JASPERENGINE_SRCS
     core/htmlui/RmlFontMsdf.cpp
     core/htmlui/RmlRenderer.cpp
     core/htmlui/RmlRendererBatch.cpp
+    core/htmlui/RmlRendererWorld.cpp
     core/htmlui/RmlRendererFrame.cpp
     core/htmlui/RmlRendererLayerCache.cpp
     core/htmlui/RmlSystem.cpp
     core/htmlui/HtmlUIContextInput.cpp
+    core/htmlui/HtmlUIPrewarm.cpp
+    core/htmlui/HtmlUIFontDiagnostics.cpp
     core/htmlui/RmlKeyMap.cpp
     core/htmlui/RmlTextInputHandler.cpp
     core/htmlui/TextEntryTraits.cpp
@@ -1640,9 +1646,12 @@ set(JASPERENGINE_SRCS
     core/htmlui/anim/AnimProperty.cpp
     core/htmlui/anim/AnimSpring.cpp
     core/htmlui/anim/AnimTargets.cpp
+    core/htmlui/anim/AnimText.cpp
     core/htmlui/anim/AnimTimeline.cpp
     core/htmlui/anim/AnimTimer.cpp
     core/htmlui/anim/AnimUtils.cpp
+    core/htmlui/anim/AnimSvg.cpp
+    core/htmlui/anim/AnimSvgPath.cpp
     core/htmlui/anim/AnimValue.cpp
     core/htmlui/anim/Anime.cpp
     core/htmlui/UIWorldRaycast.cpp
@@ -1689,6 +1698,7 @@ set(JASPERENGINE_SRCS
     core/sprite/SpriteSheetIO.cpp
     core/sprite/SpriteSheetPool.cpp
     core/sprite/SpriteFrameGeometry.cpp
+    core/sprite/SpriteSkinning.cpp
     core/render/sprite/SpriteInstanceBatch.cpp
     core/sprite/AsepriteClips.cpp
     # S45: texture sheets, name@WxH, .spriteatlas and the atlas remap
@@ -1753,6 +1763,8 @@ set(JASPERENGINE_SRCS
     core/object/Light.cpp
     core/object/PixelPerfectCamera.cpp
     core/object/SortingGroup.cpp
+    core/object/Outline.cpp
+    core/object/SpriteSkin.cpp
     core/object/tilemap/Grid.cpp
     core/object/tilemap/TilemapLayer.cpp
     core/object/SpriteBatch.cpp
@@ -1789,6 +1801,7 @@ set(JASPERENGINE_SRCS
     core/object/sound/AudioSourceEffect.cpp
     core/object/environment/Fog.cpp
     core/object/environment/LocalVolumetricFog.cpp
+    core/object/environment/FogZone.cpp
     core/object/environment/ReflectionProbe.cpp
     core/object/environment/Skybox.cpp
     core/object/environment/Water.cpp
@@ -1854,11 +1867,14 @@ set(JASPERENGINE_SRCS
     core/physics/RagdollBuilder.cpp
     core/physics/PolygonDecomposition2D.cpp
     core/physics/PlacementWorld.cpp
+    core/render/AtmosphereDiagnostics.cpp
     core/physics/WorldSettings.cpp
     core/render/AtmosphereMath.cpp
     core/render/FrameReadback.cpp
     core/render/AtmosphereNoise.cpp
     core/render/AtmospherePresets.cpp
+    core/render/FogProfile.cpp
+    core/render/FogResolve.cpp
     core/render/AtmosphereQuality.cpp
     core/render/BufferRender.cpp
     core/render/CameraRender.cpp
@@ -1901,12 +1917,14 @@ set(JASPERENGINE_SRCS
     core/script/ScriptScheduler.cpp
     core/script/ScriptMessages.cpp
     core/script/ScriptProperty.cpp
+    core/script/DataAsset.cpp
     core/script/ToolchainFingerprint.cpp
     core/script/ScriptRuntime.cpp
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
     core/script/binding/PhysicsQueryLua.cpp
     core/script/binding/CrashClassesLua.cpp
+    core/script/binding/DataAssetClassesLua.cpp
     core/script/binding/LocalizationClassesLua.cpp
     core/script/binding/SaveGameLua.cpp
     core/script/binding/DialogueClassesLua.cpp
@@ -1926,9 +1944,15 @@ set(JASPERENGINE_SRCS
     core/script/binding/PhysicsQueriesLua.cpp
     core/script/binding/SplineClassesLua.cpp
     core/script/binding/TerrainClassesLua.cpp
+    core/script/binding/VertexColorClassesLua.cpp
     core/script/binding/PixelArtClassesLua.cpp
     core/script/binding/SortingClassesLua.cpp
+    core/script/binding/OutlineLua.cpp
+    core/script/binding/SpriteSkinLua.cpp
+    # S94 Property Overrides (MaterialPropertyBlock)
+    core/script/binding/MaterialPropertyBlockLua.cpp
     core/script/binding/HitStopClassesLua.cpp
+    core/script/binding/FogClassesLua.cpp
     core/script/binding/InputRecordingClassesLua.cpp
     core/script/binding/CullingClassesLua.cpp
     # S48 screen transitions and the scripted glitch
@@ -1956,6 +1980,7 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
     core/subsystem/ActionSystemPlayers.cpp
+    core/subsystem/ActionSystemRootMotion.cpp
     core/subsystem/ActionSystemLayers.cpp
     core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/VertexAnimatorSystem.cpp
@@ -1978,6 +2003,9 @@ set(JASPERENGINE_SRCS
     core/subsystem/MeshSystem.cpp
     core/subsystem/MeshSystemTerrainEdit.cpp
     core/subsystem/LatticeSystem.cpp
+    core/subsystem/VertexColorScene.cpp
+    core/object/VertexColors.cpp
+    core/subsystem/VertexColorRenderer.cpp
     core/subsystem/SplineSystem.cpp
     core/lattice/LatticeSolver.cpp
     core/lattice/LatticePresets.cpp
@@ -2010,6 +2038,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/RenderSystemTerrainWorld.cpp
     core/subsystem/RenderSystemPixelArt.cpp
     core/subsystem/RenderSystemSorting.cpp
+    core/subsystem/RenderSystemOutline.cpp
     core/subsystem/RenderSystemSpriteBatch.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp
@@ -2024,6 +2053,8 @@ set(JASPERENGINE_SRCS
     core/subsystem/UIDocumentSystemReload.cpp
     core/subsystem/UIDocumentSystemCompat.cpp
     core/subsystem/UIDocumentSystemTexture.cpp
+    core/subsystem/UIDocumentSystemStyle.cpp
+    core/subsystem/UIDocumentSystemWorld.cpp
     core/model/CookedModels.cpp
     core/model/MeshAsset.cpp
     core/model/ModelCpuData.cpp
@@ -2085,6 +2116,7 @@ set(JASPERENGINE_SRCS
     core/util/Scheduler.cpp
     core/util/Sha256.cpp
     core/util/STBText.cpp
+    core/util/TextAlignment.cpp
     core/util/StringUtils.cpp
     core/util/SubscriptionOwnerIndex.cpp
     core/util/TextShaper.cpp
@@ -2218,6 +2250,9 @@ if(JASPERENGINE_VOXEL)
         core/object/voxel/VoxelVolume.cpp
         core/script/binding/VoxelClassesLua.cpp)
 endif()
+# Vertex colors (V1): the pure module, always there (an absent component costs nothing, R95)
+include(core/vertexcolor/VertexColorSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_VERTEXCOLOR_SRCS})
 # always there: with the module off it is the plain terrain query (T6 R45)
 list(APPEND JASPERENGINE_SRCS core/object/voxel/GroundQuery.cpp)
 if(JASPERENGINE_TEST_RUNNER AND NOT JASPERENGINE_INPUT_SCRIPTS)
@@ -2327,6 +2362,10 @@ endif()
 if(JASPERENGINE_TESTS)
     set_property(SOURCE core/pool/AnimationClipPool.cpp core/animation/ModelSubClips.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS JASPERENGINE_ANIM_TEST_HOOKS)
+    # the editor's Draw Modes (render/ViewDrawMode.h), which the GPU suites draw: on the sources that
+    # draw them (the headers declare the same whatever the define)
+    set_property(SOURCE core/subsystem/RenderSystem.cpp core/subsystem/RenderSystemBatch.cpp renders/sokol/SokolObject.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS JASPERENGINE_VIEW_DRAW_MODES)
     # the test_tint GPU quirk (the equivalence checks' red control): its catalogue entry and its lever
     set_property(SOURCE core/device/GpuQuirks.cpp renders/sokol/SokolCamera.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS JASPERENGINE_GPU_QUIRK_TEST_HOOKS)

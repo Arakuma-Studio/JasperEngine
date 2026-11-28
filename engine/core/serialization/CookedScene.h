@@ -46,8 +46,10 @@ namespace jasperengine {
         // scene resources' VATs, masks, controllers and bitmap fonts (S98 REQ-52), the scene's own Canvas
         // Scaler (S98 D1); 8: the Light Steps and the 2D ambient without a Light 2D (S78); 9: the screen HTML
         // UI documents' render mode and MSAA samples (S92); 10: Environment Lighting's ambientMode and
-        // gradient (S99)
-        constexpr uint16_t FORMAT_MINOR = 10;
+        // gradient (S99); 11: BUILD_PROFILE_MINOR's (below); 12: script list properties (a value kind) and,
+        // after a Script component's scripts, their element types (S95 REQ-20); 13: the scene's Fixed
+        // Timestep (S95 REQ-13)
+        constexpr uint16_t FORMAT_MINOR = 13;
         // Content minors past the cooked files' layout: what a build's game.json uses. A build stamps one
         // only when it uses it, so a build that does not stays playable by every runtime of FORMAT_MINOR.
         // 11: game.json's buildProfile and defines (build-profiles: a runtime of 10 or older ignores them and
@@ -55,7 +57,7 @@ namespace jasperengine {
         constexpr uint16_t BUILD_PROFILE_MINOR = 11;
         // The newest content minor this runtime reads: its player-info's contentFormatVersion
         // (tools/players/package_player.py reads this line)
-        constexpr uint16_t CONTENT_MINOR = 11;
+        constexpr uint16_t CONTENT_MINOR = 13;
         static_assert(CONTENT_MINOR >= FORMAT_MINOR && CONTENT_MINOR >= BUILD_PROFILE_MINOR, "CONTENT_MINOR is the newest minor");
         constexpr size_t HEADER_BYTES = 28;
 

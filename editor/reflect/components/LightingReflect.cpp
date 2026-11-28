@@ -13,6 +13,7 @@
 #include "component/Light2DComponent.h"
 #include "component/LightComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/MirrorComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "component/ShadowCaster2DComponent.h"
@@ -122,8 +123,9 @@ namespace {
                  .group = "Shadows", .visibleIf = &lightCastsContactShadows),
         // the volumetric fog's share of the light
         JE_FIELD(LightComponent, volumetricIntensity, .flags = OmitIfDefault, .min = 0.0f,
-                 .tooltip = "How much of this light the volumetric fog scatters (High atmosphere quality, up to 4 point or spot lights, no "
-                            "shadows). 0: none.",
+                 .tooltip = "How much of this light the volumetric fog scatters (the nearest 1, 2 or 4 point and spot lights in view, at "
+                            "Low, Medium and High atmosphere quality). With its Shadows on, they reach the fog while the Fog's Light "
+                            "Shafts is on. 0: none.",
                  .visibleIf = &lightNotDirectional),
         // photometric units and colour temperature (util/LightPhotometry.h), resolved on the CPU
         JE_FIELD(LightComponent, intensityUnit, .enumDesc = &enums::kLightUnit, .flags = OmitIfDefault, .label = "Unit",
@@ -220,6 +222,11 @@ namespace {
         JE_FIELD(FogComponent, type, .enumDesc = &enums::kFogType,
                  .tooltip = "Linear, Exponential, Exponential Squared: fog by distance. Height: physically based fog, dense up to the Base "
                             "Height and thinning above it, lit by the sun, with an optional volumetric part."),
+        // docs/specs/S101-vapor.md R39: written only when set, so a Fog without one is as it was
+        JE_FIELD(FogComponent, profile, .ops = &ops::AssetRefIfSet, .flags = OmitIfDefault, .asset = AssetKind::FogProfile,
+                 .label = "Profile",
+                 .tooltip = "A Fog Profile (.fogprofile): the look fields it sets come from it and are shared by every Fog and Fog Zone "
+                            "using it; the others are this Fog's own."),
         JE_FIELD(FogComponent, color, .flags = ColorLinear),
         JE_FIELD(FogComponent, density, .step = 0.001f, .format = "%.4f"),
         JE_FIELD(FogComponent, linearStart),
@@ -227,7 +234,16 @@ namespace {
         // the height fog's fields, written only away from their defaults: a distance fog's file is as it was
         JE_FIELD(FogComponent, colorMode, .enumDesc = &enums::kFogColorMode, .flags = OmitIfDefault,
                  .tooltip = "Constant Color: the fog takes its Color. Sky Color: the colour of the sky at the horizon (a cube map Skybox, or a "
-                            "sky shader with a horizonColor property).",
+                            "sky shader with a horizonColor property). Lit: the fog scatters the sun and the scene ambient by its Albedo, "
+                            "so one look holds from day to night.",
+                 .group = "Height Fog"),
+        JE_FIELD(FogComponent, albedo, .flags = ColorLinear | OmitIfDefault,
+                 .tooltip = "Lit: the share of the light the fog scatters, per channel. Dark values absorb, white scatters everything.",
+                 .group = "Height Fog"),
+        JE_FIELD(FogComponent, ambientMultiplier, .flags = OmitIfDefault, .min = 0.0f,
+                 .tooltip = "Lit: how much of the scene ambient the fog scatters. 0: lit by the sun alone.", .group = "Height Fog"),
+        JE_FIELD(FogComponent, emissive, .flags = ColorLinear | Hdr | OmitIfDefault,
+                 .tooltip = "Lit: light the fog gives off itself, whatever lights it (a glowing, toxic or infernal fog).",
                  .group = "Height Fog"),
         JE_FIELD(FogComponent, attenuationDistance, .flags = OmitIfDefault, .unit = Unit::Meters, .min = 0.0f,
                  .tooltip = "The distance light travels in the fog below the Base Height before 63% of it is absorbed. Smaller: denser fog.",
@@ -258,7 +274,8 @@ namespace {
         JE_FIELD(FogComponent, volumetricDistance, .flags = OmitIfDefault, .unit = Unit::Meters, .min = 0.0f, .label = "Distance",
                  .tooltip = "How far from the camera the fog is raymarched; the analytic fog continues beyond.", .group = "Volumetric Fog"),
         JE_FIELD(FogComponent, lightShafts, .flags = OmitIfDefault,
-                 .tooltip = "The main directional light's shadows darken the fog behind objects (light shafts). Needs its shadows on.",
+                 .tooltip = "Shadows darken the fog behind objects (light shafts): the main directional light's and those of the point "
+                            "and spot lights the fog scatters. Each light needs its shadows on.",
                  .group = "Volumetric Fog"),
         JE_FIELD(FogComponent, noiseIntensity, .flags = OmitIfDefault, .min = 0.0f, .max = 1.0f,
                  .tooltip = "How much a 3D noise varies the fog's density, fading out towards the Distance.", .group = "Volumetric Fog"),
@@ -273,15 +290,42 @@ namespace {
     // ---------------------------------------------------------------- Local Volumetric Fog
 
     constexpr FieldDesc kLocalVolumetricFogFields[] = {
-        JE_FIELD(LocalVolumetricFogComponent, shape, .enumDesc = &enums::kFogVolumeShape),
-        JE_FIELD(LocalVolumetricFogComponent, size, .unit = Unit::Meters),
-        JE_FIELD(LocalVolumetricFogComponent, attenuationDistance, .unit = Unit::Meters, .min = 0.0f),
-        JE_FIELD(LocalVolumetricFogComponent, albedo, .flags = ColorLinear),
-        JE_FIELD(LocalVolumetricFogComponent, blendDistance, .unit = Unit::Meters, .min = 0.0f),
-        JE_FIELD(LocalVolumetricFogComponent, falloff, .enumDesc = &enums::kFogVolumeFalloff),
-        JE_FIELD(LocalVolumetricFogComponent, noiseIntensity, .min = 0.0f, .max = 1.0f),
-        JE_FIELD(LocalVolumetricFogComponent, noiseScale, .unit = Unit::Meters, .min = 0.0f),
-        JE_FIELD(LocalVolumetricFogComponent, scrollSpeed, .unit = Unit::MetersPerSecond),
+        JE_FIELD(LocalVolumetricFogComponent, shape, .enumDesc = &enums::kFogVolumeShape,
+                 .tooltip = "Box or Sphere, placed, turned and scaled by the Transform."),
+        JE_FIELD(LocalVolumetricFogComponent, size, .unit = Unit::Meters,
+                 .tooltip = "The volume's extent before the Transform's scale (a sphere's: its diameters)."),
+        JE_FIELD(LocalVolumetricFogComponent, attenuationDistance, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "The distance light travels in the volume before 63% of it is absorbed. Smaller: denser fog."),
+        JE_FIELD(LocalVolumetricFogComponent, albedo, .flags = ColorLinear,
+                 .tooltip = "The colour the volume's fog scatters."),
+        JE_FIELD(LocalVolumetricFogComponent, blendDistance, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "The density fades in over this distance inside the volume's edge."),
+        JE_FIELD(LocalVolumetricFogComponent, falloff, .enumDesc = &enums::kFogVolumeFalloff,
+                 .tooltip = "How the density fades in over the Blend Distance: Linear, or Exponential (faster at the edge)."),
+        JE_FIELD(LocalVolumetricFogComponent, noiseIntensity, .min = 0.0f, .max = 1.0f,
+                 .tooltip = "How much a 3D noise varies the volume's density (0 none, 1 full)."),
+        JE_FIELD(LocalVolumetricFogComponent, noiseScale, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "The size of the noise's features."),
+        JE_FIELD(LocalVolumetricFogComponent, scrollSpeed, .unit = Unit::MetersPerSecond,
+                 .tooltip = "The speed the noise drifts at."),
+    };
+
+    // ---------------------------------------------------------------- Fog Zone
+
+    constexpr FieldDesc kFogZoneFields[] = {
+        JE_FIELD(FogZoneComponent, shape, .enumDesc = &enums::kFogZoneShape,
+                 .tooltip = "A box or a sphere, in the GameObject's space: its Transform moves, turns and scales it."),
+        JE_FIELD(FogZoneComponent, size, .unit = Unit::Meters, .tooltip = "The shape's size before the Transform's scale."),
+        JE_FIELD(FogZoneComponent, blendDistance, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "How far outside the shape the zone's look starts fading in as the camera comes closer. 0: it switches at "
+                            "the surface."),
+        JE_FIELD(FogZoneComponent, priority,
+                 .tooltip = "Zones apply in ascending priority over the scene's fog: a higher one wins where they overlap."),
+        JE_FIELD(FogZoneComponent, weight, .min = 0.0f, .max = 1.0f,
+                 .tooltip = "How much of the zone's look applies inside it (0..1)."),
+        JE_FIELD(FogZoneComponent, profile, .ops = &ops::AssetRefIfSet, .flags = OmitIfDefault, .asset = AssetKind::FogProfile,
+                 .label = "Profile",
+                 .tooltip = "The Fog Profile whose set fields blend over the scene's fog while the camera is in the zone. None: no effect."),
     };
 
     // ---------------------------------------------------------------- Volumetric Clouds
@@ -402,6 +446,12 @@ const ComponentDesc kLocalVolumetricFogDesc{
     .displayName = "Local Volumetric Fog", .icon = ICON_FA_SMOG,
     .body = JE_STRUCT_DESC(LocalVolumetricFogComponent, "LocalVolumetricFogComponent", kLocalVolumetricFogFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(LocalVolumetricFogComponent),
+};
+
+const ComponentDesc kFogZoneDesc{
+    .type = ComponentType::FogZoneComponent, .cppName = "FogZoneComponent", .key = "fogzone", .displayName = "Fog Zone", .icon = ICON_FA_SMOG,
+    .body = JE_STRUCT_DESC(FogZoneComponent, "FogZoneComponent", kFogZoneFields),
+    .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(FogZoneComponent),
 };
 
 const ComponentDesc kVolumetricCloudsDesc{

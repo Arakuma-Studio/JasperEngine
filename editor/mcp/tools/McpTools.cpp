@@ -66,14 +66,17 @@ const ToolModule TOOL_MODULES[] = {
     {registerPlacementTools, "Physics placement", "editor_ux"},   // upstream (Physics Placement)
     {registerPhysicsQueryTools, "Physics queries", "physics"},   // S96
     {registerHtmlUiTools, "HTML/CSS UI", ""},
+    {registerUiFrameTools, "HTML/CSS UI", "html_ui"},
     {registerUiEffectTools, "HTML/CSS UI", ""},
     {registerEcsTools, "ECS: statistics, system schedule and queries", "diagnostics"},   // S07
     {registerDiagnosticsTools, "Crash and hang diagnostics", "diagnostics"},   // S28
     {registerAtmosphereTools, "Atmosphere: fog and clouds", "rendering_fx"},   // S12
     {registerProfilerTools, "Profiling and render diagnostics", "profiling"},   // S15
     {registerMeshLodTools, "Meshes: import, cook and detail levels", "meshes"},   // S53, S54
+    {registerMeshColorTools, "Meshes: vertex colors", "meshes"},   // V1
     {registerDeviceTools, "Device tiers: GPU, thermal and memory state, simulation", "device"},   // S56
     {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23
+    {registerDataAssetTools, "Data Assets", "scripting"},   // S95
     {registerGraphTools, "Graphs", "graphs"},   // S23; S90 R32 moved them out of scripting
     {registerProceduralMaterialTools, "Procedural Materials: preview, checks and bake", "materials"},   // S90
     {registerTerrainGenerationTools, "Terrain generation: Noise Graphs", "terrain"},   // T2

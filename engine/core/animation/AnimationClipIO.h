@@ -99,7 +99,7 @@ namespace jasperengine::anim{
     // Unity's YAML .anim (%YAML header or an "AnimationClip:" document)
     JASPERENGINE_API bool isUnityYamlClip(const std::string& text);
     // "This is a Unity .anim (YAML). JasperEngine clips are JSON {"format": "jasperengine.anim"}:
-    // create one with Assets > Create > Animation Clip or edit_animation {clip, create}."
+    // import it with Assets > Import Unity Animation... or edit_animation {clip, create: {unity}}."
     JASPERENGINE_API const char* unityYamlRefusal();
 
     // GUIDs (32 lowercase hex digits, AssetDatabase's form)

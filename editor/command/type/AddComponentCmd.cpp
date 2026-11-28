@@ -8,6 +8,8 @@
 #include "component/ParticleSystemComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/Transform.h"
+#include "component/ModelComponent.h"
+#include "model/ModelImportSettings.h"
 #include "subsystem/TitleArtSystem.h"
 
 #include <algorithm>
@@ -98,6 +100,14 @@ bool editor::AddComponentCmd::execute() {
             if (componentType == ComponentType::Light2DComponent){
                 if (Light2DComponent* light = scene->findComponent<Light2DComponent>(entity)){
                     light->height = Light2DComponent::NEW_HEIGHT;
+                }
+            }
+
+            // a Model added in the editor follows Project Settings > Mesh > Preserve Hierarchy for New
+            // Models, as a created one does (S94 F44)
+            if (componentType == ComponentType::ModelComponent){
+                if (ModelComponent* model = scene->findComponent<ModelComponent>(entity)){
+                    model->preserveHierarchy = project->getModelSettings().preserveHierarchyForNewModels;
                 }
             }
 

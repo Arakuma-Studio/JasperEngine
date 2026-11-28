@@ -63,6 +63,8 @@ SITES = {
     ("window/HierarchyPrefabRows.cpp", "POPUP (replace)"): "not driven: from a prefab instance's context menu; replace_prefab does the same for agents",
     ("window/HierarchyPrefabRows.cpp", "POPUP (restructure)"): "not driven: opens on dragging a child of an instance in the Hierarchy; move_entity refuses with the same message",
     ("window/InspectorWindowVat.cpp", "popup"): "not driven: Create Crowd needs a baked .vat (test_vat_inspector clicks it)",
+    ("vertexcolor/VertexColorInspector.cpp", "Export as Model##vertexcolors"): "not driven: from a painted Vertex Colors inspector; bake_mesh_colors (output model) does the same for agents",
+    ("vertexcolor/VertexColorInspector.cpp", "Bake to Texture##vertexcolors"): "not driven: from a painted Vertex Colors inspector; bake_mesh_colors (output texture) does the same for agents",
     ("window/dialog/NativePluginDialog.cpp", "title"): "test_native_plugin_completes",
     ("window/AssetPanels.cpp", "Choose Asset##missing_assets_picker"): "not driven: opens from a row of the Missing Assets panel; fix_missing_asset does the same for agents",
     ("window/UndoHistoryWindow.cpp", "Clear Undo History"): "test_clear_undo_history",
@@ -204,9 +206,9 @@ async def test_sites_table_is_complete(ed: Editor):
     # dialogs, T4's three Terrain World dialogs, T5's Remove Tree Prototype and Mass Place Trees, T6's
     # Create Voxel Volume: 88; S82's Expose as Parameter and Replace the whole title: 90; S50's Apply
     # Terrain Template and the Hierarchy's map import preview: 92; S87's Edit Languages, Remove
-    # Language and Import Title Art (ImGui modals before, which the lint refused): 95; the project test
-    # runner's Save Snapshot and Create Test Script: 97
-    ed.check_eq(sum(found.values()), 97, "the 97 sites")
+    # Language and Import Title Art (ImGui modals before, which the lint refused): 95; V1's Export as
+    # Model and Bake to Texture, and the project test runner's Save Snapshot and Create Test Script: 99
+    ed.check_eq(sum(found.values()), 99, "the 99 sites")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):

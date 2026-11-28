@@ -15,11 +15,12 @@
 #ifdef RMLUI_MATH_EXPRESSIONS
 	#include "CalculationResolver.h"
 #endif
+#include <algorithm>
 
 namespace Rml {
 
 BoxShadowGeometryInfo GeometryBoxShadow::Resolve(Element* element, ColourbPremultiplied background_color,
-	const Array<ColourbPremultiplied, 4>& border_colors, float opacity)
+	const Array<ColourbPremultiplied, 4>& border_colors, float opacity, BoxShadowPart part)
 {
 	RMLUI_ZoneScoped;
 
@@ -30,6 +31,12 @@ BoxShadowGeometryInfo GeometryBoxShadow::Resolve(Element* element, ColourbPremul
 	const Property* p_box_shadow = element->GetStyle()->GetLocalPropertyWithResolvedVariables(PropertyId::BoxShadow);
 	RMLUI_ASSERT(p_box_shadow->value.GetType() == Variant::BOXSHADOWLIST);
 	BoxShadowList shadow_list = p_box_shadow->value.Get<BoxShadowList>();
+	if (part != BoxShadowPart::All)
+	{
+		const bool keep_inset = (part == BoxShadowPart::Inset);
+		shadow_list.erase(std::remove_if(shadow_list.begin(), shadow_list.end(), [&](const BoxShadow& shadow) { return shadow.inset != keep_inset; }),
+			shadow_list.end());
+	}
 
 	// Resolve all lengths to px units, and 'currentcolor' to the element's color (phase 3, values).
 	for (BoxShadow& shadow : shadow_list)

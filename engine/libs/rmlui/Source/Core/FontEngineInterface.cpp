@@ -73,6 +73,8 @@ int FontEngineInterface::GetVersion(FontFaceHandle /*handle*/)
 
 void FontEngineInterface::ReleaseFontResources() {}
 
+void FontEngineInterface::ReleaseRenderManager(RenderManager& /*render_manager*/) {}
+
 float FontEngineInterface::GetBaseRasterScale(RenderManager& /*render_manager*/)
 {
 	return 0.f;

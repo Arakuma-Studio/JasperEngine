@@ -14,6 +14,7 @@
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "subsystem/UISystem.h"
+#include "subsystem/TransformPropagation.h"
 #include "manager/SceneManager.h"
 #include "pixelart/HitStop.h"
 #include "pixelart/PixelSnap.h"
@@ -151,20 +152,22 @@ void CameraControlSystem::remapTargets(Scene* to, const std::unordered_map<Entit
 }
 
 CameraWorldPose CameraControlSystem::computeWorldNow(Scene* in, Entity entity){
-    // the chain root first; a cycle (never valid) stops after 256 levels
-    std::vector<const Transform*> chain;
+    // the chain root first; a cycle (never valid) stops after 256 levels. Kept on the stack: the
+    // late transform pass steps followers each frame a target moves late, with no allocation
+    const Transform* chain[256];
+    size_t length = 0;
     Entity current = entity;
-    while (in && current != NULL_ENTITY && chain.size() < 256){
+    while (in && current != NULL_ENTITY && length < 256){
         const Transform* transform = in->findComponent<Transform>(current);
         if (!transform) break;
-        chain.push_back(transform);
+        chain[length++] = transform;
         current = transform->parent;
     }
     CameraWorldPose pose;
     pose.matrix = Matrix4();
     pose.rotation = Quaternion();
-    for (auto it = chain.rbegin(); it != chain.rend(); ++it){
-        const Transform& t = **it;
+    for (size_t i = length; i-- > 0;){
+        const Transform& t = *chain[i];
         const Matrix4 local = Matrix4::translateMatrix(t.position) * t.rotation.getRotationMatrix() * Matrix4::scaleMatrix(t.scale);
         pose.matrix = pose.matrix * local;
         pose.rotation = pose.rotation * t.rotation;
@@ -334,10 +337,79 @@ void CameraControlSystem::updateFollowers(float scaledDt, float unscaledDt){
     for (size_t i = 0; i < followers->size(); i++){
         CameraFollowComponent& follow = followers->getComponentFromIndex(i);
         const Entity entity = followers->getEntity(i);
+        follow.frameStep.valid = false;
         if (!follow.enabled || !scene->isEntityActiveInHierarchy(entity)) continue;
         // a hit-stop freezes a scaled follow, unless the camera is Hit Stop Exempt (S48)
-        followOne(entity, follow, follow.unscaledTime ? unscaledDt : (float)pixelart::HitStop::deltaFor(scene, entity, scaledDt));
+        const float dt = follow.unscaledTime ? unscaledDt : (float)pixelart::HitStop::deltaFor(scene, entity, scaledDt);
+        // where the step starts, for a late one (updateLateFollowers)
+        if (const Transform* transform = scene->findComponent<Transform>(entity)){
+            CameraFollowStep& start = follow.frameStep;
+            const CameraComponent* camera = scene->findComponent<CameraComponent>(entity);
+            start.dt = dt;
+            start.position = transform->position;
+            start.rotation = transform->rotation;
+            start.cameraTarget = camera ? camera->target : Vector3(0, 0, 0);
+            start.velocity = follow.velocity;
+            start.desired = follow.desired;
+            start.writtenPosition = follow.writtenPosition;
+            start.writtenRotation = follow.writtenRotation;
+            start.writtenTarget = follow.writtenTarget;
+            start.followedTarget = follow.followedTarget;
+            start.placed = follow.placed;
+        }
+        followOne(entity, follow, dt);
+        if (follow.placed && follow.followedTarget == follow.target && targetAlive(follow, entity)){
+            const TransformPose target = computeWorldPose(*targetSceneOf(follow), follow.target);
+            follow.frameStep.targetPosition = target.position;
+            follow.frameStep.targetRotation = target.rotation;
+            follow.frameStep.valid = true;
+        }
     }
+}
+
+bool CameraControlSystem::updateLateFollowers(){
+    if (paused) return false;
+    auto followers = scene->getComponentArray<CameraFollowComponent>();
+    bool moved = false;
+    for (size_t i = 0; i < followers->size(); i++){
+        CameraFollowComponent& follow = followers->getComponentFromIndex(i);
+        CameraFollowStep& start = follow.frameStep;
+        const Entity entity = followers->getEntity(i);
+        if (!start.valid || !follow.enabled || !targetAlive(follow, entity)) continue;
+        // the target where it is now (composed from its local values when it moved: no allocation)
+        const TransformPose target = computeWorldPose(*targetSceneOf(follow), follow.target);
+        if (target.position == start.targetPosition && target.rotation == start.targetRotation && follow.followedTarget == follow.target) continue;
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!transform) continue;
+
+        // back to where the frame's step started, then the step again
+        CameraComponent* camera = scene->findComponent<CameraComponent>(entity);
+        transform->position = start.position;
+        transform->rotation = start.rotation;
+        if (camera) camera->target = start.cameraTarget;
+        follow.velocity = start.velocity;
+        follow.desired = start.desired;
+        follow.writtenPosition = start.writtenPosition;
+        follow.writtenRotation = start.writtenRotation;
+        follow.writtenTarget = start.writtenTarget;
+        follow.followedTarget = start.followedTarget;
+        follow.placed = start.placed;
+        followOne(entity, follow, start.dt);
+        start.targetPosition = target.position;
+        start.targetRotation = target.rotation;
+
+        // a transform-mode Camera Shaker on it shakes around the new placement
+        if (!camera){
+            if (CameraShakerComponent* shaker = scene->findComponent<CameraShakerComponent>(entity)){
+                if (shaker->runtime && shaker->runtime->transformActive && shaker->runtime->applied)
+                    applyTransformOffset(entity, *shaker->runtime, shaker->runtime->offsetPosition, shaker->runtime->offsetRotation);
+            }
+        }
+        scene->markChanged<Transform>(entity);
+        if (camera) scene->markChanged<CameraComponent>(entity);
+        moved = true;
+    }
+    return moved;
 }
 
 // ---------------------------------------------------------------- shakers

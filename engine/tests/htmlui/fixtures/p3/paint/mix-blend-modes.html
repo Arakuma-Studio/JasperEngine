@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: mix-blend-mode, the 16 CSS modes and plus-lighter over a gradient backdrop</title>
+<style>
+  html, body { margin: 0; background: #0f172a; }
+  .cell { position: absolute; width: 60px; height: 60px; background: linear-gradient(90deg, #ff3040, #30c060 50%, #3070ff); }
+  .s { position: absolute; left: 10px; top: 10px; width: 40px; height: 40px; background: linear-gradient(#ffe080, rgba(40, 20, 160, 0.6)); }
+  #m0 { left: 10px; top: 10px; }
+  #m0 .s { mix-blend-mode: normal; }
+  #m1 { left: 80px; top: 10px; }
+  #m1 .s { mix-blend-mode: multiply; }
+  #m2 { left: 150px; top: 10px; }
+  #m2 .s { mix-blend-mode: screen; }
+  #m3 { left: 220px; top: 10px; }
+  #m3 .s { mix-blend-mode: overlay; }
+  #m4 { left: 290px; top: 10px; }
+  #m4 .s { mix-blend-mode: darken; }
+  #m5 { left: 360px; top: 10px; }
+  #m5 .s { mix-blend-mode: lighten; }
+  #m6 { left: 10px; top: 80px; }
+  #m6 .s { mix-blend-mode: color-dodge; }
+  #m7 { left: 80px; top: 80px; }
+  #m7 .s { mix-blend-mode: color-burn; }
+  #m8 { left: 150px; top: 80px; }
+  #m8 .s { mix-blend-mode: hard-light; }
+  #m9 { left: 220px; top: 80px; }
+  #m9 .s { mix-blend-mode: soft-light; }
+  #m10 { left: 290px; top: 80px; }
+  #m10 .s { mix-blend-mode: difference; }
+  #m11 { left: 360px; top: 80px; }
+  #m11 .s { mix-blend-mode: exclusion; }
+  #m12 { left: 10px; top: 150px; }
+  #m12 .s { mix-blend-mode: hue; }
+  #m13 { left: 80px; top: 150px; }
+  #m13 .s { mix-blend-mode: saturation; }
+  #m14 { left: 150px; top: 150px; }
+  #m14 .s { mix-blend-mode: color; }
+  #m15 { left: 220px; top: 150px; }
+  #m15 .s { mix-blend-mode: luminosity; }
+  #m16 { left: 290px; top: 150px; }
+  #m16 .s { mix-blend-mode: plus-lighter; }
+</style>
+</head>
+<body><div class="cell" id="m0"><div class="s"></div></div><div class="cell" id="m1"><div class="s"></div></div><div class="cell" id="m2"><div class="s"></div></div><div class="cell" id="m3"><div class="s"></div></div><div class="cell" id="m4"><div class="s"></div></div><div class="cell" id="m5"><div class="s"></div></div><div class="cell" id="m6"><div class="s"></div></div><div class="cell" id="m7"><div class="s"></div></div><div class="cell" id="m8"><div class="s"></div></div><div class="cell" id="m9"><div class="s"></div></div><div class="cell" id="m10"><div class="s"></div></div><div class="cell" id="m11"><div class="s"></div></div><div class="cell" id="m12"><div class="s"></div></div><div class="cell" id="m13"><div class="s"></div></div><div class="cell" id="m14"><div class="s"></div></div><div class="cell" id="m15"><div class="s"></div></div><div class="cell" id="m16"><div class="s"></div></div></body>
+</html>

@@ -45,6 +45,8 @@ that every changed golden has its row. More than 60 updates need a separate revi
 
 | Golden | Test | What it shows |
 |---|---|---|
+| `p1/shared_shadow` | `TextureModeTest.SharedSheetDecoratorsPerRenderManager` | S93 R27: a screen document's texture box shadow and gradient decorator, drawn after the texture-mode document of the same sheet went |
+| `text_autosize` | `FullPathGoldenTest.TextAutosizeFits` | S93 R31: `text-autosize` fitting a short word, a long word, a paragraph in a fixed box and a heading whose box follows its height |
 | `l10n/pseudo_en_xa` | `GoldenText.PseudoLocaleEnXa` | game-ui-localization.md AC9: a keyed settings panel in the en-XA pseudo-locale (accented, 40 % longer, bracketed), Roboto Bold |
 | `l10n/pseudo_ar_xb` | `GoldenText.PseudoLocaleArXb` | the same panel in ar-XB: the text right to left and the root's direction rtl |
 | `gamepad_cursor` | `FullPathGoldenTest.GamepadCursorDrawnOnTop` | text-entry-gamepad-cursor-back-button AC15: the built-in gamepad cursor arrow, its tip at (190, 140), drawn over a component Image and an HTML UI document's panel |
@@ -54,6 +56,10 @@ that every changed golden has its row. More than 60 updates need a separate revi
 | `p1/rounded_clip_1x` | `RenderClip.RoundedClipIsAnalyticAndAntialiased` | a rounded `overflow: hidden` clip done in the shaders at one sample: its curve antialiased |
 | `p1/rounded_clip_4x` | `RenderClip.RoundedClipIsAnalyticAndAntialiased` | the same at four samples |
 | `p1/rounded_clip_nested` | `RenderClip.NestedRoundedClipsUseTheStencil` | three nested rounded clips: the stencil path |
+| `s93/fallback_glyph` | `TextFeatureGoldenTest.FallbackGlyphGetsEffect` | S93 R16: "CAÑÓN" in a face without Ó (Ahem less U+00D3): the Ó from the built-in Roboto, synthetic bold for the bold text and the same orange outline as its neighbours; the regular "ÓN" below without either |
+| `s93_atlas_regions` | `GoldenRender.AtlasRegions` | S93 R20: `#xywh=` (pixels, percent) and `#sprite=` regions of one atlas on `img`, a repeated `background-image`, `border-image` and `mask-image`; the test also requires it pixel-equal to the same pixels as separate files |
+| `s93_image_color` | `GoldenRender.ImageColorTintsBackgroundAndBorderImage` | S93 R22: `image-color` multiplying a `background-image`, a 9-slice `border-image` and an `img`, not a `mask-image` |
+| `p6/world_space_occluded` | `WorldSpaceDocumentTest.WorldSpaceDocumentIsOccluded` | S93 R36: a World Space UI Document (red and blue quadrants on a transparent body) depth tested among the scene's objects: a cube in front hides part of the red quadrant, the blue quadrant hides a cube behind it |
 | `s92/clip_path_shapes_1x` | `RenderClip.ClipPathBasicShapesAreAnalytic` | S92 R8: `clip-path` `inset() round`, `circle()` and `ellipse()` clipped in the shaders without a layer, a child crossing each shape, at one sample |
 | `s92/clip_path_shapes_4x` | `RenderClip.ClipPathBasicShapesAreAnalytic` | the same at four samples |
 | `s92/u27_scaled_scroll` | `RenderClip.TextInScaledScrollWithFilterLayers` | S92 R11, the JasperArcade port's U27: a scaled panel's `overflow: hidden` list of filtered tiles and text, clipped by a scissor (no stencil) |

@@ -236,16 +236,40 @@ std::string FontRegistry::matchLanguage(const std::string& language){
     return TitleArtLanguage::match(language, available);
 }
 
-std::vector<std::shared_ptr<FontFace>> FontRegistry::getFallbackFaces(const std::string& language){
+std::vector<std::shared_ptr<FontFace>> FontRegistry::getFallbackFaces(const std::string& language, int weight, bool italic){
     Registry& reg = registry();
     std::lock_guard<std::recursive_mutex> lock(reg.mutex);
-    std::vector<std::shared_ptr<FontFace>> out;
+    if (weight <= 0)
+        weight = 400;
+
+    std::vector<std::shared_ptr<FontFace>> faces;
     const std::string matched = matchLanguage(language);
     for (const auto& entry : reg.languageFaces){
-        if (entry.first == matched) out.insert(out.end(), entry.second.begin(), entry.second.end());
+        if (entry.first == matched) faces.insert(faces.end(), entry.second.begin(), entry.second.end());
     }
-    out.insert(out.end(), reg.fallbacks.begin(), reg.fallbacks.end());
-    return out;
+    for (const std::shared_ptr<FontFace>& fallback : reg.fallbacks){
+        std::shared_ptr<FontFace> chosen = fallback;
+        const Entry* own = nullptr;
+        for (const Entry& entry : reg.entries){
+            if (entry.face == fallback){
+                own = &entry;
+                break;
+            }
+        }
+        if (own){
+            std::vector<const Entry*> sameStyle;
+            std::vector<const Entry*> otherStyle;
+            for (const Entry& entry : reg.entries){
+                if (entry.family == own->family)
+                    (entry.italic == italic ? sameStyle : otherStyle).push_back(&entry);
+            }
+            if (const Entry* best = matchWeight(sameStyle.empty() ? otherStyle : sameStyle, weight))
+                chosen = best->face;
+        }
+        if (std::find(faces.begin(), faces.end(), chosen) == faces.end())
+            faces.push_back(chosen);
+    }
+    return faces;
 }
 
 std::shared_ptr<FontFace> FontRegistry::getBuiltInLatin(){

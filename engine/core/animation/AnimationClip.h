@@ -134,7 +134,7 @@ namespace jasperengine{
 
     // Written by Extract / Convert / Bake only; ignored by the runtime
     struct JASPERENGINE_API ClipSource{
-        std::string kind;                       // "model" | "entity" | "pose"; empty: no source
+        std::string kind;                       // "model" | "entity" | "pose" | "aseprite" | "unity" (path: the Unity project's "Assets/..."); empty: no source
         std::string path;
         std::string name;
 

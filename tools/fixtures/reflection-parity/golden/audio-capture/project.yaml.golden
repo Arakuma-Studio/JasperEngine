@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: Audio Capture
 canvasWidth: 1280
 canvasHeight: 720
@@ -16,7 +16,10 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
+transparencySortMode: perspective
 startSceneId: 2579869450
+mesh:
+  fbxSubmeshOrder: used_materials
 scenes:
   - filepath: scenes/Main.scene
     filepathGuid: eae9b3490159503b38ae9e91d480a3e1

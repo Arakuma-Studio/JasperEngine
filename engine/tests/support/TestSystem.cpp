@@ -107,6 +107,11 @@ bool TestSystem::syncFileSystem(){
     return true;
 }
 
+bool TestSystem::platformOpenURL(const std::string& url){
+    openedUrls.push_back(url);
+    return true;
+}
+
 std::string TestSystem::getCachePath(){
     return getUserDataPath();
 }

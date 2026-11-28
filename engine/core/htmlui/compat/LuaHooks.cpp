@@ -28,12 +28,14 @@ namespace {
     void writeElement(Rml::Element* element, std::string& out);
 
     void writeChildren(Rml::Element* element, std::string& out){
-        // an <svg>'s content is its SVG text, not elements
-        if (element->GetTagName() == "svg"){
-            std::string svg;
-            element->GetInnerRML(svg);
-            out += svg;
-            return;
+        // SVG owns serialization of its editable descendants, preserving SVG case and styles.
+        for (Rml::Element* ancestor = element; ancestor; ancestor = ancestor->GetParentNode()){
+            if (ancestor->GetTagName() == "svg"){
+                std::string svg;
+                element->GetInnerRML(svg);
+                out += svg;
+                return;
+            }
         }
         const int count = element->GetNumChildren();
         for (int i = 0; i < count; i++)
@@ -114,6 +116,10 @@ std::string LuaHooks::tagName(const Rml::Element* element){
     std::string name = localName(element);
     if (name == "svg" || name == "lottie" || name == "#text")
         return name;
+    for (const Rml::Element* ancestor = element ? element->GetParentNode() : nullptr; ancestor; ancestor = ancestor->GetParentNode()){
+        if (ancestor->GetTagName() == "svg")
+            return name;
+    }
     for (char& c : name){
         if (c >= 'a' && c <= 'z')
             c = (char)(c - 'a' + 'A');

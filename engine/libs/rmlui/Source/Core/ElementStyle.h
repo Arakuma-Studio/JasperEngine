@@ -162,6 +162,10 @@ public:
 
 	// Sets a single property as dirty.
 	void DirtyProperty(PropertyId id);
+
+	/// Fork (S93 R31): the computed font size 'text-autosize' fitted, in place of the cascaded one (0: none).
+	void SetFontSizeOverride(float size);
+	float GetFontSizeOverride() const { return font_size_override; }
 	/// Dirties all properties with any of the given units (OR-ed together) on the current element (*not* recursive).
 	void DirtyPropertiesWithUnits(Units units);
 	/// Dirties all properties with any of the given units (OR-ed together) on the current element and recursively on all children.
@@ -202,6 +206,7 @@ public:
 	static void Shutdown();
 
 private:
+	float font_size_override = 0.f;
 	struct AnimationLayers {
 		PropertyDictionary transition_properties;
 		PropertyDictionary animated_properties;

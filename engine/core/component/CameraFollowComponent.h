@@ -33,6 +33,26 @@ namespace jasperengine{
         TargetYaw
     };
 
+    // What a frame's follow step started from and the target pose it followed: the late transform
+    // pass (S95) follows a target moved after the scenes' update again from the same start, with
+    // the same delta, so the frame ends as if the step had run after that move (Unity's LateUpdate)
+    struct JASPERENGINE_API CameraFollowStep{
+        bool valid = false;
+        float dt = 0.0f;
+        Vector3 position = Vector3(0, 0, 0);
+        Quaternion rotation;
+        Vector3 cameraTarget = Vector3(0, 0, 0);
+        Vector3 velocity = Vector3(0, 0, 0);
+        Vector3 desired = Vector3(0, 0, 0);
+        Vector3 writtenPosition = Vector3(0, 0, 0);
+        Quaternion writtenRotation;
+        Vector3 writtenTarget = Vector3(0, 0, 0);
+        Entity followedTarget = NULL_ENTITY;
+        bool placed = false;
+        Vector3 targetPosition = Vector3(0, 0, 0);
+        Quaternion targetRotation;
+    };
+
     struct JASPERENGINE_API CameraFollowComponent{
         bool enabled = true;
         // the GameObject followed: of this scene, or of the persistent DontDestroyOnLoad scene when
@@ -73,6 +93,7 @@ namespace jasperengine{
         bool foreignWriteDetected = false;          // something else moved the Transform
         bool warnedForeignWrite = false;
         bool warnedMissingTarget = false;
+        CameraFollowStep frameStep;
     };
 
 }

@@ -28,7 +28,10 @@ namespace jasperengine {
         // which fall back to the instance address, stay unique while the set lives.
         struct Set {
             Rml::FontEffectList effects;
-            std::vector<size_t> ids;   // effectId of each effect: what its glyphs are cached by
+            std::vector<size_t> ids;   // effectId of each effect: the set's key
+            // S93 R12: bitmapId of each effect, what its CPU glyph bitmaps are cached by, and the offset of its quads
+            std::vector<size_t> bitmapIds;
+            std::vector<Rml::Vector2i> offsets;
         };
 
         // one glyph of an effect that owns its texture: premultiplied RGBA8, rows of width * 4
@@ -44,6 +47,10 @@ namespace jasperengine {
         // The fingerprint RmlUi's font-effect parser gives every effect (type and every
         // property, colour included), or the instance address for an effect made without it
         static size_t effectId(const Rml::FontEffect& effect);
+        // S93 R12: the key of an effect's glyph bitmaps: its shape (FontEffect::GetBitmapKey: kind, widths, blur), not its
+        // colour or offset, so an outline and a glow without blur of the same width share them; offset gets the move of
+        // its quads. Effects without a bitmap key: their effectId, no offset.
+        static size_t bitmapId(const Rml::FontEffect& effect, Rml::Vector2i& offset);
 
         // A coverage glyph as RmlUi's effects see it: bearing (x right, y up from the baseline),
         // A8 bitmap (not copied: `coverage` must outlive the returned glyph; null with a size

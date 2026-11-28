@@ -29,6 +29,7 @@
 #include "manager/ObjectManager.h"
 #include "component/ScriptComponent.h"
 #include "ScriptProperty.h"
+#include "DataAsset.h"
 #include "LuaReload.h"
 #include "ScriptScheduler.h"
 #include "ScriptEvent.h"
@@ -146,6 +147,9 @@ uint64_t LuaBinding::luastateGeneration = 0;
 
 // modules the engine itself loads, anything after this is project code
 static std::set<std::string> baselineLuaModules;
+static unsigned int luaPreviewDepth = 0;
+static int luaPreviewContextKey = LUA_NOREF;
+static const char luaPreviewEnvironmentKey = 0;
 
 // require() reads this registry table, package.loaded is only an alias to it
 static void collectLoadedModuleNames(lua_State* L, std::set<std::string>& out){
@@ -366,6 +370,179 @@ uint64_t LuaBinding::getLuaStateGeneration(){
     return luastateGeneration;
 }
 
+int LuaBinding::createPreviewModuleCache(){
+    lua_State* L = luastate;
+    if (!L) return LUA_NOREF;
+    checkLuaThread();
+    lua_newtable(L);
+    const int fresh = lua_gettop(L);
+    lua_getfield(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    for (const std::string& name : baselineLuaModules){
+        lua_pushlstring(L, name.data(), name.size());
+        lua_rawget(L, -2);
+        lua_setfield(L, fresh, name.c_str());
+    }
+    lua_pop(L, 1);
+    return luaL_ref(L, LUA_REGISTRYINDEX);
+}
+
+LuaBinding::ScopedModuleCache::ScopedModuleCache(int moduleCacheRef){
+    lua_State* L = LuaBinding::getLuaState();
+    if (!L) return;
+    checkLuaThread();
+    lua_rawgeti(L, LUA_REGISTRYINDEX, moduleCacheRef);
+    if (!lua_istable(L, -1)){
+        lua_pop(L, 1);
+        Log::error("A Lua preview module cache must be a live table from createPreviewModuleCache()");
+        return;
+    }
+    const int next = lua_gettop(L);
+    lua_getfield(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    previousRegistryRef = luaL_ref(L, LUA_REGISTRYINDEX);
+    lua_pushglobaltable(L);
+    lua_pushliteral(L, "package");
+    lua_rawget(L, -2);
+    lua_remove(L, -2);
+    previousPackageLoadedRef = LUA_NOREF;
+    if (lua_istable(L, -1)){
+        lua_pushliteral(L, "loaded");
+        lua_rawget(L, -2);
+        previousPackageLoadedRef = luaL_ref(L, LUA_REGISTRYINDEX);
+        lua_pushliteral(L, "loaded");
+        lua_pushvalue(L, next);
+        lua_rawset(L, -3);
+    }
+    previousPackageRef = luaL_ref(L, LUA_REGISTRYINDEX);
+    lua_pushvalue(L, next);
+    lua_setfield(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    lua_pop(L, 1);
+    state = L;
+    stateGeneration = LuaBinding::getLuaStateGeneration();
+    previousPreviewContextKey = luaPreviewContextKey;
+    luaPreviewContextKey = moduleCacheRef;
+    ++luaPreviewDepth;
+}
+
+LuaBinding::ScopedModuleCache::~ScopedModuleCache(){
+    if (!state) return;
+    --luaPreviewDepth;
+    luaPreviewContextKey = previousPreviewContextKey;
+    if (state != LuaBinding::getLuaState() || stateGeneration != LuaBinding::getLuaStateGeneration()) return;
+    checkLuaThread();
+    auto pushRef = [&](int ref){
+        if (ref == LUA_NOREF || ref == LUA_REFNIL) lua_pushnil(state);
+        else lua_rawgeti(state, LUA_REGISTRYINDEX, ref);
+    };
+    pushRef(previousRegistryRef);
+    lua_setfield(state, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    pushRef(previousPackageRef);
+    if (lua_istable(state, -1)){
+        lua_pushliteral(state, "loaded");
+        pushRef(previousPackageLoadedRef);
+        lua_rawset(state, -3);
+    }
+    lua_pushglobaltable(state);
+    lua_pushliteral(state, "package");
+    lua_pushvalue(state, -3);
+    lua_rawset(state, -3);
+    lua_pop(state, 2);
+    luaL_unref(state, LUA_REGISTRYINDEX, previousRegistryRef);
+    luaL_unref(state, LUA_REGISTRYINDEX, previousPackageRef);
+    luaL_unref(state, LUA_REGISTRYINDEX, previousPackageLoadedRef);
+}
+
+bool LuaBinding::isPreviewContext(){
+    return luaPreviewDepth != 0;
+}
+
+int LuaBinding::getPreviewContextKey(){
+    return luaPreviewContextKey;
+}
+
+bool LuaBinding::pushPreviewEnvironment(lua_State* L){
+    if (!L || !isPreviewContext()) return false;
+    checkLuaThread();
+    lua_rawgeti(L, LUA_REGISTRYINDEX, luaPreviewContextKey);
+    const int cache = lua_gettop(L);
+    lua_rawgetp(L, cache, &luaPreviewEnvironmentKey);
+    if (lua_istable(L, -1)){
+        lua_remove(L, cache);
+        return true;
+    }
+    lua_pop(L, 1);
+    lua_newtable(L);
+    const int environment = lua_gettop(L);
+    lua_pushglobaltable(L);
+    const int globals = lua_gettop(L);
+    // Engine bindings stay available, while project globals begin fresh for every sample.
+    for (const std::string& name : getEngineGlobalNames()){
+        lua_pushlstring(L, name.data(), name.size());
+        lua_rawget(L, globals);
+        lua_setfield(L, environment, name.c_str());
+    }
+    lua_pop(L, 1);
+    auto copyTable = [L](int source){
+        source = lua_absindex(L, source);
+        lua_newtable(L);
+        const int copy = lua_gettop(L);
+        lua_pushnil(L);
+        while (lua_next(L, source)){
+            lua_pushvalue(L, -2);
+            lua_pushvalue(L, -2);
+            lua_rawset(L, copy);
+            lua_pop(L, 1);
+        }
+    };
+    lua_getfield(L, environment, "package");
+    if (lua_istable(L, -1)){
+        const int source = lua_gettop(L);
+        copyTable(source);
+        const int package = lua_gettop(L);
+        for (const char* field : {"searchers", "preload"}){
+            lua_getfield(L, source, field);
+            if (lua_istable(L, -1)){
+                copyTable(-1);
+                lua_setfield(L, package, field);
+            }
+            lua_pop(L, 1);
+        }
+        lua_pushvalue(L, cache);
+        lua_setfield(L, package, "loaded");
+        lua_pushvalue(L, package);
+        lua_setfield(L, environment, "package");
+        lua_pushvalue(L, package);
+        lua_setfield(L, cache, "package");
+        lua_getfield(L, environment, "require");
+        const lua_CFunction require = lua_tocfunction(L, -1);
+        lua_pop(L, 1);
+        if (require){
+            // Lua's require closes over its package table, including the searcher list.
+            lua_pushvalue(L, package);
+            lua_pushcclosure(L, require, 1);
+            lua_setfield(L, environment, "require");
+        }
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+    // A copied math table would still share random/randomseed's mutable C upvalue.
+    luaopen_math(L);
+    lua_getfield(L, -1, "randomseed");
+    lua_pushinteger(L, 0);
+    lua_pushinteger(L, 0);
+    lua_call(L, 2, 0);
+    lua_pushvalue(L, -1);
+    lua_setfield(L, environment, "math");
+    lua_setfield(L, cache, "math");
+    lua_pushvalue(L, environment);
+    lua_setfield(L, environment, "_G");
+    lua_pushvalue(L, environment);
+    lua_setfield(L, cache, "_G");
+    lua_pushvalue(L, environment);
+    lua_rawsetp(L, cache, &luaPreviewEnvironmentKey);
+    lua_remove(L, cache);
+    return true;
+}
+
 lua_State* LuaBinding::mainThread(lua_State* L){
     if (!L) return nullptr;
     lua_rawgeti(L, LUA_REGISTRYINDEX, LUA_RIDX_MAINTHREAD);
@@ -565,11 +742,19 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
     // GameObject is inactive or its entry disabled; other tables are never guarded. Where the
     // script is (self.scene, self.entity) is read at each call: a persistent object's
     // GameObject moves to another scene, and a deleted scene is never reached through it.
-    // Build closure: function(...) return method(self, ...) end
-    lua_pushvalue(L, methodFuncIndex); // method
+    // The method is looked up by name at each call (S95 REQ-7), as Event:addListener(self, "m")
+    // and self:invoke("m") do: assigning self.onUpdate = other takes effect at the next call.
+    // Build closure: function(...) return self[methodName](self, ...) end
+    lua_pushstring(L, methodName);     // method name (interned: one lookup a call)
     lua_pushvalue(L, selfIndex);       // self
     lua_pushboolean(L, guardActive ? 1 : 0);
-    // Simulation Culling's family of the engine event (D7), learnt once here from its name
+    lua_pushboolean(L, 0);             // warned that the method is not a function
+    // the guard's keys, pushed by value at each call (no string lookup there)
+    lua_pushstring(L, "__released");
+    lua_pushstring(L, "scene");
+    lua_pushstring(L, "entity");
+    lua_pushstring(L, "__scriptRef");
+    // (9) Simulation Culling's family of the engine event (D7), learnt once here from its name
     lua_pushinteger(L, guardActive ? detail::engineEventFamily(methodName) : 0);
     lua_pushcclosure(L,
         [](lua_State* Linner) -> int {
@@ -584,7 +769,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
 
             if (lua_toboolean(Linner, lua_upvalueindex(3))) {
                 const int self = lua_upvalueindex(2);
-                lua_pushstring(Linner, "__released");
+                lua_pushvalue(Linner, lua_upvalueindex(5));
                 lua_rawget(Linner, self);
                 const bool released = lua_toboolean(Linner, -1) != 0;
                 lua_pop(Linner, 1);
@@ -592,7 +777,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
                     return 0;
                 }
                 Scene* scene = nullptr;
-                lua_pushstring(Linner, "scene");
+                lua_pushvalue(Linner, lua_upvalueindex(6));
                 lua_rawget(Linner, self);
                 if (lua_isuserdata(Linner, -1)) {
                     auto sceneResult = luabridge::get<Scene*>(Linner, -1);
@@ -601,11 +786,11 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
                     }
                 }
                 lua_pop(Linner, 1);
-                lua_pushstring(Linner, "entity");
+                lua_pushvalue(Linner, lua_upvalueindex(7));
                 lua_rawget(Linner, self);
                 const lua_Integer entity = lua_isinteger(Linner, -1) ? lua_tointeger(Linner, -1) : 0;
                 lua_pop(Linner, 1);
-                lua_pushstring(Linner, "__scriptRef");
+                lua_pushvalue(Linner, lua_upvalueindex(8));
                 lua_rawget(Linner, self);
                 const lua_Integer ref = lua_isinteger(Linner, -1) ? lua_tointeger(Linner, -1) : 0;
                 lua_pop(Linner, 1);
@@ -613,7 +798,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
                 if (scene && entity > 0 && !isScriptActive(scene, static_cast<Entity>(entity), instance)) {
                     return 0;
                 }
-                const int family = static_cast<int>(lua_tointeger(Linner, lua_upvalueindex(4)));
+                const int family = static_cast<int>(lua_tointeger(Linner, lua_upvalueindex(9)));
                 if (family != 0 && scene && entity > 0 && detail::simulationCullingActive.load(std::memory_order_relaxed)) {
                     const SimulationGate gate = simulationCullingGate(scene, static_cast<unsigned int>(entity), family, reducedDelta);
                     if (gate == SimulationGate::Skip) {
@@ -627,7 +812,24 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
                 }
             }
 
-            lua_pushvalue(Linner, lua_upvalueindex(1)); // method
+            // self[methodName], through its class (__index)
+            lua_pushvalue(Linner, lua_upvalueindex(1));
+            lua_gettable(Linner, lua_upvalueindex(2));
+            if (!lua_isfunction(Linner, -1)) {
+                // not a function now (nil, a value): no call, one warning per subscription
+                if (!lua_toboolean(Linner, lua_upvalueindex(4))) {
+                    lua_pushboolean(Linner, 1);
+                    lua_replace(Linner, lua_upvalueindex(4));
+                    lua_pushstring(Linner, "__name");
+                    lua_rawget(Linner, lua_upvalueindex(2));
+                    const char* className = lua_isstring(Linner, -1) ? lua_tostring(Linner, -1) : "Script";
+                    Log::warn("%s: event handler '%s' is %s, not a function: its calls are skipped until it is one again",
+                              className, lua_tostring(Linner, lua_upvalueindex(1)), luaL_typename(Linner, -2));
+                    lua_pop(Linner, 1);
+                }
+                lua_pop(Linner, 1);
+                return 0;
+            }
             lua_pushvalue(Linner, lua_upvalueindex(2)); // self
 
             for (int i = 1; i <= nargs; ++i) {
@@ -656,7 +858,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
             // Filters like preSolve2D read what the method returns
             return lua_gettop(Linner) - nargs;
         },
-        4);
+        9);
     int closureIndex = lua_gettop(L);
 
     // a Lua Event: the listener is the script's own, dropped once it is released
@@ -687,7 +889,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
         return lua_error(L);
     }
 
-    // a hot reload during Play replays it against the new method (LuaReload)
+    // a hot reload during Play replays it, with its tag and guard (LuaReload)
     lua_reload::recordRegistration(L, selfIndex, eventIndex, methodName, lua_tostring(L, tagIndex), guardActive);
 
     noteUIPointerSubscription(L, eventIndex, selfIndex, methodName, lua_tostring(L, tagIndex));
@@ -896,9 +1098,9 @@ int LuaBinding::moduleLoader(lua_State *L) {
         return 1;
     }
     if (filedata.getMemPtr() != NULL) {
-        
-        luaL_loadbuffer(L, (const char *) filedata.getMemPtr(), filedata.length(),
-                        lua_reload::chunkName(chunkPath).c_str());
+        const int status = luaL_loadbuffer(L, (const char *) filedata.getMemPtr(), filedata.length(),
+                                          lua_reload::chunkName(chunkPath).c_str());
+        if (status == LUA_OK && pushPreviewEnvironment(L) && !lua_setupvalue(L, -2, 1)) lua_pop(L, 1);
         
         return 1;
     }
@@ -910,9 +1112,9 @@ int LuaBinding::moduleLoader(lua_State *L) {
         return 1;
     }
     if (filedata.getMemPtr() != NULL) {
-        
-        luaL_loadbuffer(L, (const char *) filedata.getMemPtr(), filedata.length(),
-                        lua_reload::chunkName("lua/" + chunkPath).c_str());
+        const int status = luaL_loadbuffer(L, (const char *) filedata.getMemPtr(), filedata.length(),
+                                          lua_reload::chunkName("lua/" + chunkPath).c_str());
+        if (status == LUA_OK && pushPreviewEnvironment(L) && !lua_setupvalue(L, -2, 1)) lua_pop(L, 1);
         
         return 1;
     }
@@ -974,6 +1176,36 @@ void LuaBinding::init(){
 
 }
 
+#ifndef DISABLE_LUA_BINDINGS
+// The class and const tables of LuaBridge are their own metatables, so the one a script reaches
+// (debug.getmetatable(Vector3())) passed for an instance of its class: tostring(mt) raised "Vector3
+// expected" (crashed before S92). Each gets an empty metatable instead (S95 REQ-2): a call with one
+// is a type error, tostring gives "table: 0x...". LuaBridge reads these tables raw, never through
+// their metatable; their metamethods are untouched (S92's overload sets, nil operands).
+static void hardenClassTables(lua_State* L){
+    lua_newtable(L);
+    lua_pushboolean(L, 0);
+    lua_setfield(L, -2, "__metatable");  // still hidden from getmetatable
+    const int empty = lua_gettop(L);
+    lua_pushnil(L);
+    while (lua_next(L, LUA_REGISTRYINDEX)){
+        if (lua_islightuserdata(L, -2) && lua_istable(L, -1) && lua_getmetatable(L, -1)){
+            const bool ownMetatable = lua_rawequal(L, -1, -2);
+            lua_pop(L, 1);
+            lua_rawgetp(L, -1, luabridge::detail::getTypeKey());
+            const bool classTable = ownMetatable && lua_type(L, -1) == LUA_TSTRING;
+            lua_pop(L, 1);
+            if (classTable){
+                lua_pushvalue(L, empty);
+                lua_setmetatable(L, -2);
+            }
+        }
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+}
+#endif
+
 void LuaBinding::registerClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
     // luaL_openlibs() open all libraries: base, string, io, os, package, table, debug
@@ -1014,6 +1246,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerTitleArtClasses(L);
     registerSplineClasses(L);
     registerTerrainClasses(L);
+    registerVertexColorClasses(L);
 #if JASPERENGINE_NOISE
     registerNoiseClasses(L);
 #endif
@@ -1027,13 +1260,19 @@ void LuaBinding::registerClasses(lua_State *L){
     // after the GameObject classes: Palette Swap's members on Sprite, Tilemap and MeshPolygon
     registerPixelArtClasses(L);
     registerSortingClasses(L);
+    registerOutlineClasses(L);
+    registerSpriteSkinClasses(L);
+    // after the GameObject classes: Mesh reopened for its Property Overrides
+    registerMaterialPropertyBlockClasses(L);
     registerHitStopClasses(L);
     registerCullingClasses(L);
+    registerFogClasses(L);
     registerTransitionClasses(L);
     // after the Transition classes: PixelFX (with glitch) reopened for play and set
     registerPixelFxClasses(L);
     registerTilemapClasses(L);
     registerCrashClasses(L);
+    registerDataAssetClasses(L);
     registerInputRecordingClasses(L);
     registerLocalizationClasses(L);
     registerSaveGameClasses(L);
@@ -1052,6 +1291,8 @@ void LuaBinding::registerClasses(lua_State *L){
     registerHtmlUIWidgetClasses(L);
 #endif
     registerScriptClasses(L);
+    // last: every class is registered
+    hardenClassTables(L);
 
 #endif //DISABLE_LUA_BINDINGS
 }
@@ -1322,6 +1563,8 @@ void LuaBinding::clearLoadedProjectModules() {
     lua_State* L = luastate;
     // scripts may have changed since: compiled again
     clearScriptChunks(L);
+    // a new run: Data Assets and their classes are read again (what the last run changed is gone)
+    DataAsset::clear(L);
     lua_reload::clearGenerations();
     if (!L) return;
 
@@ -1546,6 +1789,14 @@ int LuaBinding::luaInstanceNewIndex(lua_State* L) {
     return 0;
 }
 
+namespace {
+    // a value made of GameObject references: resolved once every entity of the scene exists
+    bool holdsEntityReferences(const ScriptProperty& prop) {
+        return prop.type == ScriptPropertyType::EntityReference ||
+               (prop.type == ScriptPropertyType::List && prop.elementType == ScriptPropertyType::EntityReference);
+    }
+}
+
 bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity entity, ScriptEntry& scriptEntry) {
     for (const auto& prop : scriptEntry.properties) {
         if (isReservedMember(prop.name.c_str())) {
@@ -1555,7 +1806,10 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
         }
     }
 
-    auto chunk = scriptChunks.find(scriptEntry.path);
+    // A cached live chunk shares its _ENV upvalue with functions returned to live scripts.
+    // Preview chunks must never rebind that upvalue or enter the live chunk cache.
+    const bool preview = isPreviewContext();
+    auto chunk = preview ? scriptChunks.end() : scriptChunks.find(scriptEntry.path);
     if (chunk == scriptChunks.end()) {
         std::string luaFile = std::string("lua://") + scriptEntry.path;
         Data filedata;
@@ -1571,9 +1825,13 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
             lua_pop(L, 1);
             return false;
         }
-        chunk = scriptChunks.emplace(scriptEntry.path, luaL_ref(L, LUA_REGISTRYINDEX)).first;
+        if (preview){
+            if (pushPreviewEnvironment(L) && !lua_setupvalue(L, -2, 1)) lua_pop(L, 1);
+        }else{
+            chunk = scriptChunks.emplace(scriptEntry.path, luaL_ref(L, LUA_REGISTRYINDEX)).first;
+        }
     }
-    lua_rawgeti(L, LUA_REGISTRYINDEX, chunk->second);
+    if (!preview) lua_rawgeti(L, LUA_REGISTRYINDEX, chunk->second);
 
     int status = pcallWithTraceback(L, 0, 1);
     if (status != LUA_OK) {
@@ -1605,9 +1863,9 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
     lua_pushinteger(L, static_cast<lua_Integer>(entity));
     lua_setfield(L, -2, "entity");
 
-    // Set script properties (EntityReference ones are resolved in a second pass)
+    // Set script properties (EntityReference ones, and lists of them, are resolved in a second pass)
     for (auto& prop : scriptEntry.properties) {
-        if (prop.type == ScriptPropertyType::EntityReference) {
+        if (holdsEntityReferences(prop)) {
             lua_pushnil(L);
         } else {
             pushScriptPropertyValue(L, scene, prop);
@@ -1722,6 +1980,7 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
 void LuaBinding::registerMathClassesIn(lua_State* L) {
 #ifndef DISABLE_LUA_BINDINGS
     registerMathClasses(L);
+    hardenClassTables(L);
 #endif
 }
 
@@ -1737,41 +1996,82 @@ void LuaBinding::setScriptChunk(lua_State* L, const std::string& path, int index
     }
 }
 
-void LuaBinding::pushScriptPropertyValue(lua_State* L, Scene* scene, const ScriptProperty& prop) {
-    const ScriptPropertyValue& value = prop.value;
-    if (prop.type == ScriptPropertyType::EntityReference) {
-        bool found = false;
+void LuaBinding::invalidateScriptChunk(const std::string& path) {
+    checkLuaThread();
+    auto chunk = scriptChunks.find(path);
+    if (chunk == scriptChunks.end()) return;
+    if (luastate) luaL_unref(luastate, LUA_REGISTRYINDEX, chunk->second);
+    scriptChunks.erase(chunk);
+}
+
+namespace {
+    // one value of a script property (or of its list) pushed; a reference left at None is nil, in
+    // a list false (an array keeps its length)
+    void pushScriptValue(lua_State* L, Scene* scene, const ScriptProperty& prop, const ScriptPropertyValue& value, bool element) {
+        const auto pushNone = [L, element]() {
+            if (element) lua_pushboolean(L, 0);
+            else lua_pushnil(L);
+        };
         if (std::holds_alternative<EntityReference>(value)) {
             const EntityReference& entRef = std::get<EntityReference>(value);
+            bool found = false;
             if (entRef.entity != NULL_ENTITY) {
                 Scene* targetScene = entRef.sceneId != 0 ? SceneManager::getScenePtr(entRef.sceneId) : scene;
-                found = pushScriptObject(L, targetScene, entRef.entity, prop.ptrTypeName);
+                found = LuaBinding::pushScriptObject(L, targetScene, entRef.entity, prop.ptrTypeName);
             }
+            if (!found) pushNone();
+        } else if (std::holds_alternative<bool>(value)) {
+            lua_pushboolean(L, std::get<bool>(value));
+        } else if (std::holds_alternative<int>(value)) {
+            lua_pushinteger(L, std::get<int>(value));
+        } else if (std::holds_alternative<float>(value)) {
+            lua_pushnumber(L, std::get<float>(value));
+        } else if (std::holds_alternative<std::string>(value)) {
+            lua_pushstring(L, std::get<std::string>(value).c_str());
+        } else if (std::holds_alternative<Vector2>(value)) {
+            if (!luabridge::push<Vector2>(L, std::get<Vector2>(value))) lua_pushnil(L);
+        } else if (std::holds_alternative<Vector3>(value)) {
+            if (!luabridge::push<Vector3>(L, std::get<Vector3>(value))) lua_pushnil(L);
+        } else if (std::holds_alternative<Vector4>(value)) {
+            if (!luabridge::push<Vector4>(L, std::get<Vector4>(value))) lua_pushnil(L);
+        } else if (std::holds_alternative<PrefabAsset>(value) && !std::get<PrefabAsset>(value).isEmpty()) {
+            // a prefab property left at None stays nil
+            if (!luabridge::push<PrefabAsset>(L, std::get<PrefabAsset>(value))) pushNone();
+        } else if (std::holds_alternative<AssetRef>(value) && std::get<AssetRef>(value).isSet()) {
+            const AssetRef& ref = std::get<AssetRef>(value);
+            if (prop.assetType == DataAsset::ASSET_TYPE) {
+                // the asset's shared table (S95 REQ-22): by its GUID, else by its path
+                std::string error;
+                if (!DataAsset::push(L, ref.guid.isNull() ? ref.path : ref.guid.str(), &error) &&
+                        (ref.guid.isNull() || ref.path.empty() || !DataAsset::push(L, ref.path, &error))) {
+                    Log::warn("Script property '%s': the Data Asset %s does not load: %s", prop.name.c_str(), ref.path.c_str(), error.c_str());
+                    pushNone();
+                }
+            } else if (!luabridge::push<ScriptAssetRef>(L, ScriptAssetRef(ref))) {
+                pushNone();
+            }
+        } else if (std::holds_alternative<ScriptPropertyList>(value)) {
+            const ScriptPropertyList& list = std::get<ScriptPropertyList>(value);
+            lua_createtable(L, static_cast<int>(list.items.size()), 0);
+            for (size_t i = 0; i < list.items.size(); i++) {
+                pushScriptValue(L, scene, prop, scriptPropertyValueOf(list.items[i]), true);
+                lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+            }
+        } else if (prop.type == ScriptPropertyType::List) {
+            lua_newtable(L);
+        } else {
+            pushNone();
         }
-        if (!found) lua_pushnil(L);
-    } else if (std::holds_alternative<bool>(value)) {
-        lua_pushboolean(L, std::get<bool>(value));
-    } else if (std::holds_alternative<int>(value)) {
-        lua_pushinteger(L, std::get<int>(value));
-    } else if (std::holds_alternative<float>(value)) {
-        lua_pushnumber(L, std::get<float>(value));
-    } else if (std::holds_alternative<std::string>(value)) {
-        lua_pushstring(L, std::get<std::string>(value).c_str());
-    } else if (std::holds_alternative<Vector2>(value)) {
-        if (!luabridge::push<Vector2>(L, std::get<Vector2>(value))) lua_pushnil(L);
-    } else if (std::holds_alternative<Vector3>(value)) {
-        if (!luabridge::push<Vector3>(L, std::get<Vector3>(value))) lua_pushnil(L);
-    } else if (std::holds_alternative<Vector4>(value)) {
-        if (!luabridge::push<Vector4>(L, std::get<Vector4>(value))) lua_pushnil(L);
-    } else if (std::holds_alternative<PrefabAsset>(value) && !std::get<PrefabAsset>(value).isEmpty()) {
-        // a prefab property left at None stays nil
-        if (!luabridge::push<PrefabAsset>(L, std::get<PrefabAsset>(value))) lua_pushnil(L);
-    } else if (std::holds_alternative<AssetRef>(value) && std::get<AssetRef>(value).isSet()) {
-        // an asset property left at None stays nil
-        if (!luabridge::push<ScriptAssetRef>(L, ScriptAssetRef(std::get<AssetRef>(value)))) lua_pushnil(L);
-    } else {
-        lua_pushnil(L);
     }
+
+}
+
+void LuaBinding::pushScriptPropertyValue(lua_State* L, Scene* scene, const ScriptProperty& prop) {
+    if (prop.type == ScriptPropertyType::EntityReference && !std::holds_alternative<EntityReference>(prop.value)) {
+        lua_pushnil(L);
+        return;
+    }
+    pushScriptValue(L, scene, prop, prop.value, false);
 }
 
 bool LuaBinding::pushScriptObject(lua_State* L, Scene* scene, Entity entity, const std::string& className) {
@@ -1797,25 +2097,8 @@ void LuaBinding::resolveLuaScriptReferences(lua_State* L, Scene* scene, ScriptEn
     lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
 
     for (auto& prop : scriptEntry.properties) {
-        if (prop.type != ScriptPropertyType::EntityReference) continue;
-
-        if (!std::holds_alternative<EntityReference>(prop.value)) {
-            lua_pushnil(L);
-            lua_setfield(L, -2, prop.name.c_str());
-            continue;
-        }
-
-        const auto& entRef = std::get<EntityReference>(prop.value);
-        bool found = false;
-        if (entRef.entity != NULL_ENTITY) {
-            Scene* targetScene = scene;
-            if (entRef.sceneId != 0) {
-                targetScene = SceneManager::getScenePtr(entRef.sceneId);
-            }
-            found = pushScriptObject(L, targetScene, entRef.entity, prop.ptrTypeName);
-        }
-
-        if (!found) lua_pushnil(L);
+        if (!holdsEntityReferences(prop)) continue;
+        pushScriptPropertyValue(L, scene, prop);
         lua_setfield(L, -2, prop.name.c_str());
     }
 

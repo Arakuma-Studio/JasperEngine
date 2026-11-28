@@ -1,4 +1,4 @@
-formatVersion: 10
+formatVersion: 11
 guid: 6ae1376c14107d910f5730d8479f6f78
 id: 2026080800
 name: AllComponents
@@ -95,6 +95,8 @@ shaderKeys:
     properties: 32
   - type: htmluipost
     properties: 64
+  - type: htmluipost
+    properties: 128
   - type: probefilter
   - type: fluid
   - type: fluid
@@ -106,6 +108,8 @@ shaderKeys:
   - type: shadowcache
   - type: atmospheredepth
   - type: volumetricfog
+  - type: volumetricfog
+    properties: 1
   - type: atmospheredenoise
   - type: volumetricclouds
   - type: skycomposite
@@ -1383,8 +1387,8 @@ entities:
         maxTextSize: 100
         fixedWidth: true
         fixedHeight: true
-        pivotBaseline: true
-        pivotCentered: true
+        anchorHorizontal: center
+        anchorVertical: baseline
   - type: Entity
     entity: 1045
     name: InputFieldComponent
@@ -1972,6 +1976,7 @@ entities:
         playAutomatically: false
         speed: 2.5
         defaultFadeTime: 0.5
+        legacyRootDrift: true
   - type: Entity
     entity: 1068
     name: NavMeshSurfaceComponent
@@ -3074,3 +3079,85 @@ entities:
         startEntry: Reflection parity
         autoStart: true
         seed: 0
+  - type: Entity
+    entity: 1109
+    name: OutlineComponent
+    components:
+      transform:
+        position: [108, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      outline:
+        enabled: false
+        mode: outline_hidden
+        color: [0.25, 0.5, 0.75, 0.5]
+        width: 3.5
+        widthUnits: world
+        includeChildren: false
+  - type: Entity
+    entity: 1110
+    name: SpriteSkinComponent
+    components:
+      transform:
+        position: [109, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      spriteskin:
+        enabled: false
+        rootBone: 1104
+        bones:
+          - 1104
+          - 1103
+  - type: Entity
+    entity: 1111
+    name: VertexColorsComponent
+    components:
+      transform:
+        position: [110, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      vertexcolors:
+        enabled: false
+        data: paint/Parity.vcolors
+        format: rgba16f
+        initialValue: custom
+        customInitial: [0.35555556, 0.7111111, 0.4777778, 1]
+        channelNames:
+          - Moss
+          - ""
+          - "text: [1, 2]"
+          - Snow
+  - type: Entity
+    entity: 1112
+    name: FogZoneComponent
+    components:
+      transform:
+        position: [111, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      fogzone:
+        shape: sphere
+        size: [2.5, 6.1, 3.3]
+        blendDistance: 7.2
+        priority: 4
+        weight: 0.6

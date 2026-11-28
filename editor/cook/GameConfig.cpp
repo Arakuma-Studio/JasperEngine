@@ -86,6 +86,9 @@ player::PlayerConfig editor::cook::makeGameConfig(Project& project, const GameCo
     game.foliageDistanceScale = settings.getFoliageDistanceScale();
     game.inputDeadzone = settings.getInputDeadzone();
     game.gamepadCursor = settings.getGamepadCursorSettings();
+    game.simulateTouchFromMouse = settings.isSimulateTouchFromMouse();
+    game.fixedTimestep = settings.getFixedTimestep();
+    game.maximumDeltaTime = settings.getMaximumDeltaTime();
     game.inputActions = settings.getInputActionsEnginePath();
     game.navigation = settings.getNavigationSettings().settings;
     game.voxelMaxDimension = settings.getVoxelSettings().maxDimension;
@@ -98,6 +101,7 @@ player::PlayerConfig editor::cook::makeGameConfig(Project& project, const GameCo
     game.glyphAtlasMiB = settings.getHtmlUiRenderSettings().glyphAtlasMiB;
     game.sdfPrimitives = settings.getHtmlUiRenderSettings().sdfPrimitives;
     game.transformAwareText = settings.getHtmlUiRenderSettings().transformAwareText;
+    game.imageCacheMiB = settings.getHtmlUiRenderSettings().imageCacheMiB;
     game.mobilePbrTier = settings.getMobilePbrTier();
     game.dynamicBatching = settings.isDynamicBatching();
     game.gpuInstancing = settings.getDrawSubmissionSettings().gpuInstancing;

@@ -186,6 +186,10 @@ namespace asset_ref_schema_generated_test {
         const auto isWeatherMap = [](const std::string& line) { return line.find("VolumetricCloudsComponent.weatherMap") != std::string::npos; };
         EXPECT_EQ(std::count_if(results.begin(), results.end(), isWeatherMap), 2);
         results.erase(std::remove_if(results.begin(), results.end(), isWeatherMap), results.end());
+        // V1's Vertex Colors came after the freeze: its .vcolors, in both walks
+        const auto isVertexColors = [](const std::string& line) { return line.find("VertexColorsComponent.data") != std::string::npos; };
+        EXPECT_EQ(std::count_if(results.begin(), results.end(), isVertexColors), 2);
+        results.erase(std::remove_if(results.begin(), results.end(), isVertexColors), results.end());
         EXPECT_EQ(results, readLines(frozenPath("asset_ref_results_frozen.txt")));
     }
 

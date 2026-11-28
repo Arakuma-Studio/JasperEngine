@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: 2D Pixel Art
 canvasWidth: 320
 canvasHeight: 180
@@ -55,6 +55,7 @@ export:
 startSceneId: 1340111123
 mesh:
   animationEntities: auto
+  preserveHierarchyForNewModels: true
 audio:
   mixer: audio/Main.mixer
   outputStage: linear

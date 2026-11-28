@@ -14,7 +14,9 @@
 #include "component/Joint2DComponent.h"
 #include "component/Joint3DComponent.h"
 #include "component/LatticeModifierComponent.h"
+#include "component/MeshComponent.h"
 #include "component/MeshPolygonComponent.h"
+#include "component/ModelComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/RagdollComponent.h"
@@ -40,6 +42,7 @@
 #include "component/SplineComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/VertexColorsComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "lattice/LatticeTypes.h"
 #include "pose/PoseAnimatorRuntime.h"
@@ -58,6 +61,38 @@ namespace {
     bool endsWith(const std::string& text, const char* suffix) {
         const size_t length = std::strlen(suffix);
         return text.size() >= length && text.compare(text.size() - length, length, suffix) == 0;
+    }
+
+    // V1 R1: vertex colors belong to a placed Model or Mesh. A mesh another component rebuilds keeps
+    // its own colors, and a Model's mesh node is made again by each reload of the model
+    std::string vertexColorsRefusal(EntityRegistry* registry, Entity entity) {
+        if (!registry->findComponent<ModelComponent>(entity) && !registry->findComponent<MeshComponent>(entity))
+            return "Vertex Colors go on a GameObject with a Model or a Mesh (add one first).";
+        const ComponentType generators[] = {
+            ComponentType::SpriteComponent, ComponentType::TilemapComponent, ComponentType::TilemapLayerComponent,
+            ComponentType::MeshPolygonComponent, ComponentType::TerrainComponent, ComponentType::SplineExtrudeComponent,
+            ComponentType::VoxelVolumeComponent, ComponentType::TextComponent, ComponentType::UIComponent};
+        const std::vector<ComponentType> existing = Catalog::findComponents(registry, entity);
+        for (ComponentType generator : generators) {
+            if (std::find(existing.begin(), existing.end(), generator) == existing.end()) continue;
+            const std::string name = Catalog::getComponentDisplayName(generator);
+            return "Vertex Colors cannot paint the mesh a " + name + " makes: the " + name +
+                   " rebuilds it with its own colors. Paint a Model or a Mesh primitive.";
+        }
+        const Transform* transform = registry->findComponent<Transform>(entity);
+        for (Entity parent = transform ? transform->parent : NULL_ENTITY; parent != NULL_ENTITY;) {
+            if (const ModelComponent* model = registry->findComponent<ModelComponent>(parent)) {
+                for (const auto& [node, mapped] : model->meshNodesMapping) {
+                    if (mapped == entity)
+                        return "Vertex Colors go on the Model's GameObject, not on one of its mesh nodes: a reload of the "
+                               "model makes those again (select the Model's GameObject).";
+                }
+                break;
+            }
+            const Transform* parentTransform = registry->findComponent<Transform>(parent);
+            parent = parentTransform ? parentTransform->parent : NULL_ENTITY;
+        }
+        return "";
     }
 
     // a collider's authored data over another; the target's body is made again (its Box2D
@@ -151,6 +186,12 @@ namespace {
         {"material.shaderGlobalBindings", SubmeshOverride_ShaderGlobalBindings},
         {"material.shaderPalettes", SubmeshOverride_ShaderPalettes},
         {"material.blendMode", SubmeshOverride_BlendMode},
+        {"material.blendSrc", SubmeshOverride_BlendMode},
+        {"material.blendDst", SubmeshOverride_BlendMode},
+        {"material.blendSrcAlpha", SubmeshOverride_BlendMode},
+        {"material.blendDstAlpha", SubmeshOverride_BlendMode},
+        {"material.blendOp", SubmeshOverride_BlendMode},
+        {"material.blendOpAlpha", SubmeshOverride_BlendMode},
         {"material.cullMode", SubmeshOverride_CullMode},
         {"material.depthWrite", SubmeshOverride_DepthWrite},
         {"material.depthTest", SubmeshOverride_DepthTest},
@@ -168,6 +209,9 @@ namespace {
         {"material.stochasticRotation", SubmeshOverride_StochasticTiling},
         {"material.emissiveStrength", SubmeshOverride_EmissiveStrength},
         {"material.pbr", SubmeshOverride_PbrExtensions},
+        {"propertyOverrides", SubmeshOverride_PropertyOverrides},
+        {"propertyOverrides.values", SubmeshOverride_PropertyOverrides},
+        {"propertyOverrides.textures", SubmeshOverride_PropertyOverrides},
         {"faceCulling", SubmeshOverride_FaceCulling},
         {"textureShadow", SubmeshOverride_TextureShadow},
         {"primitiveType", SubmeshOverride_PrimitiveType}
@@ -290,6 +334,10 @@ std::string editor::Catalog::getComponentConflict(EntityRegistry* registry, Enti
     if (type == ComponentType::SpriteBatchComponent && registry && registry->isEntityCreated(entity) &&
             !registry->findComponent<SpriteComponent>(entity))
         return "A Sprite Batch goes on a GameObject with a Sprite (add a Sprite first).";
+    if (type == ComponentType::VertexColorsComponent && registry && registry->isEntityCreated(entity)) {
+        const std::string refusal = vertexColorsRefusal(registry, entity);
+        if (!refusal.empty()) return refusal;
+    }
     const ComponentType other = getConflictingComponent(type);
     if (other == ComponentType::Transform || !registry || !registry->isEntityCreated(entity))
         return "";
@@ -966,7 +1014,7 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
     uint64_t flags = UpdateFlags_Mesh_Texture;
     // resolved when the mesh loads: the shader, its variant and its pipelines
     if (from.shader != to.shader || from.shaderFeatures != to.shaderFeatures || from.shaderTextures != to.shaderTextures ||
-            from.blendMode != to.blendMode || from.cullMode != to.cullMode || from.depthWrite != to.depthWrite ||
+            from.blendMode != to.blendMode || from.getBlendFactors() != to.getBlendFactors() || from.cullMode != to.cullMode || from.depthWrite != to.depthWrite ||
             from.depthTest != to.depthTest || from.depthOffsetFactor != to.depthOffsetFactor ||
             from.depthOffsetUnits != to.depthOffsetUnits || from.sortPriority != to.sortPriority ||
             from.lighting != to.lighting || from.alphaMode != to.alphaMode || from.stochasticTiling != to.stochasticTiling) {
@@ -1231,6 +1279,11 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
     if (updateFlags & UpdateFlags_Model){
         if (ModelComponent* model = registry->findComponent<ModelComponent>(entity)){
             model->needUpdateModel = true;
+        }
+    }
+    if (updateFlags & UpdateFlags_VertexColors){
+        if (VertexColorsComponent* colors = registry->findComponent<VertexColorsComponent>(entity)){
+            colors->needUpdate = true;
         }
     }
     if (updateFlags & UpdateFlags_TileLayer){

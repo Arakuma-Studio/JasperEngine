@@ -75,6 +75,7 @@ namespace {
             case BlendMode::MAX_PREMULTIPLIED: return "Max (premultiplied)";
             case BlendMode::ERASE_PREMULTIPLIED: return "Erase (premultiplied)";
             case BlendMode::MULTIPLY_2X: return "Multiply 2x";
+            case BlendMode::CUSTOM: return "Custom";
         }
         return "Alpha";
     }
@@ -1640,7 +1641,7 @@ void editor::InspectorWindow::drawMaterialSurfaceRows(ComponentType cpType, Scen
     withAuto(blend, blended ? blendLabel(resolved.blend) : "Opaque", {
         {(int)MaterialBlendMode::NONE, "Opaque"}, {(int)MaterialBlendMode::ALPHA, "Alpha"},
         {(int)MaterialBlendMode::PREMULTIPLIED, "Premultiplied"}, {(int)MaterialBlendMode::ADDITIVE, "Additive"},
-        {(int)MaterialBlendMode::MULTIPLY, "Multiply"}});
+        {(int)MaterialBlendMode::MULTIPLY, "Multiply"}, {(int)MaterialBlendMode::CUSTOM, "Custom"}});
     withAuto(cull, !resolved.faceCulling ? "Off" : (resolved.cullingMode == CullingMode::FRONT ? "Front" : "Back"), {
         {(int)MaterialCullMode::BACK, "Back"}, {(int)MaterialCullMode::FRONT, "Front"}, {(int)MaterialCullMode::OFF, "Off"}});
     withAuto(depthWrite, resolved.depthWrite ? "On" : "Off", {
@@ -1668,6 +1669,7 @@ void editor::InspectorWindow::drawMaterialSurfaceRows(ComponentType cpType, Scen
     settingsEnum.enumEntries = &blend.entries;
     settingsEnum.help = "How the colour mixes with what is behind. Anything but Opaque draws in the transparent queue, sorted by Sort Priority, then far to near.";
     propertyRow(RowPropertyType::Enum, cpType, prefix + "blendMode", "Blend Mode", sceneProject, entities, settingsEnum);
+    drawBlendFactorRows(cpType, sceneProject, entities, prefix, sub.material.blendMode == MaterialBlendMode::CUSTOM, settingsMaterial);
     settingsEnum.enumEntries = &cull.entries;
     settingsEnum.help = "Which faces are left out. Auto follows the shader, else the submesh's Face Culling and the mesh's Culling Mode.";
     propertyRow(RowPropertyType::Enum, cpType, prefix + "cullMode", "Cull", sceneProject, entities, settingsEnum);
@@ -1792,6 +1794,38 @@ void editor::InspectorWindow::drawComponentStateRows(ComponentType cpType, Scene
     drawStencilColorWriteRows(cpType, sceneProject, entities, "", [scene, cpType](Entity entity) {
         return resolveComponentAuto(scene, entity, cpType);
     }, stateSettings);
+}
+
+void editor::InspectorWindow::drawBlendFactorRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                                  const std::string& prefix, bool custom, const RowSettings& settings){
+    if (!custom)
+        return;
+    // Unity's ShaderLab names: the result is src * Src Factor <op> dst * Dst Factor
+    static std::vector<EnumEntry> factors = {
+        {(int)MaterialBlendFactor::ZERO, "Zero"}, {(int)MaterialBlendFactor::ONE, "One"},
+        {(int)MaterialBlendFactor::SRC_COLOR, "Src Color"}, {(int)MaterialBlendFactor::ONE_MINUS_SRC_COLOR, "One Minus Src Color"},
+        {(int)MaterialBlendFactor::SRC_ALPHA, "Src Alpha"}, {(int)MaterialBlendFactor::ONE_MINUS_SRC_ALPHA, "One Minus Src Alpha"},
+        {(int)MaterialBlendFactor::DST_COLOR, "Dst Color"}, {(int)MaterialBlendFactor::ONE_MINUS_DST_COLOR, "One Minus Dst Color"},
+        {(int)MaterialBlendFactor::DST_ALPHA, "Dst Alpha"}, {(int)MaterialBlendFactor::ONE_MINUS_DST_ALPHA, "One Minus Dst Alpha"}};
+    static std::vector<EnumEntry> ops = {
+        {(int)MaterialBlendOp::ADD, "Add"}, {(int)MaterialBlendOp::SUBTRACT, "Subtract"},
+        {(int)MaterialBlendOp::REVERSE_SUBTRACT, "Reverse Subtract"}, {(int)MaterialBlendOp::MIN, "Min"}, {(int)MaterialBlendOp::MAX, "Max"}};
+    RowSettings row = settings;
+    row.child = true;
+    row.enumEntries = &factors;
+    row.help = "Multiplies the colour the shader outputs (Unity's Blend SrcFactor).";
+    propertyRow(RowPropertyType::Enum, cpType, prefix + "blendSrc", "Src Factor", sceneProject, entities, row);
+    row.help = "Multiplies the colour already in the target (Blend DstFactor). Dst Color, Src Color is a 2x multiply.";
+    propertyRow(RowPropertyType::Enum, cpType, prefix + "blendDst", "Dst Factor", sceneProject, entities, row);
+    row.help = "The source factor of the alpha channel.";
+    propertyRow(RowPropertyType::Enum, cpType, prefix + "blendSrcAlpha", "Src Alpha Factor", sceneProject, entities, row);
+    row.help = "The destination factor of the alpha channel.";
+    propertyRow(RowPropertyType::Enum, cpType, prefix + "blendDstAlpha", "Dst Alpha Factor", sceneProject, entities, row);
+    row.enumEntries = &ops;
+    row.help = "How the two products combine (Unity's BlendOp). Min and Max ignore the factors.";
+    propertyRow(RowPropertyType::Enum, cpType, prefix + "blendOp", "Blend Op", sceneProject, entities, row);
+    row.help = "The operation of the alpha channel (BlendOp's second value).";
+    propertyRow(RowPropertyType::Enum, cpType, prefix + "blendOpAlpha", "Alpha Blend Op", sceneProject, entities, row);
 }
 
 void editor::InspectorWindow::drawStencilColorWriteRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
@@ -2096,7 +2130,7 @@ void editor::InspectorWindow::drawMaterialExtraPassRows(ComponentType cpType, Sc
     withAuto(blend, blended ? blendLabel(resolved.blend) : "Opaque", {
         {(int)MaterialBlendMode::NONE, "Opaque"}, {(int)MaterialBlendMode::ALPHA, "Alpha"},
         {(int)MaterialBlendMode::PREMULTIPLIED, "Premultiplied"}, {(int)MaterialBlendMode::ADDITIVE, "Additive"},
-        {(int)MaterialBlendMode::MULTIPLY, "Multiply"}});
+        {(int)MaterialBlendMode::MULTIPLY, "Multiply"}, {(int)MaterialBlendMode::CUSTOM, "Custom"}});
     withAuto(cull, !resolved.faceCulling ? "Off" : (resolved.cullingMode == CullingMode::FRONT ? "Front" : "Back"), {
         {(int)MaterialCullMode::BACK, "Back"}, {(int)MaterialCullMode::FRONT, "Front"}, {(int)MaterialCullMode::OFF, "Off"}});
     withAuto(depthWrite, resolved.depthWrite ? "On" : "Off", {
@@ -2120,6 +2154,14 @@ void editor::InspectorWindow::drawMaterialExtraPassRows(ComponentType cpType, Sc
     settingsEnum.enumEntries = &blend.entries;
     settingsEnum.help = "How the pass's colour mixes with what is behind. Auto: the pass shader's @state, else the submesh's.";
     propertyRow(RowPropertyType::Enum, cpType, prefix + "blendMode", "Blend Mode", sceneProject, entities, settingsEnum);
+    {
+        const MeshComponent* passMesh = scene->findComponent<MeshComponent>(entities[0]);
+        const bool custom = passMesh && submesh < passMesh->numSubmeshes &&
+                            passMesh->submeshes[submesh].material.extraPass->blendMode == MaterialBlendMode::CUSTOM;
+        RowSettings settingsFactors = settingsMaterial;
+        settingsFactors.child = true;
+        drawBlendFactorRows(cpType, sceneProject, entities, prefix, custom, settingsFactors);
+    }
     settingsEnum.enumEntries = &cull.entries;
     settingsEnum.help = "Which faces the pass leaves out (an inverted hull culls the front ones).";
     propertyRow(RowPropertyType::Enum, cpType, prefix + "cullMode", "Cull", sceneProject, entities, settingsEnum);

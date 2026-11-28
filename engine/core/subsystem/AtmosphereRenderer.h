@@ -36,7 +36,7 @@ namespace jasperengine{
     struct SkyboxComponent;
 
     // u_fs_heightFog (shaderlib/includes/height_fog.glsl): the height fog of a camera pass, read
-    // by the fogged mesh variants (HAS_HEIGHT_FOG), the sky composite and the atmosphere passes
+    // by the fogged mesh and particle variants (HAS_HEIGHT_FOG), the sky composite and the atmosphere passes
     typedef struct height_fog_t {
         Matrix4 invViewProjection;            // camera clip -> world, the camera's own matrices
         Vector4 screenToNdc;                  // camera ndc.xy = gl_FragCoord.xy * xy + zw
@@ -65,6 +65,8 @@ namespace jasperengine{
         Vector4 depthInfo;
         Vector4 noise;
         Vector4 noiseOffset;
+        Vector4 fogAlbedo = Vector4(1.0f, 1.0f, 1.0f, 0.0f);   // rgb the global medium's albedo, w 1 Lit
+        Vector4 fogEmissive = Vector4(0.0f, 0.0f, 0.0f, 0.0f);  // rgb its emissive (Lit)
         Vector4 volumeFrame[ATMOSPHERE_MAX_FOG_VOLUMES * 3];
         Vector4 volumeShape[ATMOSPHERE_MAX_FOG_VOLUMES];
         Vector4 volumeMedium[ATMOSPHERE_MAX_FOG_VOLUMES];
@@ -115,9 +117,47 @@ namespace jasperengine{
     } volumetric_composite_t;
 
     // What a view's last frame ran (get_atmosphere_info)
+    // A point or spot light the volumetric fog considered in the last frame (docs/specs/S101-vapor.md
+    // R13, R14, R17). reason is empty when scattered, else why not: "intensity",
+    // "volumetric_intensity", "distance", "frustum" or "tier_cap".
+    struct AtmosphereFogLight{
+        Entity entity = NULL_ENTITY;
+        bool scattered = false;
+        bool shadowed = false;      // scattered with its shadows in the fog
+        std::string reason;
+    };
+
+    // A Local Volumetric Fog volume the volumetric fog considered in the last frame (R17). reason
+    // is empty when used, else why not: "distance", "frustum" or "tier_cap".
+    struct AtmosphereFogVolume{
+        Entity entity = NULL_ENTITY;
+        bool used = false;
+        std::string reason;
+    };
+
+    // A point or spot light as the volumetric fog's selection sees it (AtmosphereRenderer::selectFogLights)
+    struct FogLightCandidate{
+        Entity entity = NULL_ENTITY;
+        Vector3 position = Vector3(0.0f, 0.0f, 0.0f);
+        float range = 0.0f;                 // 0: unlimited
+        float intensity = 0.0f;
+        float volumetricIntensity = 0.0f;
+    };
+
     struct AtmosphereInfo{
         AtmosphereQuality quality = AtmosphereQuality::OFF;
         AtmosphereQuality platformDefault = AtmosphereQuality::OFF;
+        // what set quality (AtmosphereRenderer::viewQuality): "runtime" (Engine::setAtmosphereQuality),
+        // "game_view_preview" (the editor's Game view), "device_tier" (a device tier turned the
+        // volumetrics off), "project" (the platform's Atmosphere Quality)
+        std::string qualitySource = "project";
+        // a pass of the view drew through the scene's main camera with an atmosphere plan (the
+        // volumetric fog and Screen clouds draw for it only)
+        bool mainCameraPass = false;
+        // the volumetric fog marched the sun's shadows (light shafts)
+        bool lightShafts = false;
+        // the view draws as if the scene had no fog (the editor's Disable fog)
+        bool fogDisabled = false;
         bool fog = false;
         bool heightFog = false;
         bool volumetric = false;           // asked for (Fog volumetric on a height fog)
@@ -129,6 +169,8 @@ namespace jasperengine{
         int volumesUsed = 0;
         int volumesCulled = 0;
         int localLights = 0;
+        std::vector<AtmosphereFogLight> fogLights;     // every light considered, scattered or not
+        std::vector<AtmosphereFogVolume> fogVolumes;   // every volume considered, used or not
         bool forcedDepthPrePass = false;
         bool clouds = false;
         bool cloudsActive = false;
@@ -203,8 +245,12 @@ namespace jasperengine{
         AtmosphereRenderer(const AtmosphereRenderer&) = delete;
         AtmosphereRenderer& operator=(const AtmosphereRenderer&) = delete;
 
-        // once per update(): the scene's fog, clouds and volumes, the noise bake
-        void update(double dt);
+        // once per update(): the scene's fog (`fogLook`: the look its passes read, the scene's
+        // first Fog or its resolve at the frame's camera, null without a Fog), clouds and
+        // volumes, the noise bake
+        void update(double dt, FogComponent* fogLook);
+        // the look a view's passes read from now on (its resolve at the view's camera, R7)
+        void setViewFog(FogComponent* fogLook);
 
         // the scene fog is a height fog (u_fs_heightFog says so to the fogged meshes); the meshes need depth
         // programs for the atmosphere's depth pre-pass
@@ -249,6 +295,15 @@ namespace jasperengine{
         // scene is still loading: RenderSystem::isAllLoaded)
         bool isLoading() const { return loading; }
 
+        // The fog lights of a view (docs/specs/S101-vapor.md R13): lit (intensity and volumetric
+        // intensity above 0), their bounding sphere (range; unlimited: everywhere) in the frustum
+        // and within maxDistance, the nearest first, at most cap. considered gets one record per
+        // light, in the given order, with the reason of those not selected (shadowed is left
+        // false); selected the indices of the chosen ones, nearest first.
+        static void selectFogLights(const std::vector<FogLightCandidate>& lights, const Plane frustumPlanes[6], float cameraFar,
+                                    const Vector3& cameraPosition, float maxDistance, int cap, std::vector<int>& selected,
+                                    std::vector<AtmosphereFogLight>& considered);
+
         // the RGBA8 path even where float targets exist (tests; JASPERENGINE_ATMOSPHERE_RGBA8=1)
         static void setForceLowPrecisionTargets(bool force);
         static bool isForceLowPrecisionTargets();
@@ -267,6 +322,7 @@ namespace jasperengine{
             PROGRAM_CLOUDS,
             PROGRAM_SKY_COMPOSITE,
             PROGRAM_VOLUMETRIC_COMPOSITE,
+            PROGRAM_FOG_POINT_SHADOWS,    // the volumetric fog's 'Pnt' variant
             PROGRAM_COUNT
         };
 
@@ -320,16 +376,19 @@ namespace jasperengine{
         bool ensureTarget(Framebuffer& target, unsigned int width, unsigned int height, bool floatFormat, bool linear);
         bool useFloatTargets() const;
         AtmosphereQuality viewQuality() const;
+        const char* viewQualitySource() const;
         bool cloudsReady();
         TextureRender* weatherTexture();
         void updateHorizon();
+        // the scene fog's Lit colour mode light under the pass's scene ambient and main light (passFrame)
+        LitFogLight passLitLight() const;
         void fillClouds(clouds_t& block, const CameraComponent& camera, const Transform& cameraTransform, const AtmosphereTier& tier,
                         bool skyMap, float cameraAltitudeFade);
         void renderDepth(Framebuffer& target, TextureRender* sceneDepth, int factor, const CameraComponent& camera);
         void renderFog(const CameraComponent& camera, const Transform& cameraTransform, const AtmosphereTier& tier);
         void renderScreenClouds(const CameraComponent& camera, const Transform& cameraTransform, const AtmosphereTier& tier);
         void renderSkyMap(const CameraComponent& camera, const Transform& cameraTransform, const AtmosphereTier& tier);
-        void renderDenoise(Framebuffer& source, Framebuffer& target, Framebuffer& depth, const char* label);
+        void renderDenoise(Framebuffer& source, Framebuffer& target, Framebuffer& depth, const char* label, int radius);
         void bindPostColor(ObjectRender& render, ShaderData& shaderData);
         float cloudsFade() const;
         float cameraAltitudeFade(const Transform& cameraTransform) const;

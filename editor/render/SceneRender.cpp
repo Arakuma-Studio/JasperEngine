@@ -247,6 +247,7 @@ editor::SceneRender::~SceneRender(){
     deleteGizmos(particleShapeLines, *scene->getSystem<RenderSystem>());
     VoxelSceneOverlay::release(scene);
     delete terrainBrushLines;
+    delete sceneToolLines;
     delete physicsLines;
     delete camera;
 }
@@ -827,6 +828,7 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
                       displaySettings.disableFog, (float)width, (float)height,
                       displaySettings.disableFaceCulling, displaySettings.showPostProcessing || previewing, displaySettings.disableClouds});
     layers.back().drawMode = previewing ? 0 : (uint8_t)displaySettings.drawMode;
+    layers.back().vertexColorChannel = (uint8_t)displaySettings.vertexColorChannel;
     // S41 R21: Snap Preview, the drawables snapped on this view's own grid of art pixels (a scene
     // without a snapping Pixel Perfect Camera has no snapped variants: nothing changes)
     if (!previewing && displaySettings.pixelSnapPreview && zoom > 0.0f && dynamic_cast<SceneRender2D*>(this))
@@ -911,6 +913,7 @@ void editor::SceneRender::drawPaneView(uint32_t viewId, Entity paneCamera, Frame
     base.disableClouds = displaySettings.disableClouds;
     base.shadows = flags.shadows;
     base.drawMode = (uint8_t)displaySettings.drawMode;
+    base.vertexColorChannel = (uint8_t)displaySettings.vertexColorChannel;
     layers.push_back(base);
     for (Scene* childScene : childSceneLayers){
         if (childScene && childScene != scene){
@@ -1056,7 +1059,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     // view of its own (drawSceneView). Free to toggle: nothing reloads.
     scene->getSystem<RenderSystem>()->setDisableFaceCulling(displaySettings.disableFaceCulling && !isPlaying);
     // the Draw Mode the same way (spec S54 R11)
-    scene->getSystem<RenderSystem>()->setDrawMode(isPlaying ? ViewDrawMode::SHADED : displaySettings.drawMode);
+    scene->getSystem<RenderSystem>()->setDrawMode(isPlaying ? ViewDrawMode::SHADED : displaySettings.drawMode, displaySettings.vertexColorChannel);
     scene->getSystem<RenderSystem>()->setDisableFog(displaySettings.disableFog && !isPlaying);
     scene->getSystem<RenderSystem>()->setDisableClouds(displaySettings.disableClouds && !isPlaying);
     // the Game view's Preview Atmosphere Quality is set on the frame while playing (App)
@@ -1417,6 +1420,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
         // T1 R55: each frame, so the decal fades once the pointer rests and hides while the camera moves
         updateTerrainBrushCursor();
     }
+    updateSceneToolDecal();
 
     syncObject2DGizmoMode();
 
@@ -2670,14 +2674,15 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     }
 
                     if (isText){
-                        TextComponent& text = target->getComponent<TextComponent>(entity);
-                        if (text.pivotCentered){
+                        // a centred or right-aligned box grows about its origin: the origin moves so the
+                        // edge not dragged stays
+                        const float align = UISystem::textAnchorX(target->getComponent<TextComponent>(entity));
+                        if (align > 0.0f){
                             float widthDelta = size.x - objectSizeOffset[entity].x;
                             Gizmo2DSideSelected side = tools.getGizmo2DSideSelected();
-                            if (side == Gizmo2DSideSelected::NX || side == Gizmo2DSideSelected::NX_NY || side == Gizmo2DSideSelected::NX_PY) {
-                                pos.x += widthDelta * 0.5f;
-                            }else if (side == Gizmo2DSideSelected::PX || side == Gizmo2DSideSelected::PX_NY || side == Gizmo2DSideSelected::PX_PY) {
-                                pos.x += widthDelta * 0.5f;
+                            if (side == Gizmo2DSideSelected::NX || side == Gizmo2DSideSelected::NX_NY || side == Gizmo2DSideSelected::NX_PY ||
+                                side == Gizmo2DSideSelected::PX || side == Gizmo2DSideSelected::PX_NY || side == Gizmo2DSideSelected::PX_PY) {
+                                pos.x += widthDelta * align;
                             }
                         }
                     }
@@ -3085,6 +3090,29 @@ void editor::SceneRender::updateTerrainBrushCursor(){
     }
 
     terrainBrushLines->setVisible(true);
+}
+
+void editor::SceneRender::updateSceneToolDecal(){
+    const SceneTool* tool = SceneTools::activeFor(scene);
+    const SceneToolDecal* decal = tool ? tool->decal() : nullptr;
+    if (!decal || decal->points.size() < 2){
+        if (sceneToolLines) sceneToolLines->setVisible(false);
+        return;
+    }
+    if (!sceneToolLines){
+        sceneToolLines = overlay(new LineRenderer(scene));
+        sceneToolLines->setMaxLines(4096);
+        sceneToolLinesRevision = 0;
+    }
+    if (decal->revision != sceneToolLinesRevision){
+        sceneToolLines->clearLines();
+        for (size_t i = 0; i + 1 < decal->points.size(); i += 2){
+            const Vector4 color = i / 2 < decal->colors.size() ? decal->colors[i / 2] : Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+            sceneToolLines->addLine(decal->points[i], decal->points[i + 1], color);
+        }
+        sceneToolLinesRevision = decal->revision;
+    }
+    sceneToolLines->setVisible(true);
 }
 
 bool editor::SceneRender::getFluidBrushCircle(std::vector<Vector2>& points){

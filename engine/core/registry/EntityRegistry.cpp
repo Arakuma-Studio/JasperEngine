@@ -8,6 +8,7 @@
 #include "component/AnimationComponent.h"
 #include "component/AudioSnapshotComponent.h"
 #include "component/TitleArtRendererComponent.h"
+#include "component/VertexColorsComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
@@ -24,6 +25,7 @@
 #include "component/ColorTweenComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/FogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/ForceFieldComponent.h"
 #include "component/ImageComponent.h"
 #include "component/InputFieldComponent.h"
@@ -67,6 +69,7 @@
 #include "component/SafeAreaComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
+#include "component/OutlineComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"
 #include "component/SimulationCullingComponent.h"
@@ -85,6 +88,7 @@
 #include "component/SplineInstantiateComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/SpriteSkinComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/TerrainWorldComponent.h"
 #include "component/TextComponent.h"
@@ -251,6 +255,14 @@ EntityRegistry::EntityRegistry() {
     registerComponent<SimulationCullingComponent>(ComponentOrder::Insertion, "SimulationCullingComponent");
     // dialogue-graphs.md R13: after the last one, so no ComponentType moves (registered without the module too)
     registerComponent<DialogueRunnerComponent>(ComponentOrder::Insertion, "DialogueRunnerComponent");
+    // S94 F22: after the last one, so no ComponentType moves
+    registerComponent<OutlineComponent>(ComponentOrder::Insertion, "OutlineComponent");
+    // S94 F49: after the last one, so no ComponentType moves
+    registerComponent<SpriteSkinComponent>(ComponentOrder::Insertion, "SpriteSkinComponent");
+    // V1 R1: after the last one, so no ComponentType moves
+    registerComponent<VertexColorsComponent>(ComponentOrder::Insertion, "VertexColorsComponent");
+    // docs/specs/S101-vapor.md R40: appended, so no ComponentType moves
+    registerComponent<FogZoneComponent>(ComponentOrder::Insertion, "FogZoneComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);
@@ -377,6 +389,7 @@ bool EntityRegistry::changeTransformChildren(Entity entity){
         if (childTransform.parent == entity) {
             childTransform.parent = newParent;
             childTransform.needUpdate = true;
+            transformArray->markChanged(transformArray->getEntity(i));
             // no visibility cascade: the children and theirs keep their own flags
             hadChildren = true;
         }
@@ -1109,6 +1122,9 @@ void EntityRegistry::setEntityChild(Entity parent, Entity child, bool changeTran
                 }
             }
         }
+        // Changed<Transform>: a reparenting after the scenes' update is drawn that frame (the late
+        // transform pass, S95 REQ-5)
+        componentManager.getComponentArray<Transform>()->markChanged(child);
     }
 
 }

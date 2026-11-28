@@ -10,6 +10,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <utility>
 
 using namespace jasperengine;
 
@@ -25,6 +26,11 @@ namespace {
 
     uint32_t fontReadU32(const unsigned char* p){
         return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
+    }
+
+    FontFace::WebFontDecoder& fontWebFontDecoder(){
+        static FontFace::WebFontDecoder decoder;
+        return decoder;
     }
 
     bool isSfntVersion(const unsigned char* p){
@@ -155,8 +161,33 @@ FontFace::~FontFace(){
         hb_blob_destroy(blob);
 }
 
+void FontFace::setWebFontDecoder(WebFontDecoder decoder){
+    fontWebFontDecoder() = std::move(decoder);
+}
+
 bool FontFace::init(int index, std::string* error, FontFaceRasterizer rasterizer){
     faceIndex = index;
+
+    if (bytes && length >= 4 && (std::memcmp(bytes, "wOFF", 4) == 0 || std::memcmp(bytes, "wOF2", 4) == 0)){
+        const char* format = bytes[3] == '2' ? "WOFF2" : "WOFF";
+        const WebFontDecoder& decoder = fontWebFontDecoder();
+        std::vector<unsigned char> decoded;
+        std::string why;
+        if (!decoder){
+            if (error)
+                *error = std::string("Failed to initialize font: ") + label + " is " + format +
+                         ", which only the editor decodes (an export ships it as TrueType: export again)";
+            return false;
+        }
+        if (!decoder(bytes, length, decoded, why)){
+            if (error)
+                *error = std::string("Failed to decode ") + format + " font: " + label + " (" + why + ")";
+            return false;
+        }
+        storage = std::move(decoded);
+        bytes = storage.data();
+        length = storage.size();
+    }
 
     size_t offset = 0;
     const bool found = findFontOffset(bytes, length, index, offset);
@@ -211,6 +242,7 @@ void FontFace::readTables(){
     int fsSelection = 0;
     int os2Weight = 0;
     int os2XHeight = 0;
+    int os2CapHeight = 0;
 
     hb_blob_t* os2 = hb_face_reference_table(face, HB_TAG('O', 'S', '/', '2'));
     unsigned int os2Length = 0;
@@ -221,6 +253,9 @@ void FontFace::readTables(){
         fsSelection = fontReadU16(os2Data + 62);
         if (fontReadU16(os2Data) >= 2 && os2Length >= 88){
             os2XHeight = readS16(os2Data + 86);
+        }
+        if (fontReadU16(os2Data) >= 2 && os2Length >= 90){
+            os2CapHeight = readS16(os2Data + 88);
         }
     }
     hb_blob_destroy(os2);
@@ -261,6 +296,22 @@ void FontFace::readTables(){
             xHeight = extents.y_bearing;
         }else{
             xHeight = ascender / 2;
+        }
+    }
+
+    if (os2CapHeight > 0){
+        capHeight = os2CapHeight;
+    }else{
+        int x0, y0, x1, y1;
+        hb_codepoint_t glyph = 0;
+        hb_glyph_extents_t extents = {};
+        if (rasterizable && stbtt_GetCodepointBox(&info, 'H', &x0, &y0, &x1, &y1) && y1 > 0){
+            capHeight = y1;
+        }else if (!rasterizable && hb_font_get_nominal_glyph(font, 'H', &glyph) && hb_font_get_glyph_extents(font, glyph, &extents) &&
+                  extents.y_bearing > 0){
+            capHeight = extents.y_bearing;
+        }else{
+            capHeight = (int)std::lround(unitsPerEm * 0.7);
         }
     }
 
@@ -307,6 +358,10 @@ int FontFace::getLineGap() const{
 
 int FontFace::getXHeight() const{
     return xHeight;
+}
+
+int FontFace::getCapHeight() const{
+    return capHeight;
 }
 
 int FontFace::getUnderlinePosition() const{

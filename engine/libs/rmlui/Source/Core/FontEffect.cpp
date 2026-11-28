@@ -26,6 +26,11 @@ bool FontEffect::GetDistanceEffect(DistanceEffect& /*effect*/) const
 	return false;
 }
 
+bool FontEffect::GetBitmapKey(BitmapKey& /*key*/) const
+{
+	return false;
+}
+
 void FontEffect::SetColour(const Colourb _colour)
 {
 	colour = _colour;

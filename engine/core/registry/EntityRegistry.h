@@ -31,6 +31,7 @@
 #include "component/BoneComponent.h"
 #include "component/SkyboxComponent.h"
 #include "component/FogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "component/MirrorComponent.h"
@@ -56,6 +57,7 @@
 #include "component/AudioSnapshotComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
+#include "component/OutlineComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"   // S48
 #include "component/GridComponent.h"
@@ -64,7 +66,9 @@
 #include "component/TitleArtRendererComponent.h"
 #include "component/SimulationCullingComponent.h"
 #include "component/DialogueRunnerComponent.h"
+#include "component/VertexColorsComponent.h"   // V1
 #include "component/SpriteComponent.h"
+#include "component/SpriteSkinComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/Transform.h"
 #include "component/LightComponent.h"

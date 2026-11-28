@@ -198,6 +198,7 @@
     "morphWeights",
     "normAdjustJoint",
     "normAdjustWeight",
+    "propertyOverrides",
     "receiveIBL",
     "receiveLights",
     "receiveShadows",
@@ -330,6 +331,16 @@
      0,
      true
     ],
+    "propertyOverrides.textures": [
+     15,
+     24,
+     true
+    ],
+    "propertyOverrides.values": [
+     15,
+     68719476736,
+     true
+    ],
     "receiveIBL": [
      0,
      8,
@@ -457,6 +468,16 @@
      0,
      true
     ],
+    "propertyOverrides.textures": [
+     15,
+     24,
+     true
+    ],
+    "propertyOverrides.values": [
+     15,
+     68719476736,
+     true
+    ],
     "receiveIBL": [
      0,
      8,
@@ -527,7 +548,37 @@
      16,
      true
     ],
+    "submeshes[].material.blendDst": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.blendDstAlpha": [
+     13,
+     8,
+     true
+    ],
     "submeshes[].material.blendMode": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.blendOp": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.blendOpAlpha": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.blendSrc": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.blendSrcAlpha": [
      13,
      8,
      true
@@ -582,7 +633,37 @@
      68719476760,
      true
     ],
+    "submeshes[].material.extraPass.blendDst": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.extraPass.blendDstAlpha": [
+     13,
+     8,
+     true
+    ],
     "submeshes[].material.extraPass.blendMode": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.extraPass.blendOp": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.extraPass.blendOpAlpha": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.extraPass.blendSrc": [
+     13,
+     8,
+     true
+    ],
+    "submeshes[].material.extraPass.blendSrcAlpha": [
      13,
      8,
      true
@@ -952,6 +1033,36 @@
      16,
      true
     ],
+    "submeshes[].material.pbr.vertexColor.a": [
+     13,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.vertexColor.alphaOpacity": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.vertexColor.b": [
+     13,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.vertexColor.g": [
+     13,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.vertexColor.r": [
+     13,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.vertexColor.use": [
+     13,
+     16,
+     true
+    ],
     "submeshes[].material.pbr.volume.attenuationColor": [
      5,
      0,
@@ -1080,6 +1191,16 @@
     "submeshes[].primitiveType": [
      13,
      8,
+     true
+    ],
+    "submeshes[].propertyOverrides.textures": [
+     15,
+     24,
+     true
+    ],
+    "submeshes[].propertyOverrides.values": [
+     15,
+     68719476736,
      true
     ],
     "submeshes[].textureRect": [
@@ -3897,6 +4018,7 @@
     "mergeStaticMeshes",
     "meshNodesMapping",
     "nodesIdMapping",
+    "preserveHierarchy",
     "skeleton"
    ],
    "name": "ModelComponent",
@@ -3924,6 +4046,11 @@
     "mergeStaticMeshes": [
      0,
      2097152,
+     true
+    ],
+    "preserveHierarchy": [
+     0,
+     0,
      true
     ],
     "skeleton": [
@@ -3956,6 +4083,11 @@
     "mergeStaticMeshes": [
      0,
      2097152,
+     true
+    ],
+    "preserveHierarchy": [
+     0,
+     0,
      true
     ],
     "skeleton": [
@@ -6859,6 +6991,7 @@
     "leftClip",
     "nearClip",
     "oitWeightScale",
+    "orthographicSize",
     "renderToTexture",
     "rightClip",
     "target",
@@ -6935,6 +7068,11 @@
     "oitWeightScale": [
      2,
      0,
+     true
+    ],
+    "orthographicSize": [
+     2,
+     2,
      true
     ],
     "renderToTexture": [
@@ -7052,6 +7190,11 @@
     "oitWeightScale": [
      2,
      0,
+     true
+    ],
+    "orthographicSize": [
+     2,
+     2,
      true
     ],
     "renderToTexture": [
@@ -7174,6 +7317,11 @@
       1,
       "sky",
       "Sky Color"
+     ],
+     [
+      2,
+      "lit",
+      "Lit"
      ]
     ],
     "qualityOverride": [
@@ -7220,6 +7368,8 @@
    "icon": "ef9d9f",
    "key": "fog",
    "known_keys": [
+    "albedo",
+    "ambientMultiplier",
     "anisotropy",
     "attenuationDistance",
     "baseHeight",
@@ -7227,6 +7377,7 @@
     "colorMode",
     "density",
     "directionalInscattering",
+    "emissive",
     "lightShafts",
     "linearEnd",
     "linearStart",
@@ -7235,6 +7386,7 @@
     "maximumHeight",
     "noiseIntensity",
     "noiseScale",
+    "profile",
     "qualityOverride",
     "skyFill",
     "skyFillAngle",
@@ -7246,6 +7398,16 @@
    ],
    "name": "FogComponent",
    "properties_of_default": {
+    "albedo": [
+     5,
+     0,
+     true
+    ],
+    "ambientMultiplier": [
+     2,
+     0,
+     true
+    ],
     "anisotropy": [
      2,
      0,
@@ -7278,6 +7440,11 @@
     ],
     "directionalInscattering": [
      2,
+     0,
+     true
+    ],
+    "emissive": [
+     5,
      0,
      true
     ],
@@ -7318,6 +7485,11 @@
     ],
     "noiseScale": [
      2,
+     0,
+     true
+    ],
+    "profile": [
+     18,
      0,
      true
     ],
@@ -7363,6 +7535,16 @@
     ]
    },
    "properties_without_component": {
+    "albedo": [
+     5,
+     0,
+     true
+    ],
+    "ambientMultiplier": [
+     2,
+     0,
+     true
+    ],
     "anisotropy": [
      2,
      0,
@@ -7395,6 +7577,11 @@
     ],
     "directionalInscattering": [
      2,
+     0,
+     true
+    ],
+    "emissive": [
+     5,
      0,
      true
     ],
@@ -7435,6 +7622,11 @@
     ],
     "noiseScale": [
      2,
+     0,
+     true
+    ],
+    "profile": [
+     18,
      0,
      true
     ],
@@ -9827,6 +10019,7 @@
     "enabled",
     "exposedValues",
     "inlineEffect",
+    "legacyFrom",
     "playOnAwake",
     "playbackSpeed",
     "seed",
@@ -9860,6 +10053,11 @@
      15,
      2199023255552,
      false
+    ],
+    "legacyFrom": [
+     16,
+     0,
+     true
     ],
     "playOnAwake": [
      0,
@@ -9917,6 +10115,11 @@
      15,
      2199023255552,
      false
+    ],
+    "legacyFrom": [
+     16,
+     0,
+     true
     ],
     "playOnAwake": [
      0,
@@ -10671,6 +10874,7 @@
     "automaticFlipY",
     "drawMode",
     "enabled",
+    "flipX",
     "flipY",
     "frame",
     "frameName",
@@ -10681,6 +10885,7 @@
     "pixelsPerUnit",
     "sheet",
     "sheetGuid",
+    "size",
     "spriteSortPoint",
     "textureScaleFactor",
     "width"
@@ -10700,6 +10905,11 @@
     "enabled": [
      0,
      0,
+     true
+    ],
+    "flipX": [
+     0,
+     1024,
      true
     ],
     "flipY": [
@@ -10744,6 +10954,11 @@
     ],
     "sheet": [
      18,
+     1024,
+     true
+    ],
+    "size": [
+     4,
      1024,
      true
     ],
@@ -10779,6 +10994,11 @@
      0,
      true
     ],
+    "flipX": [
+     0,
+     1024,
+     true
+    ],
     "flipY": [
      0,
      1024,
@@ -10821,6 +11041,11 @@
     ],
     "sheet": [
      18,
+     1024,
+     true
+    ],
+    "size": [
+     4,
      1024,
      true
     ],
@@ -10847,34 +11072,161 @@
   },
   {
    "display_name": "Text",
-   "enum_options": {},
+   "enum_options": {
+    "anchorHorizontal": [
+     [
+      0,
+      "left",
+      "Left"
+     ],
+     [
+      1,
+      "center",
+      "Center"
+     ],
+     [
+      2,
+      "right",
+      "Right"
+     ]
+    ],
+    "anchorVertical": [
+     [
+      3,
+      "top",
+      "Top"
+     ],
+     [
+      4,
+      "middle",
+      "Middle"
+     ],
+     [
+      5,
+      "bottom",
+      "Bottom"
+     ],
+     [
+      6,
+      "baseline",
+      "Baseline"
+     ],
+     [
+      7,
+      "capline",
+      "Capline"
+     ],
+     [
+      8,
+      "midline",
+      "Midline"
+     ]
+    ],
+    "fontSizeUnit": [
+     [
+      0,
+      "pixel_height",
+      "Pixel Height"
+     ],
+     [
+      1,
+      "em",
+      "Em"
+     ]
+    ],
+    "horizontalAlignment": [
+     [
+      0,
+      "left",
+      "Left"
+     ],
+     [
+      1,
+      "center",
+      "Center"
+     ],
+     [
+      2,
+      "right",
+      "Right"
+     ],
+     [
+      3,
+      "justified",
+      "Justified"
+     ]
+    ],
+    "verticalAlignment": [
+     [
+      0,
+      "top",
+      "Top"
+     ],
+     [
+      1,
+      "middle",
+      "Middle"
+     ],
+     [
+      2,
+      "bottom",
+      "Bottom"
+     ],
+     [
+      3,
+      "baseline",
+      "Baseline"
+     ]
+    ]
+   },
    "has_enabled": false,
    "icon": "ef80b1",
    "key": "text",
    "known_keys": [
+    "anchorHorizontal",
+    "anchorVertical",
+    "autoSize",
     "fixedHeight",
     "fixedWidth",
     "font",
     "fontGuid",
     "fontSize",
+    "fontSizeMax",
+    "fontSizeMin",
+    "fontSizeUnit",
+    "horizontalAlignment",
     "localizationKey",
     "maxTextSize",
     "multiline",
     "outlineColor",
     "outlineNeighbors",
     "outlineWidth",
-    "pivotBaseline",
-    "pivotCentered",
     "shadowColor",
     "shadowDilate",
     "shadowEnabled",
     "shadowOffset",
     "shadowSoftness",
     "text",
+    "verticalAlignment",
     "visibleCharacters"
    ],
    "name": "TextComponent",
    "properties_of_default": {
+    "anchorHorizontal": [
+     13,
+     32768,
+     true
+    ],
+    "anchorVertical": [
+     13,
+     32768,
+     true
+    ],
+    "autoSize": [
+     0,
+     65536,
+     true
+    ],
     "fixedHeight": [
      0,
      32768,
@@ -10893,6 +11245,26 @@
     "fontSize": [
      9,
      65536,
+     true
+    ],
+    "fontSizeMax": [
+     9,
+     65536,
+     true
+    ],
+    "fontSizeMin": [
+     9,
+     65536,
+     true
+    ],
+    "fontSizeUnit": [
+     13,
+     65536,
+     true
+    ],
+    "horizontalAlignment": [
+     13,
+     32768,
      true
     ],
     "localizationKey": [
@@ -10925,16 +11297,6 @@
      32768,
      true
     ],
-    "pivotBaseline": [
-     0,
-     32768,
-     true
-    ],
-    "pivotCentered": [
-     0,
-     32768,
-     true
-    ],
     "shadowColor": [
      6,
      32768,
@@ -10962,6 +11324,11 @@
     ],
     "text": [
      1,
+     32768,
+     true
+    ],
+    "verticalAlignment": [
+     13,
      32768,
      true
     ],
@@ -10972,6 +11339,21 @@
     ]
    },
    "properties_without_component": {
+    "anchorHorizontal": [
+     13,
+     32768,
+     true
+    ],
+    "anchorVertical": [
+     13,
+     32768,
+     true
+    ],
+    "autoSize": [
+     0,
+     65536,
+     true
+    ],
     "fixedHeight": [
      0,
      32768,
@@ -10990,6 +11372,26 @@
     "fontSize": [
      9,
      65536,
+     true
+    ],
+    "fontSizeMax": [
+     9,
+     65536,
+     true
+    ],
+    "fontSizeMin": [
+     9,
+     65536,
+     true
+    ],
+    "fontSizeUnit": [
+     13,
+     65536,
+     true
+    ],
+    "horizontalAlignment": [
+     13,
+     32768,
      true
     ],
     "localizationKey": [
@@ -11022,16 +11424,6 @@
      32768,
      true
     ],
-    "pivotBaseline": [
-     0,
-     32768,
-     true
-    ],
-    "pivotCentered": [
-     0,
-     32768,
-     true
-    ],
     "shadowColor": [
      6,
      32768,
@@ -11059,6 +11451,11 @@
     ],
     "text": [
      1,
+     32768,
+     true
+    ],
+    "verticalAlignment": [
+     13,
      32768,
      true
     ],
@@ -12957,6 +13354,23 @@
       1,
       "texture",
       "Texture"
+     ],
+     [
+      2,
+      "world",
+      "World Space"
+     ]
+    ],
+    "updateMode": [
+     [
+      0,
+      "unscaled",
+      "Unscaled Time"
+     ],
+     [
+      1,
+      "game",
+      "Game Time"
      ]
     ]
    },
@@ -12964,6 +13378,7 @@
    "icon": "ef8789",
    "key": "uidocument",
    "known_keys": [
+    "billboard",
     "enabled",
     "filename",
     "gamepadCursor",
@@ -12972,13 +13387,20 @@
     "isMenu",
     "msaaSamples",
     "pixelRatio",
+    "pixelsPerUnit",
     "renderMode",
     "sortOrder",
     "textureHeight",
-    "textureWidth"
+    "textureWidth",
+    "updateMode"
    ],
    "name": "UIDocumentComponent",
    "properties_of_default": {
+    "billboard": [
+     0,
+     0,
+     true
+    ],
     "enabled": [
      0,
      0,
@@ -13019,6 +13441,11 @@
      274877906944,
      true
     ],
+    "pixelsPerUnit": [
+     2,
+     0,
+     true
+    ],
     "renderMode": [
      13,
      274877906944,
@@ -13037,10 +13464,20 @@
     "textureWidth": [
      8,
      274877906944,
+     true
+    ],
+    "updateMode": [
+     13,
+     0,
      true
     ]
    },
    "properties_without_component": {
+    "billboard": [
+     0,
+     0,
+     true
+    ],
     "enabled": [
      0,
      0,
@@ -13081,6 +13518,11 @@
      274877906944,
      true
     ],
+    "pixelsPerUnit": [
+     2,
+     0,
+     true
+    ],
     "renderMode": [
      13,
      274877906944,
@@ -13099,6 +13541,11 @@
     "textureWidth": [
      8,
      274877906944,
+     true
+    ],
+    "updateMode": [
+     13,
+     0,
      true
     ]
    },
@@ -15430,18 +15877,25 @@
    "icon": "ef8088",
    "key": "animationplayer",
    "known_keys": [
+    "applyRootMotion",
     "clips",
     "controller",
     "defaultClip",
     "defaultFadeTime",
     "enabled",
     "layers",
+    "legacyRootDrift",
     "playAutomatically",
     "poseFrameRate",
     "speed"
    ],
    "name": "AnimationPlayerComponent",
    "properties_of_default": {
+    "applyRootMotion": [
+     0,
+     0,
+     true
+    ],
     "clips": [
      15,
      8796093022208,
@@ -15467,6 +15921,11 @@
      8796093022208,
      true
     ],
+    "legacyRootDrift": [
+     0,
+     0,
+     true
+    ],
     "playAutomatically": [
      0,
      0,
@@ -15484,6 +15943,11 @@
     ]
    },
    "properties_without_component": {
+    "applyRootMotion": [
+     0,
+     0,
+     true
+    ],
     "clips": [
      15,
      8796093022208,
@@ -15577,6 +16041,11 @@
     "layers[].weight": [
      2,
      8796093022208,
+     true
+    ],
+    "legacyRootDrift": [
+     0,
+     0,
      true
     ],
     "playAutomatically": [
@@ -18551,6 +19020,7 @@
     "eventMode",
     "exposedBones",
     "ik",
+    "legacyRootDrift",
     "poseFrameRate",
     "retarget",
     "rootMotionBone",
@@ -18599,6 +19069,11 @@
     "ik": [
      15,
      35184372088832,
+     true
+    ],
+    "legacyRootDrift": [
+     0,
+     0,
      true
     ],
     "poseFrameRate": [
@@ -18840,6 +19315,11 @@
     ],
     "ik[].weightParameter": [
      1,
+     0,
+     true
+    ],
+    "legacyRootDrift": [
+     0,
      0,
      true
     ],
@@ -25535,6 +26015,407 @@
    "type": 107,
    "type_of_key": 107,
    "type_of_name": 107
+  },
+  {
+   "display_name": "Outline",
+   "enum_options": {
+    "mode": [
+     [
+      0,
+      "outline_all",
+      "Outline All"
+     ],
+     [
+      1,
+      "outline_visible",
+      "Outline Visible"
+     ],
+     [
+      2,
+      "outline_hidden",
+      "Outline Hidden"
+     ],
+     [
+      3,
+      "outline_and_silhouette",
+      "Outline And Silhouette"
+     ],
+     [
+      4,
+      "silhouette_only",
+      "Silhouette Only"
+     ]
+    ],
+    "widthUnits": [
+     [
+      0,
+      "pixels",
+      "Pixels"
+     ],
+     [
+      1,
+      "world",
+      "World"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef978b",
+   "key": "outline",
+   "known_keys": [
+    "color",
+    "enabled",
+    "includeChildren",
+    "mode",
+    "width",
+    "widthUnits"
+   ],
+   "name": "OutlineComponent",
+   "properties_of_default": {
+    "color": [
+     6,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeChildren": [
+     0,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ],
+    "widthUnits": [
+     13,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "color": [
+     6,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeChildren": [
+     0,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ],
+    "widthUnits": [
+     13,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 108,
+   "type_of_key": 108,
+   "type_of_name": 108
+  },
+  {
+   "display_name": "Sprite Skin",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef9797",
+   "key": "spriteskin",
+   "known_keys": [
+    "bones",
+    "enabled",
+    "rootBone"
+   ],
+   "name": "SpriteSkinComponent",
+   "properties_of_default": {
+    "bones": [
+     15,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "rootBone": [
+     16,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "bones": [
+     15,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "rootBone": [
+     16,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 109,
+   "type_of_key": 109,
+   "type_of_name": 109
+  },
+  {
+   "display_name": "Vertex Colors",
+   "enum_options": {
+    "format": [
+     [
+      0,
+      "rgba8",
+      "RGBA8"
+     ],
+     [
+      1,
+      "rgba16f",
+      "High Precision (RGBA16F)"
+     ]
+    ],
+    "initialValue": [
+     [
+      0,
+      "asset",
+      "Asset Colors"
+     ],
+     [
+      1,
+      "white",
+      "White"
+     ],
+     [
+      2,
+      "black",
+      "Black"
+     ],
+     [
+      3,
+      "custom",
+      "Custom"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef94bf",
+   "key": "vertexcolors",
+   "known_keys": [
+    "channelNames",
+    "customInitial",
+    "data",
+    "enabled",
+    "format",
+    "initialValue"
+   ],
+   "name": "VertexColorsComponent",
+   "properties_of_default": {
+    "channelNames[0]": [
+     1,
+     0,
+     true
+    ],
+    "channelNames[1]": [
+     1,
+     0,
+     true
+    ],
+    "channelNames[2]": [
+     1,
+     0,
+     true
+    ],
+    "channelNames[3]": [
+     1,
+     0,
+     true
+    ],
+    "customInitial": [
+     6,
+     288230376151711744,
+     true
+    ],
+    "data": [
+     18,
+     288230376151711744,
+     true
+    ],
+    "enabled": [
+     0,
+     288230376151711744,
+     true
+    ],
+    "format": [
+     13,
+     288230376151711744,
+     true
+    ],
+    "initialValue": [
+     13,
+     288230376151711744,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "customInitial": [
+     6,
+     288230376151711744,
+     true
+    ],
+    "data": [
+     18,
+     288230376151711744,
+     true
+    ],
+    "enabled": [
+     0,
+     288230376151711744,
+     true
+    ],
+    "format": [
+     13,
+     288230376151711744,
+     true
+    ],
+    "initialValue": [
+     13,
+     288230376151711744,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 110,
+   "type_of_key": 110,
+   "type_of_name": 110
+  },
+  {
+   "display_name": "Fog Zone",
+   "enum_options": {
+    "shape": [
+     [
+      0,
+      "box",
+      "Box"
+     ],
+     [
+      1,
+      "sphere",
+      "Sphere"
+     ]
+    ]
+   },
+   "has_enabled": false,
+   "icon": "ef9d9f",
+   "key": "fogzone",
+   "known_keys": [
+    "blendDistance",
+    "priority",
+    "profile",
+    "shape",
+    "size",
+    "weight"
+   ],
+   "name": "FogZoneComponent",
+   "properties_of_default": {
+    "blendDistance": [
+     2,
+     0,
+     true
+    ],
+    "priority": [
+     8,
+     0,
+     true
+    ],
+    "profile": [
+     18,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ],
+    "weight": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "blendDistance": [
+     2,
+     0,
+     true
+    ],
+    "priority": [
+     8,
+     0,
+     true
+    ],
+    "profile": [
+     18,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ],
+    "weight": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 111,
+   "type_of_key": 111,
+   "type_of_name": 111
   }
  ],
  "ease_options": [
@@ -25782,6 +26663,11 @@
    ]
   },
   "AnimationPlayerComponent": {
+   "applyRootMotion": [
+    0,
+    0,
+    true
+   ],
    "clips": [
     15,
     8796093022208,
@@ -25845,6 +26731,11 @@
    "layers": [
     15,
     8796093022208,
+    true
+   ],
+   "legacyRootDrift": [
+    0,
+    0,
     true
    ],
    "playAutomatically": [
@@ -26066,6 +26957,11 @@
    ],
    "ik[N].weightParameter": [
     1,
+    0,
+    true
+   ],
+   "legacyRootDrift": [
+    0,
     0,
     true
    ],
@@ -26539,6 +27435,11 @@
    "oitWeightScale": [
     2,
     0,
+    true
+   ],
+   "orthographicSize": [
+    2,
+    2,
     true
    ],
    "renderToTexture": [
@@ -27186,6 +28087,16 @@
    ]
   },
   "FogComponent": {
+   "albedo": [
+    5,
+    0,
+    true
+   ],
+   "ambientMultiplier": [
+    2,
+    0,
+    true
+   ],
    "anisotropy": [
     2,
     0,
@@ -27218,6 +28129,11 @@
    ],
    "directionalInscattering": [
     2,
+    0,
+    true
+   ],
+   "emissive": [
+    5,
     0,
     true
    ],
@@ -27261,6 +28177,11 @@
     0,
     true
    ],
+   "profile": [
+    18,
+    0,
+    true
+   ],
    "qualityOverride": [
     13,
     0,
@@ -27298,6 +28219,38 @@
    ],
    "wind": [
     5,
+    0,
+    true
+   ]
+  },
+  "FogZoneComponent": {
+   "blendDistance": [
+    2,
+    0,
+    true
+   ],
+   "priority": [
+    8,
+    0,
+    true
+   ],
+   "profile": [
+    18,
+    0,
+    true
+   ],
+   "shape": [
+    13,
+    0,
+    true
+   ],
+   "size": [
+    5,
+    0,
+    true
+   ],
+   "weight": [
+    2,
     0,
     true
    ]
@@ -28994,6 +29947,16 @@
     0,
     true
    ],
+   "propertyOverrides.textures": [
+    15,
+    24,
+    true
+   ],
+   "propertyOverrides.values": [
+    15,
+    68719476736,
+    true
+   ],
    "receiveIBL": [
     0,
     8,
@@ -29064,7 +30027,37 @@
     16,
     true
    ],
+   "submeshes[N].material.blendDst": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.blendDstAlpha": [
+    13,
+    8,
+    true
+   ],
    "submeshes[N].material.blendMode": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.blendOp": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.blendOpAlpha": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.blendSrc": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.blendSrcAlpha": [
     13,
     8,
     true
@@ -29119,7 +30112,37 @@
     68719476760,
     true
    ],
+   "submeshes[N].material.extraPass.blendDst": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.extraPass.blendDstAlpha": [
+    13,
+    8,
+    true
+   ],
    "submeshes[N].material.extraPass.blendMode": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.extraPass.blendOp": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.extraPass.blendOpAlpha": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.extraPass.blendSrc": [
+    13,
+    8,
+    true
+   ],
+   "submeshes[N].material.extraPass.blendSrcAlpha": [
     13,
     8,
     true
@@ -29489,6 +30512,36 @@
     16,
     true
    ],
+   "submeshes[N].material.pbr.vertexColor.a": [
+    13,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.alphaOpacity": [
+    0,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.b": [
+    13,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.g": [
+    13,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.r": [
+    13,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.vertexColor.use": [
+    13,
+    16,
+    true
+   ],
    "submeshes[N].material.pbr.volume.attenuationColor": [
     5,
     0,
@@ -29617,6 +30670,16 @@
    "submeshes[N].primitiveType": [
     13,
     8,
+    true
+   ],
+   "submeshes[N].propertyOverrides.textures": [
+    15,
+    24,
+    true
+   ],
+   "submeshes[N].propertyOverrides.values": [
+    15,
+    68719476736,
     true
    ],
    "submeshes[N].textureRect": [
@@ -30022,6 +31085,11 @@
    ],
    "meshNodesMapping[N]": [
     16,
+    0,
+    true
+   ],
+   "preserveHierarchy": [
+    0,
     0,
     true
    ],
@@ -30619,6 +31687,38 @@
     true
    ]
   },
+  "OutlineComponent": {
+   "color": [
+    6,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "includeChildren": [
+    0,
+    0,
+    true
+   ],
+   "mode": [
+    13,
+    0,
+    true
+   ],
+   "width": [
+    2,
+    0,
+    true
+   ],
+   "widthUnits": [
+    13,
+    0,
+    true
+   ]
+  },
   "PanelComponent": {
    "canBringToFront": [
     0,
@@ -30721,6 +31821,11 @@
     15,
     2199023255552,
     false
+   ],
+   "legacyFrom": [
+    16,
+    0,
+    true
    ],
    "playOnAwake": [
     0,
@@ -32547,6 +33652,11 @@
     0,
     true
    ],
+   "flipX": [
+    0,
+    1024,
+    true
+   ],
    "flipY": [
     0,
     1024,
@@ -32592,6 +33702,11 @@
     1024,
     true
    ],
+   "size": [
+    4,
+    1024,
+    true
+   ],
    "spriteSortPoint": [
     13,
     0,
@@ -32606,6 +33721,28 @@
     9,
     1024,
     false
+   ]
+  },
+  "SpriteSkinComponent": {
+   "bones": [
+    15,
+    0,
+    true
+   ],
+   "bones[N]": [
+    16,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "rootBone": [
+    16,
+    0,
+    true
    ]
   },
   "TerrainComponent": {
@@ -33008,6 +34145,21 @@
    ]
   },
   "TextComponent": {
+   "anchorHorizontal": [
+    13,
+    32768,
+    true
+   ],
+   "anchorVertical": [
+    13,
+    32768,
+    true
+   ],
+   "autoSize": [
+    0,
+    65536,
+    true
+   ],
    "fixedHeight": [
     0,
     32768,
@@ -33026,6 +34178,26 @@
    "fontSize": [
     9,
     65536,
+    true
+   ],
+   "fontSizeMax": [
+    9,
+    65536,
+    true
+   ],
+   "fontSizeMin": [
+    9,
+    65536,
+    true
+   ],
+   "fontSizeUnit": [
+    13,
+    65536,
+    true
+   ],
+   "horizontalAlignment": [
+    13,
+    32768,
     true
    ],
    "localizationKey": [
@@ -33058,16 +34230,6 @@
     32768,
     true
    ],
-   "pivotBaseline": [
-    0,
-    32768,
-    true
-   ],
-   "pivotCentered": [
-    0,
-    32768,
-    true
-   ],
    "shadowColor": [
     6,
     32768,
@@ -33095,6 +34257,11 @@
    ],
    "text": [
     1,
+    32768,
+    true
+   ],
+   "verticalAlignment": [
+    13,
     32768,
     true
    ],
@@ -34042,6 +35209,11 @@
    ]
   },
   "UIDocumentComponent": {
+   "billboard": [
+    0,
+    0,
+    true
+   ],
    "enabled": [
     0,
     0,
@@ -34082,6 +35254,11 @@
     274877906944,
     true
    ],
+   "pixelsPerUnit": [
+    2,
+    0,
+    true
+   ],
    "renderMode": [
     13,
     274877906944,
@@ -34100,6 +35277,11 @@
    "textureWidth": [
     8,
     274877906944,
+    true
+   ],
+   "updateMode": [
+    13,
+    0,
     true
    ]
   },
@@ -34299,6 +35481,38 @@
    "speed": [
     2,
     0,
+    true
+   ]
+  },
+  "VertexColorsComponent": {
+   "channelNames[N]": [
+    1,
+    0,
+    true
+   ],
+   "customInitial": [
+    6,
+    288230376151711744,
+    true
+   ],
+   "data": [
+    18,
+    288230376151711744,
+    true
+   ],
+   "enabled": [
+    0,
+    288230376151711744,
+    true
+   ],
+   "format": [
+    13,
+    288230376151711744,
+    true
+   ],
+   "initialValue": [
+    13,
+    288230376151711744,
     true
    ]
   },
@@ -35037,7 +36251,8 @@
    "fallback": "color",
    "names": [
     "color",
-    "sky"
+    "sky",
+    "lit"
    ]
   },
   "FogType": {
@@ -35135,7 +36350,8 @@
     "ALPHA",
     "PREMULTIPLIED",
     "ADDITIVE",
-    "MULTIPLY"
+    "MULTIPLY",
+    "CUSTOM"
    ]
   },
   "MaterialCullMode": {
@@ -35322,7 +36538,8 @@
    "fallback": "screen",
    "names": [
     "texture",
-    "screen"
+    "screen",
+    "world"
    ]
   },
   "UIEventState": {

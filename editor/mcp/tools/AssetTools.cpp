@@ -59,6 +59,7 @@
 #include "vat/VatAssetFiles.h"
 #include "vat/VatDocument.h"
 #include "component/MeshComponent.h"
+#include "component/Transform.h"
 #include "model/MeshAsset.h"
 #include "StreamSchema.h"
 #include "htmlui/HtmlUiImporters.h"
@@ -96,6 +97,7 @@
 #include "command/type/SetAssetMetaCmd.h"
 #include "texture/TextureCookReport.h"
 #include "texture/TextureDecode.h"
+#include "texture/PsdLayerImport.h"
 
 #include <algorithm>
 #include <cctype>
@@ -713,7 +715,7 @@ bool applyMaterialJson(Project* project, Material& material, const Json& values,
                     "alphaMode, emissiveFactor, emissiveStrength, pbr, foliageTransmission, baseColorTexture, emissiveTexture, metallicRoughnessTexture, "
                     "occlusionTexture, normalTexture, the *TexCoord indices, stochasticTiling and its stochasticCellSize, "
                     "stochasticBlendSharpness, stochasticContrast, stochasticRotation, and the shader library's shader, shaderParams, "
-                    "shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, "
+                    "shaderTextures, shaderFeatures, blendMode (Custom: blendSrc, blendDst, blendSrcAlpha, blendDstAlpha, blendOp, blendOpAlpha), cullMode, depthWrite, depthTest, depthOffsetFactor, "
                     "depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass.";
             return false;
         }
@@ -964,6 +966,13 @@ void getAssetInfoTool(const CallPtr& call) {
         call->ok(text + ": " + data["sound_event"]["mode"].get<std::string>() + ", " + std::to_string(data["sound_event"]["clips"].size()) +
                  " clip(s), " + std::to_string(problems.size()) + " problem(s).", data);
         return;
+    }
+    if (Util::isDataAssetFile(rel)) {
+        // S95 REQ-24: its class and values
+        data["data_asset"] = dataAssetInfo(project, file);
+        const Json& block = data["data_asset"];
+        text += ": " + (block["class"].is_string() ? block["class"].get<std::string>() : std::string("unreadable")) + ", " +
+                std::to_string(block.value("problems", Json::array()).size()) + " problem(s)";
     }
     if (kind != "script" && kind != "shader" && kind != "material" && kind != "scene" && kind != "prefab" && kind != "other") {
         data["inside_assets_dir"] = project->isInsideAssetsPath(file);
@@ -2763,7 +2772,8 @@ void linkMaterialTool(const CallPtr& call) {
     }
     MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
     if (!mesh || mesh->numSubmeshes == 0) {
-        call->fail("The GameObject has no Mesh component with submeshes (sprites and UI use their own texture properties).");
+        const std::string drawnByRoot = McpValues::modelNodeMeshError(sceneProject, entity);
+        call->fail(!drawnByRoot.empty() ? drawnByRoot : "The GameObject has no Mesh component with submeshes (sprites and UI use their own texture properties).");
         return;
     }
     int submeshIndex = 0;
@@ -2909,17 +2919,45 @@ void applyMaterialPresetTool(const CallPtr& call) {
     if (!submeshArg(call, -1, onlySubmesh)) return;
     const bool oneSubmesh = onlySubmesh >= 0;
 
+    // a GameObject without a Mesh (a model root) takes the preset on the Meshes below it (S94 F23)
+    Scene* scene = sceneProject->scene;
+    auto hasSubmeshes = [scene](Entity entity) {
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        return mesh && mesh->numSubmeshes > 0;
+    };
+    std::vector<Entity> targets;
+    std::vector<std::string> descended;
+    for (Entity entity : entities) {
+        if (hasSubmeshes(entity)) {
+            targets.push_back(entity);
+            continue;
+        }
+        size_t below = 0;
+        if (scene->findComponent<Transform>(entity)) {
+            auto transforms = scene->getComponentArray<Transform>();
+            const size_t first = transforms->getIndex(entity);
+            const size_t last = scene->findBranchLastIndex(entity);
+            for (size_t index = first + 1; index <= last && index < transforms->size(); index++) {
+                const Entity child = transforms->getEntity(index);
+                if (hasSubmeshes(child) && std::find(targets.begin(), targets.end(), child) == targets.end()) {
+                    targets.push_back(child);
+                    below++;
+                }
+            }
+        }
+        if (below == 0) {
+            call->fail(McpRefs::entityPath(sceneProject, entity) + " has no Mesh component with submeshes, nor any below it "
+                       "(presets set a mesh material: meshes, models, sprites, tilemaps).");
+            return;
+        }
+        descended.push_back(McpRefs::entityPath(sceneProject, entity) + " (" + std::to_string(below) + " mesh(es))");
+    }
+
     auto* multi = new MultiPropertyCmd();
     Json applied = Json::array();
     std::vector<std::string> unlinked;
-    for (Entity entity : entities) {
-        MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
-        if (!mesh || mesh->numSubmeshes == 0) {
-            delete multi;
-            call->fail(McpRefs::entityPath(sceneProject, entity) + " has no Mesh component with submeshes (presets set a "
-                       "mesh material: meshes, models, sprites, tilemaps).");
-            return;
-        }
+    for (Entity entity : targets) {
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
         if (oneSubmesh && (onlySubmesh < 0 || (unsigned int)onlySubmesh >= mesh->numSubmeshes)) {
             delete multi;
             call->fail("submesh must be 0.." + std::to_string(mesh->numSubmeshes - 1) + " for " + McpRefs::entityPath(sceneProject, entity) + ".");
@@ -2960,7 +2998,18 @@ void applyMaterialPresetTool(const CallPtr& call) {
         text += " Unlinked from their .material file (now their own material; apply_material_preset path= changes a shared file):";
         for (const std::string& entry : unlinked) text += " " + entry + ";";
     }
-    call->ok(text, Json{{"preset", preset->id}, {"applied", applied}, {"sets", presetFieldsJson(project, *preset)}});
+    Json data{{"preset", preset->id}, {"applied", applied}, {"sets", presetFieldsJson(project, *preset)}};
+    if (!descended.empty()) {
+        std::string next = "Applied to the meshes below";
+        for (const std::string& entry : descended) next += " " + entry;
+        next += ", which have no Mesh of their own.";
+        // an outline of a whole object (a model, skinned children included) is the Outline component's
+        if (preset->id.find("outline") != std::string::npos || preset->id.find("silhouette") != std::string::npos)
+            next += " To outline a whole object, add the Outline component to its root instead (add_component "
+                    "outline; set_properties outline.mode, outline.color, outline.width).";
+        data["next"] = next;
+    }
+    call->ok(text, data);
 }
 
 // ------------------------------------------------------------------ shaders
@@ -3088,8 +3137,11 @@ void forkShaderTool(const CallPtr& call) {
             data = Json{{"custom_shader", base}, {"entity", McpRefs::entityJson(sceneProject, entity)}, {"submeshes", indices}};
         }
         data["source"] = source;
-        if (sourceManifest->depth)
-            data["note"] = "Its depth passes use the engine's depth program (a fork has none of its own).";
+        if (sourceManifest->depth) {
+            std::error_code ec;
+            if (fs::exists(project->getProjectPath() / (base + "_depth.vert"), ec) || fs::exists(project->getProjectPath() / (base + "_depth.frag"), ec))
+                data["note"] = "Its depth program came along as " + base + "_depth (.vert/.frag): change it alike, or shadows stop following.";
+        }
         finish(base, data, "Forked " + source + " to " + base + " (.vert/.frag, with its manifest) and pointed the material at it.");
         return;
     }
@@ -3718,14 +3770,31 @@ void setShaderUniformTool(const CallPtr& call) {
     if (!resolveShaderComponent(call, where, shaderType)) return;
     int submesh = -1;
     if (!materialParamsTarget(call, scene, where.entity, where.component, submesh)) return;
+    // override: the Mesh's Property Override (S94 F7), every submesh's or (submesh) one's
+    const bool overrideValue = args.value("override", false);
+    if (overrideValue && where.component != ComponentType::MeshComponent) {
+        call->fail("override is a Mesh's Property Override; this component's parameters are its own (leave override out).");
+        return;
+    }
+    const bool overrideSubmesh = overrideValue && args.contains("submesh");
     // a submesh material's parameters, or the component's shaderUniforms
-    const std::string property = submesh >= 0 ? "submeshes[" + std::to_string(submesh) + "].material.shaderParams" : "shaderUniforms";
+    const std::string property = overrideValue
+        ? (overrideSubmesh ? "submeshes[" + std::to_string(submesh) + "].propertyOverrides.values" : std::string("propertyOverrides.values"))
+        : (submesh >= 0 ? "submeshes[" + std::to_string(submesh) + "].material.shaderParams" : "shaderUniforms");
     ShaderUniformValues* current = Catalog::getPropertyRef<ShaderUniformValues>(scene, where.entity, where.component, property);
     if (!current) {
         call->fail("The component has no shader uniforms.");
         return;
     }
-    const std::string shader = Catalog::getShaderReferenceForProperty(scene, where.entity, where.component, property);
+    // (an override is checked against the shader its submesh draws with)
+    const std::string shader = Catalog::getShaderReferenceForProperty(scene, where.entity, where.component,
+        overrideValue ? "submeshes[" + std::to_string(std::max(submesh, 0)) + "].material.shaderParams" : property);
+    // the built-in Lit takes its two colours as overrides
+    if (overrideValue && !remove && shader.empty() && name != "baseColorFactor" && name != "emissiveFactor") {
+        call->fail("The built-in Lit takes overrides of baseColorFactor and emissiveFactor (colours linear); '" + name +
+                   "' is a custom or library shader's parameter (give the material a shader).");
+        return;
+    }
     const std::shared_ptr<const ShaderManifest> manifest = McpValues::findManifest(shader);
     const ShaderManifestProperty* declaredProperty = manifest ? manifest->findProperty(name) : nullptr;
     if (!remove && ShaderReference::isLibrary(shader) && !manifest) {
@@ -3759,22 +3828,36 @@ void setShaderUniformTool(const CallPtr& call) {
         call->fail("Could not change the uniform.");
         return;
     }
-    if (submesh >= 0) {
-        const Submesh& sub = scene->getComponent<MeshComponent>(where.entity).submeshes[submesh];
+    if (submesh >= 0 || overrideValue) {
+        const Submesh& sub = scene->getComponent<MeshComponent>(where.entity).submeshes[std::max(submesh, 0)];
         for (const CustomUniformBlock* block : {&sub.customVSParams, &sub.customFSParams, &sub.customVSDepthParams, &sub.customFSDepthParams}) {
             appendUniformMembers(declaredMembers, *block, values);
         }
     } else {
         componentUniformMembers(declaredMembers, warnings, scene, where.entity, where.component, values);
     }
-    // a manifest parameter is declared even while its variant still builds
-    const std::string note = remove || declaredProperty ? "" : uniformSetNote(declaredMembers, name, declared);
-    declared = declared || declaredProperty != nullptr;
+    // a manifest parameter is declared even while its variant still builds (the Lit's colours too)
+    const bool litColor = overrideValue && shader.empty();
+    const std::string note = remove || declaredProperty || litColor ? "" : uniformSetNote(declaredMembers, name, declared);
+    declared = declared || declaredProperty != nullptr || litColor;
     Json result = {{"entity", McpRefs::entityJson(where.scene, where.entity)}, {"component", McpRefs::componentName(where.component)},
                    {"property", property}, {"name", name}, {"declared", declared}};
     if (!remove) result["value"] = vec4Array(value);
-    call->ok((remove ? "Removed " : "Set ") + name + " on " + McpRefs::entityPath(where.scene, where.entity) +
-             (submesh >= 0 ? " (submesh " + std::to_string(submesh) + " material)" : std::string()) + "." + note, result);
+    // a Mesh value a material parameter of the same name hides (S94 F8): said, with the fix
+    if (!overrideValue && !remove && property == "shaderUniforms" && where.component == ComponentType::MeshComponent) {
+        const MeshComponent& mesh = scene->getComponent<MeshComponent>(where.entity);
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
+            if (ShaderUniforms::warnShadowedByMaterial(scene, where.entity, scene->getEntityName(where.entity), name,
+                                                       mesh.submeshes[s].material.shaderParams)) {
+                result["next"] = "Submesh " + std::to_string(s) + "'s material sets '" + name +
+                                 "', which wins over this value: set it again with override: true (a Property Override) to win.";
+                break;
+            }
+        }
+    }
+    const std::string target = overrideValue ? (overrideSubmesh ? " (submesh " + std::to_string(submesh) + " Property Override)" : std::string(" (Property Override)"))
+                                             : (submesh >= 0 ? " (submesh " + std::to_string(submesh) + " material)" : std::string());
+    call->ok((remove ? "Removed " : "Set ") + name + " on " + McpRefs::entityPath(where.scene, where.entity) + target + "." + note, result);
 }
 
 void listShadersTool(const CallPtr& call) {
@@ -4702,19 +4785,20 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "set_shader_uniform";
         tool.title = "Set Shader Uniform";
         tool.description =
-            "Set or remove one parameter of a custom or library shader of entity (+ component, + submesh), "
-            "pass_index or shader_type (the scene's default shader). Undeclared names are stored but unused.";
+            "Set or remove a custom or library shader's parameter: entity (+ component, + submesh; override: a Property "
+            "Override, over its materials), pass_index or shader_type (scene default).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
-            {"component", componentName("Default: auto-detect.")},
+            {"component", componentName("Default: auto.")},
             {"submesh", integer("Default 0 if its material has a shader.")},
-            {"pass_index", integer("A post-process pass instead.")},
+            {"pass_index", integer("Or a post-process pass.")},
             {"shader_type", stringEnum("", {"mesh", "ui", "sky", "points", "lines"})},
             {"name", string("")},
             {"value", {{"type", {"number", "array", "string"}}, {"items", {{"type", "number"}}},
-                       {"description", "Number or [x,y(,z(,w))] (colours linear), or \"#RRGGBB[AA]\" (sRGB) for a colour."}}},
-            {"remove", withDefault(boolean(""), false)}
+                       {"description", "Number, [x,y(,z(,w))] (colours linear) or \"#RRGGBB[AA]\" (sRGB)."}}},
+            {"remove", withDefault(boolean(""), false)},
+            {"override", withDefault(boolean(""), false)}
         }, {"name"});
         tool.handler = setShaderUniformTool;
         registry.addTool(std::move(tool));
@@ -4889,6 +4973,8 @@ const std::vector<std::pair<std::string, std::string>>& textureSettingFields() {
         {"ship_source", "shipSource"},
         // S42 R4, R6, R7
         {"pixel_art", "pixelArt"}, {"alpha_clip", "alphaClip"}, {"filter_mode", "filterMode"}, {"pixels_per_unit", "pixelsPerUnit"},
+        // S94 F48: a PSD/PSB's layers as sprites
+        {"import_mode", "importMode"}, {"character_rig", "characterRig"},
         // S99 R29
         {"remove_sun_disc", "removeSunDisc"}};
     return fields;
@@ -5122,6 +5208,15 @@ void setTextureImportSettingsTool(const CallPtr& call) {
             }
             edits.push_back({field->second, yaml});
         }
+        // Layers import reads Photoshop documents only
+        if (!perPlatform && (settings.contains("import_mode") || settings.contains("character_rig"))) {
+            for (size_t i = 0; i < assetPaths.size(); i++) {
+                if (!isPsdPath(assetPaths[i])) {
+                    call->fail("settings.import_mode: " + projectPaths[i] + " is not a .psd or .psb (Layers import reads Photoshop documents).");
+                    return;
+                }
+            }
+        }
         // every texture's new section, checked whole before anything is written
         std::vector<std::pair<size_t, YAML::Node>> writes;
         for (size_t i = 0; i < assetPaths.size(); i++) {
@@ -5177,8 +5272,30 @@ void setTextureImportSettingsTool(const CallPtr& call) {
         }
         edit.commit();
         if (ProjectWindow* window = call->ctx().projectWindow()) window->refreshCurrentDirectory();
+        Json data = {{"updated", updated}, {"unchanged", writes.size() - updated.size()}};
+        // S94 F48: what the layered documents imported to (their prefabs are written by now)
+        Json layers = Json::array();
+        for (size_t i = 0; i < assetPaths.size(); i++) {
+            if (!isPsdPath(assetPaths[i]) || !PsdLayerImporter::get().isLayered(assetPaths[i])) continue;
+            PsdLayerImportResult imported;
+            Json entry = {{"path", projectPaths[i]}};
+            if (PsdLayerImporter::get().import(assetPaths[i], imported)) {
+                Json sprites = Json::array();
+                for (const SpriteFrame& frame : imported.sheet.frames) sprites.push_back({{"name", frame.name}, {"key", frame.key}});
+                entry["sprites"] = sprites;
+                entry["prefab"] = project->normalizeToProjectRelative(project->getAssetsPath() / PsdLayerImporter::prefabPathOf(assetPaths[i])).generic_string();
+                if (!imported.warnings.empty()) entry["warnings"] = imported.warnings;
+            } else {
+                entry["error"] = imported.error;
+            }
+            layers.push_back(entry);
+        }
+        if (!layers.empty()) {
+            data["layers"] = layers;
+            data["next"] = "instantiate_prefab the prefab to place the layers; a Sprite's sheet is the document, its frame a layer's name.";
+        }
         call->ok("Updated the import settings of " + std::to_string(updated.size()) + " texture(s); their cooks are queued. "
-                 "Undo with scope project.", Json{{"updated", updated}, {"unchanged", writes.size() - updated.size()}});
+                 "Undo with scope project.", data);
     });
 }
 
@@ -5332,7 +5449,7 @@ void registerTextureTools(McpRegistry& registry) {
         tool.name = "set_texture_import_settings";
         tool.title = "Set Texture Import Settings";
         tool.description = "Partial update of textures' import settings (type, srgb, max_size, mipmaps, quality, effort, "
-                           "flip_green, pixel_art...; null removes one); with platform, that platform's override (max_size, format, "
+                           "flip_green, pixel_art, import_mode: layers gives a PSD/PSB a frame per layer and a prefab...; null removes one); with platform, that platform's override (max_size, format, "
                            "quality, effort, rdo). One undo step; recooks.";
         tool.inputSchema = object({
             {"paths", array(string(""), "Project-relative texture paths.")},

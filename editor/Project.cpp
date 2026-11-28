@@ -6,6 +6,8 @@
 #include "pixelart/PixelArtMode.h"
 #include "pixelart/BitmapTextCache.h"
 #include "Project.h"
+#include "dataasset/DataAssets.h"
+#include "script/DataAsset.h"
 #include "util/TitleArtLanguage.h"
 #include "test/GameTests.h"
 #include "test/PlayData.h"
@@ -19,6 +21,7 @@
 #include "asset/ModelSubAssets.h"
 #include "memory/HeapTrim.h"
 #include "render/LayerViewCamera.h"
+#include "render/FogResolve.h"
 #include "object/TerrainEdit.h"
 #include "component/TerrainComponent.h"
 #include "component/MirrorComponent.h"
@@ -132,6 +135,7 @@
 #include "voxel/VoxelWorkQueue.h"
 #include "voxel/VoxelAssetFile.h"
 #include "asset/MeshAssetFiles.h"
+#include "vertexcolor/VertexColorProject.h"
 #include "voxel/VoxelGeneration.h"
 #include "fluid/FluidSimulator.h"
 #include "subsystem/PoseAnimatorSystem.h"
@@ -307,6 +311,11 @@ static bool scriptPropertyValuesEqual(ScriptPropertyType type, const ScriptPrope
             const AssetRef* b = std::get_if<AssetRef>(&rhs);
             return a && b && *a == *b;
         }
+        case ScriptPropertyType::List: {
+            const ScriptPropertyList* a = std::get_if<ScriptPropertyList>(&lhs);
+            const ScriptPropertyList* b = std::get_if<ScriptPropertyList>(&rhs);
+            return a && b && *a == *b;
+        }
     }
 
     return false;
@@ -329,7 +338,9 @@ static bool mergeScriptProperties(std::vector<ScriptProperty>& properties, const
         }
 
         const size_t currentIndex = static_cast<size_t>(currentIt - properties.begin());
-        const bool sameType = currentIt->type == parsedProp.type;
+        // a list of another element type, or a reference to another kind of asset, is another type
+        const bool sameType = currentIt->type == parsedProp.type && currentIt->assetType == parsedProp.assetType &&
+            (parsedProp.type != ScriptPropertyType::List || currentIt->elementType == parsedProp.elementType);
         const bool defaultChanged = sameType &&
             !scriptPropertyValuesEqual(currentIt->type, currentIt->defaultValue, parsedProp.defaultValue);
         const bool updateValue = !sameType || (defaultChanged &&
@@ -347,6 +358,8 @@ static bool mergeScriptProperties(std::vector<ScriptProperty>& properties, const
         merged.displayName = parsedProp.displayName;
         merged.type = parsedProp.type;
         merged.ptrTypeName = parsedProp.ptrTypeName;
+        merged.assetType = parsedProp.assetType;
+        merged.elementType = parsedProp.elementType;
         merged.defaultValue = parsedProp.defaultValue;
 
         if (updateValue) {
@@ -451,6 +464,8 @@ std::shared_ptr<editor::Project> editor::Project::makeSettingsSnapshot(Project& 
 
 editor::Project::~Project(){
     if (settingsSnapshot) return;
+    // the importer's process-wide FBX Submesh Order is the open project's: a closed one leaves the default
+    FbxImporter::setDefaultUsedMaterialsOrder(false);
     // closing the project: a map waiting for its debounce reaches its file (T1 R30)
     TerrainMapPersistence::get().flushAll();
     // the poller and the worker read nothing of the project, but its backups go with it
@@ -1317,6 +1332,9 @@ static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs
     if (!result.warnings.empty()) {
         editor::Out::warning("%s", editor::FbxImporter::summarizeWarnings(fbxName, result.warnings).c_str());
     }
+    for (const std::string& note : result.notes) {
+        editor::Out::info("%s: %s", fbxName.c_str(), note.c_str());
+    }
     if (!result.success) {
         editor::Out::error("Cannot import %s: %s", fbxName.c_str(), result.error.c_str());
         // A stale import still loads
@@ -2123,7 +2141,11 @@ void editor::Project::setHtmlUiRenderSettings(const HtmlUiRenderSettings& settin
     if (!isValidHtmlUiGlyphAtlasMiB(htmlUiRender.glyphAtlasMiB))
         htmlUiRender.glyphAtlasMiB = std::clamp(htmlUiRender.glyphAtlasMiB, minHtmlUiGlyphAtlasMiB, maxHtmlUiGlyphAtlasMiB);
     // the editor's documents follow at once
-    if (!settingsSnapshot) UIDocumentSystem::setHtmlUiRenderOptions(htmlUiRender.glyphAtlasMiB, htmlUiRender.sdfPrimitives, htmlUiRender.transformAwareText);
+    htmlUiRender.imageCacheMiB = std::clamp(htmlUiRender.imageCacheMiB, -1, maxHtmlUiImageCacheMiB);
+    if (!settingsSnapshot) {
+        UIDocumentSystem::setHtmlUiRenderOptions(htmlUiRender.glyphAtlasMiB, htmlUiRender.sdfPrimitives, htmlUiRender.transformAwareText);
+        UIDocumentSystem::setHtmlUiImageCacheMiB(htmlUiRender.imageCacheMiB);
+    }
 }
 
 const editor::HtmlUiRenderSettings& editor::Project::getHtmlUiRenderSettings() const{
@@ -2743,6 +2765,8 @@ void editor::Project::openAssetDatabase() {
     });
     assetIndex.open(&assetDatabase, projectPath, getAssetRoots());
     AssetMap::setResolver(&assetResolver);
+    // S95: Play's data classes and their assets, as the project has them when a run first asks
+    DataAsset::setIndexProvider([this]() { return DataAssets::buildIndex(this); });
     // S48: a PixelFX dissolve's embers may name a Pixel Particles preset ("ember"): its effect,
     // built for this project's Pixels Per Unit and passed inline (S49's presets live in the editor)
     jasperengine::pixelart::PixelFxPlayer::setEmberResolver([](const std::string& name) -> std::string {
@@ -4308,7 +4332,11 @@ const editor::ModelProjectSettings& editor::Project::getModelSettings() const{
 
 void editor::Project::setModelSettings(const ModelProjectSettings& settings){
     // the importer's process-wide value is the open project's, also when it equals the last one's
-    FbxImporter::setDefaultCreatesMaterials(settings.materialCreationMode == MaterialCreationMode::Import);
+    // (a Build Profile's settings snapshot leaves them to the open project)
+    if (!settingsSnapshot){
+        FbxImporter::setDefaultCreatesMaterials(settings.materialCreationMode == MaterialCreationMode::Import);
+        FbxImporter::setDefaultUsedMaterialsOrder(settings.fbxSubmeshOrder == FbxSubmeshOrder::UsedMaterials);
+    }
     if (settings == modelSettings){
         return;
     }
@@ -4988,7 +5016,7 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
                                          scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>(),
                                          scriptsSetShadowQuality(), scriptsMention("litQuality"), getMobilePbrTier(), getShippedTerrainTiers(),
-                                         scriptsSetLight2D());
+                                         scriptsSetLight2D(), scriptsMention("Outline"));
     // a fluid a script makes (FluidSimulation in Lua or C++) needs its programs too
     if (scriptsMention("FluidSimulation"))
         ShaderVariantCollector::addFluidKeys(keys);
@@ -6810,6 +6838,10 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     ::jasperengine::pixelart::HitStop::reset();
     Engine::resetFoliageDistanceScale();
     Engine::setFixedDeltatime(0.0);
+    // Project Settings > Time and Input applied at Play start (and what a game's script changed)
+    Engine::setProjectUpdateTime(defaultFixedTimestep);
+    Engine::setMaxDeltatime(static_cast<float>(defaultMaximumDeltaTime));
+    Engine::setCallTouchInMouseEvent(false);
     Engine::setSimulationHeld(false);
     // a game may have turned it off
     Engine::setAsyncLoading(true);
@@ -6865,6 +6897,14 @@ void editor::Project::resetConfigs() {
         // and the offscreen renderers render_pose_animation keeps of its models
         PoseSheetRenderer::clearShared();
 
+        // Prefab Mode ends with the project (what it had unsaved was offered for saving before)
+        while (!prefabStages.empty()) {
+            popPrefabStage();
+        }
+
+        // vertex colors' queued writes land, and their live values and remap issues go (V1 R8)
+        releaseVertexColorFiles();
+
         deleteScenes();
         unresolvedScenes.clear();
         unresolvedSceneStates.clear();
@@ -6902,6 +6942,9 @@ void editor::Project::resetConfigs() {
     playerLogging = PlayerLoggingSettings();
     inputActionsAsset.clear();
     setInputDeadzone(defaultInputDeadzone);
+    simulateTouchFromMouse = false;
+    fixedTimestep = defaultFixedTimestep;
+    maximumDeltaTime = defaultMaximumDeltaTime;
     setGamepadCursorSettings(GamepadCursorSettings());
     playerCrash = PlayerCrashSettings();
     buildMethod = "auto";
@@ -7009,6 +7052,7 @@ void editor::Project::resetConfigs() {
     if (!settingsSnapshot) {
         SoundEventLibrary::clear();
         AssetMap::setResolver(nullptr);
+        DataAsset::setIndexProvider(nullptr);
         jasperengine::pixelart::PixelFxPlayer::setEmberResolver(nullptr);
     }
     waitForAssetScan();
@@ -7560,6 +7604,9 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         applyEditCanvasScale(sceneProject->scene, sceneProject->sceneType, sceneProject->sceneRender);
         // the fluids too: back to the edit-mode start, not the game's last frame
         restartFluids(sceneProject->scene);
+        // and the fog: its blends, runtime profile and script writes were the Play's (the
+        // snapshot's decode keeps what it does not hold, docs/specs/S101-vapor.md R43)
+        FogScene::resetRuntime(sceneProject->scene);
 
         sceneProject->playState = ScenePlayState::STOPPED;
         if (!entry.ownedRuntime) {
@@ -7773,6 +7820,8 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
             vcsProjectSettings.lfs = true;
             // ... and places a model of many clips without an Animation entity per clip (S77 R38)
             modelSettings.animationEntities = AnimationEntitiesMode::Auto;
+            // ... and keeps the node hierarchy of the models placed in it (S94 F44)
+            modelSettings.preserveHierarchyForNewModels = true;
             // ... and ships at a sane level (S38 R8): a Master true-peak limiter, the linear output
             // stage that lets its ceiling hold at the device, the ambient iOS session
             {
@@ -8545,6 +8594,8 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         NavigationEditor::get().saveSceneAssets(this, *sceneProject);
         // its dirty Voxel Volumes (T6 R77)
         saveSceneVoxelAssets(*this, *sceneProject);
+        // its paint not on disk yet, with each mesh's snapshot (V1 R8, R9)
+        saveSceneVertexColors(*this, *sceneProject);
         // its large meshes to .mesh assets (S98 F1)
         MeshAssetFiles::extractScene(*this, *sceneProject, fullPath);
         resolveSceneAssetRefs(*sceneProject, false);
@@ -9006,6 +9057,8 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     NavigationEditor::get().saveSceneAssets(this, *sceneProject);
     // its dirty Voxel Volumes (T6 R77): the store's tables belong to this thread
     saveSceneVoxelAssets(*this, *sceneProject);
+    // its paint not on disk yet (V1 R8): the live values belong to this thread too
+    saveSceneVertexColors(*this, *sceneProject);
     // its large meshes to .mesh assets (S98 F1), here: they edit the scene's components
     MeshAssetFiles::extractScene(*this, *sceneProject, path.is_relative() ? getProjectPath() / path : path);
     resolveSceneAssetRefs(*sceneProject, false);
@@ -11322,6 +11375,11 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 Engine::setCanvasSize(canvasWidth, canvasHeight);
                 Engine::setScalingMode(scalingMode);
                 Engine::setPixelsPerUnit(pixelsPerUnit);
+                // Project Settings > Time and Input > Simulate Touch From Mouse, as a game's main
+                // sets them before its init (the Game view's Simulate Touch is PlayInput's own)
+                Engine::setProjectUpdateTime(fixedTimestep);
+                Engine::setMaxDeltatime(static_cast<float>(maximumDeltaTime));
+                Engine::setCallTouchInMouseEvent(simulateTouchFromMouse);
                 // runtime-made textures of the game start with the Default Filter Mode (S42 R3);
                 // edit mode keeps Bilinear: assignments copy their filters explicitly (R7)
                 Engine::setDefaultTextureFilter(textureFilterModeEngineFilter(defaultFilterMode));
@@ -12131,6 +12189,8 @@ void editor::Project::stop(uint32_t sceneId) {
             resetPlayAudio(false);
             // and the global shader values scripts set (Shader.setGlobal*)
             resetPlayShaderGlobals();
+            // and the fog profiles scripts cloned (FogProfile:clone)
+            FogProfileLibrary::resetRuntime();
 
             // what the game queued in SaveGame and stored in UserSettings / PlayerPrefs is on disk
             // when Play has stopped; the Saved Data window's marks of this Play end

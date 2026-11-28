@@ -87,6 +87,11 @@ namespace jasperengine{
         // script can turn them on): the shader variant collection's question (a registry of a
         // scene or a prefab, nothing loaded)
         static bool isLatticeTarget(EntityRegistry* registry, Entity entity);
+
+        // Whether the modifier on `entity` reaches the meshes below it: Include Children, or a
+        // Model drawn by its parts (Preserve Hierarchy, spec S94 F44: no mesh of its own), whose
+        // modifier deforms its nodes' meshes as it deforms the Model's mesh when the Model draws it
+        static bool reachesChildren(EntityRegistry* registry, Entity entity, const LatticeModifierComponent& modifier);
     };
 
 }

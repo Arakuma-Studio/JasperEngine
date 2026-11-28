@@ -15,7 +15,7 @@ namespace jasperengine{
 
     public:
 
-        enum Side
+        enum Side : int
         {
             NO_SIDE,
             POSITIVE_SIDE,

@@ -1,10 +1,18 @@
-# Camera shake and camera follow
+# Camera bounds, shake and follow
 
 Two components shake and move cameras: the **Camera Shaker** and the **Camera Follow**. Both
 run every frame after your scripts' `onUpdate`, animations and physics, and before the frame is
 drawn. The full reference, written for coding agents but useful to anyone, is
 [docs/mcp/guide/camera.md](mcp/guide/camera.md). The Lua API is in
 [lua-api.md](mcp/guide/lua-api.md), section 4.9.1.
+
+## Orthographic bounds
+
+An orthographic camera's **Auto Resize** (on by default) gives it the canvas's pixels as bounds.
+Typing a bound (Left, Right, Bottom, Top) turns Auto Resize off in the same undo step, as Lua's
+setters and MCP's `set_properties` do. **Size** (Unity's orthographic Size, 0 = off) centres the
+bounds instead: half the view's height in world units, the width following the aspect of every
+canvas or render target. A Pixel Perfect Camera sets the bounds itself.
 
 ## Camera Shaker
 

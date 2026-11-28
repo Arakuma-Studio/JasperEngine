@@ -83,7 +83,8 @@ namespace {
                 {"Color Grading", "color_grading_enabled",
                  {{"temperature", "Temperature"}, {"tint", "Tint"}, {"contrast", "Contrast"}, {"saturation", "Saturation"},
                   {"lift", "Lift"}, {"gamma", "Gamma"}, {"gain", "Gain"}, {"lut_texture", "LUT Texture"},
-                  {"lut_input_encoding", "LUT Input Encoding"}, {"lut_contribution", "LUT Contribution"}, {"lut_size", "LUT Size"}},
+                  {"lut_input_encoding", "LUT Input Encoding"}, {"lut_flip_green", "Flip Green"}, {"lut_contribution", "LUT Contribution"},
+                  {"lut_size", "LUT Size"}},
                  "White balance, contrast, lift/gamma/gain, saturation and an optional LUT: an image strip (N*N x N, "
                  "Unity's layout) or a .cube file (1D, 3D or both, from Resolve and other grading tools), baked with the "
                  "curve into one small colour LUT whenever a value changes (no GPU cost). A .cube in a log encoding applies "
@@ -98,9 +99,11 @@ namespace {
             }},
             {"Lens", {
                 {"Vignette", "vignette_enabled",
-                 {{"vignette_intensity", "Intensity"}, {"vignette_smoothness", "Smoothness"}, {"vignette_roundness", "Roundness"},
-                  {"vignette_color", "Color"}},
-                 "Darkens the image towards its corners (towards Color).",
+                 {{"vignette_intensity", "Intensity"}, {"vignette_falloff", "Falloff"}, {"vignette_smoothness", "Smoothness"},
+                  {"vignette_start", "Start"}, {"vignette_end", "End"}, {"vignette_roundness", "Roundness"}, {"vignette_color", "Color"}},
+                 "Darkens the image towards its corners (towards Color). Falloff Smoothness widens the ramp with one value; "
+                 "Radii darkens from Start to End, radii where 1 is the middle of the screen's edge (Roundness 1: of its "
+                 "top edge).",
                  [](PostProcessingSettings& s) { s.vignetteEnabled = true; }, nullptr},
                 {"Chromatic Aberration", "chromatic_aberration_enabled", {{"chromatic_aberration_intensity", "Intensity"}},
                  "Red and blue fringes growing towards the screen's edges (two extra taps). With FXAA, every channel "
@@ -532,10 +535,10 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
                 ImGui::TextDisabled("Slower to bake: for palettes of many close shades");
             if (std::strcmp(f.name, "lutInputEncoding") == 0) {
                 // what the .cube's encoding resolves to (Auto: the proposal from its title and range)
-                const std::shared_ptr<const CubeLut> lut = getCachedColorLut(settings.lutTexture);
+                const std::shared_ptr<const CubeLut> lut = getCachedColorLut(settings.lutTexture, settings.lutFlipGreen);
                 ImGui::PushTextWrapPos(0.0f);
                 ImGui::TextDisabled("%s", describeLutInputEncoding(settings.lutInputEncoding, lut.get(),
-                                                                   getCachedColorLutError(settings.lutTexture)).c_str());
+                                                                   getCachedColorLutError(settings.lutTexture, settings.lutFlipGreen)).c_str());
                 ImGui::PopTextWrapPos();
             }
             break;

@@ -264,6 +264,8 @@ namespace jasperengine::editor {
         static const EnumTable<PbrTier>& pbrTier();
         static const EnumTable<MaterialAlphaMode>& materialAlphaMode();
         static const EnumTable<MaterialBlendMode>& materialBlendMode();
+        static const EnumTable<MaterialBlendFactor>& materialBlendFactor();
+        static const EnumTable<MaterialBlendOp>& materialBlendOp();
         static const EnumTable<MaterialCullMode>& materialCullMode();
         static const EnumTable<MaterialDepthTest>& materialDepthTest();
         static const EnumTable<MaterialDepthWrite>& materialDepthWrite();

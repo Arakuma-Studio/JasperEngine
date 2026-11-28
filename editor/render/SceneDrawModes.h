@@ -34,14 +34,20 @@ namespace jasperengine::editor{
 
     struct TerrainOverlayLegendStop;
 
-    constexpr int SCENE_DRAW_MODE_COUNT = 5;
+    constexpr int SCENE_DRAW_MODE_COUNT = 6;
+    constexpr int VERTEX_COLOR_CHANNEL_COUNT = 5;
 
-    // "shaded", "wireframe", "shaded_wireframe", "lod_level", "overdraw" (saved, MCP)
+    // "shaded", "wireframe", "shaded_wireframe", "lod_level", "overdraw", "vertex_color" (saved, MCP)
     const char* drawModeKey(ViewDrawMode mode);
     bool drawModeFromKey(std::string_view key, ViewDrawMode& mode);
-    // "Shaded", "Wireframe", "Shaded Wireframe", "LOD Level", "Overdraw" (the toolbar)
+    // "Shaded", "Wireframe", "Shaded Wireframe", "LOD Level", "Overdraw", "Vertex Color" (the toolbar)
     const char* drawModeLabel(ViewDrawMode mode);
     bool drawModeHasWires(ViewDrawMode mode);
+    // the Vertex Color mode's channel (V1 R102): "rgb", "r", "g", "b", "a" (saved, MCP) and
+    // "RGB", "R", "G", "B", "A" (the toolbar)
+    const char* vertexColorChannelKey(ViewVertexColorChannel channel);
+    bool vertexColorChannelFromKey(std::string_view key, ViewVertexColorChannel& channel);
+    const char* vertexColorChannelLabel(ViewVertexColorChannel channel);
 
     // The wires of the meshes a camera sees, each at the level its view draws: an edge list per
     // submesh and level, made the first time it is drawn and kept while its geometry is the same

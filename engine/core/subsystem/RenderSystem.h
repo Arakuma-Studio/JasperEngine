@@ -6,6 +6,7 @@
 
 #include "SubSystem.h"
 #include <functional>
+#include <optional>
 #include "render/ViewDrawMode.h"
 #include <string>
 #include <vector>
@@ -37,6 +38,7 @@
 #include "component/SpriteComponent.h"
 #include "ecs/ComponentFwd.h"
 #include "component/PixelPerfectCameraComponent.h"
+#include "component/OutlineComponent.h"
 #include "pixelart/PixelSnap.h"
 #include "render/WaterLayering.h"
 #include "render/ObjectRender.h"
@@ -76,6 +78,8 @@ namespace jasperengine::pixelart{
 namespace jasperengine{
 
 	struct FoliageViewList;
+	// V1: what painted meshes bind (subsystem/VertexColorRenderer.h)
+	class VertexColorRenderer;
 	// S52 (component/SpriteBatchComponent.h)
 	struct SpriteBatchComponent;
 	struct SpriteBatchState;
@@ -783,6 +787,12 @@ namespace jasperengine{
 	struct IesProfile;
 
 
+	// What a scene's late transform pass did (Engine::runFrame hands it to the audio)
+	struct LateTransformResult{
+		bool moved = false;      // Transforms or cameras moved after the update
+		bool viewMoved = false;  // the main camera's view among them
+	};
+
 	class JASPERENGINE_API RenderSystem : public SubSystem {
 		// the scene's fluids, whose MATERIAL outputs the draws show (set by drawFramePasses;
 		// null until then or without one)
@@ -805,7 +815,9 @@ namespace jasperengine{
 			PARTICLES,
 			// a thick Line Renderer, a Trail Renderer (blended ribbons)
 			LINES,
-			TRAIL
+			TRAIL,
+			// a World Space UI Document's quad (S93 R36, UIDocumentSystem::drawWorldDocument)
+			UI_DOCUMENT
 		};
 
 		// which of the LOD cross-fade's draws a pass makes (spec S54 R6-R8)
@@ -857,6 +869,9 @@ namespace jasperengine{
 			int unitPriority = 0;
 			float unitDistance = 0.0f;
 			uint64_t unitSeq = 0;
+			// a mesh split by sort priority (MeshComponent::splitPriorities): the submeshes of
+			// this entry's priority; all otherwise
+			uint32_t submeshMask = 0xFFFFFFFFu;
 		};
 
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
@@ -1106,6 +1121,15 @@ namespace jasperengine{
 		bool hasMultipleCameras = false;
 		// extra cameras the last frame drew, to catch the switch back to main only
 		bool lastMultiCameraDraw = false;
+		// the late transform pass (updateLateTransforms): the change tick the update ended at,
+		// whether this frame's update reached it, its light count, and a main camera moved after
+		// it whose MVPs the draw makes (else the next update)
+		Tick lateTransformGate = 0;
+		bool lateTransformReady = false;
+		int frameNumLights = 0;
+		bool mainViewMVPStale = false;
+		// the Transform slots the late pass moved or saw stamped, ascending (capacity kept)
+		std::vector<uint32_t> lateChangedSlots;
 		bool capturingReflectionProbe = false;
 		// batch order currently baked into the shared points/instance arrays
 		bool lastBatchSort = true;
@@ -1642,6 +1666,11 @@ namespace jasperengine{
 			bool disableClouds = false;
 			int atmosphereQuality = -1;
 
+			// the Scene view's Draw Mode (setDrawMode, ViewDesc::drawMode) and the channel its
+			// Vertex Color mode shows (drawn where JE_VIEW_DRAW_MODES is: render/ViewDrawMode.h)
+			ViewDrawMode drawMode = ViewDrawMode::SHADED;
+			ViewVertexColorChannel vertexColorChannel = ViewVertexColorChannel::RGB;
+
 #ifdef JASPERENGINE_EDITOR
 			bool secondary = false;
 			// where the view draws
@@ -1655,8 +1684,6 @@ namespace jasperengine{
 			bool disableFog = false;
 			// its camera passes cull no face (the Scene view's debug toggle)
 			bool disableFaceCulling = false;
-			// the Scene view's Draw Mode (ViewDesc::drawMode)
-			ViewDrawMode drawMode = ViewDrawMode::SHADED;
 			// the view's copy of its camera, sized for the view: the scene's camera
 			// component is never touched (it may be drawn by the frame or another view)
 			CameraComponent camera;
@@ -2084,6 +2111,16 @@ namespace jasperengine{
 		// volumetric fog, clouds and their composites (AtmosphereRenderer)
 		height_fog_t passHeightFog;
 		AtmosphereRenderer atmosphere;
+		// the fog look the passes read (docs/specs/S101-vapor.md R7, R11): the scene's first Fog
+		// itself, or its resolve at the camera being drawn when a profile, a blend, a Fog Zone
+		// or a runtime write layers on it (render/FogResolve.h); null without a Fog
+		struct FogLook;
+		std::unique_ptr<FogLook> fogLook;
+		FogComponent* frameFog = nullptr;
+		// fs_fog and the atmosphere's fog from a look
+		void applyFogLook(FogComponent* look);
+		// the look of a view drawn from `camera`: the frame's, or its resolve there (Fog Zones)
+		FogComponent* viewFogLook(const Vector3& camera);
 #ifdef JASPERENGINE_EDITOR
 		std::unordered_map<uint32_t, AtmosphereInfo> keptAtmosphereInfo;
 #endif
@@ -2386,6 +2423,7 @@ namespace jasperengine{
 		// the user's LUT (PostProcessingSettings::lutTexture: a .cube, its cooked .jlut or a PNG
 		// strip), shared through the CubeLut cache by path; null when none or it failed to load
 		std::string postLutPath;
+		bool postLutFlipGreen = false;
 		std::shared_ptr<const CubeLut> postLut;
 		// the bake buffer, kept between bakes
 		std::vector<uint8_t> postLutPixels;
@@ -2561,6 +2599,18 @@ namespace jasperengine{
 		void updateSwapchainRedirect();
 		void updateSceneColorRedirect(CameraComponent& mainCamera);
 		void updateMVP(size_t index, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
+		// the transform stage (S95 REQ-5): what update() builds from the propagated world matrices,
+		// run again by updateLateTransforms for what moved after it. Each reads the needUpdate
+		// flags of the propagation; the bool ones say whether a mesh's bounds need making
+		bool updateSkinBindingBones();
+		void updateCameraView(CameraComponent& camera, Transform& cameraTransform, Entity cameraEntity);
+		void updateInstancedMeshView(Entity entity, MeshComponent& mesh, InstancedMeshComponent& instmesh, Transform& transform,
+		                             CameraComponent& mainCamera, Transform& mainCameraTransform, bool batchSort, bool batchSortChanged);
+		void updateMeshWorldBounds(Entity entity, Signature signature, MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh);
+		void updateViewDependents(size_t index, Entity entity, Signature signature, Transform& transform,
+		                          CameraComponent& mainCamera, Transform& mainCameraTransform);
+		bool updateModelAndBones(Entity entity, Signature signature, Transform& transform);
+		void updateFrameLights(CameraComponent& mainCamera, Transform& mainCameraTransform, int numLights);
 
 		void createEmptyTextures();
 		static void destroyEmptyTextures();
@@ -2832,7 +2882,8 @@ namespace jasperengine{
 
 		bool checkPBRFrabebufferUpdate(Material& material);
 		bool checkPBRTextures(Material& material, bool receiveLights, bool receiveIBL);
-		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights);
+		// baseColor: a Property Override's base colour texture in place of the material's (drawnBaseColor)
+		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights, Texture* baseColor = nullptr);
 		// A material's binding takes a stand-in for an image it names that has no GPU texture yet
 		// (Texture::getStandInCount): taken around the binding, noted on the submesh, which binds
 		// again once an image could be made since (TexturePool::getReadyEpoch)
@@ -2858,8 +2909,8 @@ namespace jasperengine{
 		static void applyLitMaterialBlock(ObjectRender& render, int slot, const Material& material, unsigned int size);
 		void loadShadowTextures(ShaderData& shaderData, ObjectRender& render, bool receiveLights, bool receiveShadow);
 		void updateShadowBindings();
-		bool loadDepthTexture(Material& material, ShaderData& shaderData, ObjectRender& render);
-		bool loadGBufferTextures(Material& material, ShaderData& shaderData, ObjectRender& render);
+		bool loadDepthTexture(Material& material, ShaderData& shaderData, ObjectRender& render, Texture* baseColor = nullptr);
+		bool loadGBufferTextures(Material& material, ShaderData& shaderData, ObjectRender& render, Texture* baseColor = nullptr);
 		// Every map of every layer is a slice of one array texture, so the whole terrain
 		// costs a single bind slot. Kept here, not on the component, which stays copiable.
 		struct TerrainDetailArray{
@@ -3017,6 +3068,53 @@ namespace jasperengine{
 		void drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsigned int submeshIndex, Transform& transform, PipelineType pipType,
 		                          InstancedMeshComponent* instmesh, int instanceView, const MeshDraw& draw, unsigned int instanceCount,
 		                          const Matrix4* objectBlock, TilemapComponent* tilemap, uint32_t& builtLightBits);
+
+		// ---- the Outline component (S94 F22, F23; RenderSystemOutline.cpp)
+		// An outlined submesh's render: library:outline_stencil loaded as the submesh's extra pass
+		// would be (getOutlinePass), on the dynamic pipeline path, so its mask and fill draws and
+		// every mode share it. Made on its first draw, kept while an Outline covers the submesh
+		// and its mesh stays loaded (destroyMesh lets it go)
+		struct OutlineRender{
+			SubmeshExtraPass pass;      // shader, render and block slots
+			OutlineWidthUnits units = OutlineWidthUnits::PIXELS;
+			int widthMember = -1;       // screenWidth / worldWidth of u_vs_customParams
+			int colorMember = -1;       // outlineColor of u_fs_customParams
+			// the submesh render's buffers it was bound like (a buffer retargeted: made again)
+			uint32_t vertexBufferId = 0;
+			uint32_t indexBufferId = 0;
+			// the last frame an enabled Outline covered its mesh (unused a while: let go)
+			uint64_t coveredFrame = 0;
+		};
+		// a Mesh an enabled Outline covers in the pass being drawn
+		struct OutlineDraw{
+			Entity entity = NULL_ENTITY;
+			MeshComponent* mesh = nullptr;
+			Transform* transform = nullptr;
+			InstancedMeshComponent* instmesh = nullptr;
+			const OutlineComponent* outline = nullptr;
+			MeshDraw draw;
+		};
+		// key: entity << 32 | submesh
+		std::unordered_map<uint64_t, std::unique_ptr<OutlineRender>> outlineRenders;
+		std::vector<OutlineDraw> outlineDraws;
+		std::vector<std::pair<std::string, Texture>> outlineNoTextures;
+		uint64_t outlineSweepFrame = 0;
+		// the masks, then the fills, of every outlined Mesh the camera pass shows: after its
+		// opaque queue (3D), or after its hierarchy draws (2D)
+		void drawOutlines(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPip, int passMsaa,
+		                  uint32_t cullingMask, int instanceView, const LodView* lodView);
+		// false while its shader builds or a binding is not ready (tried again next draw)
+		bool loadOutlineRender(Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh,
+		                       OutlineRender& outline);
+		void drawOutlineRender(OutlineRender& outline, const OutlineDraw& target, unsigned int submeshIndex, int instanceView,
+		                       const Matrix4* objectBlock, const PipelineState& state, float width, const Vector4& color);
+		void releaseOutlineRender(OutlineRender& outline);
+		// the renders of a mesh's submeshes (its mesh destroyed or reloaded)
+		void releaseOutlineRenders(Entity entity);
+		void releaseAllOutlineRenders();
+		// the swapchain has no stencil (a WebGL canvas or an EGL config without one) and an
+		// Outline is drawn: the main camera draws offscreen (updateSwapchainRedirect, F-PB2)
+		bool outlinesNeedStencilTarget() const;
 		// the vertex attributes of the submesh (its buffers, its own attributes, the instance
 		// buffer) bound to a render; the index count when indexed, else the mesh's vertex count
 		// The batch variants (spec S55 R1): their shaders asked for with the submesh's others
@@ -3132,6 +3230,26 @@ namespace jasperengine{
 		static bool readSubmeshLodSource(MeshComponent& mesh, unsigned int submeshIndex, MeshLodSource& source);
 	private:
 		void releaseSubmeshLodFade(Submesh& submesh);
+		// the Vertex Color Draw Mode's view variant of a drawn submesh (MESH 'Vcv' on its
+		// properties and shader; V1 R102, D8), made while the mode draws it and checked against
+		// its base variant's bindings; null while it is not ready, or when it cannot be made (the
+		// submesh then draws shaded)
+		struct VertexColorView{
+			std::shared_ptr<ShaderRender> shader;
+			// the base variant it was made for (a stand-in's or the submesh's own)
+			const ShaderRender* base = nullptr;
+			uint64_t properties = 0;
+			uint16_t shaderId = 0;
+			bool checked = false;
+			bool refused = false;
+		};
+		std::unordered_map<uint64_t, VertexColorView> vertexColorViews;
+		std::unique_ptr<VertexColorRenderer> vertexColors;
+		// drawCount at the last draw in the mode: the variants go a few draws after it
+		uint64_t vertexColorViewDraw = 0;
+		// (defined where JE_VIEW_DRAW_MODES is)
+		ShaderRender* prepareVertexColorView(Entity entity, unsigned int submeshIndex, Submesh& submesh, ViewVertexColorChannel channel);
+		void releaseVertexColorViews();
 		LodView shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const;
 		// projective atlas slots the shadow pass of the camera being drawn fills, into shadowSlots
 		const std::vector<ShadowSlot>& collectShadowSlots();
@@ -3753,7 +3871,7 @@ namespace jasperengine{
 		                   const particles::EmitterRuntime* only = nullptr, particles::ParticleRenderData* onlyRender = nullptr);
 		// an emitter and its children as items of the transparent queue
 		void queueParticleTree(Entity entity, ParticleSystemComponent& particles, const particles::EmitterRuntime& emitter, particles::ParticleRenderData& rd,
-		                       Transform& transform, const Transform& cameraTransform, bool root, uint32_t& order);
+		                       Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, bool root, uint32_t& order);
 		// an emitter, then its children in the effect's order
 		void drawParticleTree(const particles::ParticleSystemState& state, const particles::EmitterRuntime& runtime, particles::ParticleRenderData& rd, Transform& transform,
 		                      CameraComponent& camera, Transform& camTransform, PipelineType pipType, bool boundsVisible, uint32_t& drawn, bool& sorted);
@@ -3859,6 +3977,9 @@ namespace jasperengine{
 		// Transparency Sort Axis distance as an order-preserving float, larger first (32; 0 in
 		// mode Default)
 		static uint64_t makeSortKey(uint16_t layerValue, int32_t order, bool axis, float distance);
+		// the distance a transparent draw at `point` sorts by from this camera (Transparency Sort
+		// Mode: the view-axis depth or the distance; larger first)
+		static float transparentSortDistance(const CameraComponent& camera, const Transform& cameraTransform, const Vector3& point);
 		// whether this frame's renderers leave the defaults (R9: else today's loop runs)
 		bool isSortingActive() const { return sortingActive; }
 		// the flag of this frame and a new frame for the order (update() calls it)
@@ -3926,7 +4047,7 @@ namespace jasperengine{
 		uint64_t entitySortKey(Entity entity, Signature signature, bool axis);
 		void gatherSortRange(size_t first, size_t end, size_t depth, uint32_t outerSequence, uint64_t outerKey, int32_t skipGroup);
 		// true when an enabled Sorting Group is in the queue (sort with TransparentGroupComparison)
-		bool applyTransparentSortKeys(std::vector<TransparentRenderData>& renders, const Vector3& cameraPosition);
+		bool applyTransparentSortKeys(std::vector<TransparentRenderData>& renders, const CameraComponent& camera, const Transform& cameraTransform);
 
 		// Sprite Batch (RenderSystemSpriteBatch.cpp)
 		SpriteBatchStats spriteBatchStats;
@@ -3966,8 +4087,24 @@ namespace jasperengine{
 		// Editor-only viewport debug override (see member declaration). Free to toggle:
 		// meshes draw with no-culling variants of their pipelines, built once on first use.
 		void setDisableFaceCulling(bool disableFaceCulling);
-		// the Draw Mode of the frame's view (the Scene view in Edit mode; editor only)
-		void setDrawMode(ViewDrawMode drawMode);
+		// the Draw Mode of the frame's view (the Scene view in Edit mode; editor only), and the
+		// channel of its Vertex Color mode
+		void setDrawMode(ViewDrawMode drawMode, ViewVertexColorChannel vertexColorChannel = ViewVertexColorChannel::RGB);
+		// a mesh drawn in the Vertex Color Draw Mode waits for its view variant (drawn shaded meanwhile)
+		bool isVertexColorViewPending() const;
+		// the scene's Vertex Colors components on their meshes (V1 R11-R16), made on first use;
+		// find: null while the scene never had one (R95)
+		VertexColorRenderer& getVertexColors();
+		const VertexColorRenderer* findVertexColors() const { return vertexColors.get(); }
+		// an editor overlay (isEditorOverlay), which the Draw Modes draw as it is; none outside the editor
+		bool isDrawModeExempt(Entity entity) const{
+#ifdef JASPERENGINE_EDITOR
+			return isEditorOverlay(entity);
+#else
+			(void)entity;
+			return false;
+#endif
+		}
 
 		// editor-only: the frame's own view draws as if the scene had no fog (the Scene view's
 		// Fog toggle; the fog variants stay, their fog is neutral), as a secondary view's
@@ -3980,6 +4117,10 @@ namespace jasperengine{
 		void setPreviewAtmosphereQuality(int quality);
 		// what the atmosphere ran in the last frame of a view (0: the frame's own)
 		const AtmosphereInfo& getAtmosphereInfo(uint32_t viewId = 0);
+		// the fog look the frame's passes read (docs/specs/S101-vapor.md R7): the scene's first Fog
+		// itself when nothing layers on it (R11), else its resolve at the main camera; null
+		// without a Fog. A view drawn from another camera resolves its own (Fog Zones).
+		const FogComponent* getFogLook() const { return frameFog; }
 #ifdef JASPERENGINE_EDITOR
 		// the frame's own view drew for an editor view (the Game view drawn as the frame):
 		// what its atmosphere ran counts for that view too (getAtmosphereInfo(viewId))
@@ -4087,6 +4228,20 @@ namespace jasperengine{
 		// The shader a submesh draws with: its material's, else the mesh's fork, else the
 		// scene's default mesh shader; "" is the built-in Lit shader
 		static const std::string& getSubmeshShader(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
+		// Property Overrides (S94 F7). The textures a submesh draws with, made at load: its
+		// material's shader textures with the overrides' over them (the Mesh's, then the
+		// submesh's), and the built-in Lit's overridden base colour texture
+		static void resolveOverrideTextures(const MeshComponent& mesh, Submesh& submesh);
+		static std::vector<std::pair<std::string, Texture>>& drawnShaderTextures(Submesh& submesh);
+		static Texture* drawnBaseColor(Submesh& submesh);
+		// the material the built-in Lit's block is written from: the submesh's, or (an override
+		// naming baseColorFactor or emissiveFactor) a copy in scratch with the overrides in it
+		static const Material& drawnLitMaterial(const MeshComponent& mesh, const Submesh& submesh, std::optional<Material>& scratch);
+		// a submesh's override of `name`: its own, else the Mesh's; false without one
+		static bool findOverrideValue(const MeshComponent& mesh, const Submesh& submesh, const std::string& name, Vector4& value);
+		// the built-in Lit's colour factors as drawn (an override's, else the material's)
+		static Vector4 drawnBaseColorFactor(const MeshComponent& mesh, const Submesh& submesh);
+		static Vector3 drawnEmissiveFactor(const MeshComponent& mesh, const Submesh& submesh);
 		// R37: whether this shader's vertex program reads the compact instance; F6: whether its
 		// fragment program knows the fade
 		static bool shaderSupportsCompactInstances(const std::string& shader);
@@ -4115,6 +4270,15 @@ namespace jasperengine{
 		// getSubmeshShaderInputs) with its own shader's manifest and features, its default
 		// lighting mode, and no received shadows, IBL or mirror
 		static SubmeshShaderInputs getExtraPassShaderInputs(const SubmeshShaderInputs& submeshInputs, const MaterialPass& pass);
+		// ---- the Outline component (S94 F22, F23; RenderSystemOutline.cpp)
+		// The Outline drawing a Mesh GameObject: the nearest enabled one on it or, with Include
+		// Children, on an ancestor (a disabled one is skipped; null: none)
+		static const OutlineComponent* findOutline(EntityRegistry* registry, Entity entity);
+		// The pass an Outline draws a submesh with, as an extra pass: library:outline_stencil with
+		// its width units' feature and alpha blend (its variant: getExtraPassShaderInputs), and
+		// the custom shader string that variant is keyed by
+		static MaterialPass getOutlinePass(OutlineWidthUnits units);
+		static std::string getOutlineReference(OutlineWidthUnits units);
 		// Its colour pipeline state, resolved as the submesh's (resolveSubmeshRenderState):
 		// the pass's values, else its shader's @state with the rules of its features
 		// (manifestState, null: none), else the submesh's legacy behaviour
@@ -4192,6 +4356,10 @@ namespace jasperengine{
 
 		void updateFramebuffer(CameraComponent& camera);
 		void updateTransform(Transform& transform, Entity entity);
+		// S95 REQ-5: after onPostUpdate, the timers and the coroutines, before the draw
+		// (Engine::runFrame): steps the Camera Follows whose target moved since this scene's update,
+		// propagates what moved and runs the transform stage for it. Nothing moved: one compare.
+		LateTransformResult updateLateTransforms();
 		void updateCamera(CameraComponent& camera, Transform& transform);
 		void updateMirrors(Entity mainCameraEntity);
 		Entity createMirrorCamera(Entity mirrorEntity);
@@ -4203,6 +4371,10 @@ namespace jasperengine{
 		// sizes an auto-resize camera for a canvas of canvasWidth x canvasHeight, the
 		// Engine canvas in updateCameraSize(entity); a render-to-texture camera keeps its framebuffer's
 		void updateCameraSizeForCanvas(Entity entity, float canvasWidth, float canvasHeight);
+		// an orthographic camera with an Orthographic Size (S94 F28), and its clips from that size
+		// and its aspect (true when they changed)
+		static bool usesOrthographicSize(const CameraComponent& camera);
+		static bool applyOrthographicSize(CameraComponent& camera);
 		bool isInsideCamera(const float cameraFar, const Plane frustumPlanes[6], const AABB& box);
 		bool isInsideCamera(CameraComponent& camera, const AABB& box);
 		bool isInsideCamera(CameraComponent& camera, const Vector3& point);
@@ -4380,6 +4552,7 @@ namespace jasperengine{
 			// off: no shadow maps are drawn for the view and its fragments read no shadow
 			bool shadows = true;
 			ViewDrawMode drawMode = ViewDrawMode::SHADED;
+			ViewVertexColorChannel vertexColorChannel = ViewVertexColorChannel::RGB;
 			// the Scene view's Snap Preview (S41 R21): a scene with a Pixel Perfect Camera draws its
 			// snapped drawables on this view's own grid of base pixels (snapPreviewScale view pixels
 			// each, fractions for zooms below 1x); 0: no preview

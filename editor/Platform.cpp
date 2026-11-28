@@ -54,6 +54,10 @@ int editor::Platform::hapticCount = 0;
 bool editor::Platform::hostFocused = true;
 bool editor::Platform::hostFocusKnown = false;
 bool editor::Platform::gameHiddenSimulated = false;
+bool editor::Platform::viewLostSimulated = false;
+bool editor::Platform::viewLossPaused = false;
+int editor::Platform::viewLostCount = 0;
+int editor::Platform::viewRestoredCount = 0;
 
 namespace {
     // get_play_state.platform.opened_urls keeps the last ones
@@ -206,6 +210,10 @@ void editor::Platform::resetPlayRecords(){
     // Play starts focused: only later changes of the window's focus count
     hostFocusKnown = false;
     gameHiddenSimulated = false;
+    viewLostSimulated = false;
+    viewLossPaused = false;
+    viewLostCount = 0;
+    viewRestoredCount = 0;
 }
 
 void editor::Platform::endPlaySimulation(){
@@ -214,6 +222,8 @@ void editor::Platform::endPlaySimulation(){
     simulation.orientation = settingsOrientation;
     hostFocusKnown = false;
     gameHiddenSimulated = false;
+    viewLostSimulated = false;
+    viewLossPaused = false;
 }
 
 const std::deque<editor::OpenedUrl>& editor::Platform::getOpenedUrls(){
@@ -259,6 +269,34 @@ void editor::Platform::setGameHiddenSimulated(bool hidden){
 
 bool editor::Platform::isGameHiddenSimulated(){
     return gameHiddenSimulated;
+}
+
+void editor::Platform::setViewLostSimulated(bool lost, bool pausedByLoss){
+    if (lost == viewLostSimulated) return;
+    viewLostSimulated = lost;
+    if (lost){
+        viewLostCount++;
+        viewLossPaused = pausedByLoss;
+    }else{
+        viewRestoredCount++;
+        viewLossPaused = false;
+    }
+}
+
+bool editor::Platform::isViewLostSimulated(){
+    return viewLostSimulated;
+}
+
+bool editor::Platform::isViewLossPaused(){
+    return viewLossPaused;
+}
+
+int editor::Platform::getViewLostCount(){
+    return viewLostCount;
+}
+
+int editor::Platform::getViewRestoredCount(){
+    return viewRestoredCount;
 }
 
 bool editor::Platform::isHeadless(){

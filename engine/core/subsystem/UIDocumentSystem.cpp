@@ -16,8 +16,11 @@
 #include "htmlui/HtmlUI.h"
 #include "htmlui/HtmlUIContext.h"
 #include "htmlui/HtmlUIClock.h"
+#include "htmlui/HtmlUIImageCache.h"
 #include "htmlui/UIParticleSystemElement.h"
 #include "htmlui/anim/AnimEngine.h"
+#include "htmlui/HtmlUIFontDiagnostics.h"
+#include "htmlui/HtmlUIPrewarm.h"
 
 #include <atomic>
 
@@ -112,6 +115,12 @@ void UIDocumentSystem::destroy(){
         document.appliedMenu = false;
         document.appliedCursor = false;
     }
+}
+
+void UIDocumentSystem::releaseGpu(){
+    if (context)
+        context->releaseGpuResources();
+    textureReleaseGpu();
 }
 
 bool UIDocumentSystem::ensureContext(){
@@ -249,7 +258,7 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
         document.loadFailed = false;
 
         if (!document.filename.empty()){
-            if (document.renderMode != UIDocumentRenderMode::TEXTURE) scriptDocumentLoading(document.filename);
+            if (!rendersToTexture(document.renderMode)) scriptDocumentLoading(document.filename);
             // the context logged why
             Rml::ElementDocument* loadedDocument = loadEntityDocument(entity, document.filename);
             if (loadedDocument){
@@ -277,6 +286,12 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
         // a numeric z-index also stops RmlUi pulling a focused document to the front
         rmlDocument->SetProperty(Rml::PropertyId::ZIndex, Rml::Property((float)document.sortOrder, Rml::Unit::NUMBER));
         document.appliedSortOrder = document.sortOrder;
+    }
+
+    // S93 R35: the clock its animations run on (a change keeps their progress)
+    if (forceApply || document.updateMode != document.appliedUpdateMode){
+        rmlDocument->SetAnimationClock(HtmlUIClock::animationClockOf(document.updateMode));
+        document.appliedUpdateMode = document.updateMode;
     }
 
     if (forceApply || visible != document.appliedVisible){
@@ -320,6 +335,9 @@ void UIDocumentSystem::update(double dt){
 
     // anime on the UI clock, before RmlUi's update (idempotent per frame: every scene calls it)
     AnimEngine::instance().tick(HtmlUIClock::now());
+    // S93: prewarmed glyphs placed within their budget, fallback glyphs reported (once per frame)
+    HtmlUIPrewarm::update();
+    HtmlUIFontDiagnostics::update();
 
     // runs paused too: the editor shows documents of a stopped scene
     if (!Engine::isViewLoaded())
@@ -420,6 +438,7 @@ void UIDocumentSystem::onComponentRemoved(Entity entity, ComponentId componentId
     unloadEntityDocument(entity);
     textureRemoveEntity(entity);
     scriptComponentRemoved(entity);
+    styleSheetsComponentRemoved(entity);
     if (menuEntities.erase(entity) + cursorEntities.erase(entity) > 0)
         bumpMenuRevision();
 }
@@ -550,8 +569,10 @@ bool UIDocumentSystem::isAllLoaded() const{
             anyVisible = true;
     }
 
-    // a shown document is loaded once it has been drawn
-    return (!anyVisible || (context && context->hasRenderedFrame())) && textureAllRendered();
+    // a shown document is loaded once it has been drawn, its images decoded (S93 R18: a decoded
+    // image is uploaded by the next frame that draws it)
+    return (!anyVisible || (context && context->hasRenderedFrame())) && textureAllRendered() &&
+           HtmlUIImageCache::get().getDecodingCount() == 0;
 }
 
 bool UIDocumentSystem::setDebuggerVisible(bool visible){
@@ -612,4 +633,8 @@ void UIDocumentSystem::setVerboseDiagnostics(bool verbose){
 
 bool UIDocumentSystem::getVerboseDiagnostics(){
     return htmlUiVerboseDiagnostics;
+}
+
+void UIDocumentSystem::setHtmlUiImageCacheMiB(int mib){
+    HtmlUIImageCache::setBudgetMiB(mib);
 }

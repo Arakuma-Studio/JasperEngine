@@ -917,6 +917,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/ClipPlayersReflect.cpp
     ${EDITOR_DIR}/reflect/components/SplinesReflect.cpp
     ${EDITOR_DIR}/reflect/components/VoxelReflect.cpp
+    ${EDITOR_DIR}/reflect/components/VertexColorsReflect.cpp
     ${EDITOR_DIR}/reflect/components/AnimatorReflect.cpp
     ${EDITOR_DIR}/reflect/components/ParticlesReflect.cpp
     ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
@@ -924,6 +925,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/UpstreamMediaReflect.cpp
     ${EDITOR_DIR}/reflect/components/PixelArtReflect.cpp
     ${EDITOR_DIR}/reflect/components/SortingReflect.cpp
+    ${EDITOR_DIR}/reflect/components/OutlineReflect.cpp
+    ${EDITOR_DIR}/reflect/components/SpriteSkinReflect.cpp
     ${EDITOR_DIR}/reflect/components/TilemapReflect.cpp
     # pixel art (S41: the editor's side of the Pixel Perfect Camera)
     ${EDITOR_DIR}/pixelart/PixelPerfectEditor.cpp
@@ -1042,6 +1045,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/AnimatorTools.cpp
     ${EDITOR_DIR}/mcp/tools/LatticeTools.cpp
     ${EDITOR_DIR}/mcp/tools/HtmlUiTools.cpp
+    ${EDITOR_DIR}/mcp/tools/UiFrameTools.cpp
     ${EDITOR_DIR}/mcp/tools/UIEffectTools.cpp
     ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
     ${EDITOR_DIR}/mcp/tools/PoseTools.cpp
@@ -1053,6 +1057,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SplineTools.cpp
     ${EDITOR_DIR}/mcp/tools/VoxelTools.cpp
     ${EDITOR_DIR}/mcp/tools/TerrainTools.cpp
+    ${EDITOR_DIR}/mcp/tools/MeshColorTools.cpp
     ${EDITOR_DIR}/mcp/tools/TerrainWorldTools.cpp
     ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
@@ -1096,6 +1101,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Particles.cpp
     ${EDITOR_DIR}/reload/handlers/Voxel.cpp
     ${EDITOR_DIR}/reload/handlers/Palettes.cpp
+    ${EDITOR_DIR}/reload/handlers/FogProfiles.cpp
     ${EDITOR_DIR}/reload/handlers/Common.cpp
     ${EDITOR_DIR}/reload/handlers/Fonts.cpp
     ${EDITOR_DIR}/reload/handlers/Graphs.cpp
@@ -1300,6 +1306,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/texture/TextureFormatSelector.cpp
     ${EDITOR_DIR}/texture/TextureImportSettings.cpp
     ${EDITOR_DIR}/texture/TextureTypeInference.cpp
+    ${EDITOR_DIR}/texture/TiffReader.cpp
     ${EDITOR_DIR}/window/TextureImporterView.cpp
     ${EDITOR_DIR}/window/ImporterFields.cpp
     ${EDITOR_DIR}/window/ModelImporterView.cpp
@@ -1323,6 +1330,7 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/material/MaterialPresets.cpp
     ${EDITOR_DIR}/PostProcessingPresets.cpp
+    ${EDITOR_DIR}/FogProfileAssets.cpp
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp
@@ -1338,6 +1346,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorMaterialPbr.cpp
     ${EDITOR_DIR}/window/InspectorParticles.cpp
+    ${EDITOR_DIR}/window/InspectorFogProfiles.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorFluid.cpp
     ${EDITOR_DIR}/window/InspectorShadows.cpp
@@ -1455,6 +1464,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/unity/UnityYaml.cpp
     ${EDITOR_DIR}/unity/UnityProject.cpp
     ${EDITOR_DIR}/unity/UnityParticleImport.cpp
+    # the Unity .anim / .controller / .mask importer (S94 F35, F36)
+    ${EDITOR_DIR}/unity/UnityAnimImport.cpp
+    ${EDITOR_DIR}/unity/UnityControllerImport.cpp
     ${EDITOR_DIR}/window/VertexAnimationBakerWindow.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
     ${EDITOR_DIR}/window/SpriteNormalsWindow.cpp
@@ -1562,6 +1574,10 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundEventDocument.cpp
     ${EDITOR_DIR}/audio/SoundEventRender.cpp
     ${EDITOR_DIR}/window/InspectorSoundEvent.cpp
+    ${EDITOR_DIR}/dataasset/DataAssets.cpp
+    ${EDITOR_DIR}/window/InspectorDataAsset.cpp
+    ${EDITOR_DIR}/window/ScriptValueEditor.cpp
+    ${EDITOR_DIR}/mcp/tools/DataAssetTools.cpp
     ${EDITOR_DIR}/window/InspectorIesProfile.cpp
     ${EDITOR_DIR}/window/InspectorAudioEffects.cpp
     ${EDITOR_DIR}/audio/SourceEffectEdit.cpp
@@ -1658,6 +1674,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/TerrainMapDeltaCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsEditCmd.cpp
     ${EDITOR_DIR}/command/type/ParticleEffectAssetCmd.cpp
+    ${EDITOR_DIR}/command/type/FogProfileAssetCmd.cpp
+    ${EDITOR_DIR}/command/type/LinkFogProfileCmd.cpp
     ${EDITOR_DIR}/command/type/RevertFilesCmd.cpp
     ${EDITOR_DIR}/command/type/RevertToBaselineCmd.cpp
 
@@ -1682,6 +1700,8 @@ endif()
 include(${EDITOR_DIR}/navigation/NavigationEditorSources.cmake)
 # the Voxel Volume's human editor (T6 R59-R65)
 include(${EDITOR_DIR}/voxel/VoxelEditorSources.cmake)
+# vertex colors (V1): its own globbed list
+include(${EDITOR_DIR}/vertexcolor/VertexColorEditorSources.cmake)
 # the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
 include(${EDITOR_DIR}/test/GameTestsSources.cmake)

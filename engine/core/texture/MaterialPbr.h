@@ -20,6 +20,28 @@ namespace jasperengine{
     struct Material;
     enum class MaterialLighting;
 
+    // What the built-in Lit does with the mesh's vertex colours (its Vertex Color section,
+    // docs/specs/V1-vertex-colors.md R70). Stored as ints: append only
+    enum class VertexColorUse{
+        TINT,   // RGB multiplies the albedo, A the opacity (alphaOpacity): what Lit always did
+        MASKS,  // each channel masks an input of the surface (VertexColorTarget)
+        OFF     // ignored by the shader (the stream stays for other systems)
+    };
+
+    // The input a channel masks in Masks. Stored as ints, and the shader's numbers
+    // (includes/pbr.glsl vertexColorMask): append only
+    enum class VertexColorTarget{
+        NONE,
+        OCCLUSION,           // multiplies the ambient and reflected light, as an occlusion map
+        ROUGHNESS_MULTIPLY,  // multiplies the roughness
+        ROUGHNESS_REPLACE,   // is the roughness
+        METALLIC,            // multiplies the metallic value
+        EMISSION,            // multiplies the emissive colour
+        OPACITY,             // is the opacity (times the base colour's alpha)
+        ALBEDO_TINT,         // multiplies the albedo, grey
+        COUNT
+    };
+
     // The extended PBR lobes of the built-in Lit shader (glTF KHR_materials_*) and its hex
     // tiling (docs/specs/S11-materials-lighting.md). Each lobe has its own enabled flag: a
     // disabled lobe compiles out of the shader, an enabled one costs its lobe even with its
@@ -117,6 +139,23 @@ namespace jasperengine{
             int flowMapTexCoord = 0;
             bool operator == (const Hair& o) const;
         } hair;
+        // the Vertex Color section (V1 R70): no lobe, but held here so a default material pays
+        // nothing for it. Tint with alphaOpacity is what Lit always did
+        struct VertexColor{
+            VertexColorUse use = VertexColorUse::TINT;
+            bool alphaOpacity = true;   // Tint: A multiplies the opacity
+            // Masks: the input each channel masks; with R, G and B all NONE, RGB tints the albedo
+            VertexColorTarget r = VertexColorTarget::NONE;
+            VertexColorTarget g = VertexColorTarget::NONE;
+            VertexColorTarget b = VertexColorTarget::NONE;
+            VertexColorTarget a = VertexColorTarget::NONE;
+            // inline: the editor compares it across the engine DLL boundary, and MSVC does not export
+            // members of a nested struct of an exported class
+            bool operator == (const VertexColor& o) const {
+                return use == o.use && alphaOpacity == o.alphaOpacity && r == o.r && g == o.g && b == o.b && a == o.a;
+            }
+            bool operator != (const VertexColor& o) const { return !(*this == o); }
+        } vertexColor;
 
         bool operator == (const MaterialPbrExtensions& o) const;
         bool operator != (const MaterialPbrExtensions& o) const { return !(*this == o); }
@@ -290,6 +329,29 @@ namespace jasperengine{
         // T3 D2: every define the terrain's own state decides: the one mask the
         // terrain's reload hook compares
         static uint64_t getTerrainDefineBits();
+
+        // The Vertex Color section's defines (V1 R70) for a mesh with vertex colours, sorted:
+        // none for Tint with alphaOpacity (the program Lit always was), LIT_VC_OFF,
+        // LIT_VC_ALPHA_IGNORED, or the inputs Masks maps (LIT_VC_OCCLUSION, LIT_VC_ROUGHNESS,
+        // LIT_VC_ROUGHNESS_SET, LIT_VC_METALLIC, LIT_VC_EMISSION, LIT_VC_OPACITY, LIT_VC_ALBEDO)
+        // and LIT_VC_RGB_TINT. An unlit variant keeps only the opacity and albedo masks
+        static std::vector<std::string> getVertexColorDefines(const MaterialPbrExtensions& pbr, bool unlit);
+        // vertexColorMasks (mesh.frag): per channel R, G, B, A its VertexColorTarget's number
+        static void getVertexColorMasks(const MaterialPbrExtensions& pbr, float out[4]);
+        // whether a define is one of getVertexColorDefines'
+        static bool isVertexColorDefine(const std::string& define);
+        // the channel's target (0 R .. 3 A)
+        static VertexColorTarget& vertexColorTarget(MaterialPbrExtensions::VertexColor& vertexColor, int channel);
+        static VertexColorTarget getVertexColorTarget(const MaterialPbrExtensions::VertexColor& vertexColor, int channel);
+        // "tint", "masks", "off" and "none", "occlusion", "roughness_multiply", "roughness_replace",
+        // "metallic", "emission", "opacity", "albedo_tint" (MCP, Lua); false: not a name
+        static const char* getVertexColorUseName(VertexColorUse use);
+        static bool parseVertexColorUse(const std::string& name, VertexColorUse& use);
+        static const char* getVertexColorTargetName(VertexColorTarget target);
+        static bool parseVertexColorTarget(const std::string& name, VertexColorTarget& target);
+        // "Tint", "Masks", "Off" and "None", "Occlusion", "Roughness (multiply)", ... (the Inspector)
+        static const char* getVertexColorUseLabel(VertexColorUse use);
+        static const char* getVertexColorTargetLabel(VertexColorTarget target);
 
         // the High Lit Quality's define (SceneSettings::litQuality)
         static const char* const LIT_QUALITY_DEFINE;   // USE_LIT_QUALITY

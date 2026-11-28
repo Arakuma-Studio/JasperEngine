@@ -63,6 +63,13 @@ bool editor::SceneTools::worldToScreen(uint32_t sceneId, SceneRender& render, co
     return true;
 }
 
+ImVec2 editor::SceneTools::canvasToScreen(uint32_t sceneId, float x, float y) {
+    auto& entries = scenetools_detail::views();
+    auto it = entries.find(sceneId);
+    if (it == entries.end()) return ImVec2(x, y);
+    return ImVec2(it->second.canvasMin.x + x / it->second.engineScale.x, it->second.canvasMin.y + y / it->second.engineScale.y);
+}
+
 void editor::SceneTools::setScene(uint32_t sceneId, const Scene* scene) {
     scenetools_detail::views()[sceneId].scene = scene;
 }
@@ -73,4 +80,12 @@ bool editor::SceneTools::activeOn(const Scene* scene) {
         if (entry.tool && entry.scene == scene) return true;
     }
     return false;
+}
+
+editor::SceneTool* editor::SceneTools::activeFor(const Scene* scene) {
+    if (!scene) return nullptr;
+    for (const auto& [id, entry] : scenetools_detail::views()) {
+        if (entry.tool && entry.scene == scene) return entry.tool.get();
+    }
+    return nullptr;
 }

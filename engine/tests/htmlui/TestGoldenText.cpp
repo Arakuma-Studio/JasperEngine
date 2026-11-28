@@ -5,9 +5,11 @@
 // RmlRenderer): sizes, colors, alignment, spacing, wrapping, decoration (text_basic);
 // Cyrillic, Greek, Arabic RTL, bidi, family fallback, an uncovered codepoint
 // (text_fallback_rtl); faces loaded with HtmlUI::loadFontFace (text_loaded_font); the same
-// text at pixel ratio 2 (hidpi).
+// text at pixel ratio 2 (hidpi); text-autosize (S93 R31).
 
 #include "TestGoldenCommon.h"
+#include "TestDocumentCommon.h"
+#include "compat/PerfFixtures.h"
 
 #include "HtmlUI.h"
 #include "HtmlUIContext.h"
@@ -19,6 +21,10 @@
 #include "util/TitleArtLanguage.h"
 
 #include <RmlUi/Core/Context.h>
+#include <RmlUi/Core/ElementDocument.h>
+
+#include <cstdio>
+#include <string>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -240,6 +246,106 @@ TEST_F(FullPathGoldenTest, TextLoadedFont){
     // the scene released RmlUi: the next tests see only the built-in faces again
     EXPECT_FALSE(HtmlUI::isInitialized());
     FontRegistry::clear();
+}
+
+namespace {
+
+    // the largest whole px in [min, max] at which `ref`, a copy of an element without text-autosize, keeps its content
+    // inside its padding box (across, and down when `height`): the fit text-autosize must find, by brute force
+    int bruteForceFit(Scene& scene, UIElement ref, int min, int max, bool height){
+        for (int size = max; size > min; size--){
+            ref.setStyle("font-size", std::to_string(size) + "px");
+            updateDocuments(scene);
+            if (ref.getScrollWidth() <= ref.getClientWidth() + 0.5f && (!height || ref.getScrollHeight() <= ref.getClientHeight() + 0.5f))
+                return size;
+        }
+        ref.setStyle("font-size", std::to_string(min) + "px");
+        updateDocuments(scene);
+        return min;
+    }
+
+}
+
+// S93 R31 (AC35): text-autosize fits the font size in the frame the document is first drawn: a short word, a long word
+// (its width decides), a paragraph in a fixed box (its height decides) and a heading whose box follows its height,
+// with an em child; each the largest whole px a brute-force relayout of an unfitted copy finds
+TEST_F(FullPathGoldenTest, TextAutosizeFits){
+    SceneFixture fixture;
+    UIDocument document = fixture.addDocument("golden/text_autosize.html");
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    Screen first;
+    ASSERT_TRUE(capture(first));
+    Screen second;
+    ASSERT_TRUE(capture(second));
+    EXPECT_TRUE(first.rgba == second.rgba) << "the fitted size shows from the first frame on";
+    // (fitted when the document shows: it was laid out hidden)
+    EXPECT_NE(document.getElementById("short").getStyle("font-size"), "30px");
+
+    struct Case {
+        const char* id;
+        int min, max;
+        bool height;
+    };
+    const Case cases[] = {{"short", 18, 80, true}, {"long", 18, 80, true}, {"multi", 18, 80, true}, {"grow", 10, 200, false}};
+    for (const Case& c : cases){
+        UIElement element = document.getElementById(c.id);
+        UIElement ref = document.getElementById(std::string(c.id) + "-ref");
+        ASSERT_TRUE(element.isValid() && ref.isValid()) << c.id;
+        const int expected = bruteForceFit(fixture.getScene(), ref, c.min, c.max, c.height);
+        EXPECT_EQ(element.getStyle("font-size"), std::to_string(expected) + "px") << c.id;
+        EXPECT_GT(expected, c.min) << c.id << ": the case must fit above its minimum";
+        EXPECT_LT(expected, c.max) << c.id << ": the case must be held below its maximum";
+        // the box that follows its content, the em child included, is the copy's at that size
+        EXPECT_NEAR(element.getOffsetHeight(), ref.getOffsetHeight(), 0.5f) << c.id;
+        EXPECT_LE(element.getScrollWidth(), element.getClientWidth() + 0.5f) << c.id;
+    }
+    // the brute force restyled hidden copies only: the frame is the first one
+    Screen after;
+    ASSERT_TRUE(capture(after));
+    EXPECT_TRUE(after.rgba == first.rgba) << "the first frame already showed the fitted sizes";
+    EXPECT_SCREEN_GOLDEN(second, "text_autosize");
+}
+
+// S93 R44: a fit costs at most 0.3 ms per element (perfSlack), and nothing while its text, box and font stay the same
+TEST_F(FullPathGoldenTest, TextAutosizePerf){
+    SceneFixture fixture;
+    UIDocument document = fixture.addDocument("golden/text_autosize.html");
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    Scene& scene = fixture.getScene();
+    UIElement multi = document.getElementById("multi");
+    UIElement other = document.getElementById("short-ref");
+    // (the first frame shows the document: its first layout fits it)
+    GpuEnvironment::drawFrames(2);
+
+    // a relayout for another element: no trial layout
+    const int trials = Rml::ElementDocument::GetTextAutosizeTrialCount();
+    for (int i = 0; i < 5; i++){
+        other.setStyle("width", std::to_string(150 + i) + "px");
+        updateDocuments(scene);
+    }
+    EXPECT_EQ(Rml::ElementDocument::GetTextAutosizeTrialCount(), trials);
+
+    // a new text: one fit (at most 7 trials for 18..80 px)
+    int round = 0;
+    const auto refit = [&](){
+        multi.setTextContent(round++ % 2 ? "The quick brown fox jumps over the lazy dog" : "The lazy dog sleeps under the quick brown fox");
+        updateDocuments(scene);
+    };
+    const int before = Rml::ElementDocument::GetTextAutosizeTrialCount();
+    refit();
+    EXPECT_LE(Rml::ElementDocument::GetTextAutosizeTrialCount() - before, 8);
+    EXPECT_GT(Rml::ElementDocument::GetTextAutosizeTrialCount() - before, 0);
+
+    // the cost of the fit: the same relayout with and without it
+    const double fitted = compat::gatedCpuMs(refit, 4, 0.3);
+    multi.setStyle("text-autosize", "none");
+    updateDocuments(scene);
+    const double plain = compat::gatedCpuMs(refit, 4, 0.3);
+    const double cost = fitted - plain;
+    std::printf("[bench] TextAutosizePerf: fit %.3f ms (relayout %.3f ms with it, %.3f ms without)\n", cost, fitted, plain);
+    if (compat::benchmarkPerfSlack() > 0.0){
+        EXPECT_LE(cost, 0.3 * compat::benchmarkPerfSlack());
+    }
 }
 
 // game-ui-localization.md AC9: the pseudo-locales on a keyed settings panel, Roboto Bold. en-XA

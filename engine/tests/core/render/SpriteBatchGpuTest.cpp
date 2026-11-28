@@ -951,3 +951,20 @@ TEST_F(SpriteBatchGpu, UnclippedElementsAfterAScissorResetJoinTheirRun){
     expectSameImage(0, 2);
     images.clear();
 }
+
+// S94 F29 (AC29): flipped Sprites batch (the mirror is in their quads) and draw as they do alone
+TEST_F(SpriteBatchGpu, FlipXBatchedMatchesUnbatched){
+    JASPER_REQUIRE_GPU();
+    camera2D();
+    const TextureData sheet = batchChecker(60, 200, 240, true);
+    for (int i = 0; i < 24; i++){
+        Sprite& s = sprite("sprite-batch-flip", sheet, (float)(i % 6) * 40.0f + 30.0f, (float)(i / 6) * 50.0f + 20.0f, 20, 24);
+        s.setPivotPreset(i % 3 == 0 ? PivotPreset::BOTTOM_LEFT : PivotPreset::CENTER);
+        s.setFlipX(i % 2 == 0);
+        if (i % 4 == 1)
+            s.setTextureRect(0.5f, 0.0f, 0.5f, 0.5f);
+    }
+    ASSERT_TRUE(render());
+    expectSameImage(0, 2);
+    EXPECT_NO_ENGINE_ERRORS();
+}

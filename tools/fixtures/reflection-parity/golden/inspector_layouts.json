@@ -1353,6 +1353,14 @@
   {
    "component": "camera",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Size",
+   "path": "orthographicSize",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
    "kind": "Float",
    "label": "Left",
    "path": "left",
@@ -1502,6 +1510,14 @@
    "kind": "Direction",
    "label": "Up",
    "path": "up",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Size",
+   "path": "orthographicSize",
    "read_only": false
   },
   {
@@ -2183,6 +2199,14 @@
   {
    "component": "fog",
    "group": "",
+   "kind": "Asset",
+   "label": "Profile",
+   "path": "profile",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "",
    "kind": "Enum",
    "label": "Type",
    "path": "type",
@@ -2225,6 +2249,14 @@
   {
    "component": "fog",
    "group": "",
+   "kind": "Asset",
+   "label": "Profile",
+   "path": "profile",
+   "read_only": false
+  },
+  {
+   "component": "fog",
+   "group": "",
    "kind": "Enum",
    "label": "Type",
    "path": "type",
@@ -2256,6 +2288,14 @@
   }
  ],
  "fog#2": [
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Asset",
+   "label": "Profile",
+   "path": "profile",
+   "read_only": false
+  },
   {
    "component": "fog",
    "group": "",
@@ -2298,6 +2338,14 @@
   }
  ],
  "fog#3": [
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Asset",
+   "label": "Profile",
+   "path": "profile",
+   "read_only": false
+  },
   {
    "component": "fog",
    "group": "",
@@ -2460,6 +2508,14 @@
   }
  ],
  "fog#4": [
+  {
+   "component": "fog",
+   "group": "",
+   "kind": "Asset",
+   "label": "Profile",
+   "path": "profile",
+   "read_only": false
+  },
   {
    "component": "fog",
    "group": "",
@@ -7633,6 +7689,14 @@
   {
    "component": "sprite",
    "group": "",
+   "kind": "Vector2",
+   "label": "Size",
+   "path": "size",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
    "kind": "Enum",
    "label": "Pivot",
    "path": "pivotPreset",
@@ -7644,6 +7708,14 @@
    "kind": "Float",
    "label": "Texture Scale",
    "path": "textureScaleFactor",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
+   "kind": "Bool",
+   "label": "Flip X",
+   "path": "flipX",
    "read_only": false
   },
   {
@@ -8223,6 +8295,14 @@
   {
    "component": "text",
    "group": "",
+   "kind": "Enum",
+   "label": "Font Size Unit",
+   "path": "fontSizeUnit",
+   "read_only": false
+  },
+  {
+   "component": "text",
+   "group": "",
    "kind": "Bool",
    "label": "Multiline",
    "path": "multiline",
@@ -8246,18 +8326,10 @@
   },
   {
    "component": "text",
-   "group": "Pivot",
+   "group": "Auto Size",
    "kind": "Bool",
-   "label": "Baseline",
-   "path": "pivotBaseline",
-   "read_only": false
-  },
-  {
-   "component": "text",
-   "group": "Pivot",
-   "kind": "Bool",
-   "label": "Center",
-   "path": "pivotCentered",
+   "label": "Auto Size",
+   "path": "autoSize",
    "read_only": false
   },
   {
@@ -8717,6 +8789,14 @@
   {
    "component": "uidocument",
    "group": "",
+   "kind": "Enum",
+   "label": "Update Mode",
+   "path": "updateMode",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
    "kind": "Bool",
    "label": "Is Menu",
    "path": "isMenu",
@@ -8802,6 +8882,14 @@
    "kind": "Bool",
    "label": "Interactive",
    "path": "interactive",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Enum",
+   "label": "Update Mode",
+   "path": "updateMode",
    "read_only": false
   },
   {

@@ -26,7 +26,7 @@ namespace {
             {{AssetType::Scene, AssetIdentity::InFile, AssetPathBase::Project, false, false}, {".scene"}},
             {{AssetType::Material, AssetIdentity::InFile, AssetPathBase::Project, false, false}, {".material"}},
             {{AssetType::Texture, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false},
-                {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".exr", ".psd", ".pic", ".pnm", ".svg"}},
+                {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".exr", ".psd", ".psb", ".tif", ".tiff", ".pic", ".pnm", ".svg"}},
             {{AssetType::Model, AssetIdentity::Sidecar, AssetPathBase::Assets, true, false}, {".gltf", ".glb", ".obj", ".fbx"}},
             {{AssetType::Audio, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".wav", ".ogg", ".mp3", ".flac"}},
             {{AssetType::Font, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".ttf", ".otf", ".ttc", ".bitmapfont", ".fnt"}},
@@ -79,6 +79,12 @@ namespace {
             {{AssetType::Dialogue, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".dialogue"}},
             // a light's IES Profile (S99): the file holds no GUID, its .meta does
             {{AssetType::IesProfile, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".ies"}},
+            // Data Assets (S95 REQ-21): the file holds no GUID, its .meta does
+            {{AssetType::DataAsset, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".dataasset"}},
+            // one object's vertex colors (V1 R1, R131): a binary file, its GUID in its .meta
+            {{AssetType::VertexColors, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".vcolors"}},
+            // Fog Profiles (docs/specs/S101-vapor.md R1): the file holds no GUID, its .meta does
+            {{AssetType::FogProfile, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".fogprofile"}},
         };
         return table;
     }

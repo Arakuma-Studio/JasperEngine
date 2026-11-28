@@ -29,6 +29,7 @@
 #include "component/Light2DComponent.h"
 #include "component/LightComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/MirrorComponent.h"
 #include "component/ModelComponent.h"
@@ -131,7 +132,8 @@ bool editor::CreateEntityCmd::execute(){
         }
     }
 
-    entityName = ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, entityName);
+    // numbered only when a sibling has the name (Unity's), as it lands below `parent`
+    entityName = ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, parent, entityName);
 
     if (type == EntityCreationType::GAMEOBJECT){
 
@@ -686,6 +688,11 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<LocalVolumetricFogComponent>(entity, {});
 
+    }else if (type == EntityCreationType::FOG_ZONE){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<FogZoneComponent>(entity, {});
+
     }else if (type == EntityCreationType::VOLUMETRIC_CLOUDS){
 
         scene->addComponent<VolumetricCloudsComponent>(entity, {});
@@ -945,7 +952,10 @@ bool editor::CreateEntityCmd::execute(){
 
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
-        scene->addComponent<ModelComponent>(entity, {});
+        // Project Settings > Mesh > Preserve Hierarchy for New Models (S94 F44)
+        ModelComponent model;
+        model.preserveHierarchy = project->getModelSettings().preserveHierarchyForNewModels;
+        scene->addComponent<ModelComponent>(entity, model);
 
     }else if (type == EntityCreationType::PARTICLE_SYSTEM){
 

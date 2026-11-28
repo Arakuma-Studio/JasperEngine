@@ -139,6 +139,7 @@ struct hash<::Rml::BoxShadowGeometryInfo> {
 		HashCombine(seed, in.opacity);
 		HashCombine(seed, in.feathering);
 		HashCombine(seed, in.feather_unit);
+		HashCombine(seed, in.render_manager);
 		return seed;
 	}
 };

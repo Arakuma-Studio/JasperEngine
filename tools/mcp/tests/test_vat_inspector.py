@@ -195,6 +195,8 @@ def vat_text(ed: Editor, name: str = "quad.vat") -> dict:
 async def test_setup(ed: Editor):
     if not shutil.which("xdotool"):
         ed.fail("xdotool is needed for the real-input UI tests (apt install xdotool)")
+    # the project is made after initialize: a folder written into it first races its creation
+    await ed.call("get_project_summary")
     vat = ed.project / "assets" / "vat"
     vat.mkdir(parents=True, exist_ok=True)
     for name in ("quad.vat", "quad.vat.glb"):

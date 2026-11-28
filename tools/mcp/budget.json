@@ -70,7 +70,7 @@
         "scripting": {
             "chars": 15000,
             "tools": 13,
-            "spec": "S23's 12 (hot reload, script status and settings, editor menus, expressions, the graph tools) and upstream's user_settings (PlayerPrefs, the scripts' saved data: no group fits it better; SYNC#4)"
+            "spec": "S23's 12 (hot reload, script status and settings, editor menus, expressions, the graph tools), upstream's user_settings (PlayerPrefs, the scripts' saved data: no group fits it better; SYNC#4) and S95's edit_data_asset (Data Assets, the scripts' data classes)"
         },
         "animation": {
             "chars": 16000,
@@ -95,6 +95,10 @@
         }
     },
     "exceptions": {
+        "set_model_import_settings": {
+            "limit": 1765,
+            "reason": "S94 F40/F43: the normals, tangents, smoothness source and rest pose settings of the Model Importer, each a settings key of the one import tool (1681 measured + 5 %)"
+        },
         "configure_game_view": {
             "limit": 1620,
             "reason": "input-device-awareness R27: its input_scheme (the Game view's Input Scheme menu: auto, or a scheme forced at Play start) on the toolbar tool that holds Simulate Touch; 1499 before, 1620 measured (eval case guard_input_scheme_forced)"
@@ -120,8 +124,8 @@
             "reason": "upstream (Texture Synthesis), predates its merge into oe-port: 3519 with S31's schema conventions until upstream round 3 moved its per-argument texts to jasper://docs/texture-synthesis (2341 measured, nested objects still say additionalProperties)"
         },
         "edit_animation": {
-            "limit": 3566,
-            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the round-1 upstream sync, 3494 on round 2 (upstream's .anim clip mode on the same tool: clip, create, tracks by path, keys, events, cheaper than a second tool); 3578 with refs typed integer|string again (the CLI tells ids from names by it), 3606 with its free-form key items saying so (S31 conventions); 3566 with S77's root_motion (a free-form object; the guide names its members) paid for by a shorter clip sentence (the core listing had 3 characters left)"
+            "limit": 3555,
+            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the round-1 upstream sync, 3494 on round 2 (upstream's .anim clip mode on the same tool: clip, create, tracks by path, keys, events, cheaper than a second tool); 3578 with refs typed integer|string again (the CLI tells ids from names by it), 3606 with its free-form key items saying so (S31 conventions); 3566 with S77's root_motion (a free-form object; the guide names its members) paid for by a shorter clip sentence (the core listing had 3 characters left); 3613 with S94's create.unity and mirror_x (the Unity .anim import, extending this tool instead of a new core one), the core listing paid by a shorter guide pointer and create.humanoid's members left to the schema; 3574 once S94's merged packages put the core listing 38 over, by cutting two notes no eval case needs (scene mode's undo scope and audio actions without a clip); 3555 when S94 met S96 on main (the core listing 63 over), without \"audio: sound cues\" (the schema names the cue's keys) and with a shorter set_shader_uniform"
         },
         "sculpt_terrain": {
             "limit": 2699,
@@ -136,8 +140,8 @@
             "reason": "grandfathered by S31: 2067 chars when the limits were set, +5% (tighter than its HTML UI cap 2400); 2031 measured after mcp-budget-trim cut wording (the craftsman merge took core over 99,000); 2020 once 'languages' left its description (no eval case needed it)"
         },
         "create_entity": {
-            "limit": 2196,
-            "reason": "grandfathered by S31: 1984 chars when the limits were set, +5%; 2196 measured on the upstream sync (upstream's types water, fluid_simulation, lattice)"
+            "limit": 2188,
+            "reason": "grandfathered by S31: 1984 chars when the limits were set, +5%; 2196 measured on the upstream sync (upstream's types water, fluid_simulation, lattice); 2188 with Vapor's fog_zone and a trimmed description"
         },
         "set_sprite_frames": {
             "limit": 2075,

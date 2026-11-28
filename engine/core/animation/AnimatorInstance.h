@@ -37,6 +37,7 @@
 #include "animation/AnimatorRig.h"
 #include "animation/BlendTree.h"
 #include "animation/CompiledController.h"
+#include "animation/RootMotion.h"
 #include "component/AnimatorComponent.h"
 
 #include <memory>
@@ -72,8 +73,10 @@ namespace jasperengine::anim{
         Affine rootParent;
         Affine rootParentInverse;
         Quaternion rootParentRotation;
-        Vector3 rootStart = Vector3(0, 0, 0);   // the bone's rig-space position and heading at time 0
-        float rootStartYaw = 0.0f;
+        // the basis at time 0 and the Based Upon start correction (RootMotion.h)
+        RootMotionFrame rootFrame;
+        // the clip's Based Upon reads the humanoid body (a usable humanoid under the root bone)
+        bool rootBody = false;
         // one lap of the root (P and the heading change at 0 and at the clip's length, baked
         // components held): what every looping frame's delta adds, computed at bind
         Vector3 lapStart = Vector3(0, 0, 0);
@@ -330,6 +333,8 @@ namespace jasperengine::anim{
         // main thread (AnimatorSystem): the state_exit cues' voices
         std::vector<AnimatorCueVoice> cueVoices;
         float clock = 0.0f;                 // seconds the Animator ran (retry throttles)
+        // a ragdoll gave the skins to the render system (AnimatorSystem::parkSkins)
+        bool skinsParked = false;
         uint64_t evaluations = 0;
 
         // ---- set up (main thread) ----
@@ -518,6 +523,16 @@ namespace jasperengine::anim{
         bool humanoidSource(const AnimatorClipSlot& slot, const AnimatorComponent& component,
                             std::shared_ptr<const RetargetSource>& source, std::string* error) const;
         void removeRootMotion(const AnimatorClipSlot& slot, Pose& out) const;
+        // the slot's unbaked root motion leaves the pose: Apply Root Motion, or a clip with a
+        // root_motion block (Unity discards it when Apply Root Motion is off, S94 F33) unless the
+        // Animator keeps the drift it had before (legacyRootDrift)
+        bool removesRootMotion(const AnimatorClipSlot& slot, const AnimatorComponent& component) const{
+            return slot.rootBone >= 0 && (component.applyRootMotion || (slot.rootMotion.present && !component.legacyRootDrift));
+        }
+        // the root's basis (RootMotion.h) at `clipTime`, the body sampled when the slot reads it
+        RootBasisSample rootBasisAt(const AnimatorClipSlot& slot, float clipTime) const;
+        // rig-space positions of the humanoid slots in `pose`
+        void bodyPoints(const Pose& pose, HumanBodyPoints& out) const;
         // P(t) with the baked components held at the start, h(t) the heading change since time 0
         void rootPoint(const AnimatorClipSlot& slot, float clipTime, Vector3& position, float& heading) const;
         bool rootSample(const AnimatorClipSlot& slot, float clipTime, Vector3& position, Quaternion& rotation) const;
@@ -538,6 +553,9 @@ namespace jasperengine::anim{
         };
         std::vector<LeafRun> leafRuns;
         std::vector<CrossedEvent> crossed;
+        // Based Upon's body samples (rootBasisAt), on this instance's thread only
+        mutable Pose basisPose;
+        mutable RigClipCursors basisCursors;
     };
 
 }

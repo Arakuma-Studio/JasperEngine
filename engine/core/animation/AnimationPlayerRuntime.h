@@ -45,6 +45,7 @@
 #include "animation/HumanoidClip.h"
 #include "animation/KeyframeSampling.h"
 #include "animation/PropertyBindings.h"
+#include "animation/RootMotion.h"
 #include "component/AnimationPlayerComponent.h"
 #include "ecs/Entity.h"
 #include "math/Quaternion.h"
@@ -268,6 +269,31 @@ namespace jasperengine::anim{
         // rotation there comes from (empty otherwise; computed with trackMask)
         std::vector<PoseMeshSource> meshSources;
 
+        // S94 F34: this state's clip root motion (Unity's Root Transform options), bound for
+        // `rootMotion.clip` and the bindings' serial; the update's step on its stored time
+        struct RootLink{
+            Vector3 position = Vector3(0, 0, 0);
+            Quaternion rotation;
+            Vector3 scale = Vector3(1, 1, 1);
+            int positionTrack = -1, rotationTrack = -1, scaleTrack = -1;
+        };
+        struct RootMotion{
+            const AnimationClip* clip = nullptr;
+            uint64_t serial = 0;
+            ClipRootMotion settings;
+            Entity bone = NULL_ENTITY;          // NULL_ENTITY: the clip moves no root
+            // the root down to the bone (bone last), at rest with the clip's tracks on them
+            std::vector<RootLink> boneChain;
+            // Based Upon reads the humanoid body: per slot the same chain (empty: unmapped)
+            bool body = false;
+            std::array<std::vector<RootLink>, pose::HUMAN_BONE_COUNT> bodyChains;
+            RootMotionFrame frame;
+            Vector3 lapStart = Vector3(0, 0, 0);
+            Vector3 lapEnd = Vector3(0, 0, 0);
+            float lapEndHeading = 0.0f;
+            bool stepped = false;               // advanced this update
+            double stepFrom = 0.0, stepTo = 0.0;
+        } rootMotion;
     };
 
     struct JASPERENGINE_API QueuedState{
@@ -485,6 +511,11 @@ namespace jasperengine::anim{
         std::vector<uint64_t> meshSpaceStamp;
         // the root's humanoid rig for humanoid masks (spec 6.2 rule 2; anim-retarget's target rig
         // lookup shares it): resolved when a layer's mask needs it, again after a model reload
+        // S94 F34: this update's root motion (the base layer's states, by weight) and the state
+        // whose clip settings take the root out of the written pose (-1: none)
+        Vector3 rootDelta = Vector3(0, 0, 0);
+        float rootYaw = 0.0f;
+        int rootState = -1;
         std::shared_ptr<HumanoidSlots> humanoid;
         uint64_t humanoidRevision = 0;      // bumped whenever `humanoid` is resolved again
         uint64_t humanoidHierarchy = 0;     // the hierarchy revision its bone entities were checked at

@@ -21,6 +21,7 @@
 1021 button/texturePressed texture
 1021 button/textureDisabled texture
 1021 button/textureSelected texture
+1024 fog/profile fog_profile
 1033 particlesystem/effect particle_effect
 1043 sprite/sheet any
 1044 text/font[0] font
@@ -38,3 +39,5 @@
 1102 tilemaplayer/tileset tileset
 1104 titleart/title title_art
 1108 dialoguerunner/dialogue dialogue
+1111 vertexcolors/data vertex_colors
+1112 fogzone/profile fog_profile

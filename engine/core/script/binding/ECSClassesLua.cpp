@@ -48,9 +48,11 @@
 #include "component/AnimatorComponent.h"
 #include "animation/AnimationEvent.h"
 #include "component/SpriteComponent.h"
+#include "component/TextComponent.h"
 #include "component/FogComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "component/TilemapComponent.h"
@@ -321,6 +323,27 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("FRAME", PivotPreset::FRAME)
         .endNamespace();
 
+    // Text.anchorHorizontal and Text.anchorVertical (Unity TextMesh's Anchor): one table, values the
+    // other property refuses
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextAnchor")
+        .addVariable("Left", TextAnchorHorizontal::LEFT)
+        .addVariable("Center", TextAnchorHorizontal::CENTER)
+        .addVariable("Right", TextAnchorHorizontal::RIGHT)
+        .addVariable("Top", TextAnchorVertical::TOP)
+        .addVariable("Middle", TextAnchorVertical::MIDDLE)
+        .addVariable("Bottom", TextAnchorVertical::BOTTOM)
+        .addVariable("Baseline", TextAnchorVertical::BASELINE)
+        .addVariable("Capline", TextAnchorVertical::CAPLINE)
+        .addVariable("Midline", TextAnchorVertical::MIDLINE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextFontSizeUnit")
+        .addVariable("PixelHeight", TextFontSizeUnit::PIXEL_HEIGHT)
+        .addVariable("Em", TextFontSizeUnit::EM)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("SpriteDrawMode")
         .addVariable("SIMPLE", SpriteDrawMode::SIMPLE)
@@ -422,6 +445,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .beginNamespace("FogColorMode")
         .addVariable("COLOR", FogColorMode::COLOR)
         .addVariable("SKY", FogColorMode::SKY)
+        .addVariable("LIT", FogColorMode::LIT)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -434,6 +458,12 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .beginNamespace("FogVolumeFalloff")
         .addVariable("LINEAR", FogVolumeFalloff::LINEAR)
         .addVariable("EXPONENTIAL", FogVolumeFalloff::EXPONENTIAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("FogZoneShape")
+        .addVariable("BOX", FogZoneShape::BOX)
+        .addVariable("SPHERE", FogZoneShape::SPHERE)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -1165,6 +1195,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("speed", &AnimationPlayerComponent::speed, &setTrackedMember<&AnimationPlayerComponent::speed>)
         .addProperty("defaultFadeTime", &AnimationPlayerComponent::defaultFadeTime, &setTrackedMember<&AnimationPlayerComponent::defaultFadeTime>)
         .addProperty("poseFrameRate", &AnimationPlayerComponent::poseFrameRate, &setTrackedMember<&AnimationPlayerComponent::poseFrameRate>)
+        .addProperty("applyRootMotion", &AnimationPlayerComponent::applyRootMotion, &setTrackedMember<&AnimationPlayerComponent::applyRootMotion>)
+        .addProperty("legacyRootDrift", &AnimationPlayerComponent::legacyRootDrift, &setTrackedMember<&AnimationPlayerComponent::legacyRootDrift>)
         .addProperty("needsLoad", &AnimationPlayerComponent::needsLoad, &AnimationPlayerComponent::needsLoad)
         .addProperty("onEvent", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onEvent; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onEvent = L; })
         .addProperty("onFinish", [] (AnimationPlayerComponent* self, lua_State*) { return &self->onFinish; }, [] (AnimationPlayerComponent* self, lua_State* L) { self->onFinish = L; })
@@ -1208,6 +1240,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("speed", &AnimatorComponent::speed, &setTrackedMember<&AnimatorComponent::speed>)
         .addProperty("poseFrameRate", &AnimatorComponent::poseFrameRate, &setTrackedMember<&AnimatorComponent::poseFrameRate>)
         .addProperty("applyRootMotion", &AnimatorComponent::applyRootMotion, &setTrackedMember<&AnimatorComponent::applyRootMotion>)
+        .addProperty("legacyRootDrift", &AnimatorComponent::legacyRootDrift, &setTrackedMember<&AnimatorComponent::legacyRootDrift>)
         .addProperty("rootMotionBone", &AnimatorComponent::rootMotionBone, &setTrackedMember<&AnimatorComponent::rootMotionBone>)
         .addProperty("updateMode", &AnimatorComponent::updateMode, &setTrackedMember<&AnimatorComponent::updateMode>)
         .addProperty("cullingMode", &AnimatorComponent::cullingMode, &setTrackedMember<&AnimatorComponent::cullingMode>)

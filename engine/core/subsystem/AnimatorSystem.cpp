@@ -116,10 +116,18 @@ void AnimatorSystem::setParallel(bool value){
 void AnimatorSystem::release(Entity entity, anim::AnimatorInstance& instance){
     propertyRowsChanged = true;
     setSkinsDriven(instance, false);
+    instance.skinsParked = false;
     for (auto it = owners.begin(); it != owners.end();){
         if (it->second == entity) it = owners.erase(it);
         else ++it;
     }
+}
+
+void AnimatorSystem::parkSkins(Entity entity){
+    AnimatorComponent* component = scene->findComponent<AnimatorComponent>(entity);
+    if (!component || !component->runtime || !component->runtime->bound) return;
+    setSkinsDriven(*component->runtime, false);
+    component->runtime->skinsParked = true;
 }
 
 void AnimatorSystem::setSkinsDriven(anim::AnimatorInstance& instance, bool driven){
@@ -420,6 +428,11 @@ bool AnimatorSystem::prepare(Entity entity, AnimatorComponent& component, float 
     if (!ensureBound(entity, component, instance)){
         instance.clock += std::fabs(dt);
         return false;
+    }
+    // updating again after a ragdoll had the skins (parkSkins): they are this Animator's again
+    if (instance.skinsParked){
+        setSkinsDriven(instance, true);
+        instance.skinsParked = false;
     }
     job.entity = entity;
     job.component = &component;

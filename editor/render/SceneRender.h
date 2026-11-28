@@ -203,6 +203,8 @@ namespace jasperengine::editor{
         float targetBillboardScale(Scene* target, const Vector3& worldPos, float logicalScale) const;
         static OBB transformAABBPreservingShear(const Matrix4& modelMatrix, const AABB& localAABB);
         void updateTerrainBrushCursor();
+        // the active Scene-view tool's decal (SceneTool::decal), depth tested in this scene
+        void updateSceneToolDecal();
         float snapRotationAngle(float angle, bool invertRotationSnap) const;
         static Vector3 getMatrixScale(const Matrix4& matrix);
         static bool isCorner2DGizmoSide(Gizmo2DSideSelected side);
@@ -424,6 +426,9 @@ namespace jasperengine::editor{
 
         LineRenderer* selLines;
         LineRenderer* terrainBrushLines;
+        // made on the first decal a tool draws, so a scene without one pays nothing
+        LineRenderer* sceneToolLines = nullptr;
+        uint64_t sceneToolLinesRevision = 0;
         // Physics Placement: region, contacts, teleport ring, ghosts, proxies, distance rays
         LineRenderer* physicsLines;
 

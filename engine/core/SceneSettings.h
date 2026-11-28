@@ -181,6 +181,14 @@ namespace jasperengine{
         DAVINCI_INTERMEDIATE    // scene: DaVinci Intermediate, DaVinci Wide Gamut
     };
 
+    // How the vignette falls off (PostProcessingSettings::vignetteFalloff, S94 F19): SMOOTHNESS
+    // from vignetteSmoothness (the engine's original maths), RADII smoothstep(vignetteStart,
+    // vignetteEnd, r), r the roundness-scaled radius, 1 at the screen edge's midpoint
+    enum class VignetteFalloff : int {
+        SMOOTHNESS,
+        RADII
+    };
+
     // Fast post-processing of the main camera (shader library phase 4). Every effect has an
     // enable flag (or a neutral value: exposure 0, tonemap NONE, render scale 1, MSAA 1) and
     // costs nothing while off; a default-constructed struct draws exactly what the engine drew
@@ -218,6 +226,9 @@ namespace jasperengine{
         // size of the engine's colour LUT (16 or 32 per side): 16 is lighter on low-end GPUs and
         // bands under strong grades
         int lutSize = 32;
+        // an image strip laid out with green 0 at the top row (not Unity's layout): its rows are
+        // flipped as the LUT is built (a .cube is unaffected)
+        bool lutFlipGreen = false;
 
         // grayscale / sepia, mixed in by intensity (a colour transform: baked into the LUT, so a
         // T0 effect although it reads like a filter)
@@ -233,6 +244,11 @@ namespace jasperengine{
         float vignetteSmoothness = 0.5f;
         float vignetteRoundness = 1.0f;
         Vector3 vignetteColor = Vector3(0.0f, 0.0f, 0.0f);
+        // the falloff: from smoothness, or between two radii (VignetteFalloff); start and end
+        // are radii where 1 is the screen edge's midpoint (end above start)
+        VignetteFalloff vignetteFalloff = VignetteFalloff::SMOOTHNESS;
+        float vignetteStart = 0.5f;
+        float vignetteEnd = 1.2f;
 
         // +-0.5/255 noise before the 8-bit write, against banding in gradients
         bool ditherEnabled = false;
@@ -562,6 +578,9 @@ namespace jasperengine{
         bool physicsInterpolation = true;
         // Box2D sub-steps of each fixed step, 1..16 (more: stiffer joint chains and stacks)
         int physics2DSubSteps = 4;
+        // the fixed step (seconds) while this is the main scene; 0 = Project Settings > Time's
+        // (a load applies it: Engine::applySceneUpdateTime)
+        float fixedTimestep = 0.0f;
         // the 2D world's units, rotation cap and tuning and the 3D solver (owned by PhysicsSystem
         // as gravity; saved as flat keys, physicsWorldSettingFields)
         ScenePhysics2DSettings physics2DWorld;

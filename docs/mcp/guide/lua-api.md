@@ -179,15 +179,20 @@ label, defaults to `name`), `type` (string, case-insensitive; default `float` if
 | `"color4"` | `Vector4` | `{r, g, b, a}` (a defaults 1) |
 | `"prefab"`, `"prefabasset"` | `PrefabAsset`, or `nil` when left None | no default (assigned in Inspector) |
 | `"asset"`, `"assetref"` (with `assetType = "texture"`, `"model"`, `"audio"`, ...) | `AssetRef`, or `nil` when left None | a path (`"textures/hero.png"`), or none |
+| `"list"` with `of = <any type of this table but list>` (Unity's `List<T>`) | a Lua array of `of` values; an unassigned reference in it is `false` | an array of `of`'s defaults (`{1, 2}`, `{{0, 1, 0}}`), or none (empty) |
+| a data class name (`"ItemData"`), or `"asset"` with `assetType = "dataasset"` (any class) | that Data Asset's shared table (2.4.3), or `nil` when left None | a path (`"items/sword.dataasset"`), or none |
 | `"entity"`, `"entitypointer"`, `"pointer"` | the first Lua script instance (enabled or not) on the referenced GameObject if it has one, otherwise an `EntityHandle`; `nil` if unassigned | none |
 | any other string = a wrapper class name (see list below) | an instance of that wrapper class for the referenced entity; `nil` if unassigned | none |
 | any other string = a Lua script class name (e.g. `"Enemy"`) | that GameObject's `Enemy` script instance table (its `self`) | none |
+
+A data class name wins over a script of the same name. The Inspector shows a list as rows with Add (+),
+reorder and Remove, and a Data Asset field as a picker of the class's assets.
 
 Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera`, `Light`,
 `Light2D`, `ShadowCaster2D`, `CapsuleShadowCaster`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
 `MeshPolygon`, `Points`, `LineRenderer`, `TrailRenderer`, `Sprite`, `AudioSource`, `RectTransform`,
 `LayoutGroup`, `Polygon`, `Text`, `Image`, `Button`, `Panel`, `Scrollbar`, `Progressbar`,
-`InputField`, `Bone`, `Fog`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `FluidSimulation`, `Rigidbody2D`, `Joint2D`, `CharacterController2D`,
+`InputField`, `Bone`, `Fog`, `FogZone`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `FluidSimulation`, `Rigidbody2D`, `Joint2D`, `CharacterController2D`,
 `Rigidbody`, `Joint3D`, `CharacterController`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
 `RotationTween`, `ScaleTween`, `Animation`, `ParticleSystem`, `SpriteAnimation`,
 `KeyframeTracks`, `MorphTracks`, `LatticeTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `Spline`, `SplineExtrude`,
@@ -204,6 +209,10 @@ a sound -> `"AudioSource"`).
 |---|---|
 | `RegisterEngineEvent(self, "methodName" [, tag])` | Subscribes `self:methodName(...)` to `Engine.<methodName>`. The method name must equal the Engine event name and must already exist on `self` (error otherwise). |
 | `RegisterEvent(self, eventObject, "methodName" [, tag] [, priority])` | Subscribes `self:methodName(...)` to any event object (component or physics event, or an `Event`). `priority` is for an `Event` or `CancellableEvent` only (pass `nil` as the tag: `RegisterEvent(self, ev, "m", nil, 10)`); engine events run in subscription order. |
+
+Both look the method up by name at each call: `self.onUpdate = other` takes effect at the next
+event. While `self[methodName]` is not a function (nil, a value) the call is skipped, with one
+warning per subscription.
 | `UnregisterEngineEvent(self, "methodName" [, tag])` | Removes that `RegisterEngineEvent` subscription (same tag); `true` if it existed. Unity's `-=`. |
 | `UnregisterEvent(self, eventObject, "methodName" [, tag])` | Removes that `RegisterEvent` subscription; `true` if it existed. |
 
@@ -283,12 +292,12 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 |---|---|---|
 | `onUpdate` | none | every frame (variable step; use `Engine.deltatime`) |
 | `onFixedUpdate` | none | every fixed step (`Engine.updateTime`, default 1/60 s), 0..n times per frame, before physics steps |
-| `onPostUpdate` | none | every frame after scenes update |
+| `onPostUpdate` | none | every frame after the scenes' update, the timers and the coroutines (Unity's `LateUpdate`); what it moves is drawn in the same frame |
 | `onDraw` | none | every frame before drawing |
 | `onViewLoaded` | none | view ready |
 | `onCanvasChanged` | none | view/canvas size changed (C++ name is onViewChanged; Lua name is `onCanvasChanged`) |
-| `onViewDestroyed` | none | view destroyed |
-| `onPause`, `onResume`, `onShutdown` | none | application lifecycle (pause = to the background; idempotent) |
+| `onViewDestroyed` | none | view destroyed: the GPU context went (Android in the background, a lost WebGL context). Scenes, scripts and HTML UI documents stay; their GPU objects are made again after `onViewLoaded` |
+| `onPause`, `onResume`, `onShutdown` | none | application lifecycle (pause = to the background; idempotent). The first frame after a resume or a view restore gets a delta of at most `Engine.updateTime`: no clock jumps by the time away |
 | `onFocus` | `hasFocus` | the app gained or lost focus (a dialog, the notification shade, another window); `onFocus(false)` comes before `onPause`, `onFocus(true)` after `onResume` |
 | `onVisibilityChanged` | `visible` | the window was hidden or shown again (minimized, unmapped, fully covered on macOS; a hidden web page): a hidden desktop game updates without drawing ([platform-services.md](platform-services.md)) |
 | `onOrientationChanged` | `orientation` (`ScreenOrientation`) | the interface rotated, after `onCanvasChanged` |
@@ -555,8 +564,8 @@ parents to the first script that defines it (otherwise the game gets Escape or B
 | `isVisible` | ro | false while the window can't be seen: the game updates without drawing (true at start, always on Android and iOS) |
 | `isDevelopmentBuild` | ro | Unity's `Debug.isDebugBuild`: true in the editor's Play and in exports built with the Debug build type |
 | `systemTime` | ro | |
-| `canvasWidth`, `canvasHeight` | ro | current canvas; can be 0 in `init()` of exported builds |
-| `preferredCanvasWidth`, `preferredCanvasHeight` | ro | project canvas size; safe in `init()` |
+| `canvasWidth`, `canvasHeight` | ro | current canvas, never 0: in `init()` the first frame's layout where the screen is known before the view (desktop windows, web, iOS); on Android the project size, and `onCanvasChanged` fires before the first `onUpdate` when the window differs |
+| `preferredCanvasWidth`, `preferredCanvasHeight` | ro | project canvas size |
 | `setCanvasSize(w, h)` | static fn | |
 | `viewRect` | ro | `Rect` |
 | `scalingMode` | rw | `Scaling.*` |
@@ -575,7 +584,7 @@ parents to the first script that defines it (otherwise the game gets Escape or B
 | `mouseCursor` | rw | `CursorType.*` |
 | `mouseMode` | rw | `MouseMode.*` |
 | `setMousePosition(x, y)` | static fn | |
-| `callMouseInTouchEvent`, `callTouchInMouseEvent`, `allowEventsOutCanvas`, `ignoreEventsHandledByUI` | rw | input routing flags |
+| `callMouseInTouchEvent`, `callTouchInMouseEvent`, `allowEventsOutCanvas`, `ignoreEventsHandledByUI` | rw | input routing flags; `callTouchInMouseEvent` (the mouse is also finger 0) starts at Project Settings > Input > Simulate Touch From Mouse (`input.simulate_touch_from_mouse`) |
 | `isUIEventReceived()` | static fn | |
 | `platform` | ro | `Platform.*` |
 | `graphicBackend` | ro | `GraphicBackend.*` |
@@ -902,23 +911,60 @@ most 3 s), so `init` reads them; if the restore takes longer, `data://` writes r
 them). Plain Lua `io` works with `FileData.getSystemPath("data://x")`
 paths, but on Web call `System.syncFileSystem()` after writing.
 
-Data assets (Unity ScriptableObjects): a JSON file with the Lua scripts or the assets
-(`Json.readFile("lua://data/items.json")`, `Json.readFile("asset://levels/1.json",
-{allowComments = true})`), exported with them; or a Lua data module shared by every
-script that requires it:
+Data assets (Unity ScriptableObjects) are the `.dataasset` files of 2.4.3; plain data a game only
+reads can also be a JSON file (`Json.readFile("asset://levels/1.json", {allowComments = true})`)
+or a Lua module every script `require`s.
+
+### 2.4.3 DataAsset (static): Data Assets, Unity's ScriptableObject
+
+A **data class** is a Lua module whose first lines hold `---@dataasset`: its `properties` (1.2,
+without GameObject references: an asset outlives the scenes) are the fields of its assets, its
+functions their methods. Make an asset with Assets > Create > Data Asset > <class> (or MCP
+`edit_data_asset`); the Inspector edits its values, with undo. A script property typed with the
+class name holds one.
 
 ```lua
--- lua/data/items.lua
-return { sword = { damage = 12, price = 30 }, shield = { armor = 5, price = 25 } }
+-- lua/data/ItemData.lua
+---@dataasset
+local ItemData = {
+    properties = {
+        { name = "displayName", type = "string", default = "Item" },
+        { name = "price", type = "int", default = 10 },
+        { name = "icon", type = "asset", assetType = "texture" },
+        { name = "upgrade", type = "ItemData" },
+        { name = "tags", type = "list", of = "string" },
+    }
+}
+function ItemData:label() return self.displayName .. " (" .. self.price .. ")" end
+return ItemData
 ```
+
+| Function | Returns |
+|---|---|
+| `DataAsset.load(pathOrGuid)` | the asset's table (path relative to the assets folder, `asset://`, or its GUID), or `nil, message` |
+| `DataAsset.loadAll(className)` | every asset of the class the game ships, sorted by path (one that does not load is left out, warned), or `nil, message` |
+| `DataAsset.create(className)` | a new table of the class with its defaults, of no file, or `nil, message` |
+| `DataAsset.classOf(t)` / `DataAsset.pathOf(t)` | the class / file of an asset's table, `nil` for anything else (`pathOf` of a created one) |
 
 ```lua
--- in a script
-local Items = require("data.items")
-local price = Items.sword.price
+local Shop = { properties = { { name = "featured", type = "ItemData" }, { name = "stock", type = "list", of = "ItemData" } } }
+function Shop:start()
+    print(self.featured:label())
+    for _, item in ipairs(DataAsset.loadAll("ItemData")) do print(item.displayName, item.price) end
+end
+return Shop
 ```
 
-### 2.4.3 SaveGame (static, save slots)
+- One table per asset and run: every property, list and `load` gets the same table, made on its first
+  use (an asset's references to other Data Assets are their tables too; cycles are fine).
+- Changes made to a table in the game stay in that run and are never written to the file (Unity's
+  editor keeps them; JasperEngine never does). The next Play reads the files again.
+- A field the file lacks has its class default; a value of no field (a field renamed in the class)
+  stays in the file, unused, and the Inspector and `edit_data_asset` report it.
+- Exports ship every `.dataasset` (references at their current paths) and an index of the classes
+  (`je-dataassets.json`) for `loadAll`; C++ games read the JSON themselves.
+
+### 2.4.4 SaveGame (static, save slots)
 
 Game progress goes in `SaveGame`, not in hand-written JSON files: named slots (`slot1`,
 `autosave`; `a-z 0-9 _ -`, at most 48) of namespaces (`main` by default) holding any Lua value
@@ -1284,11 +1330,12 @@ Entities are plain integers (`0` = none).
 | `gravity2D` (Vector2, rw); `setGravity2D(x, y)` | |
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
 | `physicsInterpolation` (bool, rw) | bodies drawn between their last two fixed steps (default true); the scene setting `physics_interpolation` |
+| `fixedTimestep` (number, rw) | the fixed step (seconds) while this is the main scene, 0 = the project's (default); the scene setting `fixed_timestep`. A load into this scene applies it before its scripts' `init`; a load into a scene without one after it brings the project's back. Setting it at runtime takes effect at the next load: change the running step with `Time.fixedDeltaTime` |
 | `physics2DSubSteps` (integer, rw) | Box2D sub-steps of each fixed step, 1-16 (default 4); the scene setting `physics_2d_sub_steps` |
 | `physics2DPointsPerMeter`, `physics2DMaxRotation` (number, rw) | canvas points in a 2D metre (64; a change rebuilds the bodies where they are) and a 2D body's rotation per fixed step at most (45 degrees); `jasper://docs/physics` "World settings" |
 | `physics2DContactHertz`, `physics2DContactDampingRatio`, `physics2DContactPushSpeed`, `physics2DJointHertz`, `physics2DJointDampingRatio`, `physics2DBounceThreshold`, `physics2DMaxLinearSpeed` (number, rw); `physics2DWarmStarting`, `physics2DContinuous`, `physics2DSleep` (bool, rw) | the 2D solver's tuning (Box2D's defaults) |
 | `physics3DVelocityIterations`, `physics3DPositionIterations`, `physics3DCollisionSteps` (integer, rw); `physics3DBounceThreshold`, `physics3DSleepThreshold`, `physics3DSpeculativeDistance` (number, rw) | the 3D solver's settings (Jolt's defaults); out of range values are clamped |
-| `ambientLight2DColor`, `ambientLight2DIntensity`, `ambientLight2DWithoutLights` (bool: the 2D ambient tints unlit 2D objects with no Light 2D in the scene too; on in new scenes, off in scenes saved before it), `light2DSteps` (0-16: each Light 2D's light in this many hard bands, 0 off), `globalIlluminationColor`, `globalIlluminationIntensity`, `ambientMode` (`AmbientMode.COLOR` / `GRADIENT`: Environment Lighting's source), `ambientSkyColor`, `ambientEquatorColor`, `ambientGroundColor` (the Gradient's colours, sRGB), `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `capsuleShadowsEnabled`, `capsuleShadowIntensity` (0..1), `capsuleShadowSoftness` (0..2; `jasper://docs/lighting`), `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `htmlUiRenderMode` (`UIRenderMode.OVERLAY`, the default: the screen HTML UI documents composite after post-processing at the output resolution; `CAMERA`: in the camera pass, render scale and post apply), `htmlUiMsaaSamples` (their MSAA samples: 0 = the project's, 1, 2, 4, 8; the next frame makes the target again), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA, `CavityType` SCREEN/WORLD/BOTH (`cavityEnabled`, `cavityType`, ...: Blender-style edge highlights on 3D meshes); fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
+| `ambientLight2DColor`, `ambientLight2DIntensity`, `ambientLight2DWithoutLights` (bool: the 2D ambient tints unlit 2D objects with no Light 2D in the scene too; on in new scenes, off in scenes saved before it), `light2DSteps` (0-16: each Light 2D's light in this many hard bands, 0 off), `globalIlluminationColor`, `globalIlluminationIntensity`, `ambientMode` (`AmbientMode.COLOR` / `GRADIENT`: Environment Lighting's source), `ambientSkyColor`, `ambientEquatorColor`, `ambientGroundColor` (the Gradient's colours, sRGB), `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `capsuleShadowsEnabled`, `capsuleShadowIntensity` (0..1), `capsuleShadowSoftness` (0..2; `jasper://docs/lighting`), `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `htmlUiRenderMode` (`UIRenderMode.OVERLAY`, the default: the screen HTML UI documents composite after post-processing at the output resolution; `CAMERA`: in the camera pass, render scale and post apply), `htmlUiMsaaSamples` (their MSAA samples: 0 = the project's, 1, 2, 4, 8; the next frame makes the target again), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA, `CavityType` SCREEN/WORLD/BOTH (`cavityEnabled`, `cavityType`, ...: Blender-style edge highlights on 3D meshes), `VignetteFalloff` SMOOTHNESS/RADII (`vignetteStart`, `vignetteEnd`); fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `defaultMeshShader`, `defaultUIShader`, `defaultSkyShader`, `defaultPointsShader`, `defaultLinesShader` (string, rw) | the scene's default shader of each type ("" built-in) |
 | `setDefaultShaderUniform(ShaderType.MESH, name, float/Vector2/3/4)`, `getDefaultShaderUniform(type, name)` (-> Vector4), `hasDefaultShaderUniform(type, name)`, `removeDefaultShaderUniform(type, name)` (-> bool) | a property value of that default shader, inherited by every object without a shader of its own (an object's own value wins; `ShaderType.MESH`/`UI`/`SKYBOX`/`POINTS`/`LINES`; other types log an error). A value changed every frame belongs in `Shader.setGlobal*` |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects (below) |
@@ -1788,7 +1835,7 @@ prefer `Time` in new code: its names are Unity's and they avoid the `Engine.upda
 |---|---|---|
 | `deltaTime` | ro | game seconds of this frame (times `timeScale`, 0 during a hit-stop); inside `onFixedUpdate` (a fixed step) the fixed step `fixedDeltaTime`; inside a Hit Stop Exempt GameObject's callbacks the delta without the hit-stop |
 | `unscaledDeltaTime` | ro | the frame delta before `timeScale` (runs at time scale 0: pause menus); inside a fixed step `fixedUnscaledDeltaTime`; 0 while the app or the editor's Play is paused |
-| `fixedDeltaTime` | rw | game seconds per fixed step (physics, `onFixedUpdate`), default 1/60 |
+| `fixedDeltaTime` | rw | game seconds per fixed step (physics, `onFixedUpdate`): starts at Project Settings > Time > Fixed Timestep (`time.fixed_timestep`, default 1/60); a scene's Fixed Timestep (`scene.fixedTimestep`) applies when a load makes it the main scene; a value set here survives loads into scenes without one |
 | `fixedUnscaledDeltaTime` | ro | `fixedDeltaTime / timeScale` (0 at time scale 0) |
 | `time` | ro | game seconds since start (inside a fixed step, `fixedTime`) |
 | `fixedTime` | ro | sum of the fixed steps run (inside a step: the time at its start) |
@@ -1797,7 +1844,7 @@ prefer `Time` in new code: its names are Unity's and they avoid the `Engine.upda
 | `timeSinceLevelLoad` | ro | game seconds since the last `SceneManager.loadScene` (or Play start) |
 | `frameCount` | ro | frames the update loop has run |
 | `timeScale` | rw | game speed, [0, 100]: scales the frame delta, physics, actions, tweens, animations, particles, `Coroutine.wait` and timers (not `waitRealtime`, unscaled timers, audio, HTML UI) |
-| `maximumDeltaTime` | rw | cap of a frame's delta (default 0.25; values <= 0 are ignored with a warning) |
+| `maximumDeltaTime` | rw | cap of a frame's delta: starts at Project Settings > Time > Maximum Allowed Timestep (`time.maximum_delta_time`, default 0.25); values <= 0 are ignored with a warning |
 | `maximumFixedStepsPerFrame` | rw | fixed steps a frame may run; 0 (default) automatic: as many as `maximumDeltaTime` lets through, whatever the time scale (none dropped at time scale 1), also the most a higher value gives. A lower cap drops the rest of a long frame (one warning per Play) |
 | `droppedFixedSteps` | ro | fixed steps the cap dropped since Play (or the game) started |
 | `captureDeltaTime` | rw | when > 0 every frame advances exactly this many seconds (before `timeScale`); 0 = measured frames |
@@ -1939,9 +1986,11 @@ animation timing stays `anime.createTimer` (milliseconds, the UI clock); for gam
 `self:invoke` / `Timer.after`.
 
 Frame order: fixed steps (`onFixedUpdate`, physics, then the coroutines waiting
-`waitForFixedUpdate`), `onUpdate`, then `invoke` timers and the coroutines whose wait is over (seconds,
-frames, predicates, `waitFor`; in the order they were started), the scenes' update,
-`onPostUpdate`, destroys, the draw, then the coroutines waiting `waitForEndOfFrame`. Every wait
+`waitForFixedUpdate`), `onUpdate`, the scenes' update, then `invoke` timers and the coroutines whose
+wait is over (seconds, frames, predicates, `waitFor`; in the order they were started),
+`onPostUpdate`, destroys, the late transform pass (what moved since the scenes' update gets its
+world matrices, so it is drawn in this frame), the draw, then the coroutines waiting
+`waitForEndOfFrame`. Every wait
 resumes on a later frame, except `waitForEndOfFrame` (same frame) and a `waitFor` of an ended
 coroutine (at once).
 
@@ -2062,15 +2111,30 @@ assert(Vector2(0, 0):moveTowards(Vector2(3, 4), 2.5) == Vector2(1.5, 2))
 | `Quaternion()` | identity (w=1); same as `Quaternion.IDENTITY` |
 | `Quaternion(w, x, y, z)` | raw components (w first) |
 | `Quaternion(xDeg, yDeg, zDeg)` | Euler angles in default units (degrees), ZYX order |
-| `Quaternion(x, y, z, RotationOrder.XYZ)` | Euler with explicit order |
-| `Quaternion(angle, axisVector3)` | angle-axis |
+| `Quaternion.euler(x, y, z [, order])` | Euler angles with an order (`RotationOrder.*`, default ZYX, as `Quaternion(x, y, z)`); four numbers to the constructor are always `(w, x, y, z)` |
+| `Quaternion(angle, axisVector3)` | angle-axis (a unit axis); `Quaternion.angleAxis(angle, axis)` normalizes the axis (Unity's `AngleAxis`) |
 | `Quaternion(Matrix3)`, `Quaternion(Matrix4)`, `Quaternion(xAxis, yAxis, zAxis)` | |
 | `Quaternion.IDENTITY` | static |
 | fields `w x y z` (rw); `* (Quaternion)`, `* (Vector3)` rotates a vector, `* number` / `number *` scales; `+ - unary- == tostring` | |
 | methods | `fromEulerAngles(x, y, z, order)`, `getEulerAngles(order)`, `fromAngle(a)` (Z axis), `fromAngleAxis(a, axis)`, `fromAxes(...)`, `fromRotationMatrix(m)`, `getRotationMatrix()`, `xAxis() yAxis() zAxis()`, `dot(q) norm() inverse() unitInverse() exp() log()`, `normalize() normalized() normalizeL()`, `getRoll() getPitch() getYaw()` (default units) |
 | static | `Quaternion.slerp(t, a, b [, shortestPath])`, `Quaternion.nlerp(t, a, b [, shortestPath])`, `Quaternion.squad(...)`, `Quaternion.slerpExtraSpins(...)`, `Quaternion.lookRotation(forward [, up])` |
 
-`RotationOrder.XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX`.
+`RotationOrder.XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX`. An order names the product of the three
+axis rotations, left to right, so the last letter turns a vector first:
+
+| Unity | JasperEngine |
+|---|---|
+| `Quaternion.Euler(x, y, z)` (z, then x, then y) | `Quaternion.euler(x, y, z, RotationOrder.YXZ)` |
+| `Quaternion.AngleAxis(angle, axis)` | `Quaternion.angleAxis(angle, axis)` |
+
+```lua run
+local unity = Quaternion.angleAxis(45, Vector3(0, 1, 0)) * Quaternion.angleAxis(10, Vector3(1, 0, 0))
+local q = Quaternion.euler(10, 45, 0, RotationOrder.YXZ)
+assert(math.abs(q:dot(unity)) > 0.99999)
+```
+
+A wrong argument (nil, another class, an order that is not a `RotationOrder`, a matrix index
+outside 0..2 or 0..3) raises an error.
 
 ### 3.3 Other math types (partial)
 
@@ -2120,7 +2184,7 @@ Class hierarchy (methods/properties are inherited):
 ```
 EntityHandle
  |- GameObject
- |   |- Camera, Light, Light2D, ShadowCaster2D, ReflectionProbe, LocalVolumetricFog, Bone, Points, LineRenderer, Lattice,
+ |   |- Camera, Light, Light2D, ShadowCaster2D, ReflectionProbe, LocalVolumetricFog, FogZone, Bone, Points, LineRenderer, Lattice,
  |   |  FluidSimulation, ParticleSystem, TrailRenderer
  |   |- Mesh
  |   |   |- Primitive -> Mirror
@@ -2171,14 +2235,14 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | Member | Kind | Notes |
 |---|---|---|
 | `position` | rw `Vector3` | local position |
-| `setPosition(x, y, z)`, `setPosition(x, y)` | method | |
-| `getWorldPosition()` | method | Vector3 |
+| `setPosition(x, y [, z])` | method | z 0 when left out |
+| `getWorldPosition()` | method | Vector3, current: a move of it or a parent earlier in the frame is included (Unity's `transform.position`) |
 | `rotation` | rw `Quaternion` | |
 | `setRotation(xDeg, yDeg, zDeg)` | method | Euler, default units (degrees); 2D: `setRotation(0, 0, angle)` |
-| `getWorldRotation()` | method | Quaternion |
+| `getWorldRotation()` | method | Quaternion, current as `getWorldPosition()` |
 | `scale` | rw `Vector3` | |
-| `setScale(s)` | method | uniform float only; for non-uniform assign `obj.scale = Vector3(...)` |
-| `getWorldScale()` | method | |
+| `setScale(s)`, `setScale(x, y, z)` | method | uniform, or per axis |
+| `getWorldScale()` | method | current as `getWorldPosition()` |
 | `visible` | rw bool | setting it copies the value to the children (next frame); `setVisibleOnly(b)` changes only this one. Only setting it does: copies (`GameObject.instantiate`), scene moves (`DontDestroyOnLoad`) and reparenting keep each child's own value. A parent hidden in the editor does not hide its children until a script hides it; to hide a whole subtree reliably use `setActive(false)` |
 | `addChild(goOrEntity)`, `removeChild(goOrEntity)`, `removeParent()` | methods | keep the child's local values |
 | `parent` | rw `GameObject` or nil | Unity's `transform.parent`: assigning keeps the world placement (nil: to the root) |
@@ -2187,7 +2251,8 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `findChild(path)` | method | Unity's `Transform.Find`: a child by name, or a path of names below it (`"Arm/Hand"`); nil when missing |
 | `moveToTop()`, `moveUp()`, `moveDown()`, `moveToBottom()` | methods | sibling order = 2D draw order (below) |
 | `billboard`, `fakeBillboard`, `cylindricalBillboard` (rw), `billboardRotation` (rw), `setBillboard(a,b,c)`, `setBillboardRotation(x,y,z)` | | |
-| `localMatrix` (rw), `modelMatrix` (ro), `normalMatrix` (ro), `updateTransform()` | | |
+| `localMatrix` (rw), `modelMatrix` (ro), `normalMatrix` (ro), `updateTransform()` | | `modelMatrix` is current as `getWorldPosition()`; `normalMatrix` is the last frame's |
+| (no Transform) | | On a GameObject without a Transform (an action, a tween) `position`, `rotation`, `scale`, `parent`, the matrices and `getWorld*()` are nil; setting one raises `GameObject '<name>' has no Transform` |
 | `getRigidbody2D()` | method | returns `Rigidbody2D`, CREATING the component if missing |
 | `removeRigidbody2D()` | method | |
 | `getJoint2D()` | method | the GameObject's `Joint2D`, `nil` when it has none |
@@ -2235,7 +2300,9 @@ sprites) sorted by their distance to the camera position, not by Z.
 | `setColor(r, g, b)`, `setColor(r, g, b, a)`, `setColor(Vector4)` | method |
 | `alpha` | rw |
 | `enabled` | rw |
-| `setTexture(path)` | method |
+| `setTexture(path)` | method: submesh 0's main texture: the shader's `@texture ... main` (else its first `@texture`) for a custom or library shader, `baseColorTexture` for the built-in Lit |
+| `setShaderTexture(uniform, path [, submesh])`, `getShaderTexture(uniform [, submesh])` | methods: a `@texture` of the submesh's shader in its material (`""` back to the default; submesh 0 when not given) |
+| `setPropertyBlock(block [, submesh])`, `getPropertyBlock([submesh])` | methods: the Mesh's `MaterialPropertyBlock` (or one submesh's, which wins); `getPropertyBlock` gives a copy; an empty block removes them |
 | `normalTexture` | rw path of submesh 0's normal map (`""` none; assigning `""` removes it) |
 | `setNormalTexture([submesh,] path)`, `setNormalTexture(id, TextureData)`, `getNormalTexture([submesh])` | methods: the normal map of submesh 0 or of a submesh (tangent-space, OpenGL convention, green up; on sprites, tilemaps and polygons it answers Light 2Ds whose `height` is above 0; same size and frame layout as the colour texture; a Tilemap's submesh `i` is the tileset of its colour texture `i`) |
 | `material` | rw `Material`; `getMaterial([submesh])`, `setMaterial([submesh,] mat)` |
@@ -2243,7 +2310,7 @@ sprites) sorted by their distance to the camera position, not by Z.
 | `allowGpuInstancing` (its draws may batch with those of the same mesh and material, `jasper://docs/meshes`) | rw |
 | `getAABB()`, `getWorldAABB()`, `getNumSubmeshes()` | methods (a model made of parts: 4.8) |
 | `vertexCount` | ro (Unity's `Mesh.vertexCount`) |
-| `setShaderUniform(name, float/Vector2/3/4)`, `getShaderUniform(name)`, `removeShaderUniform(name)` | methods |
+| `setShaderUniform(name, float/Vector2/3/4)`, `getShaderUniform(name)`, `removeShaderUniform(name)` | methods: a value under its materials' parameters (a material setting the same name wins, and a warning says so): to win over the material use a `MaterialPropertyBlock` |
 | instancing: `createInstancedMesh()`, `addInstance(...)`, `updateInstance(i, ...)`, `removeInstance(i)`, `getNumInstances()`, `clearInstances()` | methods |
 
 `Material` (rw): `baseColorFactor`, `metallicFactor`, `roughnessFactor`, `alphaMode`,
@@ -2294,8 +2361,24 @@ compiles in only while its `...Enabled` is true, so animating a factor never rec
 `specularTexture`. The Shading Model: `shadingModel` (`ShadingModel.STANDARD` / `HAIR`), and the
 hair's `hairPrimaryColor`, `hairPrimaryShift`, `hairPrimaryWidth`, `hairSecondaryColor`,
 `hairSecondaryShift`, `hairSecondaryWidth`, `hairRotation` (radians), read only `hairFlowTexture`.
+The Vertex Color section: `vertexColorUse` (`VertexColorUse.TINT`, `MASKS`, `OFF`),
+`vertexColorAlphaOpacity` (Tint: A multiplies the opacity), and in Masks the input each channel
+masks, `vertexColorR`, `vertexColorG`, `vertexColorB`, `vertexColorA` (`VertexColorTarget.*`).
 E.g. `local m = mesh:getMaterial(); m.clearcoatEnabled = true;
 m.clearcoatFactor = 1; mesh:setMaterial(m)`. More: `jasper://docs/materials`.
+`MaterialPropertyBlock()` (Unity's, saved with the mesh here): values and textures by the
+shader's member or `@texture` name, over the material's; the built-in Lit takes
+`baseColorFactor`, `emissiveFactor` and `baseColorTexture`. Methods `setFloat(name, n)`,
+`setVector(name, Vector4|Vector3|Vector2)`, `setColor(name, Vector4|Vector3)` (sRGB in, the shader
+reads linear), `setTexture(name, path)` (`""` removes it), `getFloat`, `getVector`, `getColor`
+(sRGB), `getTexture`, `hasProperty(name)`, `clear()`, `isEmpty()`. Meshes with equal blocks still
+batch together. E.g. `local b = MaterialPropertyBlock(); b:setColor("baseColor", Vector4(1, 0.5,
+0, 1)); mesh:setPropertyBlock(b)`.
+`blendMode = MaterialBlendMode.CUSTOM` blends with the material's own `blendSrc`, `blendDst`,
+`blendSrcAlpha`, `blendDstAlpha` (`MaterialBlendFactor.*`: `ZERO`, `ONE`, `SRC_COLOR`,
+`SRC_ALPHA`, `DST_COLOR`, `DST_ALPHA` and the `ONE_MINUS_` forms) and `blendOp`
+(`MaterialBlendOp.*`: `ADD`, `SUBTRACT`, `REVERSE_SUBTRACT`, `MIN`, `MAX`; Min and Max ignore the
+factors) with `blendOpAlpha` for the alpha channel: Unity's `Blend DstColor SrcColor` is `blendSrc = DST_COLOR, blendDst = SRC_COLOR`.
 `extraPass` (`MaterialPass`, edited in place on the copy, then `setMaterial`): one more draw
 of the submesh after its mesh's main draws (`order = MaterialPassOrder.BEFORE`: ahead of
 them; on a mesh of several submeshes every After pass draws after all of its submeshes and
@@ -2304,6 +2387,53 @@ every Before pass ahead of all of them, in submesh order) with its own
 and the same parameter/texture/feature methods (`setShaderCubeTexture` included), resolved
 against its own shader; e.g.
 `m.extraPass.shader = "shaders/outline"; m.extraPass:setShaderParam("width", 0.05)`.
+
+### 4.3.1 VertexColors (EntityHandle)
+
+The Vertex Colors component of a Model or Mesh GameObject: `VertexColors(self.scene, self.entity)`
+(`valid` is false without the component). Writes change the colours in memory only, never the
+`.vcolors` file, and have no undo; a copy of the GameObject that shares the file's values gets its
+own on its first write.
+
+| Member | Kind |
+|---|---|
+| `valid` | ro: the GameObject has the component |
+| `enabled` | rw: off draws the mesh as without it |
+| `format` | ro `"rgba8"` or `"rgba16f"` |
+| `channelNames` | ro `{r, g, b, a}` names (`""` unnamed) |
+| `targets` | ro list of `{node, primitive}` (a model's glTF node and primitive) or `{submesh}` (a primitive, a merged or OBJ model), with `name`, `vertexCount`, `triangleCount` |
+| `applyOps(ops [, target])` | `edit_mesh_colors`' op tables (`jasper://docs/meshes`), world space, on every target or one; all or nothing; errors name `ops[i]` from 1. Returns one result per target (`target`, `ops`, `stats`, `hash`). No `selection`, `from_texture` or `transfer` (editor only) |
+| `getValue(target, vertex)`, `getValues(target, first, count)` | the stored `Vector4` (linear) of GPU vertices, without runtime paint; at most 65,536 a call |
+| `setValues(target, first, values)` | `Vector4` or `{r, g, b[, a]}` values from vertex `first`; clears those vertices' face colours |
+| `stats(target)` | `count`, `min`, `mean`, `max`, `p05`, `p50`, `p95` (per channel), `histogram` |
+| `sampleAt(worldPoint)`, `sampleAt(hit)` | the `Vector4` drawn at the nearest surface point or a `MeshRaycast` hit, runtime paint included; `nil` when nothing is loaded |
+| `paint(worldPoint or hit, opts)` | runtime paint over the stored colours; returns the vertices touched |
+| `clearRuntime()` | drops all runtime paint |
+
+A `target` is an index into `targets` (1-based) or one of its tables; vertex ids are 0-based, as in
+the op tables. A world point is read in the mesh's bind pose; a `MeshRaycast` hit on a posed
+skinned mesh paints where the ray hit.
+
+`paint` options: `radius` (world units, 0.5), `value` (`{r, g, b[, a]}`, a `Vector4` or `"#RRGGBB"`),
+`channels` (`"rgba"` subset; default `"rgb"` for a value of three, else `"rgba"`), `strength`
+(0-1, 1), `hardness` (0-1, the share of the radius at full strength, 0), `hold` (seconds at full
+value; omitted: it stays) and `fade` (seconds to fade after the hold). Times are game time. A layer
+that has faded costs nothing per frame.
+
+```lua
+local Splash = {}
+
+function Splash:init()
+    self.colors = VertexColors(self.scene, self.entity)
+end
+
+function Splash:onHit(hit)
+    -- green in G for 3 s, then gone over 2 s; the stored colours come back
+    self.colors:paint(hit, { radius = 0.4, value = {0, 1, 0}, channels = "g", hold = 3, fade = 2 })
+end
+
+return Splash
+```
 
 ### 4.4 Primitive (Mesh)
 
@@ -2320,7 +2450,8 @@ Color/texture via Mesh: `Primitive(self.scene, self.entity):setColor(1, 0, 0, 1)
 |---|---|
 | `width`, `height` | rw (points) |
 | `setSize(w, h)` | method |
-| `flipY` | rw (there is no `flipX` binding) |
+| `flipX`, `flipY` | rw: Flip X mirrors the quad about the pivot |
+| `size` | rw `Vector2`: the quad in world units (Unity's `SpriteRenderer.size`, Sliced corners keep theirs); an axis at 0 is `width`/`height` over `pixelsPerUnit` |
 | `textureRect` | rw `Rect`; `setTextureRect(x, y, w, h)` |
 | `textureScaleFactor` | rw |
 | `pivotPreset` | rw `PivotPreset.*` |
@@ -2330,7 +2461,7 @@ Color/texture via Mesh: `Primitive(self.scene, self.entity):setColor(1, 0, 0, 1)
 | `spriteSortPoint` | rw `SpriteSortPoint.CENTER` or `PIVOT`: what Custom Axis sorting measures |
 | `worldSize` | ro `Vector2`: the quad in world units |
 | `enabled` | rw |
-| frames: `addFrame(...)`, `removeFrame(idOrName)`, `setFrame(idOrName)` | methods |
+| frames: `addFrame(...)` (rects in texture pixels; `Points:addSpriteFrame` takes UV units), `removeFrame(idOrName)`, `setFrame(idOrName)` | methods |
 | `startAnimation(framesTable, framesTimeTable, loop)`, `startAnimation(startFrame, endFrame, intervalMs, loop)`, `startAnimation(name, intervalMs, loop)` | methods |
 | `pauseAnimation()`, `stopAnimation()` | methods |
 | `getShadowCaster2D()`, `removeShadowCaster2D()` | methods |
@@ -2360,6 +2491,20 @@ if sheet then
 end
 ```
 
+#### SpriteSkin (EntityHandle)
+
+`SpriteSkin(scene, entity)` is the GameObject's Sprite Skin (added when it has none): `enabled`
+(rw), `rootBone` (rw entity), `bones` (rw table of entities, in the frame skin's bone order),
+`skinBoneCount` (ro, 0 when the shown frame has no skin) and `skinned` (ro: drawn through its
+bones now). Move or rotate the bone GameObjects to bend the Sprite.
+
+```lua
+local skin = SpriteSkin(self.scene, self.entity)
+if skin.skinned then
+    GameObject(self.scene, skin.bones[2]):setRotation(0, 0, 30)
+end
+```
+
 ### 4.6 SpriteAnimation (Action)
 
 `setAnimation(framesTable, framesTimeTable, loop)` / `setAnimation(startFrame, endFrame,
@@ -2378,7 +2523,8 @@ intervalMs, loop)`, plus Action: `start()`, `pause()`, `stop()`, `isRunning()`,
 `loadModel(path)`, `loadGLTF(path)`, `loadOBJ(path)`, `getAnimation(i)`,
 `findAnimation(name)`, `playAnimation(indexOrName [, fadeTime])`, `stopAnimations(fadeTime)`,
 `getBone(indexOrName)`, `getMorphWeight(indexOrName)`, `setMorphWeight(indexOrName, w)`,
-`resetToBindPose()`, `enabled` (rw), `filename` (ro, the file it loaded), `getAnimationCount()`,
+`resetToBindPose()`, `enabled` (rw), `filename` (ro, the file it loaded), `preserveHierarchy` (rw: set it
+before `loadModel` to give every node of the file its own GameObject), `getAnimationCount()`,
 `getPoseAnimator()` (the model's PoseAnimator, added when missing),
 `getHumanoidInfo()` (`{humanoid, animationType ("generic"/"humanoid"), humanScale, missing = {slot names},
 extraMapped, error?}`: its Avatar; nil without bones).
@@ -2468,6 +2614,8 @@ to play a sound from code use `Audio.play`, and react to clip events as below.
 | `removeClip(name)`, `getClipCount()`, `getClipName(i)` | `getClipName` is 0-based, `""` out of range |
 | `speed`, `defaultClip`, `defaultFadeTime`, `playAutomatically`, `enabled` | rw; `speed` multiplies every state (negative plays backwards); `enabled = false`: time stops, nothing is written |
 | `poseFrameRate` | rw, fps (0 = smooth): every track holds on whole steps from its previous key (each key shows at its time), fades step too; events fire at their true times |
+| `applyRootMotion` | rw bool (Unity's Apply Root Motion): the base layer's clip root motion moves the GameObject; off, a clip with a `root_motion` block plays in place |
+| `legacyRootDrift` | rw bool: with `applyRootMotion` off, clips with a `root_motion` block keep their drift instead of playing in place (set on players saved before that rule) |
 | `isLoaded()` | every clip loaded and bound |
 | `getAnimatedProperties(name)` | the state's bound property tracks, `{"path:component.property", ...}` (debugging; empty while its clip loads). A clip animating a script field sets `self.<field>` (read it in `onUpdate`; a write of yours there is overwritten by the clip in the same frame, as in Unity) |
 | `onEvent` | rw, a function called with ONE `AnimationEvent` (below) per clip event |
@@ -2689,6 +2837,7 @@ controller does not have warn once and do nothing.
 | `setIKSoften(constraint, soften)`, `setIKHingeAxis(constraint, axis)`, `setIKTwist(constraint, degrees)`, `setIKAimOffset(constraint, offset)` | the constraint's fields: `soften` 0..1 (0: a hard limit), `axis` the middle bone's local hinge (`Vector3(0, 0, 0)`: auto), `offset` the eyes from the last bone |
 | `hasBone(slotOrPath)`, `getBonePosition(slotOrPath)`, `getBoneRotation(slotOrPath)` | world space, from the last evaluated pose; humanoid slots (`"left_hand"`) or paths |
 | `speed`, `applyRootMotion` | rw |
+| `legacyRootDrift` | rw bool: with `applyRootMotion` off, clips with a `root_motion` block keep their drift instead of playing in place (set on Animators saved before that rule) |
 | `getDeltaPosition()`, `getDeltaRotation()` | the last update's root motion (world space) |
 | `isHumanoid()`, `isLoaded()` | |
 | `onEvent` | a function called with one `AnimationEvent` per clip or montage event (leader clip per layer, or all with `eventMode = all`); then the scripts' methods named like the event |
@@ -2714,7 +2863,9 @@ end
 ### 4.9 Camera (GameObject) - partial
 
 rw: `type` (`CameraType.*`), `enabled`, `nearClip`, `farClip`, `leftClip`, `rightClip`,
-`bottomClip`, `topClip`, `aspect`, `yfov`, `target` (Vector3), `up` (Vector3), `autoResize`,
+`bottomClip`, `topClip` (setting one turns `autoResize` and `orthographicSize` off), `aspect`, `yfov`,
+`target` (Vector3), `useTarget`, `up` (Vector3), `autoResize`, `orthographicSize` (Unity's Size: half the view's
+height, the width follows the aspect; 0 off),
 `renderToTexture`, `transparentSort`, `depthTest`, `cullingMask`, `transparencyMode`
 (`TransparencyMode.SORTED` / `ORDER_INDEPENDENT`: weighted blended OIT for alpha-blended materials),
 `oitWeightScale` (`jasper://docs/lighting`).
@@ -2725,9 +2876,12 @@ far)`, `setType(t)`, `setTarget(x, y, z)`, `disableTarget()`, `isUsingTarget()`,
 `rotatePosition(a)`, `elevateView(a)`, `elevatePosition(a)`, `walkForward(d)`, `zoom(d)`,
 `slide(d)`, `slideForward(d)`, `slideUp(d)`, `getViewMatrix()`, `getProjectionMatrix()`,
 `getViewProjectionMatrix()`, `getDistanceFromTarget()`, `updateCamera()`.
-A camera looks at its target by default (`isUsingTarget()`): the GameObject's rotation is
-ignored until `disableTarget()`. Orbit: position = target + (cos(pitch)sin(yaw), sin(pitch),
-cos(pitch)cos(yaw)) * distance, then `setTarget(target)`.
+`Camera(scene)` starts in target mode (`useTarget` true): the view is a look-at of `target` (the
+origin until set) and the rotation is ignored. Set `cam.useTarget = false` (`disableTarget()`) to aim
+it with the GameObject's rotation, as Unity and the editor's GameObject > Camera do: forward is
+`rotation * Vector3(0, 0, -1)`. `setTarget(...)` or assigning `target` turns target mode on again.
+Orbit: position = target + (cos(pitch)sin(yaw), sin(pitch), cos(pitch)cos(yaw)) * distance, then
+`setTarget(target)`.
 `camera:getPixelPerfectCamera()` returns its Pixel Perfect Camera, nil without one (4.9.2).
 
 ### 4.9.2 PixelPerfectCamera (EntityHandle)
@@ -2803,6 +2957,27 @@ local group = SortingGroup(scene, sprite.entity)
 group.sortingOrder = 1
 ```
 
+### 4.9.4 Outline
+
+QuickOutline as a component (`jasper://docs/materials`, Outline).
+
+- `Outline(scene, entity)`: the GameObject's Outline, added when it has none. rw `enabled`, `mode`
+  (`OutlineMode.OUTLINE_ALL`, `OUTLINE_VISIBLE`, `OUTLINE_HIDDEN`, `OUTLINE_AND_SILHOUETTE`,
+  `SILHOUETTE_ONLY`), `color` (sRGB `Vector4`, alpha blends), `width` (0 or more; a bad one logs an
+  error and changes nothing), `widthUnits` (`OutlineWidthUnits.PIXELS`, `WORLD`),
+  `includeChildren` (the Meshes below it too: a model root covers its skinned children).
+
+```lua run
+local box = Primitive(scene)
+box:createBox(1, 1, 1)
+local outline = Outline(scene, box.entity)
+outline.mode = OutlineMode.OUTLINE_VISIBLE
+outline.color = Vector4(1, 0.8, 0, 1)
+outline.width = 3
+assert(outline.widthUnits == OutlineWidthUnits.PIXELS)
+outline.enabled = false
+```
+
 ### 4.9.1 CameraShake, CameraShaker, ShakeInstance, CameraFollow
 
 Camera shake (MilkShake's Shaker) and a small follow component. On a camera the shake is a view
@@ -2867,7 +3042,8 @@ overrides the shaker's `unscaledTime`, the fades override the preset's.
 | `snap()` | the next update places it without damping |
 
 Camera Follow owns its Transform while enabled: a script that also moves it is overwritten
-(warned once). Writes in `onPostUpdate` reach the camera a frame late.
+(warned once). A target moved in `onPostUpdate`, a timer or a coroutine is followed in the same
+frame, damped as if it had moved in `onUpdate`.
 
 ```lua
 -- MilkShake's CameraShaker.cs, ported
@@ -2942,7 +3118,7 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 
 | Class | rw properties | methods |
 |---|---|---|
-| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
+| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `anchorHorizontal` / `anchorVertical` (`TextAnchor.Left`, `Center`, `Right` / `Top`, `Middle`, `Bottom`, `Baseline`, `Capline`, `Midline`; `pivotBaseline`, `pivotCentered` deprecated aliases), `fontSizeUnit` (`TextFontSizeUnit.PixelHeight` or `Em`), `width`/`height` (laid out on read after `setText`); outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); TMP alignment of the lines inside the fixed box (the anchor places the box): `horizontalAlignment` (`TextHorizontalAlignment`: `LEFT`, `CENTER`, `RIGHT`, `JUSTIFIED`), `verticalAlignment` (`TextVerticalAlignment`: `TOP`, `MIDDLE`, `BOTTOM`, `BASELINE`); TMP Auto Size: `autoSize`, `fontSizeMin`, `fontSizeMax` (the largest whole size that fits the fixed width and height; a bitmap font: the largest multiple of its native size); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` (the size drawn: Auto Size's fit, a bitmap font's multiple) | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()`, `updateLayout()` |
 | `BitmapFont` | `BitmapFont.load(path)` (nil and the reason when it does not load); ro `nativeSize`, `lineHeight`, `baseline`, `glyphCount`, `colored` | `hasGlyph(char)`, `advance(char)`, `measure(text[, scale])` -> width, height (whole pixels, a Text's layout) |
 | `TextEffect(scene, entity)` (adds the component) | `enabled`, `autoPlay`, `loop`, `useUnscaledTime` (default true), `startIndex`, `length` (-1 to the end), `forWords`; events `onComplete`, `onCharacterRevealed(index)` | `getLayer(i)` (1..4, a `TextEffectLayerRef` whose fields write through: `type` (`TextEffectType.Wave`/`Bounce`/`Shake`/`Pulse`/`Typewriter`/`FadeIn`/`Grow`/`Unfold`/`Rainbow`/`Gradient`/`None`), `enabled`, `amplitude`, `duration`, `spread`, `phaseStep`, `frequency`, `charactersPerSecond`, `fadeTime`, `gradient` (list of `TextEffectGradientStop` {`color` sRGB Vector4, `position`}), `mix` (`TextEffectMix.Multiply`/`Add`/`Replace`), `saturation`, `lightness`), `setLayer(i, layerOrTable)`, `play()`, `stop()` (plain text), `finish()`, `restart()`, `isFinished()`, `isPlaying()` (`jasper://docs/ui`) |
 | `Image` | `color` (Vector4), `alpha`, `textureScaleFactor`, `flipY`, `patchMarginLeft/Right/Top/Bottom` | `setTexture(path)`, `setColor(r,g,b[,a])`, `setPatchMargin(m)` / `(l,r,t,b)`, `getUIComponent()` |
@@ -3569,6 +3745,8 @@ makes a GameObject with one.
 
 - `Points`: `addPoint(...)`, `updatePoint(i, ...)`, `removePoint(i)`, `clearPoints()`,
   `getNumPoints()`, `setTexture(path)`, rw `maxPoints`, `enabled`.
+  `addSpriteFrame([id,] [name,] rect)` takes the rect in UV units (0..1), not pixels as
+  `Sprite:addFrame` does; a rect outside them logs one warning per Points.
 - `LineRenderer` (Unity's LineRenderer, jasper://docs/lines-trails): the polyline:
   rw `positionCount` (growing repeats the last point), `setPosition(index, V3)` /
   `getPosition(index)` (**0-based** like Unity; out of range is an error naming the count;
@@ -3610,11 +3788,39 @@ makes a GameObject with one.
 - `Fog`: rw `type` (`FogType.*`), `color`, `density`, `linearStart`, `linearEnd`. Height fog
   (`type = FogType.HEIGHT`, see `jasper://docs/atmosphere`): rw `colorMode` (`FogColorMode.*`),
   `attenuationDistance`, `baseHeight`, `maximumHeight`, `startDistance`, `maxFogDistance`,
-  `maxOpacity`, `directionalInscattering`, `anisotropy`, `skyFill`, `skyFillAngle`; volumetric
+  `maxOpacity`, `directionalInscattering`, `anisotropy`, `skyFill`, `skyFillAngle`; colour mode
+  `FogColorMode.LIT`: rw `albedo`, `ambientMultiplier`, `emissive`; volumetric
   fog: rw `volumetric`, `volumetricDistance`, `lightShafts`, `noiseIntensity`, `noiseScale`,
   `wind` (Vector3, also `setWind(x, y, z)`), `qualityOverride` (`AtmosphereQualityOverride.*`);
   `applyPreset(id)` ("morning_haze", "ground_mist", "mountain_valley", "horizon_haze", "night";
-  false for an unknown id). Colours are sRGB here, linear in the component.
+  false for an unknown id: it writes the Fog's own fields; Fog Profiles are the shared looks).
+  Colours are sRGB here, linear in the component.
+  Fog Profile: rw `profile` (a `FogProfile`, a `.fogprofile` path or `builtin:<id>`, nil for none;
+  set in Play it applies at once, is never saved and cancels a blend), `blendTo(profile|nil,
+  seconds)` (cross-fades over game time from the current mix; nil returns to the Fog's own fields;
+  at the end the profile is the runtime one), ro `blending`, `getResolved(field)` (the value the
+  main camera sees: own field, profile, blend, Fog Zones and script writes). In Play a write to a
+  look field goes above the profile and the zones, so it always shows; `clearOverride(field)`,
+  `clearOverrides()` remove those writes, and Stop drops them.
+- `FogProfile` (a shared fog look, `jasper://docs/atmosphere`): `FogProfile.load(path)` (nil when
+  the file does not read), `FogProfile.builtin(id)` ("morning_haze", "ground_mist",
+  "mountain_valley", "horizon_haze", "night", "bright_haze", "murky", "infernal", "toxic"); ro
+  `key`, `name`, `description`, `readOnly`; `get(field)` (nil when not set), `isSet(field)`,
+  `clone()` (a mutable copy for this run, never written to a file); a clone's `set(field, value)`,
+  `clear(field)`. Loaded and built-in profiles are read-only (every Fog using one shares it).
+- `FogZone` (GameObject, `FogZone(scene)`): rw `shape` (`FogZoneShape.*`), `size` (Vector3, before
+  the Transform's scale; also `setSize(x, y, z)`), `blendDistance` (0: a hard switch), `priority`,
+  `weight`, `profile` (as Fog's); ro `currentWeight` (at the main camera). Its profile's fields
+  blend over the scene's fog as the camera comes in.
+
+```lua
+local night = FogProfile.builtin("night")
+local fog = GameObject.findObjectOfType("Fog")
+fog:blendTo(night, 8.0)            -- eight seconds of game time
+local mine = night:clone()
+mine:set("emissive", Vector3(0.6, 1.4, 0.0))
+fog.profile = mine                 -- runtime only
+```
 - `LocalVolumetricFog` (GameObject, `LocalVolumetricFog(scene)`): rw `shape`
   (`FogVolumeShape.*`), `size` (Vector3, before the Transform's scale; also `setSize(x, y, z)`),
   `attenuationDistance`, `albedo` (also `setAlbedo(r, g, b)`), `blendDistance`, `falloff`
@@ -3626,16 +3832,21 @@ makes a GameObject with one.
   `altitudeRange`, `earthCurvature`, `windDirection`, `windSpeed`, `weatherMap` (image path, ""
   for the built-in map), `weatherMapScale`, `sunLightDimmer`, `ambientLightDimmer`,
   `maxDistance`, `qualityOverride`.
-- `Light`: also rw `volumetricIntensity` (point and spot lights in High quality volumetric fog).
+- `Light`: also rw `volumetricIntensity` (point and spot lights in the volumetric fog: 1, 2 or 4 by quality).
 - `Skybox`: `setTextures(positiveX, negativeX, positiveY, negativeY, positiveZ, negativeZ)` (six
   images; `+Z` is the front), `setTexture(path)` (one image holding the six faces),
-  `setTexturePositiveX(path)` ... `setTextureNegativeZ(path)` (one face), rw `color`, `alpha`, `rotation`.
+  `setTexturePositiveX(path)` ... `setTextureNegativeZ(path)` (one face), rw `color`, `alpha`, `rotation`,
+  `visible` (false: no sky drawn nor captured by reflection probes, its lighting kept; also
+  `setVisible(bool)`; an inactive sky entity draws none either).
 - `Texture` (`Texture(path)`, or a component's): `load()`, ro `width`, `height` (the source's size:
   layout never changes when Max Size, the texture quality or the budget shrink the GPU image),
   `getStoredWidth()`, `getStoredHeight()` (what the GPU holds), `isCompressed()`,
   `getGpuFormat()` (`"BC7"`, `"ASTC_6x6"`, `"RGBA8"`...), `getData()` (the pixels: empty, with a
   warning once, for a GPU-compressed texture; set Read/Write in its import settings, or reference
-  it from a CPU slot such as a terrain height map).
+  it from a CPU slot such as a terrain height map); ro `ready` (its GPU texture exists). A mesh
+  given a texture keeps drawing its old one until the new one is ready. To swap without that
+  frame, preload: keep `local t = Texture(path); t:load()` for the scene, and swap once
+  `t.ready` (the first draw of it, or `t:getRender()`, makes the GPU texture).
 - `Terrain`, `ReflectionProbe`, `Mirror`, `Bone`: editor-configured; see bindings. A Terrain's painted layers (`TerrainSurfaceLayer`) also have `hexTiling` (anti-repetition of the flat projection) and `hexRotation` (0..1).
 - `Terrain` queries the surface at world X, Z (`getHeightAt`, `getNormalAt`, `isHoleAt`, `contains`, `raycast`) and, with Allow Runtime Edits on, edits it (`applyOps` with `edit_terrain`'s op tables, `getHeights`, `setHeights`): `docs/scripting/terrain.md`.
 - `ObjectRender.getLivePipelineCount()` (static, diagnostics): the render pipelines objects
@@ -3647,10 +3858,14 @@ makes a GameObject with one.
 Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 
 - `UIDocument` (GameObject; `UIDocument(scene)` adds the component, `UIDocument(scene, entity)`):
-  rw `filename`, `title`, `visible`, `sortOrder`; ro `loaded`, `body`, `documentElement` (the
+  rw `filename`, `title`, `visible`, `sortOrder`, `updateMode` (`UIDocumentUpdateMode.UNSCALED_TIME`/`GAME_TIME`:
+  the clock of its animations, applied at once); ro `loaded`, `body`, `documentElement` (the
   `<html>`); `getDiagnostics()` (what the engine does not draw like a browser: a list of
   `{severity, code, name, message, suggestion, file, line, column, text}`),
   `setColorScheme("dark"|"light")`, `setReducedMotion(b)` (the `prefers-*` media queries);
+  `addStyleSheet(css[, name])`, `addStyleSheetFile(path)` (`.html` documents: CSS cascading after
+  the document's own sheets, kept over reloads; returns a `UIStyleSheet`: rw `enabled`, ro `name`,
+  `valid`, `remove()`; its rules' source is `injected:<name>:<line>`);
   `load(file)`,
   `reload([{mode = "patch"|"rebuild"}])`, `show()`, `hide()`, `getElementById(id)`, `querySelector(sel)`,
   `querySelectorAll(sel)`, `createElement(tag)`, `createTextNode(text)`,
@@ -3658,8 +3873,9 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `createDataModel(name, table)` (returns the model proxy), `getDataModel(name)`,
   `removeDataModel(name)`, `getTargetTexture()` (TEXTURE mode: a `Framebuffer`, else nil),
   `getUIDocumentComponent()` (rw `filename`, `sortOrder`, `enabled`, `interactive`,
-  `renderMode` (`UIDocumentRenderMode.SCREEN`/`TEXTURE`, applied at the next load: set
+  `renderMode` (`UIDocumentRenderMode.SCREEN`/`TEXTURE`/`WORLD`, applied at the next load: set
   `needReload = true`), `textureWidth`, `textureHeight`, `inputSurface`, `pixelRatio`,
+  `updateMode`, `pixelsPerUnit`, `billboard` (WORLD mode's quad),
   `msaaSamples` (TEXTURE mode: 0 = the scene's, 1, 2, 4, 8; next frame), `needReload`; ro `loaded`; events `onLoad`, `onUnload`); events `onLoad`, `onUnload`,
   `onReload` (after an in-place patch, with the report); ro `lastReloadReport` (`{mode, file,
   kept, updated, inserted, removed, replaced, runtimeKept, scriptsRerun, fallbackReason, ms,
@@ -3668,6 +3884,14 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `UIDocument.markdownToHtml(text)`;
   static `UIDocument.setDebuggerVisible(b)`, `isDebuggerVisible()`, `getLiveLuaRefCount()`.
   Getters load a document that is due, so `init` can query elements.
+- Prewarm (made before they show; `jasper://docs/html-ui` "Prewarming text"): `doc:prewarm([{images =
+  false}])` (the glyphs of every text, `display: none` parts too, and of `data-warm` attributes, and
+  the document's images), `HtmlUI.prewarmText{family, size, weight, style, effect, text}` and
+  `HtmlUI.prewarmImage(path or {paths})` (paths as in CSS: an asset path, `#xywh=` or `#sprite=`
+  regions too) return a `UIPrewarm`: ro `done`, `progress` (0..1), rw `onDone` (a function, called
+  once on the main thread when done; the next frame when already done). Prewarmed images stay
+  cached while the `UIPrewarm` lives, then within the image cache's budget. rw
+  `HtmlUI.prewarmBudgetMs` (main-thread ms a frame for placing glyphs, default 2).
 - `<particle-system>` elements (`jasper://docs/html-ui`): `el:play()`, `el:pause()`, `el:stop()`,
   `el:isPlaying()`, `el:clear()` (its live particles go), `el:getParticleSystem()` (the
   `ParticleSystem` of its hidden entity: every particle API works; `nil` before the element's first
@@ -3675,7 +3899,8 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `el.style.textEffect = "wave(0.15em 1.5s)"`, `el:restartTextEffect()`, event `texteffectend`.
 - `UIElement` (weak handle; `nil` when a query finds nothing; any use but `isValid()` of a
   dead one raises): rw `id`, `className`, `textContent`, `innerHTML`, `outerHTML` (HTML in an
-  `.html` document), `value`, `checked`, `disabled`, `scrollTop`, `scrollLeft`; ro `tagName`
+  `.html` document), `value`, `checked`, `disabled`, `scrollTop`, `scrollLeft`, `scrollVelocity`
+  (Vector2 px/s: the drag scroll's inertia or pan, set to fling); ro `tagName`
   (`DIV` in an `.html` document, as in the DOM; lower case in `.rml`), `localName`, `content`
   (a `<template>`'s fragment), `parentElement`, `children`,
   `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`,
@@ -3685,7 +3910,7 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains`, `appendChild`,
   `insertBefore`, `removeChild`, `replaceChild`, `remove`, `cloneNode([deep])`, `focus`,
   `blur`, `click`, `insertAdjacentHTML(position, html)`, `show()`, `showModal()`,
-  `close([returnValue])` (a `<dialog>`), `scrollIntoView`, `scrollTo`, `scrollBy`,
+  `close([returnValue])` (a `<dialog>`), `scrollIntoView`, `scrollTo`, `scrollBy`, `stopScrolling`,
   `getBoundingClientRect` (UIRect),
   `addEventListener`, `removeEventListener`, `dispatchEvent(type[, detail[, bubbles]])`.
   `<lottie>` elements also: `play()`, `pause()`, `stop()`, `seek(seconds)`, `setFrame(f)`,
@@ -3927,8 +4152,9 @@ file's own environment: a game script never sees it, and a game global named `Te
 | `OnScreenVisibility` | `ALWAYS`, `TOUCH_DEVICES_ONLY`, `TOUCH_SCHEME` |
 | `ParticleEmitterShape` | `Box`, `Sphere`, `Hemisphere`, `Circle`, `Cone` |
 | `FogType` | `LINEAR`, `EXPONENTIAL`, `EXPONENTIALSQUARED`, `HEIGHT` |
-| `FogColorMode` | `COLOR`, `SKY` |
+| `FogColorMode` | `COLOR`, `SKY`, `LIT` |
 | `FogVolumeShape` | `BOX`, `SPHERE` |
+| `FogZoneShape` | `BOX`, `SPHERE` |
 | `FogVolumeFalloff` | `LINEAR`, `EXPONENTIAL` |
 | `CloudsPreset` | `CUSTOM`, `SPARSE`, `CLOUDY`, `OVERCAST`, `STORMY` |
 | `CloudsRendering` | `AUTO`, `SKY_MAP`, `SCREEN` |
@@ -3948,7 +4174,10 @@ file's own environment: a game script never sees it, and a game global named `Te
 | `UIEventState` | `NOT_SET`, `ENABLED`, `DISABLED` |
 | `TouchPhase` | `Began`, `Moved`, `Stationary`, `Ended`, `Canceled` |
 | `LogLevel` | `INFO`, `VERBOSE`, `DEBUG`, `WARN`, `ERROR` |
-| `UIDocumentRenderMode` | `SCREEN`, `TEXTURE` |
+| `UIDocumentRenderMode` | `SCREEN`, `TEXTURE`, `WORLD` |
+| `UIDocumentUpdateMode` | `UNSCALED_TIME`, `GAME_TIME` |
+| `TextHorizontalAlignment` | `LEFT`, `CENTER`, `RIGHT`, `JUSTIFIED` |
+| `TextVerticalAlignment` | `TOP`, `MIDDLE`, `BOTTOM`, `BASELINE` |
 | `TextureFilter` | `NEAREST`, `LINEAR`, `NEAREST_MIPMAP_NEAREST`, `NEAREST_MIPMAP_LINEAR`, `LINEAR_MIPMAP_NEAREST`, `LINEAR_MIPMAP_LINEAR` |
 | `TextureWrap` | `REPEAT`, `MIRRORED_REPEAT`, `CLAMP_TO_EDGE`, `CLAMP_TO_BORDER` |
 | `PrimitiveType` | `TRIANGLES`, `TRIANGLE_STRIP`, `POINTS`, `LINES` |
@@ -3977,6 +4206,8 @@ file's own environment: a game script never sees it, and a game global named `Te
 | `ShadowCaster2DShape` | `AUTO_QUAD`, `POLYGON` |
 | `TransparencyMode` | `SORTED`, `ORDER_INDEPENDENT` |
 | `ShadingModel` | `STANDARD`, `HAIR` |
+| `VertexColorUse` | `TINT`, `MASKS`, `OFF` (`Material.vertexColorUse`) |
+| `VertexColorTarget` | `NONE`, `OCCLUSION`, `ROUGHNESS_MULTIPLY`, `ROUGHNESS_REPLACE`, `METALLIC`, `EMISSION`, `OPACITY`, `ALBEDO_TINT` |
 | `CapsuleCastShadows` | `ON`, `CAPSULES_ONLY` |
 | `CapsuleDirection` | `X_AXIS`, `Y_AXIS`, `Z_AXIS` |
 | `LightMode` | `AUTOMATIC`, `PER_OBJECT`, `TILED` |
@@ -4092,56 +4323,54 @@ Rigidbody wrappers by index.
     `GameObject.findObjectOfType("Enemy")`. A property typed with the script's class name
     (`type = "Enemy"`) assigned in the Inspector is the cheapest; `GameObject.instantiate(scriptSelf, ...)`
     also returns the copy's script.
-20. **Canvas size in `init`**: `Engine.canvasWidth/Height` can be 0 in exported builds during
-    `init`; use `Engine.preferredCanvasWidth/Height` there.
-21. **`Log.*` join their arguments with tabs** like `print` (`Log.warn("hp", hp)`); use
+20. **`Log.*` join their arguments with tabs** like `print` (`Log.warn("hp", hp)`); use
     `string.format` for other layouts.
-22. **Animation Player callbacks take one value**: `player.onEvent = function(event) ... end`
+21. **Animation Player callbacks take one value**: `player.onEvent = function(event) ... end`
     (`event.functionName`, `event.args[1]`), not `function(name, args)`; `onFinish` gets the
     state name. `GameObject:getAnimationPlayer()` is `nil` without the component (unlike
     `getRigidbody2D`, it never adds one).
-23. **`onDestroy` runs on every end**: `GameObject.destroy`, a scene unload (`SceneManager.loadScene`,
+22. **`onDestroy` runs on every end**: `GameObject.destroy`, a scene unload (`SceneManager.loadScene`,
     also of the same scene) and Play stop / quit (after `onApplicationQuit` and `onDisable`), only
     for scripts whose `init` ran. Do not create objects there. Event subscriptions are cleaned up
     automatically.
-24. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
+23. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
     raw component fields (`UIComponent.color`, `ButtonComponent.colorNormal`) are linear.
-25. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
+24. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
     numbers to them (`math.floor` first).
-26. **Json: an empty table is `[]`.** Use `Json.object()` (or `{emptyTable = "object"}`) for an
+25. **Json: an empty table is `[]`.** Use `Json.object()` (or `{emptyTable = "object"}`) for an
     empty object. A table with `nil` in the middle is not an array (`{1, nil, 3}` encodes as an
     object `{"1":1,"3":3}`): store `Json.null` to keep a place. `Json.decode` gives integers for
     `1` and floats for `1.0`; compare JSON nulls with `Json.null`, never `nil`.
-27. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
+26. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
     Android); `File.*` and `Json.*File` return `nil, message` on file problems instead of
     raising: check the first result. On Web, Lua `io` writes need `System.syncFileSystem()`.
-28. **`self.enabled` and the reserved names**: `self.enabled = false` disables the script
+27. **`self.enabled` and the reserved names**: `self.enabled = false` disables the script
     (`onDisable`, its registered updates stop) but not what it started; it takes only `true` /
     `false`. `enabled`, `isActiveAndEnabled` and `gameObject` cannot be `properties` names, and
     `isActiveAndEnabled` / `gameObject` cannot be assigned. A disabled script's `init` still runs.
-29. **Unity method names are not called**: `Awake` -> `init`, `Start` -> `start`, `OnEnable` ->
+28. **Unity method names are not called**: `Awake` -> `init`, `Start` -> `start`, `OnEnable` ->
     `onEnable`, `Update` -> `onUpdate` registered with `RegisterEngineEvent(self, "onUpdate")`
     (`FixedUpdate` -> `onFixedUpdate`, `LateUpdate` -> `onPostUpdate`). `check_script` warns.
-30. **Singletons: module tables are per instance.** A Unity `static Instance` has no direct
+29. **Singletons: module tables are per instance.** A Unity `static Instance` has no direct
     equivalent (each attached script runs its file again): use `GameObject.persistSingleton(self)`
     for a persistent manager, or keep shared state in a `require`d module table.
-31. **After `DontDestroyOnLoad`**, wrappers of the object kept outside the script's own fields
+30. **After `DontDestroyOnLoad`**, wrappers of the object kept outside the script's own fields
     name the old scene once it moved: use `self.gameObject` or wrap again (2.8.1).
-32. **Event handlers cannot wait.** `onUpdate`, input events, `init`, `onEnable`, `onDisable`
+31. **Event handlers cannot wait.** `onUpdate`, input events, `init`, `onEnable`, `onDisable`
     and `onDestroy` are called from C: `Coroutine.wait` there raises "not inside an engine
     coroutine" (`start` may wait: it runs as a coroutine). Start a coroutine
     (`self:startCoroutine(function() ... end)`). Waits inside a `table.sort` comparator, a
     metamethod or another C callback raise too ("waits cannot cross a C function").
-33. **Realtime stops when paused.** `Coroutine.waitRealtime` and unscaled timers run at
+32. **Realtime stops when paused.** `Coroutine.waitRealtime` and unscaled timers run at
     `timeScale = 0` but not while the app is in the background or the editor's Play is paused
     (unlike Unity's wall clock).
-34. **Timers outlive deactivation; coroutines do not.** `self:invoke` keeps firing while the
+33. **Timers outlive deactivation; coroutines do not.** `self:invoke` keeps firing while the
     GameObject is inactive (Unity); coroutines stop when it is deactivated and do not come back
     on reactivation: start them again (in `onEnable`, or where you reactivate).
-35. **Pass `owner = self` to `Timer.*`**: a timer without an owner outlives its script (until
+34. **Pass `owner = self` to `Timer.*`**: a timer without an owner outlives its script (until
     Play stops) and calls into a script that is gone. With `owner = self` it dies with the
     script, like the script's event subscriptions.
-36. **Inspector fields come from the saved file.** A script whose saved file no longer has a
+35. **Inspector fields come from the saved file.** A script whose saved file no longer has a
     `properties` table has no fields; while you edit it in the code editor, a missing table keeps
     them until you save (cutting and pasting the table loses no value).
 36. **The fixed-step cap follows `Time.maximumDeltaTime`.** A long frame (up to

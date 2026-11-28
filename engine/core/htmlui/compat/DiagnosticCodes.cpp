@@ -39,6 +39,11 @@ namespace {
          "The text drawn needs more glyphs than the glyph atlas holds: its least recently used pages keep being cleared and "
          "their glyphs made again (more than 4 times in 120 frames). Raise Project Settings > Graphics > HTML UI > Glyph Atlas "
          "Budget (graphics.html_ui_glyph_atlas_mib), or use fewer font sizes and fonts at once."},
+        {codes::ImageRegion, W, false, "image-region", "Image region not found",
+         "An image URL's fragment names a region the image does not have: #xywh=x,y,w,h (image pixels) or "
+         "#xywh=percent:x,y,w,h outside the image, a malformed xywh, or #sprite=<name> naming no frame of the texture's Sprite "
+         "Mode sheet. Nothing is drawn for it. Fix the numbers, or the sprite name (the texture's Import Settings list its "
+         "frames)."},
 
         // ---- HTML
         {codes::HtmlParseError, I, false, "html-parse-error", "HTML parse error",
@@ -103,8 +108,9 @@ namespace {
         {codes::LuaScriptError, E, false, "lua-script-error", "Lua script error",
          "A <script type=\"text/lua\"> failed to compile or raised an error; the location is the line in the HTML file."},
         {codes::LinkNotNavigable, I, false, "link-not-navigable", "Link not navigable",
-         "The link points outside the project's documents (http(s), mailto:, javascript:, ...): clicking it only dispatches "
-         "the htmlnavigate event."},
+         "The link points outside the project's documents (http(s), mailto:, ...): clicking it dispatches the htmlnavigate "
+         "event, then opens the URL with System.openURL unless a listener called preventDefault(); a relative link to a file "
+         "that is not a document only dispatches the event."},
         {codes::UnsupportedImageFormat, W, false, "unsupported-image-format", "Unsupported image format",
          "The engine cannot decode this image format (WebP, AVIF, ...). Convert the image to PNG or JPEG (or SVG)."},
         {codes::DialogNotModal, I, false, "dialog-not-modal", "Dialog not modal",
@@ -204,8 +210,8 @@ namespace {
          "Part of an animation is approximated: per-keyframe easing dropped, a fractional iteration count rounded, the "
          "backwards fill mode not applied during the delay, ..."},
         {codes::FontSource, W, true, "font-source", "Font source",
-         "An @font-face source was skipped (WOFF/WOFF2/SVG/EOT, local(): Info), or the rule has no TrueType/OpenType or bitmap font "
-         "(.bitmapfont, .fnt) source and was dropped (Warning). Convert the font to TTF or OTF; remote fonts are imported as TTF by "
+         "An @font-face source was skipped (SVG/EOT, local(): Info), or the rule has no supported vector or bitmap font "
+         "(.bitmapfont, .fnt) source and was dropped (Warning). Provide TTF, OTF, WOFF, WOFF2 or a bitmap font; remote fonts are imported by "
          "the editor."},
         {codes::UnknownFontFamily, I, false, "unknown-font-family", "Unknown font family",
          "No @font-face declares the family and the engine does not know it; the text uses the next family of the list or the "
@@ -300,7 +306,7 @@ namespace {
         {codes::FontVariantUnavailable, W, false, "font-variant-unavailable", "Font variant unavailable",
          "The font provider does not offer a requested weight or style; the text falls back to the nearest available one."},
         {codes::WoffOnly, W, false, "woff-only", "WOFF only",
-         "The remote font is only available as WOFF/WOFF2, which the engine cannot read. Provide a TTF or OTF version."},
+         "Legacy diagnostic, no longer emitted: WOFF and WOFF2 fonts are imported as they are."},
         {codes::LicenseNote, I, false, "license-note", "License note",
          "The license of an imported resource was recorded, or it is unknown and must be verified before shipping."},
         {codes::ManifestFileMissing, W, false, "manifest-file-missing", "Manifest file missing",
@@ -386,6 +392,20 @@ namespace {
          "runs its passes every frame. A warning while over the soft budget; an error when the hard cap (64 simulations) "
          "refuses a new one, which then draws nothing. Hide the elements whose simulations should stop: a simulation that is "
          "not drawn does not step."},
+        // ---- FONT (S93: glyphs and faces)
+        {codes::FallbackGlyph, I, true, "fallback-glyph", "Characters drawn by a fallback font",
+         "Characters of the text are not in the first available face of its font-family list; a fallback face (a later family "
+         "of the list, a registered fallback font or the built-in Roboto and Noto Sans Arabic) draws them, in the text's weight "
+         "and style, with its font-effect and text-effect. They can look different from the rest of the text. Use a font that "
+         "has the characters, or name one that has them after it in font-family. An info once the text is drawn; a warning from "
+         "check --ui and inspect_ui of a file, for the static text of the document's own fonts."},
+        // ---- INPUT
+        {codes::PagePressListener, I, false, "page-press-listener", "Page takes presses",
+         "A transparent page (the document or its <body>) lets presses through its empty parts to the documents below and the "
+         "game, until it listens for a press: a click, dblclick, contextmenu, mousedown, pointerdown or touchstart listener on "
+         "the document or <body> (addEventListener or data-event-*) makes the document take every press there, as a modal or a "
+         "\"click outside\" handler wants. Listen on the elements that take the press otherwise; move, up, over and out "
+         "listeners on the page take nothing, and a wheel listener takes only the wheel."},
     };
 
     char toLower(char c){
@@ -461,6 +481,8 @@ const char* jasperengine::htmlui::compat::diagAreaName(DiagArea area){
         case DiagArea::SVG: return "SVG";
         case DiagArea::FX: return "FX";
         case DiagArea::LOC: return "LOC";
+        case DiagArea::FONT: return "FONT";
+        case DiagArea::INPUT: return "INPUT";
     }
     return "GEN";
 }

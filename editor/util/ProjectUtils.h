@@ -108,7 +108,12 @@ public:
     // assets as assets/ui/onscreen/stick_base.png and stick_knob.png (generated, not bundled);
     // the assets-relative path a Texture stores, "" when it could not be written
     static std::string ensureOnScreenControlTexture(const std::filesystem::path& assetsPath, bool knob);
-    static std::string makeUniqueEntityName(Scene* scene, const std::vector<Entity>& entities, const std::string& baseName, const std::unordered_set<Entity>& ignoredEntities = {});
+    // The names of the GameObjects of `entities` whose Hierarchy parent is `parent` (the roots
+    // for NULL_ENTITY; an action's is its target), the ignored ones left out. Unity numbers a new
+    // or copied name ("Cube 2") only when a sibling has it: these are the names it looks at
+    static std::unordered_set<std::string> siblingNames(Scene* scene, const std::vector<Entity>& entities, Entity parent, const std::unordered_set<Entity>& ignoredEntities = {});
+    // `baseName`, numbered when a sibling under `parent` has it (siblingNames)
+    static std::string makeUniqueEntityName(Scene* scene, const std::vector<Entity>& entities, Entity parent, const std::string& baseName, const std::unordered_set<Entity>& ignoredEntities = {});
 
     static size_t getTransformIndex(EntityRegistry* registry, Entity entity);
     // The Transform array holds each branch in one run, a GameObject after its parent and
@@ -230,6 +235,7 @@ public:
             std::filesystem::path path;    // absolute
             std::string content;
         };
+        // the copied includes, and a library source's own depth program (<base>_depth.*)
         std::vector<IncludeFile> includeFiles;
     };
 

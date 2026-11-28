@@ -51,6 +51,7 @@ const char* jasperengine::editor::shortcutContextName(ShortcutContext context) {
         case ShortcutContext::TilePalette: return "Tile Palette";
         case ShortcutContext::TitleDesigner: return "Title Designer";
         case ShortcutContext::TitleAnimation: return "Title Animation";
+        case ShortcutContext::VertexPaint: return "Vertex Paint";
     }
     return "Editor";
 }
@@ -78,12 +79,13 @@ const char* jasperengine::editor::shortcutContextKey(ShortcutContext context) {
         case ShortcutContext::TilePalette: return "tile_palette";
         case ShortcutContext::TitleDesigner: return "title_designer";
         case ShortcutContext::TitleAnimation: return "title_animation";
+        case ShortcutContext::VertexPaint: return "vertex_paint";
     }
     return "editor";
 }
 
 std::optional<ShortcutContext> jasperengine::editor::parseShortcutContext(std::string_view text) {
-    for (uint8_t value = 0; value <= static_cast<uint8_t>(ShortcutContext::TitleAnimation); value++) {
+    for (uint8_t value = 0; value <= static_cast<uint8_t>(ShortcutContext::VertexPaint); value++) {
         const auto context = static_cast<ShortcutContext>(value);
         if (text == shortcutContextName(context) || text == shortcutContextKey(context)) return context;
     }

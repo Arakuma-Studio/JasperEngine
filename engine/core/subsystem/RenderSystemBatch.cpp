@@ -279,10 +279,12 @@ void RenderSystem::ensureBatchMVP(Entity entity, Transform& transform){
 BatchBreak RenderSystem::meshBatchForm(Entity entity, Signature signature, MeshComponent& mesh, Transform& transform, PipelineType pipType, bool depthPass){
     if (!Engine::isDynamicBatching())
         return BatchBreak::DISABLED;
-#ifdef JASPERENGINE_EDITOR
+#ifdef JE_VIEW_DRAW_MODES
     // the Scene view's LOD Level and Overdraw Draw Modes tint each object's material colour, which
-    // a batch's vertex colours already carry (each drawn alone takes the tint)
-    if ((rv().drawMode == ViewDrawMode::LOD_LEVEL || rv().drawMode == ViewDrawMode::OVERDRAW) && !isEditorOverlay(entity))
+    // a batch's vertex colours already carry (each drawn alone takes the tint); Vertex Color draws
+    // the mesh's own vertex colours, which a batch's replace
+    if ((rv().drawMode == ViewDrawMode::LOD_LEVEL || rv().drawMode == ViewDrawMode::OVERDRAW || rv().drawMode == ViewDrawMode::VERTEX_COLOR) &&
+            !isDrawModeExempt(entity))
         return BatchBreak::DISABLED;
 #endif
     if (signature.test(scene->getComponentId<InstancedMeshComponent>()) || mesh.spriteInstanced)
@@ -346,7 +348,8 @@ BatchBreak RenderSystem::meshBatchForm(Entity entity, Signature signature, MeshC
 
     // indexed 16-bit triangles of the mesh's own interleaved buffer: the pipeline draws the
     // batch's indices as the object's
-    if (submesh.primitiveType != PrimitiveType::TRIANGLES || mesh.numExternalBuffers != 0 || !submesh.attributes.empty() ||
+    // (a Vertex Colors stream is not the buffer's float4 colour: V1, section 9)
+    if (submesh.primitiveType != PrimitiveType::TRIANGLES || mesh.numExternalBuffers != 0 || !submesh.attributes.empty() || submesh.vertexColors ||
             submesh.smoothNormals >= 0 || !mesh.buffer.isRenderAttributes() || mesh.buffer.getStride() == 0 || !mesh.buffer.getData())
         return BatchBreak::INELIGIBLE_GEOMETRY;
     const Attribute* index = mesh.indices.getAttribute(AttributeType::INDEX);
@@ -462,7 +465,7 @@ bool RenderSystem::bakeMeshRecord(BatchRecord& record, MeshComponent& mesh){
     record.sourceSize = buffer.getSize();
     record.hasRect = submesh.hasTextureRect;
     record.rect = submesh.textureRect;
-    record.color = submesh.material.baseColorFactor;
+    record.color = drawnBaseColorFactor(mesh, submesh);
     // a variant reading vertex colour multiplies them by the colour factor (pbr.glsl getBaseColor)
     record.bakesColor = (properties & shaderPropertyBit(10)) && record.colorOffset >= 0;
     record.bakesNormals = (properties & shaderPropertyBit(6)) != 0;
@@ -742,13 +745,16 @@ bool RenderSystem::fillMeshKey(BatchKey& key, Entity entity, MeshComponent& mesh
         fits = fits && key.addSection(BatchBreak::CUSTOM_PARAMS, &record.customHash, sizeof(record.customHash));
     }
 
+    // (a Property Override's colours, S94 F7: equal sets batch together, others draw apart)
+    const Vector4 baseColorFactor = drawnBaseColorFactor(mesh, submesh);
     if (!record.bakesColor)
-        fits = fits && key.addSection(BatchBreak::COLOR_FACTOR, &material.baseColorFactor, sizeof(Vector4));
+        fits = fits && key.addSection(BatchBreak::COLOR_FACTOR, &baseColorFactor, sizeof(Vector4));
     const bool lit = !(properties & shaderPropertyBit(0));
     if (lit){
+        const Vector3 emissive = drawnEmissiveFactor(mesh, submesh);
         const float params[8] = {material.metallicFactor, material.roughnessFactor, material.alphaCutoff,
-                                 material.emissiveFactor.x * material.emissiveStrength, material.emissiveFactor.y * material.emissiveStrength,
-                                 material.emissiveFactor.z * material.emissiveStrength, material.foliageTransmission, mesh.receiveLights ? 1.0f : 0.0f};
+                                 emissive.x * material.emissiveStrength, emissive.y * material.emissiveStrength,
+                                 emissive.z * material.emissiveStrength, material.foliageTransmission, mesh.receiveLights ? 1.0f : 0.0f};
         fits = fits && key.addSection(BatchBreak::MATERIAL_PARAMS, params, sizeof(params));
     }else{
         const uint8_t receiveLights = mesh.receiveLights ? 1 : 0;
@@ -925,7 +931,7 @@ bool RenderSystem::submitMesh(Entity entity, MeshComponent& mesh, Transform& tra
             record->sourceWrites != mesh.buffer.getWriteCount() || record->indexWrites != mesh.indices.getWriteCount() ||
             record->vertexCount != mesh.buffer.getCount() || record->indexCount != submesh.vertexCount ||
             record->hasRect != submesh.hasTextureRect || (record->hasRect && record->rect != currentRect) ||
-            (record->bakesColor && record->color != submesh.material.baseColorFactor) || record->bakesNormals != bakesNormals ||
+            (record->bakesColor && record->color != drawnBaseColorFactor(mesh, submesh)) || record->bakesNormals != bakesNormals ||
             batchFxChanged(*record, mesh)){
         if (!bakeMeshRecord(*record, mesh)){
             dropBatchRecord(entity);
@@ -1031,7 +1037,7 @@ bool RenderSystem::submitMeshDepth(Entity entity, MeshComponent& mesh, Transform
             record->sourceWrites != mesh.buffer.getWriteCount() || record->indexWrites != mesh.indices.getWriteCount() ||
             record->vertexCount != mesh.buffer.getCount() || record->indexCount != submesh.vertexCount ||
             record->hasRect != submesh.hasTextureRect || (record->hasRect && record->rect != currentRect) ||
-            (record->bakesColor && record->color != submesh.material.baseColorFactor) || record->bakesNormals != bakesNormals ||
+            (record->bakesColor && record->color != drawnBaseColorFactor(mesh, submesh)) || record->bakesNormals != bakesNormals ||
             batchFxChanged(*record, mesh)){
         if (!bakeMeshRecord(*record, mesh)){
             dropBatchRecord(entity);
@@ -1402,14 +1408,14 @@ const RenderSystem::BatchFrame* RenderSystem::getBatchFrame(uint32_t viewTag) co
 void RenderSystem::refreshSubmeshTextures(Submesh& submesh, bool receiveLights, bool pbrFramebufferOutdated){
     const ShaderLibraryBindings& libraryBindings = submesh.libraryBindings;
     const bool needUpdateFramebuffer = pbrFramebufferOutdated ||
-        (!libraryBindings.textures.empty() && shaderTexturesOutdated(libraryBindings, submesh.material.shaderTextures));
+        (!libraryBindings.textures.empty() && shaderTexturesOutdated(libraryBindings, drawnShaderTextures(submesh)));
 
     if (submesh.needUpdateTexture || needUpdateFramebuffer){
         ShaderData& shaderData = submesh.shader.get()->shaderData;
         const TextureBindMark bindMark = markTextureBinding();
-        if (loadPBRTextures(submesh.material, shaderData, submesh.render, receiveLights) &&
+        if (loadPBRTextures(submesh.material, shaderData, submesh.render, receiveLights, drawnBaseColor(submesh)) &&
                 loadPbrExtTextures(submesh, shaderData, submesh.render) &&
-                bindShaderTextures(libraryBindings, submesh.render, submesh.material.shaderTextures)){
+                bindShaderTextures(libraryBindings, submesh.render, drawnShaderTextures(submesh))){
             submesh.needUpdateTexture = false;
             submesh.needRebindTexture = false;
             noteTextureBinding(submesh, bindMark);
@@ -1420,7 +1426,7 @@ void RenderSystem::refreshSubmeshTextures(Submesh& submesh, bool receiveLights, 
 void RenderSystem::refreshDepthTextures(Submesh& submesh){
     if (submesh.needUpdateDepthTexture && (submesh.depthShaderProperties & (1u << 0))){
         ShaderData& depthShaderData = submesh.depthShader.get()->shaderData;
-        if (loadDepthTexture(submesh.material, depthShaderData, submesh.depthRender)){
+        if (loadDepthTexture(submesh.material, depthShaderData, submesh.depthRender, drawnBaseColor(submesh))){
             submesh.needUpdateDepthTexture = false;
         }
     }else if (submesh.needUpdateDepthTexture){

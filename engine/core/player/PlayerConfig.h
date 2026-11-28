@@ -105,6 +105,11 @@ namespace jasperengine::player {
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         float inputDeadzone = 0.15f;
         std::string inputActions;
+        // Input > Simulate Touch From Mouse (Engine::callTouchInMouseEvent)
+        bool simulateTouchFromMouse = false;
+        // Project Settings > Time, seconds: the fixed step and the frame delta cap
+        double fixedTimestep = 1.0 / 60.0;
+        double maximumDeltaTime = 0.25;
         // the String Tables' manifest ("l10n/manifest.json") when the game has any (game-ui-localization.md D5)
         std::string localization;
         GamepadCursorSettings gamepadCursor;
@@ -116,6 +121,7 @@ namespace jasperengine::player {
         std::array<Engine::TexturePlatformDefaults, 3> textureDefaults;
         int htmlUiMsaa = 0;   // HTML UI MSAA samples, 0 = Auto (1 on phones and the web, 4 on desktop)
         int glyphAtlasMiB = 0;
+        int imageCacheMiB = -1;   // S93: -1 the platform's default
         bool sdfPrimitives = true;
         bool transformAwareText = true;
         PbrTier mobilePbrTier = PbrTier::REDUCED;

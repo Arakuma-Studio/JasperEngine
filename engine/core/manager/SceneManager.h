@@ -354,6 +354,11 @@ namespace jasperengine {
         static void endStartingScenes();
         // A load factory runs, or the scenes of a Play start
         static bool isStartingScenes();
+        // A scene's scripts are about to start (ScriptRuntime::awakeScene): when it is the current
+        // entry's own scene (the main scene of a load, the start scene, Play's), its Fixed
+        // Timestep applies before their init (Engine::applySceneUpdateTime); layers and child
+        // scenes never change the step
+        static void mainSceneStarting(Scene* scene);
     };
 
 } // namespace jasperengine

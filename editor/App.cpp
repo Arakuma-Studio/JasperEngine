@@ -14,6 +14,7 @@
 #include "pixelart/ScreenTransition.h"
 #include "render/ViewCameraMirror.h"
 #include "component/Transform.h"
+#include "component/UIDocumentComponent.h"
 #include "component/CameraShakerComponent.h"
 #include "pool/ShaderPool.h"
 #include "pool/TextureDataPool.h"
@@ -39,11 +40,13 @@
 #include "window/ImageViewerWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/LoadingWindow.h"
+#include "dataasset/DataAssets.h"
 #include "window/MainToolbar.h"
 #include "window/PaletteWindow.h"
 #include "window/PixelArtCheckWindow.h"
 #include "window/PixelArtCleanupWindow.h"
 #include "tilemap/TilePaletteWindow.h"
+#include "vertexcolor/VertexPaintWindow.h"
 #include "tilemap/TilesetEditorWindow.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "window/PlayInput.h"
@@ -58,6 +61,7 @@
 #include "window/InspectorWindowTitleArt.h"
 #include "titleart/designer/TitleCanvasView.h"
 #include "window/SpritePreviewWindow.h"
+#include "window/SkinningEditorWindow.h"
 #include "window/StatusBar.h"
 #include "window/SystemsWindow.h"
 #include "window/NoiseGraphWindow.h"
@@ -70,6 +74,7 @@
 #include "spline/SplineSceneTools.h"
 #include "spline/SplineEditor.h"
 #include "particles/ParticleEffectLibrary.h"
+#include "render/FogProfile.h"
 #include "pixelart/PaletteSwap.h"
 #include "util/ParticleMigrationReport.h"
 #include "AppMenuCommand.h"
@@ -105,6 +110,7 @@
 #include "command/type/RemoveChildSceneCmd.h"
 #include "lattice/LatticeSceneTools.h"
 #include "navigation/NavigationEditor.h"
+#include "vertexcolor/VertexColorProject.h"
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "window/JobsMemoryWindow.h"
@@ -344,6 +350,7 @@ editor::App::App(){
     spriteNormalsWatcher = new SpriteNormalsWatcher(&project);
     SpriteNormalsWatcher::setActive(spriteNormalsWatcher);
     spritePreviewWindow = new SpritePreviewWindow(&project, projectWindow);
+    skinningEditorWindow = new SkinningEditorWindow(&project);
     pixelart::aseprite::asepriteEditorHooks().openSpritePreview = [this](const std::string& p) { spritePreviewWindow->open(p); };
     mcpActivityWindow = new mcp::McpActivityWindow();
     systemsWindow = new SystemsWindow(&project);
@@ -782,6 +789,16 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         // Sprite Atlas and Palette: in Create > 2D below
         if (item.kind == AssetCreateKind::SpriteAtlas || item.kind == AssetCreateKind::Palette || item.kind == AssetCreateKind::Tileset) continue;
         if (item.separatorBefore) assetsCreateItems.push_back(menuSeparator());
+        if (item.kind == AssetCreateKind::DataAsset) {
+            // Data Asset > <each data class> (S95 REQ-21), the classes looked at once a second
+            std::vector<PlatformMenuItem> classItems;
+            for (const std::string& name : DataAssets::classNamesThrottled(project.getLuaPath())) {
+                classItems.push_back(menuPayloadCommand(AppMenuCommand::AssetsCreateDataAsset, name, name, !isProjectBusy));
+            }
+            if (classItems.empty()) classItems.push_back(menuCommand(AppMenuCommand::AssetsCreateDataAsset, "No data class (---@dataasset)", false));
+            assetsCreateItems.push_back(menuSubmenu(item.label, std::move(classItems)));
+            continue;
+        }
         assetsCreateItems.push_back(catalogItem(item.commandId, item.label));
     }
     assetsCreateItems.push_back(menuSeparator());
@@ -803,6 +820,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSeparator(),
         catalogItem("assets.import"),
         catalogItem("assets.importTitleArt"),
+        catalogItem("assets.importUnityAnimation"),
         catalogItem("assets.refresh"),
         catalogItem("assets.reimportTextures"),
         catalogItem("assets.importSoundEssentials"),
@@ -903,6 +921,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.animationStatistics", windowMenuLabel(AnimationStatisticsWindow::WINDOW_NAME))
         }),
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
+        catalogItem("window.vertexPaint", windowMenuLabel(vertexcolor::VertexPaintWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
         catalogItem("window.titleDesigner", windowMenuLabel(TitleDesignerWindow::WINDOW_NAME)),
         catalogItem("window.localizationTables", windowMenuLabel(LocalizationTablesWindow::WINDOW_NAME)),
@@ -910,6 +929,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("2D", {
             catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME)),
+            catalogItem("window.skinningEditor", windowMenuLabel(SkinningEditorWindow::WINDOW_NAME)),
             catalogItem("window.palette", windowMenuLabel(PaletteWindow::WINDOW_NAME)),
             catalogItem("window.pixelArtCheck", windowMenuLabel(PixelArtCheckWindow::WINDOW_NAME)),
             catalogItem("window.pixelArtCleanup", windowMenuLabel(PixelArtCleanupWindow::WINDOW_NAME)),
@@ -1160,6 +1180,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreateNoiseGraph:
             projectWindow->createAsset(AssetCreateKind::NoiseGraph, projectWindow->createTargetDirectory());
             break;
+        case AppMenuCommand::AssetsCreateDataAsset:
+            if (!command.payload.empty()) projectWindow->assetsCreateDataAsset(command.payload, projectWindow->createTargetDirectory());
+            break;
         case AppMenuCommand::ToggleVoxelVolume:
             showEditorWindow(voxelEditWindow);
             break;
@@ -1241,6 +1264,10 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTilePalette:
             tilePaletteWindow->setOpen(true);
             break;
+        case AppMenuCommand::ToggleVertexPaint:
+            vertexcolor::VertexPaintWindow::get().setProject(&project);
+            vertexcolor::VertexPaintWindow::get().setOpen(true);
+            break;
         case AppMenuCommand::ToggleTilesetEditor:
             // the payload: a .tileset to open (Assets > Open and run_command pass one)
             if (!command.payload.empty()) tilesetEditorWindow->open(FileUtils::pathFromUtf8(command.payload));
@@ -1258,6 +1285,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleSpritePreview:
             spritePreviewWindow->open();
+            break;
+        case AppMenuCommand::ToggleSkinningEditor:
+            skinningEditorWindow->open();
             break;
         case AppMenuCommand::ToggleVertexAnimationBaker:
             vertexAnimationBakerWindow->open();
@@ -1442,6 +1472,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateShakePreset:
             projectWindow->createAsset(AssetCreateKind::ShakePreset, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateFogProfile:
+            projectWindow->createAsset(AssetCreateKind::FogProfile, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateTileset:
             projectWindow->createAsset(AssetCreateKind::Tileset, projectWindow->createTargetDirectory());
@@ -2493,6 +2526,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(GraphEditorWindow::WINDOW_NAME, dock_id_middle_top);
     ImGui::DockBuilderDockWindow(ProceduralMaterialWindow::WINDOW_NAME, dock_id_middle_top);
     ImGui::DockBuilderDockWindow(SpritePreviewWindow::WINDOW_NAME, dock_id_middle_top);
+    ImGui::DockBuilderDockWindow(SkinningEditorWindow::WINDOW_NAME, dock_id_middle_top);
     ImGui::DockBuilderDockWindow(PixelArtCleanupWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
@@ -2802,6 +2836,8 @@ void editor::App::setup() {
     pixelArtCheckWindow->bindCommands(CommandCatalog::editor());
     pixelArtCleanupWindow->bindCommands(CommandCatalog::editor());
     tilePaletteWindow->bindCommands(CommandCatalog::editor());
+    vertexcolor::VertexPaintWindow::get().bindCommands(CommandCatalog::editor());
+    vertexcolor::VertexPaintWindow::installPaintToolHook();
     applyPaletteDialog->bindCommands(CommandCatalog::editor());
 
     // Separate from the window scale: the layout keeps the scale it was built at,
@@ -3311,12 +3347,16 @@ void editor::App::show(){
     pixelArtCleanupWindow->show();
     tilePaletteWindow->show();
     tilesetEditorWindow->show();
+    // also the cursor's fade and a running generator with the window closed
+    vertexcolor::VertexPaintWindow::get().setProject(&project);
+    vertexcolor::VertexPaintWindow::get().show();
     applyPaletteDialog->show();
     // the Graph Editor and every graph kind's own window
     GraphEditorWindow::showAll();
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
     spritePreviewWindow->show();
+    skinningEditorWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
     vertexAnimationBakerWindow->show();
     titleDesignerWindow->show();
@@ -3892,6 +3932,21 @@ void editor::App::setupRecorder() {
         return project.getPlaySessionSceneId() != NULL_PROJECT_SCENE;
     };
     host.stopPlay = [this]() { mainToolbar->stopSession(); };
+    host.resetUiDocuments = [this]() {
+        SceneProject* main = project.getScene(project.getPlaySessionSceneId());
+        if (!main) main = project.getSelectedScene();
+        std::vector<uint32_t> sceneIds;
+        if (main) project.collectStartActiveScenesForExport(main->id, sceneIds);
+        for (uint32_t id : sceneIds) {
+            SceneProject* source = project.getScene(id);
+            if (!source || !source->scene) continue;
+            auto system = source->scene->getSystem<UIDocumentSystem>();
+            auto documents = source->scene->getComponentArray<UIDocumentComponent>();
+            std::vector<Entity> entities;
+            for (size_t i = 0; i < documents->size(); ++i) entities.push_back(documents->getEntity(i));
+            for (Entity entity : entities) system->reloadDocument(entity, false, UIReloadMode::REBUILD);
+        }
+    };
     host.gameFramebuffer = [this]() { return gameWindow->getFramebuffer(); };
     host.gameScene = [playScene]() -> Scene* {
         const SceneProject* scene = playScene();
@@ -4082,6 +4137,8 @@ void editor::App::updateHubCreation() {
             // S77 R38: a new project places a model of many clips without an Animation entity per clip
             ModelProjectSettings models = project.getModelSettings();
             models.animationEntities = AnimationEntitiesMode::Auto;
+            // S94 F44: and keeps every model's node hierarchy, as Unity's Preserve Hierarchy
+            models.preserveHierarchyForNewModels = true;
             project.setModelSettings(models);
             project.saveProject();
             project.writeVersionControlMetadata();
@@ -4429,6 +4486,8 @@ void editor::App::engineRender(){
     ScriptReloadService::get().update();
     // navigation bakes of the stopped scenes: landed and saved (.navmesh) as they finish
     NavigationEditor::get().update(&project);
+    // V1 R10: painted meshes a reimport changed, transferred (nothing without a Vertex Colors component)
+    tickVertexColors(&project);
     // T5: a bake renders a view a frame, and asks for the next one so an idle editor goes on
     ImpostorBaker::update();
     if (ImpostorBaker::isRunning()) requestFrame();
@@ -4562,6 +4621,10 @@ void editor::App::engineRender(){
         // The running game renders into the Game view's framebuffer, shown or not, and
         // the Scene view is a second, draw-only view of the same frame
         if (gameWindow->hostsScene(sceneProject.id)) {
+            // send_input app view_lost: the game's GPU objects are gone until view_restored, so it
+            // neither updates nor draws (a phone runs no frame without its window); the Game view
+            // keeps its last frame
+            if (Platform::isViewLostSimulated()) continue;
             // send_input app hide: the game updates without drawing, its Game view keeps the
             // last frame
             if (Platform::isGameHiddenSimulated() && runningGameScene() == &sceneProject) {
@@ -4838,6 +4901,7 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     // A paused game advances one frame here when Step was pressed
     const bool steppingFrame = project.beginStepFrame(sceneProject.id);
 
+    recorder::RecorderSession::get().prepareFrame();
     Engine::systemDraw();
 
     if (steppingFrame) {
@@ -4916,7 +4980,8 @@ bool editor::App::isHiddenGameRunning() const {
 // game's own frame: no Scene view, no Step, no Recorder capture, no view size change.
 bool editor::App::runHiddenGameFrame() {
     const SceneProject* running = runningGameScene();
-    if (!running) {
+    // (no frame while the game's view is lost either: send_input app view_lost)
+    if (!running || Platform::isViewLostSimulated()) {
         hiddenGameClock.reset();
         return false;
     }
@@ -4933,6 +4998,7 @@ bool editor::App::runHiddenGameFrame() {
         pendingResizeScene = sceneProject->id;
     }
     // waits for the GPU on Metal first
+    recorder::RecorderSession::get().prepareFrame();
     Engine::systemUpdate();
     return true;
 }
@@ -5650,6 +5716,8 @@ void editor::App::shutdownBackgroundWork() {
     layouts.saveWorkingLayoutNow();
     // the Project Hub's picture of the project (S27 R21)
     writeHubThumbnail();
+    // vertex colors' queued writes land before the job system's shutdown cancels their drain (V1 R8)
+    flushVertexColorFiles();
     // a clean quit: this session's crash backups and the project lock go
     project.endProjectSession();
     loadingPump = nullptr;
@@ -5679,6 +5747,7 @@ void editor::App::shutdownBackgroundWork() {
 }
 
 void editor::App::engineViewDestroyed(){
+    mcp::stopUiFramePreviews();
     imageViewerWindow->closeAll();
     // no thumbnail step renders off the main thread (and commits to the render queue) from
     // here on, nor touches the scenes the view's destruction removes
@@ -5791,6 +5860,7 @@ void editor::App::prepareForProjectSwitch() {
     pixelArtCheckWindow->resetForProjectSwitch();
     pixelArtCleanupWindow->resetForProjectSwitch();
     tilePaletteWindow->resetForProjectSwitch();
+    vertexcolor::VertexPaintTools::get().reset();
     tilesetEditorWindow->resetForProjectSwitch();
     applyPaletteDialog->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
@@ -5799,6 +5869,7 @@ void editor::App::prepareForProjectSwitch() {
     spriteNormalsWatcher->reset();
     editor::spritenormals::SpriteNormalsRun::cancelRunning();
     spritePreviewWindow->resetForProjectSwitch();
+    skinningEditorWindow->resetForProjectSwitch();
     // a running bake or import is cancelled, its source and result forgotten
     vertexAnimationBakerWindow->resetForProjectSwitch();
     editor::texsynth::projectSwitching();
@@ -5825,6 +5896,8 @@ void editor::App::prepareForProjectSwitch() {
     // and its palettes (S43): the swap textures first, they were made from them
     jasperengine::pixelart::PaletteSwapCache::clear();
     jasperengine::pixelart::PaletteLibrary::clear();
+    // and its fog profiles (docs/specs/S101-vapor.md R5)
+    FogProfileLibrary::clear();
     ParticleMigrationReport::clear();
     dockspaceNeedsRebuild = true;
 }
@@ -5923,6 +5996,7 @@ void editor::App::updateWindowTitle(const std::string& projectName) {
 }
 
 void editor::App::stopTransientPreviews() {
+    mcp::stopUiFramePreviews();
     // before a scene save or play: posed bones go back to their saved transforms
     if (poseAnimationWindow) {
         poseAnimationWindow->stopTransientPreviews();
@@ -6365,7 +6439,16 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v71: S100's Cavity (after S78's v66, S92's v69 and S99's v70): DEPTH 'Cvn' 26 (DEPTH_NORMALS:
     //      includes/depth_normals.glsl, depth.vert, includes/surface_depth_vs.glsl and the wrapped
     //      fragment stage) and the CAVITY type.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v71";
+    // v72: S94 (after #3's v66, #10's v69, #149's v70, #140's v71 in the landing order): the Radii
+    //      vignette (post_color.glsl, uber.frag), library:panoramic_sky's VERTEX_MAPPING (sky_vs.glsl
+    //      SKY_SPHERE_UV), the Outline passes and Sprite Skin.
+    // v73: S93's World Space UI Documents (after S94's v72): htmlui.vert keeps the quad's depth when its
+    //      translation.w asks (HTMLUI 'Tex'); an older cache draws the quad in front of everything.
+    // v74: V1's vertex colors (after S93's v73; v66-v73 are the stack's before it): the Scene view's Vertex
+    //      Color view (MESH 'Vcv' 'Vcs' 'Vk1' 'Vk2' 56-59) and the Lit's Vertex Color section (LIT_VC_*).
+    // v75: S101 Vapor's particle height fog (after V1's v74; docs/specs/S101-vapor.md R16): the fogged particle
+    //      variants (PARTICLES 'Fog') carry the height fog (HAS_HEIGHT_FOG, u_fs_heightFog) as the mesh's do.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v75";
 }
 
 void editor::App::pushTabNotificationStyle(){

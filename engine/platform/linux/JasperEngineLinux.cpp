@@ -342,6 +342,10 @@ void JasperEngineLinux::applySwapInterval(int interval) {
 
 int JasperEngineLinux::init(int argc, char **argv) {
     const PlatformConfig& platform = platformConfig();
+    // the window opens at this size (maximized or fullscreen: known only once it is mapped), so
+    // the scripts' init, which runs before it exists, sees the first frame's canvas
+    if (platform.windowMode == 0)
+        Engine::setStartScreenSize(platform.width, platform.height);
     Engine::systemInit(argc, argv, new SystemLinux(&inputRouter));
 
     if (!WindowLinux::openDisplay()) {

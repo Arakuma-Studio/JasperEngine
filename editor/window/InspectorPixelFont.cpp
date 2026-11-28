@@ -1,8 +1,8 @@
 // (c) JasperDev and contributors
 // SPDX-License-Identifier: MIT
 
-// The Text component's Inspector (S51 R22): its table's rows, and with a bitmap font a Pixel Font
-// section: Font Size stepping in multiples of the native size, the pixel Outline Width and its
+// The Text component's Inspector (S51 R22): its table's rows, the Alignment buttons (S93 R37), and
+// with a bitmap font a Pixel Font section: Font Size stepping in multiples of the native size, the pixel Outline Width and its
 // Neighbors, a whole-pixel Shadow Offset and a note of the scale. Each edit is one undo step.
 
 #include "InspectorWindow.h"
@@ -16,6 +16,7 @@
 #include "pixelart/FontPixelReport.h"
 #include "subsystem/UISystem.h"
 #include "util/UIProbe.h"
+#include "Theme.h"
 
 #include <algorithm>
 #include <cmath>
@@ -38,6 +39,26 @@ namespace {
         multi->setNoMerge();
     }
 
+    // one row of TMP's alignment buttons: the selected one drawn pressed; the clicked value or -1
+    int ipfAlignmentRow(const char* id, const char* const* labels, const char* const* tips, int count, int selected){
+        int clicked = -1;
+        for (int i = 0; i < count; i++){
+            if (i > 0)
+                ImGui::SameLine(0.0f, 2.0f);
+            const bool on = i == selected;
+            if (on)
+                ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_ButtonActive]);
+            char button[64];
+            std::snprintf(button, sizeof(button), "%s##%s%d", labels[i], id, i);
+            if (ImGui::Button(button))
+                clicked = i;
+            if (on)
+                ImGui::PopStyleColor();
+            ImGui::SetItemTooltip("%s", tips[i]);
+        }
+        return clicked;
+    }
+
     void ipfLabel(const char* label){
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
@@ -48,10 +69,88 @@ namespace {
 
 }
 
+// Unity TextMesh's Anchor (S94 F24): which point of the text box sits on the origin, a row of
+// horizontal buttons and one of vertical ones; the selection's shared value is lit, a click sets
+// every selected Text in one undo step
+void editor::InspectorWindow::drawTextAnchor(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities){
+    struct AnchorButton {
+        int value;
+        const char* label;
+        const char* tooltip;
+    };
+    static const AnchorButton horizontal[] = {
+        {(int)TextAnchorHorizontal::LEFT, "Left", "Left: the box starts at the origin"},
+        {(int)TextAnchorHorizontal::CENTER, "Center", "Center: the box centred on the origin"},
+        {(int)TextAnchorHorizontal::RIGHT, "Right", "Right: the box ends at the origin"},
+    };
+    static const AnchorButton vertical[] = {
+        {(int)TextAnchorVertical::TOP, "Top", "Top: the box's top edge on the origin"},
+        {(int)TextAnchorVertical::MIDDLE, "Middle", "Middle: the box's centre on the origin"},
+        {(int)TextAnchorVertical::BOTTOM, "Bottom", "Bottom: the box's bottom edge on the origin (the default)"},
+        {(int)TextAnchorVertical::BASELINE, "Baseline", "Baseline: the first line's baseline on the origin"},
+        {(int)TextAnchorVertical::CAPLINE, "Capline", "Capline: the middle of the first line's capitals on the origin"},
+        {(int)TextAnchorVertical::MIDLINE, "Midline", "Midline: the middle of the first line's lowercase letters on the origin"},
+    };
+
+    // the value every selected Text shares, -1 when they differ
+    auto shared = [&](auto member) -> int {
+        int value = -1;
+        for (size_t i = 0; i < entities.size(); i++){
+            const int current = (int)(sceneProject->scene->getComponent<TextComponent>(entities[i]).*member);
+            if (i == 0) value = current;
+            else if (value != current) return -1;
+        }
+        return value;
+    };
+    auto buttons = [&](const char* property, const AnchorButton* items, size_t count, int current){
+        for (size_t i = 0; i < count; i++){
+            if (i > 0) ImGui::SameLine(0.0f, 2.0f);
+            const bool lit = items[i].value == current;
+            if (lit) ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ButtonActivated);
+            const std::string id = std::string(items[i].label) + "##" + property;
+            if (ImGui::Button(id.c_str()) && !lit)
+                ipfCommit<int>(project, sceneProject, entities, property, items[i].value);
+            if (lit) ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", items[i].tooltip);
+            UIProbe::item(std::string("text.") + property + "." + std::to_string(items[i].value));
+        }
+    };
+
+    separatorText("Anchor");
+    beginTable(cpType, getLabelSize("Vertical"), "textalignment");
+    ipfLabel("Horizontal");
+    buttons("anchorHorizontal", horizontal, 3, shared(&TextComponent::anchorHorizontal));
+    ipfLabel("Vertical");
+    buttons("anchorVertical", vertical, 6, shared(&TextComponent::anchorVertical));
+    endTable();
+}
+
 void editor::InspectorWindow::drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     drawDefaultComponent(cpType, sceneProject, entities);
+    drawTextAnchor(cpType, sceneProject, entities);
     drawTextLocalizationRows(cpType, sceneProject, entities);
     TextComponent& text = sceneProject->scene->getComponent<TextComponent>(entities[0]);
+
+    // S93 R37: TextMeshPro's Alignment, two rows of buttons (each click one undo step)
+    beginTable(cpType, getLabelSize("Outline Width"), "textalignment");
+    ipfLabel("Alignment");
+    static const char* const horizontal[] = {ICON_FA_ALIGN_LEFT, ICON_FA_ALIGN_CENTER, ICON_FA_ALIGN_RIGHT, ICON_FA_ALIGN_JUSTIFY};
+    static const char* const horizontalTips[] = {"Left", "Center", "Right", "Justified: wrapped lines fill the width (a paragraph's last line stays left)"};
+    const int h = ipfAlignmentRow("textAlignH", horizontal, horizontalTips, 4, (int)text.horizontalAlignment);
+    UIProbe::item("text.horizontalAlignment");
+    if (h >= 0)
+        ipfCommit<int>(project, sceneProject, entities, "horizontalAlignment", h);
+    ipfLabel("");
+    static const char* const vertical[] = {ICON_FA_ARROWS_UP_TO_LINE, ICON_FA_GRIP_LINES, ICON_FA_ARROWS_DOWN_TO_LINE, ICON_FA_UNDERLINE};
+    static const char* const verticalTips[] = {"Top", "Middle", "Bottom", "Baseline: the first line's baseline on the middle"};
+    const int v = ipfAlignmentRow("textAlignV", vertical, verticalTips, 4, (int)text.verticalAlignment);
+    UIProbe::item("text.verticalAlignment");
+    if (v >= 0)
+        ipfCommit<int>(project, sceneProject, entities, "verticalAlignment", v);
+    endTable();
+    if (text.verticalAlignment != TextVerticalAlignment::TOP && !text.fixedHeight)
+        ImGui::TextDisabled("Vertical alignment needs a Fixed size Height");
+
     if (!ipf::isBitmapFontPath(text.font[0]))
         return;
 

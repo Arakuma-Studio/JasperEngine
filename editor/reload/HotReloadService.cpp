@@ -412,7 +412,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             // and its load problems are the call's)
             // (a palette the Palette window or edit_palette wrote: the swaps drawn with it update; an
             // .aseprite an editor tool wrote: imported again like another program's save, S44 R23)
-            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "palette" || kind == "tileset" || kind == "graph" ||
+            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "palette" || kind == "tileset" || kind == "fogprofile" || kind == "graph" ||
                 kind == "aseprite" || kind == "font" || kind == "titleart")
                 editorWritten[kind].push_back(change.path);
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) editorWritten["ui"].push_back(change.path);
@@ -504,6 +504,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     reload::reloadPalettes(ctx, both("palette"));
     reload::reloadMeshAssets(ctx, files(external, "mesh"));
     reload::reloadTilesets(ctx, both("tileset"));
+    reload::reloadFogProfiles(ctx, both("fogprofile"));
     {
         std::vector<fs::path> graphDocuments = files(editorWritten, "graph");
         graphDocuments.insert(graphDocuments.end(), graphsGone.begin(), graphsGone.end());

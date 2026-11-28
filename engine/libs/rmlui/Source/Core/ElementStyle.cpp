@@ -1251,6 +1251,14 @@ void ElementStyle::DirtyProperty(PropertyId id)
 	dirty_properties.Insert(id);
 }
 
+void ElementStyle::SetFontSizeOverride(float size)
+{
+	if (font_size_override == size)
+		return;
+	font_size_override = size;
+	DirtyProperty(PropertyId::FontSize);
+}
+
 
 PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const Style::ComputedValues* parent_values,
 	const Style::ComputedValues* document_values, bool values_are_default_initialized, float dp_ratio, Vector2f vp_dimensions)
@@ -1359,6 +1367,9 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 			values.font_size(parent_values->font_size());
 		if (const Property* transitioned = TransitionPrePass(PropertyId::FontSize, transition_context))
 			values.font_size(ComputeFontsize(transitioned, values, parent_values, document_values, dp_ratio, vp_dimensions));
+		// Fork (S93 R31): the size 'text-autosize' fitted
+		if (font_size_override > 0.f)
+			values.font_size(font_size_override);
 
 		if (font_size_before != values.font_size())
 		{
@@ -2137,6 +2148,9 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	case PropertyId::OutlineOffset:
 		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.outline_offset(value); }
 		break;
+	case PropertyId::MixBlendMode:
+		values.mix_blend_mode((MixBlendMode)p->Get<int>());
+		break;
 	case PropertyId::Isolation:
 		values.isolation((Isolation)p->Get<int>());
 		break;
@@ -2265,6 +2279,15 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 
 	// -- Pointer Events (fork, engine-gaps G5-4): read by the context, no computed value --
 	case PropertyId::TouchAction:
+		break;
+	// -- Text auto size (fork, S93 R31): read by the document's fit, which sets the font-size override --
+	case PropertyId::TextAutosize:
+	// -- Scroll physics (fork, S93 R8): read by the context when a press may pan, no computed value --
+	case PropertyId::ScrollDrag:
+	case PropertyId::ScrollMovement:
+	case PropertyId::ScrollElasticity:
+	case PropertyId::ScrollInertia:
+	case PropertyId::ScrollDecelerationRate:
 		break;
 
 	// Invalid properties

@@ -10,6 +10,7 @@
 #include "util/FbxImporter.h"
 
 #include "io/watch/SharedFileReader.h"
+#include "ufbx.h"
 
 #include "stb_image_write.h"
 #include "tiny_gltf.h"
@@ -17,13 +18,16 @@
 #include "support/PosixCompat.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -361,4 +365,338 @@ TEST(FbxImport, ReportsFilesItCannotConvert) {
     EXPECT_FALSE(result.error.empty());
     EXPECT_FALSE(fs::exists(project.glb));
     EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets), FbxImporter::State::Missing);
+}
+
+// ---------------------------------------------------------------- spec S94 (P7: model import)
+
+namespace {
+
+    // the fixture without one Objects block (its header line up to the tab-indented closing brace)
+    std::string withoutBlock(std::string text, const std::string& header) {
+        const size_t at = text.find("\t" + header);
+        EXPECT_NE(at, std::string::npos) << header;
+        if (at == std::string::npos) return text;
+        const size_t end = text.find("\n\t}\n", at);
+        text.erase(at, end + 4 - at);
+        return text;
+    }
+
+    // the fixture without the connections that name any of `ids` (C: "OO",child,parent[, "property"])
+    std::string withoutConnections(const std::string& text, const std::vector<std::string>& ids) {
+        std::string out;
+        std::istringstream lines(text);
+        std::string line;
+        while (std::getline(lines, line)) {
+            bool drop = false;
+            const size_t at = line.find("C: \"O");
+            if (at != std::string::npos) {
+                std::vector<std::string> fields;
+                std::istringstream parts(line.substr(at));
+                std::string field;
+                while (std::getline(parts, field, ',')) fields.push_back(field);
+                for (const std::string& id : ids) {
+                    drop = drop || (fields.size() > 2 && (fields[1] == id || fields[2] == id));
+                }
+            }
+            if (!drop) out += line + "\n";
+        }
+        return out;
+    }
+
+    std::string withObjects(const std::string& text, const std::string& objects, const std::string& connections) {
+        std::string out = replaced(text, "\n}\nConnections:  {\n", "\n" + objects + "}\nConnections:  {\n" + connections);
+        return out;
+    }
+
+    void writeMeta(const fs::path& fbx, const std::string& modelImporter) {
+        writeText(fs::path(fbx.string() + ".meta"), "import:\n  modelImporter:\n    version: 1\n" + modelImporter);
+    }
+
+    // a translation curve on Root (Y at -3 m all take long), over the fixture's take
+    std::string withRootTranslationTake(const std::string& text) {
+        return withObjects(text,
+            "\tAnimationCurveNode: 806, \"AnimCurveNode::T\", \"\" {\n\t\tProperties70:  {\n"
+            "\t\t\tP: \"d|X\", \"Number\", \"\", \"A\",0\n\t\t\tP: \"d|Y\", \"Number\", \"\", \"A\",-1\n\t\t\tP: \"d|Z\", \"Number\", \"\", \"A\",0\n"
+            "\t\t}\n\t}\n"
+            "\tAnimationCurve: 807, \"AnimCurve::\", \"\" {\n\t\tDefault: 0\n\t\tKeyVer: 4009\n"
+            "\t\tKeyTime: *2 {\n\t\t\ta: 0,46186158000\n\t\t}\n\t\tKeyValueFloat: *2 {\n\t\t\ta: -3,-3\n\t\t}\n"
+            "\t\tKeyAttrFlags: *1 {\n\t\t\ta: 4\n\t\t}\n\t\tKeyAttrDataFloat: *4 {\n\t\t\ta: 0,0,0,0\n\t\t}\n"
+            "\t\tKeyAttrRefCount: *1 {\n\t\t\ta: 2\n\t\t}\n\t}\n",
+            "\tC: \"OO\",806,801\n\tC: \"OP\",806,400, \"Lcl Translation\"\n\tC: \"OP\",807,806, \"d|Y\"\n");
+    }
+
+    std::vector<float> accessorFloats(const tinygltf::Model& model, int index) {
+        const tinygltf::Accessor& accessor = model.accessors[static_cast<size_t>(index)];
+        const tinygltf::BufferView& view = model.bufferViews[static_cast<size_t>(accessor.bufferView)];
+        const size_t components = static_cast<size_t>(tinygltf::GetNumComponentsInType(static_cast<uint32_t>(accessor.type)));
+        std::vector<float> out(accessor.count * components);
+        std::memcpy(out.data(), model.buffers[static_cast<size_t>(view.buffer)].data.data() + view.byteOffset + accessor.byteOffset,
+            out.size() * sizeof(float));
+        return out;
+    }
+
+    // a glTF node's local matrix (column-major), from its TRS
+    std::array<double, 16> nodeMatrix(const tinygltf::Node& node) {
+        const double tx = node.translation.empty() ? 0 : node.translation[0], ty = node.translation.empty() ? 0 : node.translation[1],
+                     tz = node.translation.empty() ? 0 : node.translation[2];
+        const double qx = node.rotation.empty() ? 0 : node.rotation[0], qy = node.rotation.empty() ? 0 : node.rotation[1],
+                     qz = node.rotation.empty() ? 0 : node.rotation[2], qw = node.rotation.empty() ? 1 : node.rotation[3];
+        const double sx = node.scale.empty() ? 1 : node.scale[0], sy = node.scale.empty() ? 1 : node.scale[1], sz = node.scale.empty() ? 1 : node.scale[2];
+        const double r[9] = {1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy + qz * qw), 2 * (qx * qz - qy * qw),
+                             2 * (qx * qy - qz * qw), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz + qx * qw),
+                             2 * (qx * qz + qy * qw), 2 * (qy * qz - qx * qw), 1 - 2 * (qx * qx + qy * qy)};
+        return {r[0] * sx, r[1] * sx, r[2] * sx, 0, r[3] * sy, r[4] * sy, r[5] * sy, 0, r[6] * sz, r[7] * sz, r[8] * sz, 0, tx, ty, tz, 1};
+    }
+
+    std::array<double, 16> multiply(const std::array<double, 16>& a, const std::array<double, 16>& b) {
+        std::array<double, 16> out{};
+        for (int c = 0; c < 4; c++)
+            for (int r = 0; r < 4; r++)
+                for (int k = 0; k < 4; k++) out[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k];
+        return out;
+    }
+
+} // namespace
+
+TEST(FbxImport, ClipOnlyFile) {
+    // Unity's Model@Clip.fbx: the skeleton and a take, no geometry (spec S94 F39)
+    std::string text = readText(fixture);
+    for (const char* block : {"Geometry: 100,", "Geometry: 702,", "Model: 200,", "Material: 300,", "Texture: 310,", "Deformer: 600,",
+                              "Deformer: 601,", "Deformer: 602,", "Deformer: 700,", "Deformer: 701,", "AnimationCurveNode: 804,",
+                              "AnimationCurve: 805,"}) {
+        text = withoutBlock(text, block);
+    }
+    text = withoutConnections(text, {"100", "702", "200", "300", "310", "600", "601", "602", "700", "701", "804", "805"});
+    FbxProject project("cliponly", text);
+    const FbxImporter::Result result = FbxImporter::import(project.fbx, project.glb, project.assets);
+    ASSERT_TRUE(result.success) << result.error;
+    tinygltf::Model model;
+    ASSERT_TRUE(project.load(model));
+    EXPECT_TRUE(model.meshes.empty());
+    EXPECT_GE(nodeNamed(model, "Root"), 0);
+    const int bone = nodeNamed(model, "Bone");
+    ASSERT_GE(bone, 0);
+    ASSERT_EQ(model.animations.size(), 1u);
+    EXPECT_EQ(model.animations[0].name, "Take 001");
+    bool rotation = false;
+    for (const tinygltf::AnimationChannel& channel : model.animations[0].channels) {
+        rotation |= channel.target_node == bone && channel.target_path == "rotation";
+    }
+    EXPECT_TRUE(rotation);
+
+    // neither geometry nor a take still fails
+    FbxProject empty("cliponly-empty", withoutConnections(withoutBlock(withoutBlock(withoutBlock(withoutBlock(text,
+        "AnimationStack: 800,"), "AnimationLayer: 801,"), "AnimationCurveNode: 802,"), "AnimationCurve: 803,"), {"800", "801", "802", "803"}));
+    const FbxImporter::Result failed = FbxImporter::import(empty.fbx, empty.glb, empty.assets);
+    EXPECT_FALSE(failed.success);
+    EXPECT_NE(failed.error.find("no triangle meshes"), std::string::npos) << failed.error;
+}
+
+TEST(FbxImport, RestPoseFirstFrame) {
+    FbxProject project("restpose", withRootTranslationTake(readText(fixture)));
+    ASSERT_TRUE(FbxImporter::import(project.fbx, project.glb, project.assets).success);
+    tinygltf::Model nodeValues;
+    ASSERT_TRUE(project.load(nodeValues));
+    ASSERT_EQ(translationOf(nodeValues, "Root").size(), 3u);
+    EXPECT_NEAR(translationOf(nodeValues, "Root")[1], -1.0, 1e-6) << "Node Values keeps the node's own translation";
+    const std::string defaultSource = FbxImporter::getSourceId(project.fbx);
+
+    // First Frame: the take's first frame is the nodes' pose; the setting is part of the import
+    writeMeta(project.fbx, "    restPose: first_frame\n");
+    EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets), FbxImporter::State::Stale);
+    EXPECT_NE(FbxImporter::getSourceId(project.fbx), defaultSource);
+    const FbxImporter::Result result = FbxImporter::import(project.fbx, project.glb, project.assets);
+    ASSERT_TRUE(result.success) << result.error;
+    EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets), FbxImporter::State::UpToDate);
+    tinygltf::Model firstFrame;
+    ASSERT_TRUE(project.load(firstFrame));
+    EXPECT_NEAR(translationOf(firstFrame, "Root")[1], -3.0, 1e-5);
+    EXPECT_EQ(FbxImporter::getImportId(firstFrame), FbxImporter::getSourceId(project.fbx));
+    // the bind pose is kept: the inverse bind matrices are the file's
+    ASSERT_EQ(firstFrame.skins.size(), 1u);
+    EXPECT_EQ(accessorFloats(firstFrame, firstFrame.skins[0].inverseBindMatrices),
+              accessorFloats(nodeValues, nodeValues.skins[0].inverseBindMatrices));
+
+    // a take the file does not have: the first one, with a warning
+    writeMeta(project.fbx, "    restPose: first_frame\n    restPoseTake: Run\n");
+    const FbxImporter::Result unknown = FbxImporter::import(project.fbx, project.glb, project.assets);
+    ASSERT_TRUE(unknown.success) << unknown.error;
+    EXPECT_NE(std::find_if(unknown.warnings.begin(), unknown.warnings.end(),
+        [](const std::string& w) { return w.find("'Run'") != std::string::npos; }), unknown.warnings.end());
+}
+
+TEST(FbxImport, RestPoseSkipsTakesThatAnimateNothing) {
+    // CLEIVER's file: empty takes before the one that animates (no clip is made of them), so the
+    // default take is the first clip, the one the Inspector shows
+    std::string text = replaced(withRootTranslationTake(readText(fixture)), "\tAnimationStack: 800,",
+        "\tAnimationStack: 790, \"AnimStack::Empty\", \"\" {\n\t}\n\tAnimationLayer: 791, \"AnimLayer::BaseLayer\", \"\" {\n\t}\n"
+        "\tAnimationStack: 800,");
+    text = replaced(text, "\tC: \"OO\",801,800\n", "\tC: \"OO\",791,790\n\tC: \"OO\",801,800\n");
+    FbxProject project("restpose-empty-take", text);
+    writeMeta(project.fbx, "    restPose: first_frame\n");
+    const FbxImporter::Result result = FbxImporter::import(project.fbx, project.glb, project.assets);
+    ASSERT_TRUE(result.success) << result.error;
+    tinygltf::Model model;
+    ASSERT_TRUE(project.load(model));
+    ASSERT_EQ(model.animations.size(), 1u);
+    EXPECT_EQ(model.animations[0].name, "Take 001");
+    ASSERT_EQ(translationOf(model, "Root").size(), 3u);
+    EXPECT_NEAR(translationOf(model, "Root")[1], -3.0, 1e-5) << "the first clip's first frame, not the empty first take's";
+}
+
+TEST(FbxImport, SubmeshOrderFollowsMaterialSlots) {
+    FbxImporter::setDefaultUsedMaterialsOrder(false);
+    // three slots: 0 unused, then the faces' materials 1 and 2, the first face on slot 1 (B's
+    // eyes/body case: the empty slot shifted every later submesh by one)
+    std::string text = readText(fixture);
+    text = replaced(text, "\t\t\tMappingInformationType: \"AllSame\"\n\t\t\tReferenceInformationType: \"IndexToDirect\"\n\t\t\tMaterials: *1 {\n\t\t\t\ta: 0\n",
+        "\t\t\tMappingInformationType: \"ByPolygon\"\n\t\t\tReferenceInformationType: \"IndexToDirect\"\n\t\t\tMaterials: *6 {\n\t\t\t\ta: 1,1,2,2,1,2\n");
+    text = withObjects(text,
+        "\tMaterial: 301, \"Material::Body\", \"\" {\n\t\tVersion: 102\n\t\tShadingModel: \"phong\"\n\t}\n"
+        "\tMaterial: 302, \"Material::Eyes\", \"\" {\n\t\tVersion: 102\n\t\tShadingModel: \"phong\"\n\t}\n",
+        "");
+    text = replaced(text, "\tC: \"OO\",300,200\n", "\tC: \"OO\",300,200\n\tC: \"OO\",301,200\n\tC: \"OO\",302,200\n");
+    FbxProject project("submeshes", text);
+    const FbxImporter::Result result = FbxImporter::import(project.fbx, project.glb, project.assets);
+    ASSERT_TRUE(result.success) << result.error;
+    tinygltf::Model model;
+    ASSERT_TRUE(project.load(model));
+    ASSERT_EQ(model.meshes.size(), 1u);
+    const std::vector<tinygltf::Primitive>& primitives = model.meshes[0].primitives;
+    ASSERT_EQ(primitives.size(), 3u) << "the empty slot 0 keeps its index";
+    const char* names[] = {"Checker", "Body", "Eyes"};
+    for (int i = 0; i < 3; i++) {
+        ASSERT_TRUE(primitives[i].extras.Has("fbxMaterialSlot")) << i;
+        EXPECT_EQ(primitives[i].extras.Get("fbxMaterialSlot").GetNumberAsInt(), i);
+        EXPECT_EQ(primitives[i].extras.Get("fbxMaterial").Get<std::string>(), names[i]);
+        ASSERT_GE(primitives[i].material, 0);
+        EXPECT_EQ(model.materials[static_cast<size_t>(primitives[i].material)].name, names[i]);
+    }
+    EXPECT_TRUE(primitives[0].extras.Has("fbxEmptySlot"));
+    EXPECT_EQ(model.accessors[static_cast<size_t>(primitives[0].indices)].count, 3u) << "one triangle that draws nothing";
+    EXPECT_EQ(model.accessors[static_cast<size_t>(primitives[1].indices)].count, 18u);
+    EXPECT_EQ(model.accessors[static_cast<size_t>(primitives[2].indices)].count, 18u);
+    EXPECT_FALSE(primitives[1].extras.Has("fbxEmptySlot"));
+
+    // a project made before (FBX Submesh Order Used Materials, set by its migration) keeps the old
+    // order, the used slots only, so its saved submesh values stay put; the order is part of the
+    // import, so switching it reimports
+    const std::string slotsSource = FbxImporter::getSourceId(project.fbx);
+    FbxImporter::setDefaultUsedMaterialsOrder(true);
+    struct RestoreOrder {
+        ~RestoreOrder() { FbxImporter::setDefaultUsedMaterialsOrder(false); }
+    } restoreOrder;
+    EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets), FbxImporter::State::Stale);
+    EXPECT_NE(FbxImporter::getSourceId(project.fbx), slotsSource);
+    const FbxImporter::Result legacy = FbxImporter::import(project.fbx, project.glb, project.assets);
+    ASSERT_TRUE(legacy.success) << legacy.error;
+    EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets), FbxImporter::State::UpToDate);
+    tinygltf::Model used;
+    ASSERT_TRUE(project.load(used));
+    ASSERT_EQ(used.meshes.size(), 1u);
+    const std::vector<tinygltf::Primitive>& usedPrimitives = used.meshes[0].primitives;
+    ASSERT_EQ(usedPrimitives.size(), 2u) << "the empty slot 0 makes no submesh";
+    const char* usedNames[] = {"Body", "Eyes"};
+    for (int i = 0; i < 2; i++) {
+        ASSERT_GE(usedPrimitives[i].material, 0);
+        EXPECT_EQ(used.materials[static_cast<size_t>(usedPrimitives[i].material)].name, usedNames[i]);
+        EXPECT_FALSE(usedPrimitives[i].extras.Has("fbxEmptySlot"));
+    }
+    EXPECT_EQ(FbxImporter::getImportId(used), FbxImporter::getSourceId(project.fbx));
+}
+
+TEST(FbxImport, SkinnedGeometricTransform) {
+    // CLEIVER's case (R22): the skinned mesh has a geometric translation and its parents a
+    // pre-rotation and a non-unit scale. The import's bind pose must skin where ufbx does.
+    std::string text = readText(fixture);
+    text = replaced(text, "\tModel: 200, \"Model::Cube\", \"Mesh\" {\n\t\tVersion: 232\n\t\tProperties70:  {\n",
+        "\tModel: 200, \"Model::Cube\", \"Mesh\" {\n\t\tVersion: 232\n\t\tProperties70:  {\n"
+        "\t\t\tP: \"GeometricTranslation\", \"Vector3D\", \"Vector\", \"\",0.5,0.25,0\n");
+    text = withObjects(text,
+        "\tModel: 210, \"Model::Rig\", \"Null\" {\n\t\tVersion: 232\n\t\tProperties70:  {\n"
+        "\t\t\tP: \"RotationActive\", \"bool\", \"\", \"\",1\n\t\t\tP: \"PreRotation\", \"Vector3D\", \"Vector\", \"\",-90,0,0\n"
+        "\t\t\tP: \"Lcl Scaling\", \"Lcl Scaling\", \"\", \"A\",0.5,0.5,0.5\n\t\t\tP: \"Lcl Translation\", \"Lcl Translation\", \"\", \"A\",0,2.8,0\n"
+        "\t\t}\n\t\tShading: T\n\t\tCulling: \"CullingOff\"\n\t}\n",
+        "\tC: \"OO\",210,0\n");
+    text = replaced(text, "\tC: \"OO\",200,0\n", "\tC: \"OO\",200,210\n");
+    text = replaced(text, "\tC: \"OO\",400,0\n", "\tC: \"OO\",400,210\n");
+    FbxProject project("geometric", text);
+    const FbxImporter::Result result = FbxImporter::import(project.fbx, project.glb, project.assets);
+    ASSERT_TRUE(result.success) << result.error;
+    tinygltf::Model model;
+    ASSERT_TRUE(project.load(model));
+
+    // ufbx's own evaluation of the skin at the take's start, loaded as the importer loads
+    ufbx_load_opts options = {};
+    options.target_axes = ufbx_axes_right_handed_y_up;
+    options.target_unit_meters = 1.0;
+    options.space_conversion = UFBX_SPACE_CONVERSION_MODIFY_GEOMETRY;
+    options.geometry_transform_handling = UFBX_GEOMETRY_TRANSFORM_HANDLING_MODIFY_GEOMETRY;
+    options.inherit_mode_handling = UFBX_INHERIT_MODE_HANDLING_COMPENSATE;
+    options.pivot_handling = UFBX_PIVOT_HANDLING_ADJUST_TO_PIVOT;
+    options.geometry_transform_helper_name.data = "GeometryTransformHelper";
+    options.geometry_transform_helper_name.length = SIZE_MAX;
+    options.scale_helper_name.data = "ScaleHelper";
+    options.scale_helper_name.length = SIZE_MAX;
+    options.clean_skin_weights = true;
+    ufbx_error error;
+    ufbx_scene* scene = ufbx_load_file(project.fbx.string().c_str(), &options, &error);
+    ASSERT_NE(scene, nullptr);
+    ufbx_evaluate_opts evaluate = {};
+    evaluate.evaluate_skinning = true;
+    ufbx_scene* posed = ufbx_evaluate_scene(scene, scene->anim, 0.0, &evaluate, &error);
+    ASSERT_NE(posed, nullptr);
+    std::vector<std::array<double, 3>> expected;
+    for (const ufbx_mesh* mesh : posed->meshes) {
+        const ufbx_matrix toWorld = mesh->skinned_is_local && mesh->instances.count > 0 ? mesh->instances.data[0]->geometry_to_world
+                                                                                       : ufbx_identity_matrix;
+        for (size_t i = 0; i < mesh->num_indices; i++) {
+            const ufbx_vec3 p = ufbx_transform_position(&toWorld, ufbx_get_vertex_vec3(&mesh->skinned_position, i));
+            expected.push_back({p.x, p.y, p.z});
+        }
+    }
+    ufbx_free_scene(posed);
+    ufbx_free_scene(scene);
+    ASSERT_FALSE(expected.empty());
+
+    // the glb's: each joint's global matrix times its inverse bind, weighted
+    std::vector<std::array<double, 16>> globals(model.nodes.size());
+    std::vector<int> parent(model.nodes.size(), -1);
+    for (size_t n = 0; n < model.nodes.size(); n++)
+        for (int child : model.nodes[n].children) parent[static_cast<size_t>(child)] = static_cast<int>(n);
+    for (size_t n = 0; n < model.nodes.size(); n++) {
+        std::array<double, 16> m = nodeMatrix(model.nodes[n]);
+        for (int p = parent[n]; p >= 0; p = parent[static_cast<size_t>(p)]) m = multiply(nodeMatrix(model.nodes[static_cast<size_t>(p)]), m);
+        globals[n] = m;
+    }
+    ASSERT_EQ(model.skins.size(), 1u);
+    const tinygltf::Skin& skin = model.skins[0];
+    const std::vector<float> inverseBinds = accessorFloats(model, skin.inverseBindMatrices);
+    const tinygltf::Primitive& primitive = model.meshes[0].primitives[0];
+    const std::vector<float> positions = accessorFloats(model, primitive.attributes.at("POSITION"));
+    const std::vector<float> weights = accessorFloats(model, primitive.attributes.at("WEIGHTS_0"));
+    const tinygltf::Accessor& jointAccessor = model.accessors[static_cast<size_t>(primitive.attributes.at("JOINTS_0"))];
+    const tinygltf::BufferView& jointView = model.bufferViews[static_cast<size_t>(jointAccessor.bufferView)];
+    const uint16_t* joints = reinterpret_cast<const uint16_t*>(model.buffers[0].data.data() + jointView.byteOffset + jointAccessor.byteOffset);
+    double worst = 0.0;
+    for (size_t v = 0; v < positions.size() / 3; v++) {
+        double skinned[3] = {0, 0, 0};
+        for (int k = 0; k < 4; k++) {
+            const float w = weights[v * 4 + static_cast<size_t>(k)];
+            if (w <= 0.0f) continue;
+            const uint16_t joint = joints[v * 4 + static_cast<size_t>(k)];
+            std::array<double, 16> ibm{};
+            for (int i = 0; i < 16; i++) ibm[static_cast<size_t>(i)] = inverseBinds[static_cast<size_t>(joint) * 16 + static_cast<size_t>(i)];
+            const std::array<double, 16> m = multiply(globals[static_cast<size_t>(skin.joints[joint])], ibm);
+            for (int r = 0; r < 3; r++)
+                skinned[r] += w * (m[0 * 4 + r] * positions[v * 3] + m[1 * 4 + r] * positions[v * 3 + 1] + m[2 * 4 + r] * positions[v * 3 + 2] + m[12 + r]);
+        }
+        double nearest = 1e30;
+        for (const auto& e : expected) {
+            nearest = std::min(nearest, std::sqrt((e[0] - skinned[0]) * (e[0] - skinned[0]) + (e[1] - skinned[1]) * (e[1] - skinned[1]) +
+                                                  (e[2] - skinned[2]) * (e[2] - skinned[2])));
+        }
+        worst = std::max(worst, nearest);
+    }
+    EXPECT_LT(worst, 1e-4) << "the bind pose skins away from ufbx's evaluation";
 }

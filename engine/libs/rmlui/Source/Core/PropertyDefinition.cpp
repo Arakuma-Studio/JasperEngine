@@ -51,6 +51,7 @@ PropertyDefinition& PropertyDefinition::AddParser(const String& parser_name, con
 			}
 
 			new_parser.parameters[parameter.substr(0, i_equal)] = parameter_value;
+			new_parser.ordered_parameters.emplace_back(parameter.substr(0, i_equal), parameter_value);
 			parameter_value += 1;
 		}
 	}
@@ -134,7 +135,7 @@ bool PropertyDefinition::GetValue(String& value, const Property& property) const
 		}
 
 		int keyword = property.value.Get<int>();
-		for (const auto& name_keyword : parsers[parser_index].parameters)
+		for (const auto& name_keyword : parsers[parser_index].ordered_parameters)
 		{
 			if (name_keyword.second == keyword)
 			{

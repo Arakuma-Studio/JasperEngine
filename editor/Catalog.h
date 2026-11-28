@@ -114,6 +114,9 @@ namespace jasperengine::editor{
         UpdateFlags_Button              = (uint64_t)1 << 56,
         // a Grid, Tilemap Layer or Tilemap Collider 2D field (S50): their chunks rebuild
         UpdateFlags_TileLayer           = (uint64_t)1 << 57,
+        // a Vertex Colors field (V1 R15): its data reads again when `data` changed and its streams bind
+        // again (enabled, format, initial value)
+        UpdateFlags_VertexColors        = (uint64_t)1 << 58,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -256,12 +259,20 @@ namespace jasperengine::editor{
         // freezes far or unloaded-ground GameObjects (culling-group-and-simulation-distance R10)
         SimulationCullingComponent,
         // plays a .dialogue (dialogue-graphs.md R13)
-        DialogueRunnerComponent
+        DialogueRunnerComponent,
+        // QuickOutline: outlines its Mesh and the Meshes below it (S94 F22)
+        OutlineComponent,
+        // deforms its Sprite with bone GameObjects (S94 F49)
+        SpriteSkinComponent,
+        // the vertex colors of one placed Model or Mesh, in a .vcolors (V1 R1)
+        VertexColorsComponent,
+        // a place with its own fog look, blended by the camera's position (docs/specs/S101-vapor.md R40)
+        FogZoneComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::DialogueRunnerComponent;
+    constexpr ComponentType LastComponentType = ComponentType::FogZoneComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;
@@ -730,6 +741,11 @@ namespace jasperengine::editor{
                     return scene->getPhysics2DSubSteps();
                 }
             }
+            else if (propertyName == "fixed_timestep") {
+                if constexpr (std::is_same_v<T, float>) {
+                    return scene->getFixedTimestep();
+                }
+            }
             else if (propertyName == "light_state") {
                 if constexpr (std::is_same_v<T, LightState>) {
                     return scene->getLightState();
@@ -1052,6 +1068,9 @@ namespace jasperengine::editor{
             else if (propertyName == "physics_2d_sub_steps") {
                 if constexpr (std::is_same_v<T, int>) return d.physics2DSubSteps;
             }
+            else if (propertyName == "fixed_timestep") {
+                if constexpr (std::is_same_v<T, float>) return d.fixedTimestep;
+            }
             else if (propertyName == "light_state") {
                 if constexpr (std::is_same_v<T, LightState>) return d.lightState;
             }
@@ -1349,6 +1368,11 @@ namespace jasperengine::editor{
             else if (propertyName == "physics_2d_sub_steps") {
                 if constexpr (std::is_same_v<T, int>) {
                     scene->setPhysics2DSubSteps(value);
+                }
+            }
+            else if (propertyName == "fixed_timestep") {
+                if constexpr (std::is_same_v<T, float>) {
+                    scene->setFixedTimestep(value);
                 }
             }
             else if (propertyName == "light_state") {

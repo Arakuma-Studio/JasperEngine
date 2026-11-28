@@ -100,6 +100,7 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kReflectionProbeDesc;
     extern const ComponentDesc kUIDocumentDesc;
     extern const ComponentDesc kLocalVolumetricFogDesc;
+    extern const ComponentDesc kFogZoneDesc;
     extern const ComponentDesc kVolumetricCloudsDesc;
     extern const ComponentDesc kFluidSimulationDesc;
     extern const ComponentDesc kLatticeDesc;
@@ -163,6 +164,12 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kVehicleDrivetrainDesc;
     extern const ComponentDesc kSimulationCullingDesc;
     extern const ComponentDesc kDialogueRunnerDesc;
+    // OutlineReflect.cpp (S94)
+    extern const ComponentDesc kOutlineDesc;
+    // editor/reflect/components/SpriteSkinReflect.cpp (S94 F49)
+    extern const ComponentDesc kSpriteSkinDesc;
+    // VertexColorsReflect.cpp (V1)
+    extern const ComponentDesc kVertexColorsDesc;
 
 }
 

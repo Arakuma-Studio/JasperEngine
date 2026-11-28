@@ -192,10 +192,17 @@ namespace jasperengine{
         void syncFontAtlas(TextComponent& text, UIComponent& ui);
         bool loadFontAtlas(TextComponent& text, UIComponent& ui, RectTransformComponent& layout);
         void createText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout);
-        // the pivot, clip, visible characters and indices of a text's glyph quads (pivotStep > 0:
-        // a bitmap text's font pixel, the pivot offsets stay whole font pixels)
-        void finishTextGeometry(TextComponent& text, UIComponent& ui, RectTransformComponent& layout, float ascent, float pivotStep,
-                                bool fillColors, std::vector<uint16_t>& indices);
+        // the anchor, clip, visible characters and indices of a text's glyph quads (pivotStep > 0:
+        // a bitmap text's font pixel, the anchor offsets stay whole font pixels)
+        // S93 R37 Auto Size: the size whose layout fits the fixed box (Text::autoFontSize); true
+        // when the loaded atlas is of another size
+        bool fitTextAutoSize(TextComponent& text, const RectTransformComponent& layout);
+        // a bitmap font's fit: a whole multiple of its native size
+        unsigned int fitBitmapTextAutoSize(const TextComponent& text, const RectTransformComponent& layout) const;
+        // S93 R37: the lines in the box by the Text's alignment (before the anchor places the box)
+        void alignTextGlyphs(TextComponent& text, UIComponent& ui, const RectTransformComponent& layout, float ascent, float pivotStep);
+        void finishTextGeometry(TextComponent& text, UIComponent& ui, RectTransformComponent& layout, float ascent, float capHeight,
+                                float xHeight, float pivotStep, bool fillColors, std::vector<uint16_t>& indices);
         // bitmap fonts (S51, UISystemBitmapText.cpp)
         bool loadBitmapFont(TextComponent& text, UIComponent& ui);
         void createBitmapText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout);
@@ -536,6 +543,11 @@ namespace jasperengine{
         // the canvas scale or the outline/shadow asks for another atlas: flags its rebuild
         void checkTextAtlasOptions(TextComponent& text, UIComponent& ui);
         bool createOrUpdateText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout);
+        // Text:updateLayout (S94 F25): the glyphs and the box size now, only when the text is dirty;
+        // without a camera yet the box is measured and the glyphs built again once there is one
+        bool updateTextLayout(TextComponent& text, UIComponent& ui, RectTransformComponent& layout);
+        // the Anchor along x: the share of the text's box left of its origin (0 left, 0.5 centre, 1 right)
+        static float textAnchorX(const TextComponent& text);
 
         // advanced UIs
         void createButtonObjects(Entity entity, ButtonComponent& button);

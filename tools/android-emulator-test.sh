@@ -27,6 +27,14 @@
 #                       engine's 'Graphics:' line), the process still running and no crash; the
 #                       font scale is restored after. The screenshot is the one before it: the
 #                       relaunched scene is still loading after the new view.
+#   --view-loss         once the engine's ready line is in, the app goes to the background (Home),
+#                       gets a trim-memory call (COMPLETE: APP_CMD_LOW_MEMORY without a window drops
+#                       the EGL context) and comes back from the launcher. The run then needs a new
+#                       view (the engine's 'Graphics:' line) and the expected lines, which may come
+#                       from either side of the return (the ready line is required before it, not in
+#                       the --ordered list)
+#   --once TEXT         a line containing TEXT may appear at most once (repeatable), e.g. what a
+#                       library logs when it initialises
 #   --kill-relaunch-after TEXT  once a logcat line contains TEXT, send the app to the background
 #                       (HOME), kill its process (am kill, as Android does to a backgrounded app)
 #                       and launch it again; the expected lines are then checked on the new
@@ -108,7 +116,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
-    sed -n '2,84p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,106p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2
 }
 
@@ -150,6 +158,8 @@ SECONDS_TO_RUN=20
 TWO_FINGER_TAP=0
 TAP_AFTER=10
 RELAUNCH=0
+VIEW_LOSS=0
+ONCES=()
 KILL_AFTER=""
 LOCALE_CHANGE=""
 IME_AFTER=""
@@ -174,6 +184,8 @@ while [[ $# -gt 0 ]]; do
         --two-finger-tap) TWO_FINGER_TAP=1; shift ;;
         --tap-after) TAP_AFTER="$2"; shift 2 ;;
         --relaunch) RELAUNCH=1; shift ;;
+        --view-loss) VIEW_LOSS=1; shift ;;
+        --once) ONCES+=("$2"); shift 2 ;;
         --kill-relaunch-after) KILL_AFTER="$2"; shift 2 ;;
         --locale-change) LOCALE_CHANGE="$2"; shift 2 ;;
         --ime) IME_AFTER="$2"; shift 2 ;;
@@ -233,10 +245,11 @@ fi
 
 # the expectations go in through a file: any character survives (the ready line last: it comes
 # after what the scenes log as they start; the presented line after it)
-(( READY )) && EXPECTS+=("I/JasperEngine: Engine ready:")
+(( READY && ! VIEW_LOSS )) && EXPECTS+=("I/JasperEngine: Engine ready:")
 [[ -n "$GOLDEN" ]] && EXPECTS+=("I/JasperEngine: Engine presented:")
 printf '%s\n' ${EXPECTS[@]+"${EXPECTS[@]}"} > "$ROOT/$OUT/expect-all.txt"
 printf '%s\n' ${FORBIDS[@]+"${FORBIDS[@]}"} > "$ROOT/$OUT/forbid.txt"
+printf '%s\n' ${ONCES[@]+"${ONCES[@]}"} > "$ROOT/$OUT/once.txt"
 
 TTY_FLAGS=()
 [[ -t 0 && -t 1 ]] && TTY_FLAGS=(-it)
@@ -250,7 +263,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     -v "$ROOT:/src" -w /src \
     -e HOME=/src/build/.cache/home \
     -e APK="$APK_IN" -e BUNDLETOOL="$BUNDLETOOL_IN" -e OUT="/src/$OUT" -e ORDERED="$ORDERED" -e TIMEOUT="$TIMEOUT" -e SECONDS_TO_RUN="$SECONDS_TO_RUN" \
-    -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" -e RELAUNCH="$RELAUNCH" -e LOCALE_CHANGE="$LOCALE_CHANGE" \
+    -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" -e RELAUNCH="$RELAUNCH" -e VIEW_LOSS="$VIEW_LOSS" -e READY="$READY" -e LOCALE_CHANGE="$LOCALE_CHANGE" \
     -e IME_AFTER="$IME_AFTER" -e IME_EDITOR_INFO="$IME_EDITOR_INFO" \
     -e EXPECT_NATIVE_CRASH="$EXPECT_NATIVE_CRASH" -e KILL_AFTER="$KILL_AFTER" \
     -e SCENES="${SCENES[*]+"${SCENES[*]}"}" -e SETPROPS="$SETPROP_LINES" -e SCREENSHOT_ON_PRESENT="$([[ -n "$GOLDEN" ]] && echo 1 || echo 0)" \
@@ -404,6 +417,46 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             fi
 
             if grep -q . "$DIR/expect.txt"; then WAIT=$TIMEOUT; else WAIT=$SECONDS_TO_RUN; fi
+            # the view lost in the background and made again: after the first view is ready
+            viewloss=""
+            if [[ "$VIEW_LOSS" == 1 ]]; then
+                start=$SECONDS
+                while true; do
+                    adb logcat -d -v tag > "$DIR/logcat.txt"
+                    adb logcat -d -v threadtime > "$DIR/logcat-full.txt"
+                    crashes="$(grep -E "FATAL EXCEPTION|Fatal signal|>>> $PACKAGE <<<" "$DIR/logcat-full.txt" | head -10 || true)"
+                    [[ -n "$crashes" ]] && break
+                    [[ "$READY" != 1 ]] && (( SECONDS - start > SECONDS_TO_RUN )) && break
+                    grep -q "I/JasperEngine: Engine ready:" "$DIR/logcat.txt" && break
+                    (( SECONDS - start > TIMEOUT )) && break
+                    sleep 2
+                done
+                if [[ -z "$crashes" ]] && { [[ "$READY" != 1 ]] || grep -q "I/JasperEngine: Engine ready:" "$DIR/logcat.txt"; }; then
+                    # frames of the first view before it goes
+                    sleep 5
+                    views="$(grep -c "I/JasperEngine: Graphics:" "$DIR/logcat.txt" || true)"
+                    log "view loss: Home, then a trim-memory call (COMPLETE), then the launcher"
+                    adb shell input keyevent KEYCODE_HOME
+                    sleep 4
+                    adb shell am send-trim-memory "$PACKAGE" COMPLETE > "$DIR/trim-memory.txt" 2>&1 || true
+                    sleep 4
+                    adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+                    start=$SECONDS
+                    while true; do
+                        sleep 2
+                        adb logcat -d -v tag > "$DIR/logcat.txt"
+                        (( $(grep -c "I/JasperEngine: Graphics:" "$DIR/logcat.txt" || true) > views )) && break
+                        (( SECONDS - start > TIMEOUT )) && break
+                    done
+                    if (( $(grep -c "I/JasperEngine: Graphics:" "$DIR/logcat.txt" || true) > views )); then
+                        viewloss="found        a new view after the return (I/JasperEngine: Graphics:)"
+                    else
+                        viewloss="MISSING      a new view after the return (I/JasperEngine: Graphics:; trim-memory: $(tr -d "\r\n" < "$DIR/trim-memory.txt"))"
+                    fi
+                else
+                    viewloss="MISSING      the ready line of the engine before the view loss"
+                fi
+            fi
             start=$SECONDS
             while true; do
                 adb logcat -d -v tag > "$DIR/logcat.txt"
@@ -521,6 +574,15 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
                 echo "$relaunched" >> "$DIR/result.txt"
                 [[ "$relaunched" == found* ]] || result=1
             fi
+            if [[ -n "$viewloss" ]]; then
+                echo "$viewloss" >> "$DIR/result.txt"
+                [[ "$viewloss" == found* ]] || result=1
+            fi
+            while IFS= read -r once; do
+                [[ -z "$once" ]] && continue
+                n="$(grep -c -F -- "$once" "$DIR/logcat.txt" || true)"
+                if (( n > 1 )); then echo "MORE THAN ONCE $n lines contain: $once" >> "$DIR/result.txt"; result=1; fi
+            done < "$OUT/once.txt"
             if [[ -n "$localechanged" ]]; then
                 echo "$localechanged" >> "$DIR/result.txt"
                 [[ "$localechanged" == found* ]] || result=1

@@ -58,6 +58,7 @@
 #include "pool/SoundPool.h"
 #include "subsystem/AudioSystem.h"
 #include "Project.h"
+#include "recorder/RecorderSession.h"
 #include "Screen.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
@@ -76,6 +77,7 @@
 #include "object/physics/Rigidbody2D.h"
 #include "subsystem/NavigationSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "object/GameObject.h"
 #include "script/LuaBinding.h"
 #include "script/ScriptScheduler.h"
 #include "script/ScriptRuntime.h"
@@ -198,6 +200,7 @@ struct TimeControl {
 struct PlayToolsState {
     McpContext* frameHookCtx = nullptr;  // afterGameFrame's context
     TimeControl time;
+    bool clockSettingsDeferred = false;
     SessionRecord current;
     SessionRecord last;
     uint64_t serialCounter = 0;
@@ -292,8 +295,15 @@ void finishStartWaits(McpContext& ctx);
 
 // The MCP's time_scale / fixed_fps on the Engine (Project resets both when play stops)
 void applyTimeSettings() {
-    if (state().clockOwnedByTests) return;
-    const TimeControl& t = state().time;
+    PlayToolsState& s = state();
+    if (s.clockOwnedByTests) return;
+    // A capture keeps its timestep when the monitor first notices its Play session.
+    if (recorder::RecorderSession::get().recording()) {
+        s.clockSettingsDeferred = true;
+        return;
+    }
+    s.clockSettingsDeferred = false;
+    const TimeControl& t = s.time;
     Engine::setTimeScale(static_cast<float>(t.timeScale));
     // a replay's or a Record Input session's frame rate wins (its file's fixed_fps)
     const int sessionFps = recordinput::RecordInput::get().sessionFixedFps();
@@ -310,9 +320,11 @@ void applyHold(McpContext& ctx) {
     const uint32_t playId = project ? project->getPlaySessionSceneId() : NULL_PROJECT_SCENE;
     SceneProject* sp = playId != NULL_PROJECT_SCENE ? project->getScene(playId) : nullptr;
     const bool running = sp && isRunningState(sp->playState) && s.current.active;
-    // Record Input and replays hold the game until their scene runs and while a shot is read
-    const bool hold = (running && ((s.time.autoPause && s.time.advancers == 0 && s.current.ranFirstFrame) || s.time.shotHolds > 0)) ||
-                      recordinput::RecordInput::get().wantsHold();
+    // Record Input and replays hold the game until their scene runs and while a shot is read; a
+    // capture owns its load-settling hold and advances independently of MCP auto-pause
+    const auto& recorderSession = recorder::RecorderSession::get();
+    const bool hold = recorderSession.isHoldingFrame() || (running && s.time.shotHolds > 0) || recordinput::RecordInput::get().wantsHold() ||
+        (!recorderSession.recording() && running && s.time.autoPause && s.time.advancers == 0 && s.current.ranFirstFrame);
     if (Engine::isSimulationHeld() != hold) Engine::setSimulationHeld(hold);
 }
 
@@ -431,6 +443,10 @@ void observeSession(McpContext& ctx) {
         }
     }
 
+    if (s.clockSettingsDeferred && !recorder::RecorderSession::get().recording()) {
+        if (s.current.active) applyTimeSettings();
+        else s.clockSettingsDeferred = false;
+    }
     applyHold(ctx);
     finishStartWaits(ctx);
 }
@@ -679,7 +695,10 @@ Json platformJson() {
         {"device", simulation.device ? Json(simulation.device->id) : Json()},
         {"opened_urls", urls},
         {"vibrations", Platform::getVibrationCount()},
-        {"haptics", Platform::getHapticCount()}
+        {"haptics", Platform::getHapticCount()},
+        // send_input app view_lost / view_restored of this Play
+        {"lifecycle", {{"view_lost", Platform::getViewLostCount()}, {"view_restored", Platform::getViewRestoredCount()},
+                       {"view", Platform::isViewLostSimulated() ? "lost" : "loaded"}}}
     };
     if (Platform::getOpenedUrlCount() > (int)urls.size()) out["opened_url_count"] = Platform::getOpenedUrlCount();
     return out;
@@ -2348,6 +2367,9 @@ Json cppMemberJson(Project* project, SceneProject* sp, const ScriptProperty& pro
             if (!ref.isSet()) return nullptr;
             return Json{{"path", ref.path}, {"guid", ref.guid.str()}};
         }
+        case ScriptPropertyType::List:
+            // a Lua property type: no C++ member holds one
+            break;
     }
     return nullptr;
 }
@@ -2675,6 +2697,23 @@ void getRuntimeEntityTool(const CallPtr& call) {
                 }
             }
             addRuntimeState(sp->scene, entity, type, onlyProps, props);
+            // the world pose as a script's getWorldPosition() reads it now (S95 REQ-6), not the last
+            // transform pass's: what eval_lua or set_runtime_property moved since shows
+            if (type == ComponentType::Transform) {
+                // (through GameObject: Transform.h here would rebuild one editor unit too many, check_fanout)
+                const GameObject object(sp->scene, entity);
+                Vector3 position = object.getWorldPosition();
+                Quaternion rotation = object.getWorldRotation();
+                Vector3 scale = object.getWorldScale();
+                auto world = [&](const char* name, PropertyType kind, void* value) {
+                    if (!onlyProps.empty() && !onlyProps.count(name)) return;
+                    PropertyData data{kind, 0, nullptr, value};
+                    props[name] = McpValues::readProperty(ctx, name, data);
+                };
+                world("worldPosition", PropertyType::Vector3, &position);
+                world("worldRotation", PropertyType::Quat, &rotation);
+                world("worldScale", PropertyType::Vector3, &scale);
+            }
         }
         if (type == ComponentType::CameraShakerComponent) {
             props["runtime"] = shakerRuntimeJson(sp->scene->getComponent<CameraShakerComponent>(entity));
@@ -3039,6 +3078,31 @@ input::PlayerHost editorInputHost(const CallPtr& call, const std::shared_ptr<int
     // the window hidden (minimized) and shown again: the game updates without drawing meanwhile
     host.appHidden = [](bool hidden) {
         Platform::setGameHiddenSimulated(hidden);
+        return std::string();
+    };
+    // the running scenes' view lost and loaded again (an Android window, a lost WebGL context, S95
+    // REQ-18): their GPU objects go and come back, what the game made stays. A device loses it only
+    // in the background, so a playing app is paused through the loss
+    host.appViewLost = [c](bool lost) -> std::string {
+        if (lost == Platform::isViewLostSimulated())
+            return lost ? "the view is already lost: send {type: \"app\", action: \"view_restored\"}"
+                        : "the view is not lost: send {type: \"app\", action: \"view_lost\"} first";
+        if (!c->project()) return "No project is open.";
+        std::vector<Scene*> scenes;
+        for (SceneProject* sp : runningScenes(c->project())) {
+            if (sp->scene) scenes.push_back(sp->scene);
+        }
+        if (lost) {
+            const bool pause = !Engine::isPaused();
+            if (pause) Engine::systemPause();
+            Engine::releaseScenesGpu(scenes);
+            Platform::setViewLostSimulated(true, pause);
+        } else {
+            const bool resume = Platform::isViewLossPaused();
+            Engine::restoreScenesGpu(scenes);
+            Platform::setViewLostSimulated(false);
+            if (resume) Engine::systemResume();
+        }
         return std::string();
     };
     // the simulated device turned (configure_game_view device)
@@ -3532,8 +3596,9 @@ void waitTool(const CallPtr& call) {
         } else if (ws->reason == "stalled") {
             text = "The game stopped advancing: no frame" + std::string(gameSeconds > 0.0 && frames <= 0 ? " or game time" : "") +
                    " for " + std::to_string((int)kStallSeconds) + " s (" + elapsed + "; " +
-                   (Engine::isPaused() ? "the app is paused by an app event: send_input {type: \"app\", action: \"resume\"}"
-                                       : "is it rendering, or the time scale 0?") + ").";
+                   (Platform::isViewLostSimulated() ? "the view is lost: send_input {type: \"app\", action: \"view_restored\"}"
+                    : Engine::isPaused() ? "the app is paused by an app event: send_input {type: \"app\", action: \"resume\"}"
+                                         : "is it rendering, or the time scale 0?") + ").";
             isError = true;
         } else if (ws->reason == "time_scale_zero") {
             data["next"] = "the time scale is 0: wait with seconds or frames, or unpause";
@@ -3912,23 +3977,23 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Send Input";
         tool.description =
             "Input into the running game. events in order, {type, ...} (first action: default):\nkey: key "
-            "(space, a, f1...), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods "
+            "(space, a, f1), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods "
             "[shift,ctrl,alt,super]\ntext: text, per_unit (per UTF-16 unit); ime: text, cursor; ime_commit: text; ime_cancel\n"
             "mouse_leave, mouse_enter\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (default: "
             "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)\ntouch: action "
-            "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document CSS selector"
-            "\ngamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + "
+            "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget/to_target: UI Document CSS selector"
+            "\ngamepad: gamepad (0), button (a, dpad_up) + action, or axis (left_x..right_trigger) + "
             "value, x, y/target: warp cursor, or action connect|disconnect\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
-            "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation "
+            "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|view_lost|view_restored|orientation "
             "(+orientation)|back\nwait: frames, ms, or until (Lua; frames caps)\nshot: name. release_all.\n"
             "space: canvas px, normalized/safe_area 0..1, view = Game view px. "
-            "down holds until up/release_all/stop.";
+            "down holds until up/release_all.";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", eventItem}}},
             {"file", string("Script .input.json.")},
             {"space", withDefault(stringEnum("", {"canvas", "normalized", "safe_area", "view"}), "canvas")},
             {"gap_frames", withDefault(integer("Between events.", 0, 1000), 1)},
-            {"frames_after", withDefault(integer("Run before replying.", 0, 100000), 1)},
+            {"frames_after", withDefault(integer("Before replying.", 0, 100000), 1)},
             {"screenshot", screenshotOption},
             {"max_width", maxWidth}
         });

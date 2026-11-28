@@ -35,6 +35,17 @@ namespace jasperengine::htmlui::compat {
         std::function<bool(const std::string& assetPath)> exists;
     };
 
+    // A style sheet a script added to a loaded document (S93 R29, doc:addStyleSheet): compiled with
+    // the document's own sheets, after them in the cascade.
+    struct InjectedStyleSheet {
+        std::string name;   // the source of a text sheet is "injected:<name>" (diagnostics, inspect_ui)
+        std::string css;    // the CSS of a text sheet
+        std::string path;   // the asset path of a .css file (read at each compile; its source is the path)
+
+        bool operator==(const InjectedStyleSheet& other) const{ return name == other.name && css == other.css && path == other.path; }
+        bool operator!=(const InjectedStyleSheet& other) const{ return !(*this == other); }
+    };
+
     // Everything that changes the output of a compile (phase-2 §3.12.1).
     struct CompatOptions {
         ForkFeatures fork = ForkFeatures::present();
@@ -55,6 +66,8 @@ namespace jasperengine::htmlui::compat {
         // (`.dark .x` with <html class="dark">); the id and data-htmlui-* attributes are not in it.
         bool rootAttributesSet = false;
         std::vector<std::pair<std::string, std::string>> rootAttributes;
+        // the injected sheets, in the order they cascade
+        std::vector<InjectedStyleSheet> injectedSheets;
     };
 
 }

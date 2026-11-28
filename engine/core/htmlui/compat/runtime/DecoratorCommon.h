@@ -82,8 +82,9 @@ namespace jasperengine::htmlui::compat::decorators {
     // when pixelated) or an SVG (rasterized by compat at the size it is drawn).
     class Image {
     public:
-        // false (logged once per path) when the file cannot be read or is not an image
-        bool load(Rml::Element* element, const std::string& path);
+        // false (logged once per path) when the file cannot be read or is not an image; syncDecode
+        // (<img decoding="sync">) decodes a raster before the first frame draws it (S93 R18)
+        bool load(Rml::Element* element, const std::string& path, bool syncDecode = false);
 
         bool isSvg() const { return svg != nullptr; }
         // a monochrome currentColor SVG: drawn white, multiplied by the element's CSS color
@@ -98,13 +99,19 @@ namespace jasperengine::htmlui::compat::decorators {
         // repeated along an axis (a background tile) is sampled with repeat wrap there,
         // rasterized at its size rounded up.
         Rml::Texture texture(Rml::Element* element, Rml::Vector2f size, bool repeatX = false, bool repeatY = false);
-        Rml::ColourbPremultiplied colour(Rml::Element* element) const;
+        // the element's image-color (unless imageColor is false: a mask) x opacity, x its CSS color
+        // for a monochrome currentColor SVG
+        Rml::ColourbPremultiplied colour(Rml::Element* element, bool imageColor = true) const;
+        // CSS px per image pixel: the dp ratio for raster images (their intrinsic size), 1 for SVG
+        // (S93 R21: border-image-slice numbers are image pixels at every dp ratio)
+        float imagePixelSize() const { return pixelRatio; }
 
     private:
         std::string source;                      // the resolved path
         Rml::Texture raster;
         std::shared_ptr<const SvgResult> svg;
         Rml::Vector2f intrinsic{0, 0};
+        float pixelRatio = 1.0f;
         Rml::CallbackTexture svgTexture;
         Rml::Vector2i svgTextureSize{0, 0};
         std::string svgTextureXml;

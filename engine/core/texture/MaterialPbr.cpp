@@ -59,7 +59,7 @@ bool MaterialPbrExtensions::Hair::operator == (const Hair& o) const{
 bool MaterialPbrExtensions::operator == (const MaterialPbrExtensions& o) const{
     return clearcoat == o.clearcoat && sheen == o.sheen && anisotropy == o.anisotropy && iridescence == o.iridescence &&
            transmission == o.transmission && volume == o.volume && specular == o.specular && hex == o.hex &&
-           hair == o.hair;
+           hair == o.hair && vertexColor == o.vertexColor;
 }
 
 namespace {
@@ -117,6 +117,10 @@ namespace {
         {"HAS_VOXEL", "Vx"}, {"VOXEL_TIER_HIGH", "Vh"}, {"VOXEL_TIER_MEDIUM", "Vm"}, {"VOXEL_TIER_LOW", "Vl"},
         // S99: a scene's Area Lights and IES Profiles
         {"USE_AREA_LIGHTS", "Ar"}, {"USE_IES", "Ie"},
+        // V1 R70: the Vertex Color section (getVertexColorDefines)
+        {"LIT_VC_OFF", "Wf"}, {"LIT_VC_ALPHA_IGNORED", "Wn"}, {"LIT_VC_RGB_TINT", "Wc"},
+        {"LIT_VC_OCCLUSION", "Wo"}, {"LIT_VC_ROUGHNESS", "Wr"}, {"LIT_VC_ROUGHNESS_SET", "Wq"}, {"LIT_VC_METALLIC", "Wm"},
+        {"LIT_VC_EMISSION", "We"}, {"LIT_VC_OPACITY", "Wa"}, {"LIT_VC_ALBEDO", "Wt"},
     };
     // T3 R54: a bit per entry of a 64-bit mask, so the table may grow past 32 and no further
     static_assert(sizeof(defineCodes) / sizeof(defineCodes[0]) <= 64, "MaterialPbr's define bits are 64 wide");
@@ -323,6 +327,19 @@ bool MaterialPbr::clamp(MaterialPbrExtensions& pbr){
         value = std::clamp(value, field.minValue, field.maxValue);
         clamped = true;
     };
+    // the Vertex Color section's values from a newer writer or a hand edit
+    MaterialPbrExtensions::VertexColor& vertexColor = pbr.vertexColor;
+    if ((int)vertexColor.use < (int)VertexColorUse::TINT || (int)vertexColor.use > (int)VertexColorUse::OFF){
+        vertexColor.use = VertexColorUse::TINT;
+        clamped = true;
+    }
+    for (int channel = 0; channel < 4; channel++){
+        VertexColorTarget& target = vertexColorTarget(vertexColor, channel);
+        if ((int)target < 0 || (int)target >= (int)VertexColorTarget::COUNT){
+            target = VertexColorTarget::NONE;
+            clamped = true;
+        }
+    }
     for (const PbrField& field : getFields()){
         void* ref = field.ref(pbr);
         void* def = field.ref(const_cast<MaterialPbrExtensions&>(defaults));
@@ -426,6 +443,129 @@ int MaterialPbr::getMapTexCoord(const MaterialPbrExtensions& pbr, PbrMap map){
 
 bool MaterialPbr::isColorMap(PbrMap map){
     return map == PbrMap::SHEEN || map == PbrMap::SPECULAR;
+}
+
+namespace {
+
+    // by VertexColorTarget: the define of a mask, its MCP / Lua name and its Inspector label
+    struct VertexColorTargetInfo{
+        const char* define;
+        const char* name;
+        const char* label;
+    };
+    const VertexColorTargetInfo vertexColorTargets[(int)VertexColorTarget::COUNT] = {
+        {nullptr, "none", "None"},
+        {"LIT_VC_OCCLUSION", "occlusion", "Occlusion"},
+        {"LIT_VC_ROUGHNESS", "roughness_multiply", "Roughness (multiply)"},
+        {"LIT_VC_ROUGHNESS_SET", "roughness_replace", "Roughness (replace)"},
+        {"LIT_VC_METALLIC", "metallic", "Metallic"},
+        {"LIT_VC_EMISSION", "emission", "Emission"},
+        {"LIT_VC_OPACITY", "opacity", "Opacity"},
+        {"LIT_VC_ALBEDO", "albedo_tint", "Albedo Tint"},
+    };
+    const char* const vertexColorUseNames[] = {"tint", "masks", "off"};
+    const char* const vertexColorUseLabels[] = {"Tint", "Masks", "Off"};
+
+}
+
+VertexColorTarget& MaterialPbr::vertexColorTarget(MaterialPbrExtensions::VertexColor& vertexColor, int channel){
+    switch (channel){
+        case 0: return vertexColor.r;
+        case 1: return vertexColor.g;
+        case 2: return vertexColor.b;
+        default: return vertexColor.a;
+    }
+}
+
+VertexColorTarget MaterialPbr::getVertexColorTarget(const MaterialPbrExtensions::VertexColor& vertexColor, int channel){
+    return vertexColorTarget(const_cast<MaterialPbrExtensions::VertexColor&>(vertexColor), channel);
+}
+
+std::vector<std::string> MaterialPbr::getVertexColorDefines(const MaterialPbrExtensions& pbr, bool unlit){
+    const MaterialPbrExtensions::VertexColor& vertexColor = pbr.vertexColor;
+    std::vector<std::string> defines;
+    if (vertexColor.use == VertexColorUse::OFF){
+        defines.push_back("LIT_VC_OFF");
+    }else if (vertexColor.use == VertexColorUse::TINT){
+        if (!vertexColor.alphaOpacity)
+            defines.push_back("LIT_VC_ALPHA_IGNORED");
+    }else{
+        bool targets[(int)VertexColorTarget::COUNT] = {};
+        for (int channel = 0; channel < 4; channel++){
+            const int target = (int)getVertexColorTarget(vertexColor, channel);
+            if (target <= 0 || target >= (int)VertexColorTarget::COUNT)
+                continue;
+            // unlit has only a colour: its opacity and albedo
+            if (unlit && target != (int)VertexColorTarget::OPACITY && target != (int)VertexColorTarget::ALBEDO_TINT)
+                continue;
+            targets[target] = true;
+        }
+        const bool rgbUnmapped = vertexColor.r == VertexColorTarget::NONE && vertexColor.g == VertexColorTarget::NONE &&
+                                 vertexColor.b == VertexColorTarget::NONE;
+        for (int target = 1; target < (int)VertexColorTarget::COUNT; target++){
+            if (targets[target])
+                defines.push_back(vertexColorTargets[target].define);
+        }
+        if (defines.empty()){
+            // nothing masked: RGB tints when none of it is mapped, else the colour is ignored
+            defines.push_back(rgbUnmapped ? "LIT_VC_ALPHA_IGNORED" : "LIT_VC_OFF");
+        }else if (rgbUnmapped){
+            defines.push_back("LIT_VC_RGB_TINT");
+        }
+    }
+    std::sort(defines.begin(), defines.end());
+    return defines;
+}
+
+void MaterialPbr::getVertexColorMasks(const MaterialPbrExtensions& pbr, float out[4]){
+    for (int channel = 0; channel < 4; channel++){
+        const int target = (int)getVertexColorTarget(pbr.vertexColor, channel);
+        out[channel] = (pbr.vertexColor.use == VertexColorUse::MASKS && target > 0 && target < (int)VertexColorTarget::COUNT) ? (float)target : 0.0f;
+    }
+}
+
+bool MaterialPbr::isVertexColorDefine(const std::string& define){
+    return define.compare(0, 7, "LIT_VC_") == 0 && isBuiltinLitDefine(define);
+}
+
+const char* MaterialPbr::getVertexColorUseName(VertexColorUse use){
+    const int index = (int)use;
+    return index >= 0 && index < 3 ? vertexColorUseNames[index] : "tint";
+}
+
+bool MaterialPbr::parseVertexColorUse(const std::string& name, VertexColorUse& use){
+    for (int i = 0; i < 3; i++){
+        if (name == vertexColorUseNames[i]){
+            use = (VertexColorUse)i;
+            return true;
+        }
+    }
+    return false;
+}
+
+const char* MaterialPbr::getVertexColorTargetName(VertexColorTarget target){
+    const int index = (int)target;
+    return index >= 0 && index < (int)VertexColorTarget::COUNT ? vertexColorTargets[index].name : "none";
+}
+
+bool MaterialPbr::parseVertexColorTarget(const std::string& name, VertexColorTarget& target){
+    for (int i = 0; i < (int)VertexColorTarget::COUNT; i++){
+        if (name == vertexColorTargets[i].name){
+            target = (VertexColorTarget)i;
+            return true;
+        }
+    }
+    return false;
+}
+
+const char* MaterialPbr::getVertexColorUseLabel(VertexColorUse use){
+    const int index = (int)use;
+    return index >= 0 && index < 3 ? vertexColorUseLabels[index] : "Tint";
+}
+
+const char* MaterialPbr::getVertexColorTargetLabel(VertexColorTarget target){
+    const int index = (int)target;
+    return index >= 0 && index < (int)VertexColorTarget::COUNT ? vertexColorTargets[index].label : "None";
 }
 
 bool MaterialPbr::isMapStripped(PbrMap map, PbrTier tier){

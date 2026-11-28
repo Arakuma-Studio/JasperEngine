@@ -54,7 +54,8 @@ namespace jasperengine::editor {
     bool zstdCompress(std::span<const uint8_t> in, std::vector<uint8_t>& out, int level, void* user);
 
     // The editor's CPU decoders: ASTC (astcenc) and ETC2 / EAC (basisu) into TextureDecode,
-    // the .exr reader (basisu's tinyexr) into TextureData. Once, at startup; idempotent.
+    // the .exr reader (basisu's tinyexr), the .tif / .tiff reader (TiffReader) and the .psb
+    // flattened image (PsdReader) into TextureData. Once, at startup; idempotent.
     void registerEditorTextureCodecs();
 
     // the levels of a file decoded to RGBA8 / RG8 / R8 / RGBA16F (any format, Basis included):

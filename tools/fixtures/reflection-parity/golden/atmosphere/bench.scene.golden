@@ -1,4 +1,4 @@
-formatVersion: 10
+formatVersion: 11
 guid: 5a8340b00ae91e3756ead7ddaa1a5fcd
 id: 910579834
 name: AtmosphereBench
@@ -67,6 +67,8 @@ shaderKeys:
   - type: shadowcache
   - type: atmospheredepth
   - type: volumetricfog
+  - type: volumetricfog
+    properties: 1
   - type: atmospheredenoise
   - type: volumetricclouds
   - type: skycomposite

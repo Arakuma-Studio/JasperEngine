@@ -1,4 +1,4 @@
-formatVersion: 10
+formatVersion: 11
 guid: 7c734271a1338c26e76b34070c83450a
 id: 1
 name: Particles
@@ -113,6 +113,7 @@ entities:
         playOnAwake: false
         seed: 0
         playbackSpeed: 1
+        legacyFrom: 1002
   - type: Entity
     entity: 1002
     name: Fire Particles

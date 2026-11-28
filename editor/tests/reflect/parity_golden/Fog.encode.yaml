@@ -1,12 +1,15 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 5891cbd359252d0d
+digest 2face9a2e16d1d60
 --- 0
 type: height
+profile: a b/c.png
 color: [3e+38, -74, 45]
 density: 1e-45
 linearStart: 12.142858
 linearEnd: -.inf
-colorMode: sky
+albedo: [1e-45, 0.41936004, 0]
+ambientMultiplier: 43
+emissive: [-0.8100724, 3e+38, 0]
 attenuationDistance: -9
 baseHeight: .nan
 maximumHeight: 0.5247247
@@ -29,6 +32,10 @@ color: [0.25157392, -0, 59]
 density: -0.8954279
 linearStart: 0.66425437
 linearEnd: 3e+38
+colorMode: sky
+albedo: [0.5242169, 0.19579183, 0]
+ambientMultiplier: 0.61883825
+emissive: [6977.179, -0.62384015, 1e-45]
 attenuationDistance: 5010.0034
 baseHeight: 81
 maximumHeight: 3e+38
@@ -43,11 +50,14 @@ noiseScale: -0
 wind: [-0, 6580.056, 3e+38]
 --- 2
 type: height
+profile: textures/a.png
 color: [32, -0.893133, -0]
 density: -77
 linearStart: -84
 linearEnd: 37
-colorMode: sky
+albedo: [-0.04249005, 18, -0.8017555]
+ambientMultiplier: -92
+emissive: [-95, 0, 0]
 attenuationDistance: 11.571428
 maximumHeight: -14.714286
 maxFogDistance: 0.7127659
@@ -64,10 +74,15 @@ wind: [3e+38, -87.71429, 47.57143]
 qualityOverride: low
 --- 3
 type: exponential
+profile: sounds/hit.wav
 color: [-0.6429465, 0, 0]
 density: 21.285715
 linearStart: 1e-45
 linearEnd: 3e+38
+colorMode: sky
+albedo: [0.62175465, 0.41982508, 0]
+ambientMultiplier: 4967.248
+emissive: [92.71429, -0, 133]
 attenuationDistance: -95.71429
 baseHeight: 3e+38
 maximumHeight: -14
@@ -87,10 +102,15 @@ wind: [-0, 1e-45, 9.142858]
 qualityOverride: medium
 --- 4
 type: exponential_squared
+profile: fonts/Main.ttf
 color: [3645.1147, 0, 55.57143]
 density: 5899.044
 linearStart: -59.57143
 linearEnd: 2691.2212
+colorMode: lit
+albedo: [-0.99579734, 0.9473245, 0.48730847]
+ambientMultiplier: -.inf
+emissive: [78.28571, 0, 0]
 attenuationDistance: -0.02016812
 baseHeight: -0.040695652
 maximumHeight: .inf
@@ -107,11 +127,15 @@ wind: [-0.6292045, 421.57074, 0.5751873]
 qualityOverride: low
 --- 5
 type: height
+profile: ui/menu.html
 color: [-8.428572, -54, 0.48302355]
 density: .nan
 linearStart: 1e-45
 linearEnd: 3e+38
 colorMode: sky
+albedo: [8874.151, -99.28571, -0.5599433]
+ambientMultiplier: 21
+emissive: [3e+38, 3e+38, 1e-45]
 attenuationDistance: -0.36538664
 baseHeight: 1e-45
 maximumHeight: 69
@@ -130,11 +154,14 @@ wind: [0.13592365, 9, 0]
 qualityOverride: medium
 --- 6
 type: exponential
+profile: fonts/Main.ttf
 color: [5557.647, -0.2593221, -111.85714]
 density: -47
 linearStart: -0.103610635
 linearEnd: 5282.723
-colorMode: sky
+albedo: [1e-45, 6289.053, 708.5949]
+ambientMultiplier: 352.81042
+emissive: [41, 0, 55.857143]
 attenuationDistance: -0
 baseHeight: 48
 maximumHeight: 8827.781
@@ -155,6 +182,10 @@ color: [0.066084415, -0.23262213, -0]
 density: .nan
 linearStart: 0.39496252
 linearEnd: -0.9754191
+colorMode: lit
+albedo: [-0, 6318.371, -0.4214123]
+ambientMultiplier: 1e-45
+emissive: [15, 49.285713, -0.32790363]
 attenuationDistance: 55
 baseHeight: 4143.785
 maximumHeight: -22

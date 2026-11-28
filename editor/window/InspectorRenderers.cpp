@@ -47,6 +47,8 @@
 #include "util/EntityClipboard.h"
 #include "command/type/ForkShaderCmd.h"
 #include "shader/ShaderManifest.h"
+#include "subsystem/RenderSystem.h"
+#include "component/MeshComponent.h"
 #include "command/type/ScenePropertyCmd.h"
 #include "render/SceneRender2D.h"
 #include "window/ProjectWindow.h"
@@ -811,3 +813,156 @@ void editor::InspectorWindow::drawInstancedMeshComponent(ComponentType cpType, S
     }
 }
 
+
+namespace {
+    using OverrideTextures = std::vector<std::pair<std::string, Texture>>;
+}
+
+void editor::InspectorWindow::drawPropertyOverridesRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities, int submesh){
+    Scene* scene = sceneProject->scene;
+    const uint32_t sceneId = sceneProject->id;
+    const Entity entity = entities[0];
+    const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+    if (!mesh || mesh->numSubmeshes == 0 || submesh >= (int)mesh->numSubmeshes)
+        return;
+    const std::string prefix = submesh < 0 ? std::string("propertyOverrides.") : "submeshes[" + std::to_string(submesh) + "].propertyOverrides.";
+    const std::string valuesProperty = prefix + "values";
+    const std::string texturesProperty = prefix + "textures";
+    // read without making them (out of line: an edit makes them); copies, as a command may
+    // change them while the rows are drawn
+    const ShaderPropertyOverrides& current = submesh < 0 ? mesh->propertyOverrides.get() : mesh->submeshes[submesh].propertyOverrides.get();
+    const ShaderUniformValues values = current.values;
+    const OverrideTextures textures = current.textures;
+
+    const std::string label = (submesh < 0 ? std::string("Property Overrides") : "Submesh " + std::to_string(submesh) + " Property Overrides") +
+                              (values.empty() && textures.empty() ? "" : " (" + std::to_string(values.size() + textures.size()) + ")") +
+                              "##property_overrides_" + std::to_string(submesh);
+    if (!ImGui::TreeNode(label.c_str())){
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Per-renderer values over the shared material (Unity's MaterialPropertyBlock), saved with the mesh.\n"
+                              "A submesh's win over the Mesh's; both win over the material.");
+        return;
+    }
+
+    // the shader the (first) submesh draws with: its @property and @texture rows, or the Lit's
+    const Submesh& sub = mesh->submeshes[std::max(submesh, 0)];
+    const std::string shader = RenderSystem::getSubmeshShader(*mesh, sub, scene->getDefaultCustomShader(ShaderType::MESH));
+    std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
+    std::vector<ShaderManifestProperty> properties;
+    std::vector<std::pair<std::string, std::string>> textureSlots; // uniform, label
+    if (manifest && manifest->present){
+        properties = manifest->properties;
+        for (const ShaderManifestTexture& texture : manifest->textures)
+            textureSlots.push_back({texture.uniform, texture.label.empty() ? texture.uniform : texture.label});
+    }else if (shader.empty() || RenderSystem::isBuiltinLit(shader)){
+        // the built-in Lit's: its colours (stored linear, edited sRGB) and base map
+        ShaderManifestProperty base;
+        base.member = "baseColorFactor";
+        base.label = "Base Color";
+        base.kind = ShaderPropertyKind::COLOR;
+        base.defaultValue = sub.material.baseColorFactor;
+        ShaderManifestProperty emission;
+        emission.member = "emissiveFactor";
+        emission.label = "Emission";
+        emission.kind = ShaderPropertyKind::HDRCOLOR;
+        emission.defaultValue = Vector4(sub.material.emissiveFactor, 1.0f);
+        properties = {base, emission};
+        textureSlots.push_back({"baseColorTexture", "Base Map"});
+    }else{
+        ImGui::TextDisabled("%s has no manifest: set overrides by name (set_shader_uniform override, Lua MaterialPropertyBlock)", shader.c_str());
+    }
+
+    auto setValues = [&](const ShaderUniformValues& changed, bool continuous){
+        Command* command = new PropertyCmd<ShaderUniformValues>(project, sceneId, entity, cpType, valuesProperty, changed);
+        if (continuous){
+            cmd = command;
+            CommandHandle::get(sceneId)->addCommand(command);
+        }else{
+            CommandHandle::get(sceneId)->addCommandNoMerge(command);
+        }
+    };
+    auto setTextures = [&](const OverrideTextures& changed){
+        CommandHandle::get(sceneId)->addCommandNoMerge(new PropertyCmd<OverrideTextures>(project, sceneId, entity, cpType, texturesProperty, changed));
+    };
+
+    beginTable(cpType, getLabelSize("Emission Override"), ("property_overrides_table_" + std::to_string(submesh)).c_str());
+    for (const ShaderManifestProperty& property : properties){
+        ImGui::PushID(("override_" + property.member).c_str());
+        const bool overridden = ShaderUniforms::has(values, property.member);
+        propertyHeader(property.label.empty() ? property.member : property.label);
+        bool on = overridden;
+        if (ImGui::Checkbox("##override", &on)){
+            // on: the material's (or the shader's default) value to start from
+            ShaderUniformValues changed = values;
+            if (on){
+                const Vector4 start = ShaderUniforms::has(sub.material.shaderParams, property.member)
+                    ? ShaderUniforms::get(sub.material.shaderParams, property.member) : property.defaultValue;
+                ShaderUniforms::set(changed, property.member, start);
+            }else{
+                ShaderUniforms::remove(changed, property.member);
+            }
+            setValues(changed, false);
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Override %s on this %s", property.member.c_str(), submesh < 0 ? "mesh" : "submesh");
+        ImGui::SameLine();
+        if (!on)
+            ImGui::BeginDisabled();
+        const Vector4 value = overridden ? ShaderUniforms::get(values, property.member) : property.defaultValue;
+        Vector4 edited = value;
+        bool continuous = true;
+        if (drawShaderPropertyValue(property, "##override_value", value, edited, continuous) && overridden){
+            ShaderUniformValues changed = values;
+            ShaderUniforms::set(changed, property.member, edited);
+            setValues(changed, continuous);
+        }
+        if (ImGui::IsItemDeactivatedAfterEdit() && cmd){
+            cmd->setNoMerge();
+            cmd = nullptr;
+        }
+        if (!on)
+            ImGui::EndDisabled();
+        ImGui::PopID();
+    }
+    for (const auto& [uniform, slotLabel] : textureSlots){
+        ImGui::PushID(("override_texture_" + uniform).c_str());
+        const Texture* current = nullptr;
+        for (const auto& texture : textures){
+            if (texture.first == uniform)
+                current = &texture.second;
+        }
+        propertyHeader(slotLabel);
+        bool on = current != nullptr;
+        if (ImGui::Checkbox("##override", &on) && !on){
+            OverrideTextures changed = textures;
+            ShaderLibraryValues::setTexture(changed, uniform, "");
+            setTextures(changed);
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Override the %s texture: drop an image here or type its project path", uniform.c_str());
+        ImGui::SameLine();
+        char path[512];
+        std::snprintf(path, sizeof(path), "%s", current ? current->getPath().c_str() : "");
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputText("##override_path", path, sizeof(path));
+        if (ImGui::IsItemDeactivatedAfterEdit()){
+            OverrideTextures changed = textures;
+            ShaderLibraryValues::setTexture(changed, uniform, path);
+            setTextures(changed);
+        }
+        if (ImGui::BeginDragDropTarget()){
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
+                std::vector<std::string> received = Util::getStringsFromPayload(payload);
+                if (!received.empty() && Util::isImageFile(received[0]) && project->isInsideAssetsPath(received[0])){
+                    OverrideTextures changed = textures;
+                    ShaderLibraryValues::setTexture(changed, uniform, project->normalizeToAssetsRelative(received[0]).generic_string());
+                    setTextures(changed);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+        ImGui::PopID();
+    }
+    endTable();
+    ImGui::TreePop();
+}

@@ -140,7 +140,9 @@ namespace jasperengine::editor{
         // not a GameObject: the Hierarchy's "3D Object > Vehicle..." makes the rig (VehicleRig.h, S96)
         VEHICLE_RIG,
         // GameObject > Light > Area Light (S99 R38): a 1 m x 1 m Rectangle facing down
-        AREA_LIGHT
+        AREA_LIGHT,
+        // GameObject > Effects > Fog Zone (docs/specs/S101-vapor.md R27): a Transform and a Fog Zone
+        FOG_ZONE
     };
 
     class CreateEntityCmd: public Command{

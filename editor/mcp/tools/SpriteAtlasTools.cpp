@@ -132,6 +132,12 @@ bool addMembers(Project* project, const Json& list, SpriteAtlasDocument& doc, st
         SpriteAtlasMember m;
         m.path = assetPath;
         m.guid = project->getAssetDatabase().getAssetGuid(project->normalizeToProjectRelative(absolute));
+        if (m.guid.isNull()) {
+            // a file synced since the database last looked (its walk is a Background job) has no entry
+            // yet, and a member without its GUID does not follow a rename
+            project->refreshAssetDatabase(true);
+            m.guid = project->getAssetDatabase().getAssetGuid(project->normalizeToProjectRelative(absolute));
+        }
         doc.members.push_back(m);
     }
     return problems.empty();

@@ -437,6 +437,15 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT)) defs.push_back({"HAS_FRAME_RECT", "1"}); // 'Sfr'
     if (prop & ShaderPool::getTileClampProperty()) defs.push_back({"TILE_CLAMP_FRAME", "1"}); // 'Tcl'
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::SNAP_PIVOT)) defs.push_back({"HAS_SNAP_PIVOT", "1"}); // 'Spv'
+    // V1 R102: the Vertex Color Draw Mode's view of the variant ('Vcv', 'Vcs', 'Vk1', 'Vk2'; its
+    // main is wrapped, prepareVariantArgs): -1 the colour, 0-3 one channel (R, G, B, A)
+    if (prop & ShaderPool::getVertexColorViewProperties(0)) {
+        defs.push_back({"VERTEX_COLOR_VIEW", "1"});
+        int channel = -1;
+        if (prop & shaderPropertyBit(57))
+            channel = ((prop & shaderPropertyBit(58)) ? 1 : 0) + ((prop & shaderPropertyBit(59)) ? 2 : 0);
+        defs.push_back({"VERTEX_COLOR_VIEW_CHANNEL", std::to_string(channel)});
+    }
 }
 
 void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -529,6 +538,7 @@ void addHtmlUIPostPropertyDefinitions(std::vector<shadercompiler::define_t>& def
     if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_BLUR", "1"});                 // 'Blr'
     if (prop & shaderPropertyBit(5))  defs.push_back({"HAS_UNPREMULTIPLY", "1"});        // 'Unp'
     if (prop & shaderPropertyBit(6))  defs.push_back({"HAS_YUV", "1"});                  // 'Yuv'
+    if (prop & shaderPropertyBit(7))  defs.push_back({"HAS_BLEND_MODE", "1"});           // 'Bmd'
 }
 
 void addPointsPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -560,7 +570,12 @@ void addParticlesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & (1 << 6))  defs.push_back({"SIXWAY", "1"});                   // 'Sxw'
     if (prop & (1 << 7))  defs.push_back({"CUSTOM_DATA", "1"});              // 'Cus'
     if (prop & (1 << 8))  defs.push_back({"RECEIVE_SHADOWS", "1"});          // 'Rsh'
-    if (prop & (1 << 9))  defs.push_back({"HAS_FOG", "1"});                  // 'Fog'
+    if (prop & (1 << 9)) {                                                    // 'Fog'
+        defs.push_back({"HAS_FOG", "1"});
+        // the height fog as the mesh variants take it, chosen by its block at run time
+        // (includes/fog.glsl, docs/specs/S101-vapor.md R16)
+        defs.push_back({"HAS_HEIGHT_FOG", "1"});
+    }
     if (prop & (1 << 10)) defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
     if (prop & (1 << 11)) defs.push_back({"PIXEL_SNAP", "1"});               // 'Pxs' (S41)
     if (prop & (1 << 12)) defs.push_back({"PARTICLE_PIXEL", "1"});           // 'Pxl' (S49)
@@ -774,6 +789,7 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     }else if (shaderType == ShaderType::VOLUMETRIC_FOG){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "volumetric_fog.frag";
+        if (properties & (1 << 0)) args.defines.push_back({"SHADOW_DATA_POINT", "1"});   // 'Pnt'
     }else if (shaderType == ShaderType::ATMOSPHERE_DENOISE){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "atmosphere_denoise.frag";
@@ -1147,12 +1163,54 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
 
     getCustomShaderPaths(base, result.vertFile, result.fragFile);
     const std::string includeRoot = getCustomShaderIncludeRoot(base);
+    const auto& library = getLibrarySources();
+
+    // A project shader whose manifest has @depth draws its depth passes with its own depth
+    // program, as a library shader does: <name>_depth.vert / _depth.frag beside its sources,
+    // each else the library's generic one (library/surface_depth.*). Its manifest (the
+    // @require varyings) is the colour program's. A depth fork (Mesh customDepthShader) has no
+    // manifest of its own: its files are the depth program.
+    std::string colorVertSource;
+    std::string colorFragSource;
+    bool ownDepthProgram = false;
+    if (shaderType == ShaderType::DEPTH && !result.vertFile.empty() && isSafeRelativePath(result.fragFile) &&
+            readProjectFile(result.fragFile, colorFragSource)){
+        if (isSafeRelativePath(result.vertFile))
+            readProjectFile(result.vertFile, colorVertSource);
+        ShaderManifest colorManifest;
+        colorManifest.parse(colorFragSource, result.fragFile);
+        colorManifest.parse(colorVertSource, result.vertFile);
+        ownDepthProgram = colorManifest.present && colorManifest.depth;
+        if (ownDepthProgram){
+            appendSignaturePart(signatureInput, "manifest:" + result.fragFile, colorFragSource);
+            appendSignaturePart(signatureInput, "manifest:" + result.vertFile, colorVertSource);
+            auto depthFile = [&](const std::string& colorFile, const char* extension, const char* fallback){
+                const std::string stem = colorFile.substr(0, colorFile.size() - std::string(extension).size());
+                const std::string own = stem + "_depth" + extension;
+                std::string probe;
+                return (isSafeRelativePath(own) && readProjectFile(own, probe)) ? own : std::string(fallback);
+            };
+            result.vertFile = depthFile(result.vertFile, ".vert", "library/surface_depth.vert");
+            result.fragFile = depthFile(result.fragFile, ".frag", "library/surface_depth.frag");
+        }
+    }
 
     auto loadEntryPoint = [&](const std::string& rel, const char* stage) -> bool {
         std::string content;
         if (!isSafeRelativePath(rel)) {
             result.error = std::string("Unsafe custom ") + stage + " shader path: " + rel;
             return false;
+        }
+        // (a project depth program's library fallback, library/surface_depth.*)
+        if (ownDepthProgram && rel.rfind("library/", 0) == 0) {
+            auto it = library.find(rel);
+            if (it == library.end()) {
+                result.error = "This build has no engine shader library to compile " + base + " from";
+                return false;
+            }
+            appendSignaturePart(signatureInput, std::string("entry:") + rel, it->second);
+            appendSignaturePart(signatureInput, "library-hash", std::to_string(getLibraryHash()));
+            return true;
         }
         if (!readProjectFile(rel, content)) {
             result.error = std::string("Could not open custom ") + stage + " shader: " + rel;
@@ -1171,7 +1229,6 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
     // An empty include root means the entry point sits at the project root, where the
     // first two candidates would be the same file.
     const bool hasLocalRoot = !includeRoot.empty() && includeRoot != ".";
-    const auto& library = getLibrarySources();
 
     std::unordered_set<std::string> visited;
     std::function<void(const std::string&)> visitSource = [&](const std::string& source) {
@@ -1206,16 +1263,26 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
     };
 
     // copies: visiting can insert into result.files
-    const std::string vertSource = result.vertFile.empty() ? std::string() : result.files[result.vertFile];
-    const std::string fragSource = result.files[result.fragFile];
+    auto entrySource = [&](const std::string& rel){
+        if (rel.empty())
+            return std::string();
+        auto own = result.files.find(rel);
+        if (own != result.files.end())
+            return own->second;
+        auto engine = library.find(rel);
+        return engine != library.end() ? engine->second : std::string();
+    };
+    const std::string vertSource = entrySource(result.vertFile);
+    const std::string fragSource = entrySource(result.fragFile);
     visitSource(vertSource);
     visitSource(fragSource);
 
     // a fork with a manifest compiles with the varyings its @require asks for, as a library
-    // shader does (the entry sources are already in the signature)
+    // shader does (the entry sources are already in the signature); its depth program with the
+    // colour program's
     ShaderManifest manifest;
-    manifest.parse(fragSource, result.fragFile);
-    manifest.parse(vertSource, result.vertFile);
+    manifest.parse(ownDepthProgram ? colorFragSource : fragSource, result.fragFile);
+    manifest.parse(ownDepthProgram ? colorVertSource : vertSource, result.vertFile);
     const std::vector<std::string> enabled = result.defines;
     for (const std::string& define : manifest.getRequireDefines(enabled))
         result.defines.push_back(define);
@@ -1444,6 +1511,36 @@ bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShader
         wrapped.insert(versionEnd + 1, "#define main oitShadeMain\n#line 2\n");
         wrapped += "\n#undef main\n#include \"includes/oit.glsl\"\nvoid main(){\n    oitShadeMain();\n    g_finalColor = oitAccumulate(g_finalColor);\n}\n";
         source->second = wrapped;
+    }
+
+    // V1 R102: the Vertex Color Draw Mode's view of a mesh variant. Both mains are wrapped: the
+    // vertex stage's runs, then hands the raw vertex colour on (includes/vertex_color_view.glsl);
+    // the fragment stage draws that colour, its own main left behind a test no fragment passes,
+    // so the view variant keeps every block, texture and sampler of its base at the same slots
+    // (the draw keeps the base's bindings, RenderSystem::sameLodFadeBindings)
+    if (shaderType == ShaderType::MESH && (properties & ShaderPool::getVertexColorViewProperties(0))){
+        if (properties & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::OIT)){
+            error = "The Vertex Color Draw Mode has no Order Independent transparency variant";
+            return false;
+        }
+        for (const bool vertex : {true, false}){
+            const std::string& file = vertex ? args.vert_file : args.frag_file;
+            auto source = args.fileBuffers.find(file);
+            const size_t versionEnd = source == args.fileBuffers.end() ? std::string::npos : source->second.find('\n');
+            // (g_finalColor may be an include's: a shader without it fails to compile)
+            if (versionEnd == std::string::npos || source->second.compare(0, 8, "#version") != 0){
+                error = "The Vertex Color Draw Mode needs a mesh shader starting with #version (" + file + ")";
+                return false;
+            }
+            std::string wrapped = source->second;
+            wrapped.insert(versionEnd + 1, "#define main vertexColorViewShadeMain\n#line 2\n");
+            wrapped += vertex ? "\n#undef main\n#define VERTEX_COLOR_VIEW_VS\n#include \"includes/vertex_color_view.glsl\"\n"
+                                "void main(){\n    vertexColorViewShadeMain();\n    vertexColorViewWrite();\n}\n"
+                              : "\n#undef main\n#define VERTEX_COLOR_VIEW_FS\n#include \"includes/vertex_color_view.glsl\"\n"
+                                "void main(){\n    if (gl_FragCoord.x < -1.0){\n        vertexColorViewShadeMain();\n        return;\n    }\n"
+                                "    g_finalColor = vertexColorViewColor();\n}\n";
+            args.fileBuffers[file] = wrapped;
+        }
     }
 
     // S100's normals of the depth pre-pass ('Cvn'): the program's own main runs, then

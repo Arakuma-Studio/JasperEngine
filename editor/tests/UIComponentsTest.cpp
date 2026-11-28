@@ -6,6 +6,7 @@
 // selection, navigation, Submit and Cancel, the typing guard, the stick hand-back, transitions.
 
 #include "ScriptTestHarness.h"
+#include "EngineTestAccess.h"
 
 #include "subsystem/UISystem.h"
 #include "input/InputActions.h"
@@ -30,19 +31,6 @@
 #include <cmath>
 #include <cstdio>
 #include <map>
-
-namespace jasperengine {
-    // TEST-ONLY seam (Engine.h befriends it): a view loaded without a GPU, the per-frame gamepad step
-    struct EngineTestAccess {
-        static bool setViewLoaded(bool loaded) {
-            const bool previous = Engine::viewLoaded;
-            Engine::viewLoaded = loaded;
-            return previous;
-        }
-        static void updateGamepadNavigation() { Engine::updateGamepadNavigation(); }
-        static bool cursorMove(float x, float y) { return Engine::dispatchCursorPointer(Engine::CURSOR_MOVE, x, y); }
-    };
-}
 
 using namespace jasperengine;
 using namespace jasperengine::scripttest;

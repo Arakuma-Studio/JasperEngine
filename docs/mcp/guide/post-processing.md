@@ -56,6 +56,15 @@ scene_shading, notes}`; while playing also `applied` (what the renderer runs: `i
 time (`tail_color`, `uber`, `uber_features`, `render_scale_applied`, the estimated `passes` and
 `dynamic_resolution`). Presets apply as one named undo step ("Apply Film Preset").
 
+## Porting a Unity look
+
+- Vignette: `vignette_falloff` radii darkens from `vignette_start` to `vignette_end` (a smoothstep
+  over the radius; 1 is the middle of the screen's edge, of its top edge with `vignette_roundness`
+  1), as a shader's own `smoothstep(start, end, length(p))` does; smoothness keeps
+  `vignette_smoothness`.
+- A LUT strip whose green 0 is its top row (not Unity's layout, whose green 0 is the bottom row)
+  takes `lut_flip_green: true`; a `.cube` has its own order.
+
 ## Mobile advice
 
 - Prefer T0: tone mapping, grading, monochrome, vignette and dither cost no pass at all.

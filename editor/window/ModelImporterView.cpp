@@ -15,6 +15,7 @@
 #include "pose/PoseRigProvider.h"
 #include "render/LodFade.h"
 #include "texture/TextureCookQueue.h"
+#include "animation/ModelSubClips.h"
 #include "util/FbxImporter.h"
 #include "util/FileUtils.h"
 #include "window/dialog/EditorSettingsWindow.h"
@@ -324,13 +325,60 @@ void ModelImporterView::drawMeshes(const ResolvedModelSettings& r){
             ImGui::EndTooltip();
         }
     }
-    form.comboField("Normals", prefix + "normals", modelEnumValues("normals"), {"Import", "Calculate"}, modelNormalsName(r.normals),
-                    "Calculate makes area-weighted normals that crease at the Smoothing Angle.");
-    if (r.normals == ModelNormals::Calculate)
+    form.comboField("Normals", prefix + "normals", modelEnumValues("normals"), {"Import", "Calculate", "None"}, modelNormalsName(r.normals),
+                    "Import keeps the file's normals. Calculate makes normals that crease at the Smoothing Angle (or follow the "
+                    "smoothing groups). None writes none: every face shades flat.");
+    if (r.normals == ModelNormals::Calculate){
+        // the smoothing groups are each model's own: the Default tab sets them for every platform
+        if (tab == 0)
+            form.comboField("Smoothness Source", "smoothnessSource", modelEnumValues("smoothnessSource"),
+                            {"From Angle", "From Smoothing Groups", "Prefer Smoothing Groups"}, smoothnessSourceName(r.smoothnessSource),
+                            "What makes an edge hard: the Smoothing Angle, or an FBX's smoothing groups (read when the FBX is "
+                            "converted; a file without them uses the angle).");
+        ImGui::BeginDisabled(r.smoothnessSource == SmoothnessSource::FromSmoothingGroups);
         form.floatSlider("Smoothing Angle", prefix + "smoothingAngle", r.smoothingAngle, 0.0f, 180.0f, "%.0f\xC2\xB0",
                          "Edges sharper than this stay hard.");
+        ImGui::EndDisabled();
+        form.comboField("Normals Weighting", prefix + "normalsWeighting", modelEnumValues("normalsWeighting"), {"Area And Angle", "Area"},
+                        normalsWeightingName(r.normalsWeighting.value_or(NormalsWeighting::AreaAndAngle)),
+                        "How the faces at a corner add up: by their area and their angle there (Unity's default), or by area.");
+    }
+    if (r.normals != ModelNormals::None)
+        form.comboField("Tangents", prefix + "tangents", modelEnumValues("tangents"), {"Import", "Calculate Mikktspace", "None"},
+                        modelTangentsName(r.tangents), "Import keeps the file's tangents. Calculate Mikktspace makes them from the "
+                        "normals and the first UV set, as normal maps are baked. None writes none.");
     form.boolField("Ship Source File", prefix + "shipSource", r.shipSource,
                    "Exports keep the source model next to its cook (code that reads the file itself).");
+}
+
+void ModelImporterView::drawRestPose(const ModelImportSettings& settings){
+    const RestPose pose = settings.values.restPose.value_or(RestPose::NodeValues);
+    form.comboField("Rest Pose", "restPose", modelEnumValues("restPose"), {"Node Values", "First Frame"}, restPoseName(pose),
+                    "The pose the model imports in: its nodes' values, or a take's first frame (Unity's imported pose). The "
+                    "skin's bind pose is kept.");
+    if (pose != RestPose::FirstFrame)
+        return;
+    const std::string key = assetPaths.empty() ? std::string() : assetPaths[0];
+    if (key != takesKey){
+        takesKey = key;
+        takes.clear();
+        const fs::path absolute = (project->getAssetsPath() / FileUtils::pathFromUtf8(key)).lexically_normal();
+        std::vector<anim::ModelClipInfo> clips;
+        std::string error;
+        if (anim::listModelFileClips(FileUtils::pathToUtf8(project->getImportedModelPath(absolute)), clips, &error))
+            for (const anim::ModelClipInfo& clip : clips) takes.push_back(clip.name);
+    }
+    std::vector<std::string> names = takes;
+    const std::string shown = settings.values.restPoseTake.value_or(takes.empty() ? std::string() : takes[0]);
+    if (std::find(names.begin(), names.end(), shown) == names.end() && !shown.empty())
+        names.insert(names.begin(), shown);
+    if (names.empty()){
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextDisabled("The file has no take: the nodes keep their values");
+        return;
+    }
+    form.comboField("Take", "restPoseTake", names, names, shown, "The take whose first frame the nodes take.");
 }
 
 void ModelImporterView::drawLevels(const ResolvedModelSettings& r){
@@ -694,6 +742,10 @@ bool ModelImporterView::draw(const std::vector<fs::path>& selection, const std::
             ImGui::EndDisabled();
         });
     }
+    bool allFbx = !assetPaths.empty();
+    for (const std::string& path : assetPaths) allFbx = allFbx && FbxImporter::isFbxFile(FileUtils::pathFromUtf8(path));
+    if (tab == 0 && allFbx)
+        section("Rig", [&]{ drawRestPose(settings); });
 
     ImGui::Separator();
     if (assetPaths.size() == 1){

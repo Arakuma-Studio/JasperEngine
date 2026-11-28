@@ -40,10 +40,14 @@ A baseline's "click": n clicks the canvas centre n times after the run (CDP Inpu
 trusted events, so a page can lock the pointer), each followed by "after_click_seconds" (default 2)
 of running; the console lines it causes are checked like the others.
 
+A baseline's "drags": mouse drags after the clicks, each {"from": [fx, fy], "to": [fx, fy]} in fractions of
+the canvas's rectangle (outside 0..1: off the canvas, in the page): a CDP mouseMoved and mousePressed (left
+button) at "from", a mouseMoved and mouseReleased at "to", then "after_drag_seconds" (default 1) of running.
+
 A baseline's "touch": n finger taps at the canvas centre after the clicks (CDP
 Input.dispatchTouchEvent touchStart, touchEnd), each followed by "after_touch_seconds" (default 1).
 
-A baseline's "keys": key presses after the clicks and taps, each a {"code", "key", "key_code", "location"} object
+A baseline's "keys": key presses after the clicks, drags and taps, each a {"code", "key", "key_code", "location"} object
 (every field optional: an event without "code" exercises the legacy keyCode path) sent as a CDP
 Input.dispatchKeyEvent rawKeyDown and keyUp pair (trusted: a key press is a user gesture), each followed
 by "after_key_seconds" (default 0.5). "eval_before_input" with "eval_before_input_expect" is evaluated
@@ -453,6 +457,19 @@ def main() -> int:
                          buttons=1 if kind == "mousePressed" else 0, clickCount=1 if kind != "mouseMoved" else 0)
             cdp.pump(float(baseline.get("after_click_seconds", 2.0)))
 
+        # drags: pressed at a point of the canvas, released at another, possibly off the canvas
+        for drag in baseline.get("drags", []):
+            rect = evaluate(cdp, "(() => { const c = document.querySelector('canvas'); if (!c) return null;"
+                                 " const r = c.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; })()")
+            left, top, width, height = rect if rect else (0, 0, 1280, 720)
+            (fx, fy), (tx, ty) = drag["from"], drag["to"]
+            start = (left + fx * width, top + fy * height)
+            end = (left + tx * width, top + ty * height)
+            for kind, (x, y), buttons in (("mouseMoved", start, 0), ("mousePressed", start, 1), ("mouseMoved", end, 1),
+                                          ("mouseReleased", end, 0)):
+                cdp.send("Input.dispatchMouseEvent", type=kind, x=x, y=y, buttons=buttons,
+                         button="left" if kind != "mouseMoved" else "none", clickCount=1 if kind in ("mousePressed", "mouseReleased") else 0)
+            cdp.pump(float(baseline.get("after_drag_seconds", 1.0)))
         # finger taps at the canvas centre (CDP Input.dispatchTouchEvent)
         for _ in range(int(baseline.get("touch", 0))):
             rect = evaluate(cdp, "(() => { const c = document.querySelector('canvas'); if (!c) return null;"

@@ -18,6 +18,7 @@
 #include "player/PlayerConfig.h"
 #include "registry/PhysicsLayers.h"
 #include "render/LightingTiers.h"
+#include "registry/SortingLayers.h"
 #include "save/SaveGameStore.h"
 #include "subsystem/GamepadCursor.h"
 
@@ -124,6 +125,7 @@ TEST(GameConfig, CarriesWhatTheGeneratedInitSet) {
     HtmlUiRenderSettings htmlUi;
     htmlUi.glyphAtlasMiB = 24;
     htmlUi.sdfPrimitives = false;
+    htmlUi.imageCacheMiB = 16;   // S93 R56
     project.setHtmlUiRenderSettings(htmlUi);
     project.setParticleWorldBudget(1000);
     CanvasScalerSettings scaler;
@@ -160,6 +162,7 @@ TEST(GameConfig, CarriesWhatTheGeneratedInitSet) {
     EXPECT_FALSE(game.dynamicBatching);
     EXPECT_EQ(game.glyphAtlasMiB, 24);
     EXPECT_FALSE(game.sdfPrimitives);
+    EXPECT_EQ(game.imageCacheMiB, 16);
     EXPECT_EQ(game.particleWorldBudget, 1000u);
     EXPECT_TRUE(game.canvasScaler == scaler);
     ASSERT_TRUE(game.hasPhysics3DCapacity);
@@ -178,6 +181,23 @@ TEST(GameConfig, CarriesWhatTheGeneratedInitSet) {
     EXPECT_TRUE(game.allowInsecureHttp);
     // a source export's native plugins go per target: none here
     EXPECT_TRUE(game.nativePlatformOnly.empty());
+}
+
+// S94 F5: Transparency Sort Mode reaches a game as data, every mode (Perspective, the mode older
+// projects migrate to, and Orthographic too), where the generated main.cpp once set it
+TEST(GameConfig, CarriesTheTransparencySortMode) {
+    const TransparencySortMode before = SortingLayers::getTransparencySortMode();
+    const Vector3 axis = SortingLayers::getTransparencySortAxis();
+    Project project;
+    editor::cook::GameConfigTarget target;
+    target.fallbackName = "game";
+    for (TransparencySortMode mode : {TransparencySortMode::PERSPECTIVE, TransparencySortMode::ORTHOGRAPHIC,
+                                      TransparencySortMode::CUSTOM_AXIS, TransparencySortMode::DEFAULT}) {
+        project.setTransparencySort(mode, axis);
+        EXPECT_EQ(throughJson(editor::cook::makeGameConfig(project, target)).transparencySortMode, mode)
+            << SortingLayers::transparencySortModeToken(mode);
+    }
+    SortingLayers::setTransparencySortMode(before);
 }
 
 TEST(GameConfig, AnOlderGameJsonKeepsTheEngineDefaults) {
@@ -205,6 +225,12 @@ TEST(GameConfig, AnOlderGameJsonKeepsTheEngineDefaults) {
     for (const char* key : {"player", "debug", "physics3D", "gpuInstancing", "shaderCreation", "shaderGlobals", "nativePlatformOnlyByTarget"})
         EXPECT_FALSE(plain.contains(key)) << key;
     EXPECT_FALSE(plain["canvas"].contains("scaler"));
+    // S93's image cache budget: written only away from the platform's default (-1), and read back as it
+    EXPECT_FALSE(plain["htmlUi"].contains("imageCacheMiB"));
+    EXPECT_EQ(read.imageCacheMiB, -1);
+    player::PlayerConfig budget;
+    budget.imageCacheMiB = 0;
+    EXPECT_EQ(budget.toJson()["htmlUi"]["imageCacheMiB"], 0);
 }
 
 TEST(GameConfig, ASourceExportNamesNativePluginsPerTarget) {

@@ -3,7 +3,8 @@
 
 // The ragdolls of PhysicsSystem (physics-3d 6.1.11): their parts (the Rigidbodies below the
 // root), the switch between animated (kinematic parts following the bones, the Animation Player
-// on) and simulated (dynamic parts moving the bones, the player paused), and self collision.
+// on) and simulated (dynamic parts moving the bones, the player and the Animator paused), and self
+// collision.
 
 #include "PhysicsSystem.h"
 #include "component/Transform.h"
@@ -14,12 +15,14 @@
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/AnimatorComponent.h"
 #include "component/ModelComponent.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "object/physics/Ragdoll.h"
 #include "object/physics/Rigidbody.h"
 #include "component/RagdollComponent.h"
+#include "subsystem/AnimatorSystem.h"
 #include "util/JoltPhysicsAux.h"
 
 #include <algorithm>
@@ -349,6 +352,14 @@ void PhysicsSystem::pauseRagdollDrivers3D(Entity entity, RagdollComponent& ragdo
                 ragdoll.pausedDrivers.emplace_back(candidate, RagdollComponent::Driver::VERTEX);
             }
         }
+        // the Animator writes the skins from its pose: paused, they follow the bodies' bones (S94 F37)
+        if (AnimatorComponent* animator = scene->findComponent<AnimatorComponent>(candidate)){
+            if (animator->enabled){
+                animator->enabled = false;
+                scene->getSystem<AnimatorSystem>()->parkSkins(candidate);
+                ragdoll.pausedDrivers.emplace_back(candidate, RagdollComponent::Driver::ANIMATOR);
+            }
+        }
     }
 }
 
@@ -370,6 +381,11 @@ void PhysicsSystem::resumeRagdollDrivers3D(RagdollComponent& ragdoll){
             case RagdollComponent::Driver::VERTEX:
                 if (VertexAnimatorComponent* vertex = scene->findComponent<VertexAnimatorComponent>(driver)){
                     vertex->enabled = true;
+                }
+                break;
+            case RagdollComponent::Driver::ANIMATOR:
+                if (AnimatorComponent* animator = scene->findComponent<AnimatorComponent>(driver)){
+                    animator->enabled = true;
                 }
                 break;
         }

@@ -1,4 +1,4 @@
-formatVersion: 10
+formatVersion: 11
 guid: 2385f1a5e2877b94bc16d5309fb19aca
 id: 1
 name: Main Scene
@@ -174,7 +174,7 @@ entities:
         path: prefabs/Enemy.prefab
         guid: e0e0e0e0e0e0e0e0e0e0e0e0e0e00001
     prefabInstance:
-      version: 10
+      version: 11
       memberIds:
         - [1002, 1004]
         - [1003, 1005]

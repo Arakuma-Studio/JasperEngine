@@ -165,6 +165,7 @@ namespace jasperengine::editor {
         ToggleParticleEffect,         // Window > Visual Effects > Particle Effect (S91)
         ToggleGraphEditor,            // Window > Assets > Graph Editor (S90)
         ToggleSpritePreview,          // Window > 2D > Sprite Preview (S44)
+        ToggleSkinningEditor,         // Window > 2D > Skinning Editor (S94 F49)
         // S43: Window > 2D > Palette (payload: a .palette to open), Assets > Create > Palette
         TogglePalette,
         AssetsCreatePalette,
@@ -181,7 +182,10 @@ namespace jasperengine::editor {
         AssetsCreateTileset,
         AssetsCreateTitleArt,         // Assets > Create > Title Art (S80)
         TitleArtBakeAll,              // the command palette's "Title Art: Bake All" (S80 §6.13)
-        ToggleTestRunner              // Window > General > Test Runner (project-test-runner R38)
+        AssetsCreateDataAsset,        // Assets > Create > Data Asset > <class> (S95; payload: the class)
+        ToggleTestRunner,             // Window > General > Test Runner (project-test-runner R38)
+        ToggleVertexPaint,            // Window > Vertex Paint (V1 R101)
+        AssetsCreateFogProfile        // Assets > Create > Fog Profile (docs/specs/S101-vapor.md R26)
     };
 
 }

@@ -1,4 +1,4 @@
-# Lighting: tiles, capsule and contact shadows, OIT, hair, area lights, IES profiles
+# Lighting: tiles, capsule and contact shadows, OIT, hair, area lights, IES profiles, sky
 
 For agents: what to set and how to check it. The full reference is `docs/rendering/lighting.md`.
 
@@ -43,6 +43,12 @@ For agents: what to set and how to check it. The full reference is `docs/renderi
   `ambient_mode: "gradient"` with `ambient_sky_color`, `ambient_equator_color`,
   `ambient_ground_color` (sRGB). The default `color` lights with `global_illumination_color` /
   `_intensity`, and Lit under a sky image with the image.
+
+- Sky: a hidden sky (`skybox.visible` false, Lua `Skybox.visible`) or one on an inactive entity
+  draws nothing and feeds no reflection probe; a hidden one keeps lighting the scene. It draws
+  after the opaque objects (only the pixels they leave are shaded), first under a camera without
+  `depthTest`. On mobile and web, `library:panoramic_sky` with the `VERTEX_MAPPING` feature
+  (Per-Vertex Mapping) costs one texture read a pixel. Unity's rotations: `docs/unity-glossary.md`.
 
 ## Checking
 

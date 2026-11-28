@@ -43,7 +43,7 @@ namespace jasperengine::editor{
 
         inline static bool isImageFile(const std::string& path) {
             static const std::unordered_set<std::string> imageExtensions = {
-                ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".psd", ".pic", ".pnm", ".svg"
+                ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".exr", ".psd", ".psb", ".tif", ".tiff", ".pic", ".pnm", ".svg"
             };
 
             const std::string ext = fileExtension(path);
@@ -218,6 +218,16 @@ namespace jasperengine::editor{
         // Sound Events (S37)
         inline static bool isSoundEventFile(const std::string& path) {
             return fileExtension(path) == ".soundevent";
+        }
+
+        // Data Assets (S95)
+        inline static bool isDataAssetFile(const std::string& path) {
+            return fileExtension(path) == ".dataasset";
+        }
+
+        // Fog Profiles (docs/specs/S101-vapor.md R1)
+        inline static bool isFogProfileFile(const std::string& path) {
+            return fileExtension(path) == ".fogprofile";
         }
 
         // The Animator's assets (S21): controllers, avatar masks, montages

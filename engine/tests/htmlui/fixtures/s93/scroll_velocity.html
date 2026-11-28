@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>scroll velocity from a script</title>
+  <!-- S93 R10 (engine/tests/htmlui/TestScrollPhysics.cpp): el.scrollVelocity and el:stopScrolling() -->
+  <style>
+    body { margin: 0; }
+    #list { position: absolute; left: 0; top: 0; width: 200px; height: 200px; overflow-y: auto; scroll-deceleration-rate: 0.135; }
+    .row { height: 50px; }
+  </style>
+</head>
+<body>
+  <div id="list">
+    <div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div>
+    <div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div>
+    <div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div>
+    <div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div>
+    <div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div>
+    <div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div>
+    <div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div>
+    <div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div>
+  </div>
+</body>
+</html>

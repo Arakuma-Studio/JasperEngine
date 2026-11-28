@@ -1,4 +1,4 @@
-formatVersion: 10
+formatVersion: 11
 guid: 743bbd65bf2a44796f3a2c6886d66f02
 id: 2
 name: Closed
@@ -64,6 +64,8 @@ shaderKeys:
     properties: 32
   - type: htmluipost
     properties: 64
+  - type: htmluipost
+    properties: 128
   - type: htmluiprim
 entities:
   - type: Entity

@@ -808,6 +808,36 @@ void editor::Stream::decodeStencilAndColorWrite(const YAML::Node& node, Material
     colorWrite = node["colorWrite"] ? stringToColorWrite(node["colorWrite"].as<std::string>()) : -1;
 }
 
+namespace {
+
+    // Blend Mode Custom's factors, each away from its default (One Zero, One Zero, Add, Add)
+    template<typename T>
+    void encodeBlendFactors(YAML::Node& node, const T& owner) {
+        const MaterialBlendFactors defaults;
+        const MaterialBlendFactors factors = owner.getBlendFactors();
+        const auto& names = editor::StreamSchema::materialBlendFactor();
+        if (factors.src != defaults.src) node["blendSrc"] = names.toString(factors.src);
+        if (factors.dst != defaults.dst) node["blendDst"] = names.toString(factors.dst);
+        if (factors.srcAlpha != defaults.srcAlpha) node["blendSrcAlpha"] = names.toString(factors.srcAlpha);
+        if (factors.dstAlpha != defaults.dstAlpha) node["blendDstAlpha"] = names.toString(factors.dstAlpha);
+        if (factors.op != defaults.op) node["blendOp"] = editor::StreamSchema::materialBlendOp().toString(factors.op);
+        if (factors.opAlpha != defaults.opAlpha) node["blendOpAlpha"] = editor::StreamSchema::materialBlendOp().toString(factors.opAlpha);
+    }
+
+    template<typename T>
+    void decodeBlendFactors(const YAML::Node& node, T& owner) {
+        const MaterialBlendFactors defaults;
+        const auto& names = editor::StreamSchema::materialBlendFactor();
+        owner.blendSrc = node["blendSrc"] ? editor::decodeEnum(node, "blendSrc", names) : defaults.src;
+        owner.blendDst = node["blendDst"] ? editor::decodeEnum(node, "blendDst", names) : defaults.dst;
+        owner.blendSrcAlpha = node["blendSrcAlpha"] ? editor::decodeEnum(node, "blendSrcAlpha", names) : defaults.srcAlpha;
+        owner.blendDstAlpha = node["blendDstAlpha"] ? editor::decodeEnum(node, "blendDstAlpha", names) : defaults.dstAlpha;
+        owner.blendOp = node["blendOp"] ? editor::decodeEnum(node, "blendOp", editor::StreamSchema::materialBlendOp()) : defaults.op;
+        owner.blendOpAlpha = node["blendOpAlpha"] ? editor::decodeEnum(node, "blendOpAlpha", editor::StreamSchema::materialBlendOp()) : defaults.opAlpha;
+    }
+
+}
+
 YAML::Node editor::Stream::encodeMaterialPass(const MaterialPass& pass, bool embedTextureData) {
     YAML::Node node(YAML::NodeType::Map);
     if (!pass.shader.empty()) encodeShaderRef(node, "shader", pass.shader);
@@ -818,6 +848,7 @@ YAML::Node editor::Stream::encodeMaterialPass(const MaterialPass& pass, bool emb
     }
     if (!pass.shaderFeatures.empty()) node["shaderFeatures"] = encodeShaderFeatures(pass.shaderFeatures);
     if (pass.blendMode != MaterialBlendMode::AUTO) node["blendMode"] = materialBlendModeToString(pass.blendMode);
+    encodeBlendFactors(node, pass);
     if (pass.cullMode != MaterialCullMode::AUTO) node["cullMode"] = materialCullModeToString(pass.cullMode);
     if (pass.depthWrite != MaterialDepthWrite::AUTO) node["depthWrite"] = materialDepthWriteToString(pass.depthWrite);
     if (pass.depthTest != MaterialDepthTest::AUTO) node["depthTest"] = materialDepthTestToString(pass.depthTest);
@@ -838,6 +869,7 @@ MaterialPass editor::Stream::decodeMaterialPass(const YAML::Node& node) {
     pass.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
     pass.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
     if (node["blendMode"]) pass.blendMode = decodeEnum(node, "blendMode", StreamSchema::materialBlendMode());
+    decodeBlendFactors(node, pass);
     if (node["cullMode"]) pass.cullMode = decodeEnum(node, "cullMode", StreamSchema::materialCullMode());
     if (node["depthWrite"]) pass.depthWrite = decodeEnum(node, "depthWrite", StreamSchema::materialDepthWrite());
     if (node["depthTest"]) pass.depthTest = decodeEnum(node, "depthTest", StreamSchema::materialDepthTest());
@@ -1788,6 +1820,24 @@ void editor::Stream::decodeExternalBuffer(ExternalBuffer& buffer, const YAML::No
     buffer.setName(node["name"].as<std::string>()); // Set ExternalBuffer specific property
 }
 
+YAML::Node editor::Stream::encodePropertyOverrides(const ShaderPropertyOverrides& overrides, bool embedData) {
+    YAML::Node node(YAML::NodeType::Map);
+    if (!overrides.values.empty()) node["values"] = encodeShaderUniforms(overrides.values);
+    if (!overrides.textures.empty()) {
+        YAML::Node textures = encodeShaderTextures(overrides.textures, embedData);
+        if (textures.size() > 0) node["textures"] = textures;
+    }
+    return node;
+}
+
+ShaderPropertyOverrides editor::Stream::decodePropertyOverrides(const YAML::Node& node) {
+    ShaderPropertyOverrides overrides;
+    if (!node || !node.IsMap()) return overrides;
+    overrides.values = decodeShaderUniforms(node["values"]);
+    overrides.textures = decodeShaderTextures(node["textures"]);
+    return overrides;
+}
+
 YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextureData, std::optional<unsigned int> vertexCount) {
     YAML::Node node;
 
@@ -1799,6 +1849,8 @@ YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextu
     }
     node["faceCulling"] = YamlNumbers::text(submesh.faceCulling);
     node["textureShadow"] = YamlNumbers::text(submesh.textureShadow);
+
+    if (!submesh.propertyOverrides->empty()) node["propertyOverrides"] = encodePropertyOverrides(submesh.propertyOverrides, embedTextureData);
 
     // The fields the next model load must keep instead of taking them from the file.
     if (submesh.overrideFields != 0) {
@@ -1840,6 +1892,9 @@ Submesh editor::Stream::decodeSubmesh(const YAML::Node& node, const Submesh* old
     if (node["vertexCount"]) submesh.vertexCount = YamlNumbers::as<uint32_t>(node["vertexCount"]);
     if (node["faceCulling"]) submesh.faceCulling = YamlNumbers::as<bool>(node["faceCulling"]);
     if (node["textureShadow"]) submesh.textureShadow = YamlNumbers::as<bool>(node["textureShadow"]);
+    // omitted when empty: an absent key is none
+    if (node["propertyOverrides"]) submesh.propertyOverrides = decodePropertyOverrides(node["propertyOverrides"]);
+    else submesh.propertyOverrides.reset();
 
     // Omitted at its default, so an absent key is a value, not a reason to keep the old one.
     submesh.overrideFields = node["overrideFields"] ? YamlNumbers::as<uint64_t>(node["overrideFields"]) : 0;
@@ -2363,6 +2418,8 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["showTorsoDirection"] = ds.showTorsoDirection;
     if (ds.drawMode != ViewDrawMode::SHADED)
         sceneNode["drawMode"] = drawModeKey(ds.drawMode);
+    if (ds.vertexColorChannel != ViewVertexColorChannel::RGB)
+        sceneNode["vertexColorChannel"] = vertexColorChannelKey(ds.vertexColorChannel);
     if (ds.showStats)
         sceneNode["showStats"] = ds.showStats;
     if (ds.frameChecks)
@@ -2418,6 +2475,9 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     ds.drawMode = ViewDrawMode::SHADED;
     if (node["drawMode"] && node["drawMode"].IsScalar())
         drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
+    ds.vertexColorChannel = ViewVertexColorChannel::RGB;
+    if (node["vertexColorChannel"] && node["vertexColorChannel"].IsScalar())
+        vertexColorChannelFromKey(node["vertexColorChannel"].as<std::string>(), ds.vertexColorChannel);
     ds.showStats = node["showStats"] ? YamlNumbers::as<bool>(node["showStats"]) : false;
     ds.frameChecks = node["frameChecks"] ? YamlNumbers::as<bool>(node["frameChecks"]) : false;
     decodeNavOverlaySettings(node["navigation"], ds.navigation);
@@ -2766,6 +2826,18 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     // Project Settings > Pixel Art (S42), omitted at its defaults
     if (const YAML::Node pixelArt = pixelart::encodePixelArtSettings(project->getPixelArtSettings()); pixelArt.size() > 0)
         root["pixelArt"] = pixelArt;
+    // Project Settings > Input > Simulate Touch From Mouse and Project Settings > Time, omitted at
+    // their defaults
+    if (project->isSimulateTouchFromMouse())
+        root["simulateTouchFromMouse"] = true;
+    if (project->getFixedTimestep() != Project::defaultFixedTimestep || project->getMaximumDeltaTime() != Project::defaultMaximumDeltaTime) {
+        YAML::Node time;
+        if (project->getFixedTimestep() != Project::defaultFixedTimestep)
+            time["fixedTimestep"] = project->getFixedTimestep();
+        if (project->getMaximumDeltaTime() != Project::defaultMaximumDeltaTime)
+            time["maximumDeltaTime"] = project->getMaximumDeltaTime();
+        root["time"] = time;
+    }
     // Project Settings > Input, omitted at its defaults
     const GamepadCursorSettings& cursor = project->getGamepadCursorSettings();
     const GamepadCursorSettings cursorDefaults;
@@ -2836,6 +2908,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["htmlUiGlyphAtlasMiB"] = htmlUiRender.glyphAtlasMiB;
         root["htmlUiSdfPrimitives"] = htmlUiRender.sdfPrimitives;
         root["htmlUiTransformAwareText"] = htmlUiRender.transformAwareText;
+        // only away from the platform's default: a project saved before S93 re-saves byte-identically
+        if (htmlUiRender.imageCacheMiB != HtmlUiRenderSettings().imageCacheMiB)
+            root["htmlUiImageCacheMiB"] = htmlUiRender.imageCacheMiB;
     }
     // graphics.shadowTier.<platform>, only the platforms away from their default tier,
     // graphics.lightMode when not Automatic, and GPU Instancing (S55) when off
@@ -2989,8 +3064,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         for (const SortingLayerInfo& layer : sortingLayers) maxId = std::max(maxId, layer.id);
         if (SortingLayers::getNextId() > maxId + 1)
             root["sortingLayerNextId"] = SortingLayers::getNextId();
-        if (project->getTransparencySortMode() == TransparencySortMode::CUSTOM_AXIS)
-            root["transparencySortMode"] = "custom_axis";
+        if (project->getTransparencySortMode() != TransparencySortMode::DEFAULT)
+            root["transparencySortMode"] = SortingLayers::transparencySortModeToken(project->getTransparencySortMode());
         const Vector3 axis = project->getTransparencySortAxis();
         if (axis != Vector3(0.0f, 1.0f, 0.0f)) {
             YAML::Node axisNode(YAML::NodeType::Sequence);
@@ -3690,6 +3765,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     {
+        project->setSimulateTouchFromMouse(node["simulateTouchFromMouse"].IsDefined() && node["simulateTouchFromMouse"].as<bool>(false));
+        const YAML::Node time = node["time"];
+        const bool timeMap = time.IsDefined() && time.IsMap();
+        // out of range (a hand edit): the default, as Project Settings > Time accepts no other
+        auto timeValue = [&](const char* key, double fallback) {
+            const double value = timeMap ? decodeFiniteDouble(time[key], fallback) : fallback;
+            return (value >= Project::minFixedTimestep && value <= Project::maxFixedTimestep) ? value : fallback;
+        };
+        project->setFixedTimestep(timeValue("fixedTimestep", Project::defaultFixedTimestep));
+        project->setMaximumDeltaTime(timeValue("maximumDeltaTime", Project::defaultMaximumDeltaTime));
+    }
+
+    {
         const YAML::Node input = node["input"];
         project->setUnreadableInputNode("");
         project->setInputActionsMigration(InputActionsMigration());
@@ -3792,6 +3880,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             htmlUiRender.sdfPrimitives = YamlNumbers::as<bool>(node["htmlUiSdfPrimitives"]);
         if (node["htmlUiTransformAwareText"].IsDefined())
             htmlUiRender.transformAwareText = YamlNumbers::as<bool>(node["htmlUiTransformAwareText"]);
+        if (node["htmlUiImageCacheMiB"].IsDefined())
+            htmlUiRender.imageCacheMiB = YamlNumbers::as<int>(node["htmlUiImageCacheMiB"]);
         project->setHtmlUiRenderSettings(htmlUiRender);
     }
 
@@ -4073,8 +4163,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         TransparencySortMode mode = TransparencySortMode::DEFAULT;
         if (node["transparencySortMode"] && node["transparencySortMode"].IsScalar()) {
             const std::string name = node["transparencySortMode"].as<std::string>();
-            if (name == "custom_axis") mode = TransparencySortMode::CUSTOM_AXIS;
-            else if (name != "default") Out::warning("Ignoring transparencySortMode \"%s\" in project settings (default or custom_axis)", name.c_str());
+            if (!SortingLayers::transparencySortModeFromToken(name, mode))
+                Out::warning("Ignoring transparencySortMode \"%s\" in project settings (default, perspective, orthographic or custom_axis)", name.c_str());
         }
         Vector3 axis(0.0f, 1.0f, 0.0f);
         if (node["transparencySortAxis"] && node["transparencySortAxis"].IsSequence() && node["transparencySortAxis"].size() == 3) {
@@ -5452,6 +5542,8 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["physicsInterpolation"] = scene->isPhysicsInterpolation();
     if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
         sceneNode["physics2DSubSteps"] = scene->getPhysics2DSubSteps();
+    if (scene->getFixedTimestep() != SceneSettings().fixedTimestep)
+        sceneNode["fixedTimestep"] = scene->getFixedTimestep();
     // S96: the world settings away from their defaults, a flat key each (old scenes keep none)
     {
         const SceneSettings defaults;
@@ -5676,6 +5768,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setGravity3D(node["gravity3D"] ? decodeVector3(node["gravity3D"]) : Vector3(0.0f, -9.81f, 0.0f));
     scene->setPhysicsInterpolation(node["physicsInterpolation"] ? YamlNumbers::as<bool>(node["physicsInterpolation"]) : SceneSettings().physicsInterpolation);
     scene->setPhysics2DSubSteps(node["physics2DSubSteps"] ? YamlNumbers::as<int>(node["physics2DSubSteps"]) : SceneSettings().physics2DSubSteps);
+    scene->setFixedTimestep(decodeFinite(node["fixedTimestep"], SceneSettings().fixedTimestep));
     // S96: the world settings; an absent key is its default (StreamSchema lists the keys)
     {
         SceneSettings settings;
@@ -5953,14 +6046,64 @@ void editor::Stream::decodeEntityState(Entity entity, EntityRegistry* registry, 
     registry->setEntityLayer(entity, entityNode["layer"] ? YamlNumbers::as<int>(entityNode["layer"]) : 0);
 }
 
+// an entity reference element is {entity, sceneId} when it names another scene
+YAML::Node editor::Stream::encodeScriptList(ScriptPropertyType elementType, const ScriptPropertyValue& value) {
+    YAML::Node list(YAML::NodeType::Sequence);
+    const ScriptPropertyList* items = std::get_if<ScriptPropertyList>(&value);
+    if (!items) return list;
+    for (const ScriptPropertyElement& item : items->items) {
+        if (elementType == ScriptPropertyType::EntityReference) {
+            const EntityReference* ref = std::get_if<EntityReference>(&item);
+            const EntityReference reference = ref ? *ref : EntityReference{};
+            if (reference.sceneId == 0) {
+                list.push_back(YAML::Node(reference.entity));
+                continue;
+            }
+            YAML::Node node(YAML::NodeType::Map);
+            node["entity"] = reference.entity;
+            node["sceneId"] = reference.sceneId;
+            list.push_back(node);
+            continue;
+        }
+        ScriptProperty single;
+        single.type = elementType;
+        single.value = scriptPropertyValueOf(item);
+        single.defaultValue = single.value;
+        list.push_back(YAML::Clone(encodeScriptProperty(single)["value"]));
+    }
+    return list;
+}
+
+ScriptPropertyList editor::Stream::decodeScriptList(ScriptPropertyType elementType, const YAML::Node& value) {
+    ScriptPropertyList list;
+    if (!value || !value.IsSequence()) return list;
+    for (const YAML::Node& item : value) {
+        if (elementType == ScriptPropertyType::EntityReference) {
+            if (item.IsMap()) {
+                list.items.push_back(EntityReference{item["entity"] ? item["entity"].as<Entity>(NULL_ENTITY) : Entity(NULL_ENTITY),
+                                                     item["sceneId"] ? item["sceneId"].as<uint32_t>(0) : 0u});
+            } else {
+                list.items.push_back(EntityReference{item.as<Entity>(NULL_ENTITY), 0});
+            }
+            continue;
+        }
+        YAML::Node node(YAML::NodeType::Map);
+        node["type"] = scriptPropertyTypeToString(elementType);
+        node["value"] = item;
+        list.items.push_back(scriptPropertyElementOf(decodeScriptProperty(node).value));
+    }
+    return list;
+}
+
 YAML::Node editor::Stream::encodeScriptProperty(const ScriptProperty& prop) {
     YAML::Node node;
     node["name"] = prop.name;
     node["displayName"] = prop.displayName;
     node["type"] = scriptPropertyTypeToString(prop.type);
 
-    // Store ptrTypeName if it's a pointer type
-    if (prop.type == ScriptPropertyType::EntityReference && !prop.ptrTypeName.empty()) {
+    // Store ptrTypeName if it's a pointer type, or the data class of a Data Asset reference
+    if (!prop.ptrTypeName.empty() && (prop.type == ScriptPropertyType::EntityReference || prop.type == ScriptPropertyType::Asset ||
+                                      prop.type == ScriptPropertyType::List)) {
         node["ptrTypeName"] = prop.ptrTypeName;
     }
 
@@ -6030,6 +6173,12 @@ YAML::Node editor::Stream::encodeScriptProperty(const ScriptProperty& prop) {
             node["defaultValue"] = encodeAsset(prop.getDefaultValue<AssetRef>());
             break;
         }
+        case ScriptPropertyType::List:
+            node["elementType"] = scriptPropertyTypeToString(prop.elementType);
+            if (!prop.assetType.empty()) node["assetType"] = prop.assetType;
+            node["value"] = encodeScriptList(prop.elementType, prop.value);
+            node["defaultValue"] = encodeScriptList(prop.elementType, prop.defaultValue);
+            break;
     }
 
     return node;
@@ -6049,6 +6198,7 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
     if (node["assetType"]) {
         prop.assetType = node["assetType"].as<std::string>();
     }
+    if (node["elementType"]) prop.elementType = decodeEnum(node, "elementType", StreamSchema::scriptPropertyType());
 
     if (node["value"]) {
         switch (prop.type) {
@@ -6112,6 +6262,10 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
                 prop.defaultValue = decodeAsset(node["defaultValue"]);
                 break;
             }
+            case ScriptPropertyType::List:
+                prop.value = decodeScriptList(prop.elementType, node["value"]);
+                prop.defaultValue = decodeScriptList(prop.elementType, node["defaultValue"]);
+                break;
         }
     } else {
         // Initialize with default values if no value is provided
@@ -6128,6 +6282,7 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
             case ScriptPropertyType::EntityReference: prop.value = EntityReference{NULL_ENTITY, 0}; prop.defaultValue = EntityReference{NULL_ENTITY, 0}; break;
             case ScriptPropertyType::Prefab: prop.value = PrefabAsset(); prop.defaultValue = PrefabAsset(); break;
             case ScriptPropertyType::Asset: prop.value = AssetRef(); prop.defaultValue = AssetRef(); break;
+            case ScriptPropertyType::List: prop.value = ScriptPropertyList(); prop.defaultValue = ScriptPropertyList(); break;
         }
     }
 
@@ -6290,6 +6445,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     if (!material.shaderGlobalBindings.empty()) node["shaderGlobalBindings"] = encodeShaderGlobalBindings(material.shaderGlobalBindings);
     if (!material.shaderPalettes->empty()) node["shaderPalettes"] = encodeShaderPalettes(material.shaderPalettes.get());
     if (material.blendMode != MaterialBlendMode::AUTO) node["blendMode"] = materialBlendModeToString(material.blendMode);
+    encodeBlendFactors(node, material);
     if (material.cullMode != MaterialCullMode::AUTO) node["cullMode"] = materialCullModeToString(material.cullMode);
     if (material.depthWrite != MaterialDepthWrite::AUTO) node["depthWrite"] = materialDepthWriteToString(material.depthWrite);
     if (material.depthTest != MaterialDepthTest::AUTO) node["depthTest"] = materialDepthTestToString(material.depthTest);
@@ -6361,6 +6517,19 @@ YAML::Node editor::Stream::encodeMaterialPbr(const MaterialPbrExtensions& pbr, b
         }
         if (lobeNode.size() > 0) node[lobe.name] = lobeNode;
     }
+    // the Vertex Color section (V1 R70): what differs from Tint
+    const MaterialPbrExtensions::VertexColor& vertexColor = pbr.vertexColor;
+    if (vertexColor != defaults.vertexColor) {
+        YAML::Node vertexColorNode;
+        if (vertexColor.use != defaults.vertexColor.use) vertexColorNode["use"] = MaterialPbr::getVertexColorUseName(vertexColor.use);
+        if (vertexColor.alphaOpacity != defaults.vertexColor.alphaOpacity) vertexColorNode["alphaOpacity"] = vertexColor.alphaOpacity;
+        const char* const channels[] = {"r", "g", "b", "a"};
+        for (int channel = 0; channel < 4; channel++) {
+            const VertexColorTarget target = MaterialPbr::getVertexColorTarget(vertexColor, channel);
+            if (target != VertexColorTarget::NONE) vertexColorNode[channels[channel]] = MaterialPbr::getVertexColorTargetName(target);
+        }
+        node["vertexColor"] = vertexColorNode;
+    }
     return node;
 }
 
@@ -6383,6 +6552,20 @@ MaterialPbrExtensions editor::Stream::decodeMaterialPbr(const YAML::Node& node) 
                 case PbrFieldType::Texture: *(Texture*)target = decodeTexture(value); break;
                 case PbrFieldType::TexCoord: *(int*)target = YamlNumbers::as<int>(value); break;
             }
+        }
+    }
+    // the Vertex Color section (V1 R70); a name this editor does not know keeps the default
+    const YAML::Node vertexColorNode = node["vertexColor"];
+    if (vertexColorNode && vertexColorNode.IsMap()) {
+        MaterialPbrExtensions::VertexColor& vertexColor = pbr.vertexColor;
+        if (vertexColorNode["use"] && vertexColorNode["use"].IsScalar())
+            MaterialPbr::parseVertexColorUse(vertexColorNode["use"].as<std::string>(), vertexColor.use);
+        if (vertexColorNode["alphaOpacity"]) vertexColor.alphaOpacity = YamlNumbers::as<bool>(vertexColorNode["alphaOpacity"]);
+        const char* const channels[] = {"r", "g", "b", "a"};
+        for (int channel = 0; channel < 4; channel++) {
+            const YAML::Node target = vertexColorNode[channels[channel]];
+            if (target && target.IsScalar())
+                MaterialPbr::parseVertexColorTarget(target.as<std::string>(), MaterialPbr::vertexColorTarget(vertexColor, channel));
         }
     }
     // out of range from a hand edit or a newer writer: into range (the glTF loader warns, a
@@ -6435,6 +6618,7 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
     material.shaderPalettes = decodeShaderPalettes(node["shaderPalettes"]);
     material.blendMode = node["blendMode"] ? decodeEnum(node, "blendMode", StreamSchema::materialBlendMode()) : MaterialBlendMode::AUTO;
+    decodeBlendFactors(node, material);
     material.cullMode = node["cullMode"] ? decodeEnum(node, "cullMode", StreamSchema::materialCullMode()) : MaterialCullMode::AUTO;
     material.depthWrite = node["depthWrite"] ? decodeEnum(node, "depthWrite", StreamSchema::materialDepthWrite()) : MaterialDepthWrite::AUTO;
     material.depthTest = node["depthTest"] ? decodeEnum(node, "depthTest", StreamSchema::materialDepthTest()) : MaterialDepthTest::AUTO;

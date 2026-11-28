@@ -142,7 +142,8 @@ sorted by path then channel, events by time). Writing the same data twice gives 
 ```
 
 - `format` and `version` are required; everything else has a default. Not JSON, another
-  format, a newer version or a Unity YAML `.anim` fail to load (JSON errors with `line:col`).
+  format, a newer version or a Unity YAML `.anim` fail to load (JSON errors with `line:col`). Import
+  a Unity `.anim` instead: `edit_animation {clip, create: {unity: "<absolute .anim path>"}}`.
 - Everything else is lenient: a bad key, track or event is dropped with a warning carrying its
   JSON path (`tracks[3].keys[2].value: expected [x, y, z]`) and the rest loads.
 - `guid` identifies the clip for references (the editor writes one into a clip without it).
@@ -499,8 +500,10 @@ its keyframe tracks into the file and gives the Animation's target, or `root`, a
 Player playing it, and `remove_tracks: true` also removes the converted tracks from the
 Animation; `{from: "assets/models/hero.gltf#Walk"}` extracts a model clip into an editable
 file), `tracks`, `events`, `audio`, `events_mode`, `wrap`, `frame_rate`, `length`, `root_motion`
-(`{bone, bake_rotation, bake_position_y, bake_position_xz}`, the members given change; `bone` `""` is
-the Animator's choice), `root`, `scene` (of `root` / `from`), `max_keys`. `create` fails when the file exists; without it the file must
+(`{bone, bake_rotation, bake_position_y, bake_position_xz, rotation_based_upon, rotation_offset,
+position_y_based_upon, position_y_offset, position_xz_based_upon}`, the members given change; `bone` `""` is
+the Animator's choice; a clip that starts turned away or off the ground: `rotation_based_upon: "body_orientation"`,
+`position_y_based_upon: "feet"`), `root`, `scene` (of `root` / `from`), `max_keys`. `create` fails when the file exists; without it the file must
 exist. A call is all or nothing; a setting given with its current value is a no-change, not an
 error (retries are safe).
 

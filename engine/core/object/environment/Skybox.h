@@ -49,6 +49,11 @@ namespace jasperengine{
         void setRotation(float angle);
         float getRotation() const;
 
+        // a hidden sky draws nothing (the clear colour shows) and feeds no reflection probe, but
+        // keeps lighting the scene (its IBL); an inactive sky entity draws none either
+        void setVisible(bool visible);
+        bool isVisible() const;
+
         void setCustomShader(const std::string& path);
         std::string getCustomShader() const;
 

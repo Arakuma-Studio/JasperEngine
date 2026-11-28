@@ -4,11 +4,16 @@
 // Full-path goldens of boxes, layout, images, blending, clipping and transforms: the
 // documents of a scene go through UIDocumentSystem, the context's offscreen target and the
 // composite in the scene's camera pass (golden/orientation.png, boxes_borders, flexbox,
-// images, alpha_blend, overflow_scissor, transform).
+// images, alpha_blend, overflow_scissor, transform); S93's image regions, border-image slices
+// at dp ratios and image-color (s93_*).
 
 #include "TestGoldenCommon.h"
+#include "TestRenderCommon.h"
 
 #include "HtmlUIContext.h"
+#include "HtmlUIImageCache.h"
+#include "htmlui/compat/DiagnosticCodes.h"
+#include "htmlui/compat/DocumentLoader.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "object/ui/Image.h"
 
@@ -303,4 +308,152 @@ TEST_F(FullPathGoldenTest, Transform){
     EXPECT_GT(screen.countColor({160, 40, 260, 100}, 255, 255, 255, 60), 20u);
 
     EXPECT_SCREEN_GOLDEN(screen, "transform");
+}
+
+// S93 R30 (AC34): multiply blends with a copy of the backdrop, plus-lighter adds without one (fixed function), normal
+// draws as before; the colours are Compositing 1's: multiply (0x40,0x80,0xc0) x (0xc0,0x80,0x40), plus-lighter their sum
+TEST_F(FullPathGoldenTest, MixBlendModeBackdropCopies){
+    // every frame replayed: a frame S92 keeps (the same as the last one) draws nothing, so its stats count no copy
+    FrameReuseMode replayed(false);
+    SceneFixture fixture;
+    UIDocument document = fixture.addDocument("golden/mix_blend.html");
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    Screen screen;
+    ASSERT_TRUE(capture(screen));
+    EXPECT_EQ(document.getRenderStats().blendBackdropCopies, 1u);
+    EXPECT_TRUE(screen.is(50, 50, 0x30, 0x40, 0x30, 2));     // multiply
+    EXPECT_TRUE(screen.is(150, 50, 0xff, 0xff, 0xff, 2));    // plus-lighter (clamped)
+    EXPECT_TRUE(screen.is(250, 50, 0xc0, 0x80, 0x40, 2));    // normal
+    EXPECT_TRUE(screen.is(10, 50, 0x40, 0x80, 0xc0, 2));     // the backdrop
+}
+
+// ---------------------------------------------------------------- S93 images (R20-R22)
+
+namespace {
+
+    class GoldenRender : public FullPathGoldenTest {
+    protected:
+        // the screen of one document, drawn once it (and its images) loaded
+        static ::testing::AssertionResult show(const std::string& file, Screen& screen, Entity* entity = nullptr,
+                                               std::vector<htmlui::compat::Diagnostic>* diagnostics = nullptr){
+            SceneFixture fixture;
+            UIDocument document = fixture.addDocument(file);
+            if (!fixture.waitUntilLoaded())
+                return ::testing::AssertionFailure() << file << " never loaded";
+            if (entity)
+                *entity = document.getEntity();
+            if (diagnostics){
+                Rml::ElementDocument* rml = fixture.getScene().getSystem<UIDocumentSystem>()->getDocument(document.getEntity());
+                *diagnostics = htmlui::compat::DocumentLoader::diagnosticsOf(rml);
+            }
+            return capture(screen);
+        }
+
+        // every pixel of the rectangle within tolerance of (r, g, b)
+        static ::testing::AssertionResult filled(const Screen& screen, const PixelRect& rect, int r, int g, int b, const char* what){
+            for (int y = rect.y0; y < rect.y1; y++){
+                for (int x = rect.x0; x < rect.x1; x++){
+                    ::testing::AssertionResult pixel = screen.is(x, y, r, g, b, 3);
+                    if (!pixel)
+                        return ::testing::AssertionFailure() << what << ": " << pixel.message();
+                }
+            }
+            return ::testing::AssertionSuccess();
+        }
+    };
+
+}
+
+// R20, AC24: #xywh= (pixels, percent) and #sprite= on img, a repeated background-image, border-image
+// and mask-image draw exactly what the same pixels as separate files draw
+TEST_F(GoldenRender, AtlasRegions){
+    HtmlUIImageCache::get().clear();
+    Screen regions, reference;
+    ASSERT_TRUE(show("s93/atlas-regions.html", regions));
+    ASSERT_TRUE(show("s93/atlas-regions-reference.html", reference));
+    ASSERT_EQ(regions.rgba.size(), reference.rgba.size());
+
+    size_t different = 0;
+    std::string first;
+    for (int y = 0; y < regions.height; y++){
+        for (int x = 0; x < regions.width; x++){
+            const uint8_t* a = regions.at(x, y);
+            const uint8_t* b = reference.at(x, y);
+            if (std::abs(a[0] - b[0]) > 1 || std::abs(a[1] - b[1]) > 1 || std::abs(a[2] - b[2]) > 1){
+                if (different++ == 0)
+                    first = "(" + std::to_string(x) + ", " + std::to_string(y) + ")";
+            }
+        }
+    }
+    EXPECT_EQ(different, 0u) << "pixels differ from the separate files' render, first at " << first;
+    // each region shows its own quadrant: blue/cyan columns, a green disc, a magenta checker (the img row)
+    EXPECT_GT(regions.countColor({20, 20, 84, 84}, 0, 64, 255, 8), 500u);
+    EXPECT_GT(regions.countColor({100, 20, 164, 84}, 0, 200, 0, 8), 500u);
+    EXPECT_GT(regions.countColor({180, 20, 244, 84}, 230, 0, 230, 8), 500u);
+    // and the repeated background tiles the region alone (no red/yellow of the atlas' first quadrant)
+    EXPECT_EQ(regions.countColor({20, 100, 244, 164}, 255, 0, 0, 8), 0u);
+    EXPECT_SCREEN_GOLDEN(regions, "s93_atlas_regions");
+}
+
+// R20: an unknown sprite and a region outside the image draw nothing, with a diagnostic
+TEST_F(GoldenRender, AtlasRegionUnknownSpriteIsADiagnostic){
+    Screen screen;
+    std::vector<htmlui::compat::Diagnostic> diagnostics;
+    ASSERT_TRUE(show("s93/atlas-region-unknown.html", screen, nullptr, &diagnostics));
+    EXPECT_TRUE(screen.isBackground(52, 52));
+    EXPECT_TRUE(screen.isBackground(132, 52));
+    EXPECT_FALSE(screen.isBackground(212, 52));
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "HTMLUI-GEN-0008"), 2u) << logText(D_LOG_WARN);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "no sprite 'nope'"), 1u);
+    size_t regionDiagnostics = 0;
+    for (const htmlui::compat::Diagnostic& diagnostic : diagnostics){
+        if (diagnostic.code == htmlui::compat::codes::ImageRegion)
+            regionDiagnostics++;
+    }
+    EXPECT_EQ(regionDiagnostics, 2u) << "doc:getDiagnostics() lacks the region diagnostics";
+    expectedWarnings = TestSystem::get().countLogs(D_LOG_WARN, "[HTML UI]");
+    EXPECT_GE(expectedWarnings, 2u);
+}
+
+// R21, AC25: border-image-slice numbers are image pixels at every dp ratio: the 9-slice's corners
+// are its corners, its edges its edges, nothing missing
+TEST_F(GoldenRender, BorderImageSliceAtDpRatios){
+    for (float ratio : {0.5f, 1.0f, 1.5f, 2.0f}){
+        SCOPED_TRACE("dp ratio " + std::to_string(ratio));
+        GpuEnvironment::setView((int)(640 * ratio), (int)(360 * ratio), 640, 360, Scaling::FITWIDTH);
+        Screen screen;
+        ASSERT_TRUE(show("s93/border-image-slice.html", screen));
+        // the frame: (20, 20) 200 x 120 document px, a 20 px border image
+        const auto px = [ratio](float value){ return (int)std::lround(value * ratio); };
+        const int x0 = px(20), x1 = px(40), x2 = px(200), x3 = px(220);
+        const int y0 = px(20), y1 = px(40), y2 = px(120), y3 = px(140);
+        const int m = 1;   // the pieces' shared edges are filtered
+        EXPECT_TRUE(filled(screen, {x0 + m, y0 + m, x1 - m, y1 - m}, 255, 0, 0, "top-left corner"));
+        EXPECT_TRUE(filled(screen, {x2 + m, y0 + m, x3 - m, y1 - m}, 0, 255, 0, "top-right corner"));
+        EXPECT_TRUE(filled(screen, {x2 + m, y2 + m, x3 - m, y3 - m}, 0, 0, 255, "bottom-right corner"));
+        EXPECT_TRUE(filled(screen, {x0 + m, y2 + m, x1 - m, y3 - m}, 255, 255, 0, "bottom-left corner"));
+        EXPECT_TRUE(filled(screen, {x1 + m, y0 + m, x2 - m, y1 - m}, 128, 128, 128, "top edge"));
+        EXPECT_TRUE(filled(screen, {x1 + m, y2 + m, x2 - m, y3 - m}, 128, 128, 128, "bottom edge"));
+        EXPECT_TRUE(filled(screen, {x0 + m, y1 + m, x1 - m, y2 - m}, 128, 128, 128, "left edge"));
+        EXPECT_TRUE(filled(screen, {x2 + m, y1 + m, x3 - m, y2 - m}, 128, 128, 128, "right edge"));
+        EXPECT_TRUE(filled(screen, {x1 + m, y1 + m, x2 - m, y2 - m}, 255, 255, 255, "middle"));
+        EXPECT_TRUE(screen.isBackground(x0 - 2, y0 - 2));
+        EXPECT_TRUE(screen.isBackground(x3 + 1, y3 + 1));
+    }
+}
+
+// R22, AC26: image-color multiplies background-image and border-image as it does <img>; a mask is not tinted
+TEST_F(GoldenRender, ImageColorTintsBackgroundAndBorderImage){
+    Screen screen;
+    ASSERT_TRUE(show("s93/image-color.html", screen));
+    EXPECT_TRUE(filled(screen, {22, 22, 98, 98}, 255, 0, 0, "background-image x #ff0000"));
+    // the 9-slice x #00ffff: red corner -> black, grey edge -> (0, 128, 128), white middle -> cyan
+    EXPECT_TRUE(filled(screen, {122, 22, 138, 38}, 0, 0, 0, "border-image corner"));
+    EXPECT_TRUE(filled(screen, {142, 22, 178, 38}, 0, 128, 128, "border-image edge"));
+    EXPECT_TRUE(filled(screen, {142, 42, 178, 78}, 0, 255, 255, "border-image middle"));
+    // the mask keeps the green background whole: image-color does not weaken it
+    EXPECT_TRUE(filled(screen, {222, 22, 298, 98}, 0, 255, 0, "mask-image"));
+    EXPECT_TRUE(filled(screen, {322, 22, 398, 98}, 0, 0, 255, "img"));
+    EXPECT_TRUE(filled(screen, {422, 22, 498, 98}, 255, 255, 255, "untinted background-image"));
+    EXPECT_SCREEN_GOLDEN(screen, "s93_image_color");
 }

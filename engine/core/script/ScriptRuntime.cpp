@@ -91,6 +91,8 @@ namespace {
     // Lua `start` runs as an engine coroutine (it may Coroutine.wait); false when the script
     // has no Lua start (C++ scripts go through call)
     bool startLuaCoroutine(Scene* scene, Entity entity, size_t index) {
+        // A private UI preview runs a bounded, non-yielding start on the guarded Lua state.
+        if (LuaBinding::isPreviewContext()) return false;
         ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity);
         if (!scripts || index >= scripts->scripts.size()) {
             return false;
@@ -305,6 +307,8 @@ void ScriptRuntime::awakeScene(Scene* scene) {
         return;
     }
     startedScenes.push_back(scene);
+    // the fixed step the scene's init reads (and may change) is its own (S95 D-7)
+    SceneManager::mainSceneStarting(scene);
     // what the scripts instantiate goes to their scene, not yet the Engine's
     ObjectManager::pushActiveScene(scene);
     awakeningScenes++;
@@ -362,12 +366,27 @@ void ScriptRuntime::refreshEntity(Scene* scene, Entity entity) {
 }
 
 void ScriptRuntime::flushStarts() {
+    flushStarts(nullptr);
+}
+
+void ScriptRuntime::flushStarts(Scene* onlyScene) {
     if (startQueue.empty()) {
         return;
     }
     // what is queued meanwhile waits for the next frame
     std::vector<const void*> due;
-    due.swap(startQueue);
+    if (!onlyScene) {
+        due.swap(startQueue);
+    } else {
+        std::vector<const void*> pending;
+        pending.reserve(startQueue.size());
+        for (const void* instance : startQueue) {
+            auto found = states.find(instance);
+            if (found == states.end() || found->second.scene == onlyScene) due.push_back(instance);
+            else pending.push_back(instance);
+        }
+        startQueue.swap(pending);
+    }
     for (const void* instance : due) {
         auto found = states.find(instance);
         if (found == states.end() || !found->second.startQueued) {

@@ -150,10 +150,11 @@ namespace jasperengine::editor {
         int glyphAtlasMiB = 0;           // 0, or 4-256
         bool sdfPrimitives = true;
         bool transformAwareText = true;
+        int imageCacheMiB = -1;          // S93: -1 (the platform's default), or 0-1024 (0 keeps no released image)
 
         bool operator==(const HtmlUiRenderSettings& other) const{
             return glyphAtlasMiB == other.glyphAtlasMiB && sdfPrimitives == other.sdfPrimitives &&
-                   transformAwareText == other.transformAwareText;
+                   transformAwareText == other.transformAwareText && imageCacheMiB == other.imageCacheMiB;
         }
         bool operator!=(const HtmlUiRenderSettings& other) const{ return !(*this == other); }
     };

@@ -71,6 +71,11 @@ namespace jasperengine{
         // (Inspector "Use Animation Player", animation clips spec 9.R15): loads and reloads skip them.
         bool animationEntities = true;
 
+        // Unity's Preserve Hierarchy (spec S94 F44): every glTF node gets an entity of its own and a
+        // mesh is never baked into this entity, whatever the file holds. Read by the next load or
+        // reload (off: the loader's own rule, which bakes a lone static mesh into the root).
+        bool preserveHierarchy = false;
+
         std::string loadedFilename;
         bool loadedMergeStaticMeshes = false;
         bool needUpdateModel = true;

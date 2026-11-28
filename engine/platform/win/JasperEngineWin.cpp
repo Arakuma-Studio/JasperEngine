@@ -420,14 +420,18 @@ int JasperEngineWin::init(int argc, char **argv) {
     const float uiScale = WindowWin::monitorScale(nullptr);
 
     const PlatformConfig& platform = platformConfig();
-    Engine::systemInit(argc, argv, new SystemWin(&inputRouter));
-
-    WindowWinConfig config;
-    config.title = platform.title;
     // a headless run's size is the one asked for, not scaled for the monitor
     const float sizeScale = platform.headless ? 1.0f : uiScale;
+    WindowWinConfig config;
+    config.title = platform.title;
     config.width = static_cast<int>(std::lround(platform.width * sizeScale));
     config.height = static_cast<int>(std::lround(platform.height * sizeScale));
+    // the client area opens at this size (maximized or fullscreen: known only once it is shown),
+    // so the scripts' init, which runs before the window exists, sees the first frame's canvas
+    if (platform.windowMode == 0)
+        Engine::setStartScreenSize(config.width, config.height);
+    Engine::systemInit(argc, argv, new SystemWin(&inputRouter));
+
     config.resizable = platform.resizable;
     config.maximized = (platform.windowMode == 1);
     config.windowProc = windowProc;

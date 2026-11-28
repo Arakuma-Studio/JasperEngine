@@ -37,8 +37,11 @@ async def spheres(ed: Editor) -> int:
     scene = made["scene"]["id"]
     S["balls"] = []
     for i in range(16):
+        # each Model draws its sphere itself (no Preserve Hierarchy, which a new project places with): the
+        # tests set the Mesh of the Model's own GameObject
         ball = await ed.call("create_entity", scene=scene, type="model", model="assets/models/sphere.gltf", name=f"Ball{i}",
-                             position=[(i % 4) * 2 - 3, 0.5, (i // 4) * 2 - 3], select=False)
+                             position=[(i % 4) * 2 - 3, 0.5, (i // 4) * 2 - 3], select=False,
+                             values={"model": {"preserveHierarchy": False}})
         S["balls"].append(ball["entity_id"])
     await ed.call("create_entity", scene=scene, type="plane", name="Floor", scale=[20, 1, 20], select=False)
     # a still scene's cached shadow slots draw nothing, and settled() waits for a still scene

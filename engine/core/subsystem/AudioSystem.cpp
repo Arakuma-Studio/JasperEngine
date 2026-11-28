@@ -513,6 +513,45 @@ namespace {
                listener.up * own.up.dotProduct(offset) + listener.forward * own.forward.dotProduct(offset);
     }
 
+    // One listener, the main scene's camera, hears every scene's 3D sources, so without a camera
+    // they play in 2D. The persistent scene's (DontDestroyOnLoad) positions are world positions
+    // of the main scene. A layer scene (a HUD, a scene drawn over another) is seen through its own
+    // camera: its sources are heard where they are in that camera's view, mapped into the main
+    // camera's (a layer without the main scene, or over a main scene without a camera, hears
+    // through its own)
+    struct ListenerView {
+        Scene* listenerScene = nullptr;
+        bool mapped = false;
+        CameraPose listener;
+        CameraPose own;
+        bool hasListener = false;
+
+        Vector3 heard(const Vector3& position) const {
+            return mapped ? mapToListener(position, own, listener) : position;
+        }
+    };
+
+    ListenerView listenerViewOf(Scene* scene) {
+        ListenerView view;
+        const bool persistent = scene == SceneManager::getPersistentScene();
+        Scene* mainScene = Engine::getMainScene();
+        view.listenerScene = scene;
+        if (persistent) {
+            view.listenerScene = mainScene;
+        } else if (mainScene && mainScene != scene && cameraPose(*mainScene).valid) {
+            view.listenerScene = mainScene;
+        }
+        view.mapped = !persistent && view.listenerScene != scene;
+        view.listener = view.listenerScene ? cameraPose(*view.listenerScene) : CameraPose();
+        view.own = view.mapped ? cameraPose(*scene) : view.listener;
+        view.hasListener = view.listener.valid && view.own.valid;
+        return view;
+    }
+
+    const SoundEventSpatial* eventSpatial(const std::shared_ptr<const SoundEventDef>& def) {
+        return def && def->spatial ? &*def->spatial : nullptr;
+    }
+
     // SoLoud's distance attenuation (soloud_core_3d.cpp), for a voice the engine pans itself; never
     // negative, and 1 where SoLoud's formula has no value (a zero distance range)
     float distanceGain(AudioSourceAttenuation model, float distance, float minDistance, float maxDistance, float rolloff) {
@@ -2108,6 +2147,7 @@ void AudioSystem::destroy(){
 }
 
 void AudioSystem::update(double dt){
+    listenerPlacedScene = nullptr;
 #if JASPERENGINE_SOUND_LAYER
     if (deferredPending.load(std::memory_order_relaxed)) {
         std::vector<std::function<void()>> calls;
@@ -2161,26 +2201,14 @@ void AudioSystem::update(double dt){
         return;
     }
 
-    // One listener, the main scene's camera, hears every scene's 3D sources, so without a camera
-    // they play in 2D. The persistent scene's (DontDestroyOnLoad) positions are world positions
-    // of the main scene. A layer scene (a HUD, a scene drawn over another) is seen through its own
-    // camera: its sources are heard where they are in that camera's view, mapped into the main
-    // camera's (a layer without the main scene, or over a main scene without a camera, hears
-    // through its own)
-    const bool persistent = scene == SceneManager::getPersistentScene();
-    Scene* mainScene = Engine::getMainScene();
-    Scene* listenerScene = scene;
-    if (persistent) {
-        listenerScene = mainScene;
-    } else if (mainScene && mainScene != scene && cameraPose(*mainScene).valid) {
-        listenerScene = mainScene;
-    }
-    const bool mapped = !persistent && listenerScene != scene;
-    const CameraPose listenerPose = listenerScene ? cameraPose(*listenerScene) : CameraPose();
-    const CameraPose ownPose = mapped ? cameraPose(*scene) : listenerPose;
-    const bool hasListener = listenerPose.valid && ownPose.valid;
-    auto heard = [&](const Vector3& position) {
-        return mapped ? mapToListener(position, ownPose, listenerPose) : position;
+    // where this scene's 3D sources are heard from (ListenerView)
+    const ListenerView view = listenerViewOf(scene);
+    Scene* listenerScene = view.listenerScene;
+    const CameraPose& listenerPose = view.listener;
+    const CameraPose& ownPose = view.own;
+    const bool hasListener = view.hasListener;
+    auto heard = [&view](const Vector3& position) {
+        return view.heard(position);
     };
     // Doppler under perspective cameras only: 2D and UI scenes move in pixels, where everyday
     // speeds are near the speed of sound (343.3 units a second)
@@ -2581,12 +2609,7 @@ void AudioSystem::update(double dt){
         // 3D voices follow the source (its one-shots too, Unity)
         // and when it stops, a velocity of none (its pitch comes back)
         if (use3DAudio && (audio.needUpdate || moved || velocity != audio.lastVelocity)) {
-            auto eventSpatial = [](const std::shared_ptr<const SoundEventDef>& def) -> const SoundEventSpatial* {
-                return def && def->spatial ? &*def->spatial : nullptr;
-            };
-            if (audio.handle != 0) apply3dParameters(audio, audio.handle, worldPosition, velocity, eventSpatial(audio.mainEvent));
-            for (const AudioOneShot& layer : audio.mainLayers) apply3dParameters(audio, layer.handle, worldPosition, velocity, eventSpatial(layer.event));
-            for (const AudioOneShot& shot : audio.oneShots) apply3dParameters(audio, shot.handle, worldPosition, velocity, eventSpatial(shot.event));
+            applySource3d(audio, worldPosition, velocity);
             audio.lastVelocity = velocity;
         }
         if (use3DAudio) {
@@ -2625,6 +2648,7 @@ void AudioSystem::update(double dt){
 }
 
 void AudioSystem::placeListener(Scene& listenerScene){
+    listenerPlacedScene = &listenerScene;
     const CameraPose pose = cameraPose(listenerScene);
     const Vector3& position = pose.position;
     const Vector3& view = pose.view;
@@ -2635,6 +2659,41 @@ void AudioSystem::placeListener(Scene& listenerScene){
     if (inited){
         getSoloud().update3dAudio();
     }
+}
+
+void AudioSystem::applySource3d(AudioSourceComponent& audio, const Vector3& position, const Vector3& velocity){
+    if (audio.handle != 0) apply3dParameters(audio, audio.handle, position, velocity, eventSpatial(audio.mainEvent));
+    for (const AudioOneShot& layer : audio.mainLayers) apply3dParameters(audio, layer.handle, position, velocity, eventSpatial(layer.event));
+    for (const AudioOneShot& shot : audio.oneShots) apply3dParameters(audio, shot.handle, position, velocity, eventSpatial(shot.event));
+}
+
+void AudioSystem::updateLate(bool viewMoved){
+    if (paused || !inited) return;
+    if (viewMoved && listenerPlacedScene && Engine::isSceneRunning(listenerPlacedScene)){
+        placeListener(*listenerPlacedScene);
+    }
+    // the 3D sources this frame's update placed, where they are heard now (moved, or seen through
+    // a moved camera); their velocity stays the update's
+    auto audios = scene->getComponentArray<AudioSourceComponent>();
+    if (audios->size() == 0) return;
+    const ListenerView view = listenerViewOf(scene);
+    if (!view.hasListener) return;
+    bool sources = false;
+    for (size_t i = 0; i < audios->size(); i++){
+        AudioSourceComponent& audio = audios->getComponentFromIndex(i);
+        if (!audio.positionTracked) continue;
+        const Entity entity = audios->getEntity(i);
+        const Transform* transform = scene->findComponent<Transform>(entity);
+        if (!transform && audio.timelineTarget != NULL_ENTITY && scene->isEntityCreated(audio.timelineTarget))
+            transform = scene->findComponent<Transform>(audio.timelineTarget);
+        if (!transform) continue;
+        const Vector3 position = view.heard(transform->worldPosition);
+        if (position == audio.lastPosition) continue;
+        audio.lastPosition = position;
+        applySource3d(audio, position, audio.lastVelocity);
+        sources = true;
+    }
+    if (sources) getSoloud().update3dAudio();
 }
 
 void AudioSystem::draw(){

@@ -2226,6 +2226,8 @@ std::vector<Setting> mcpSettingsTable() {
                 const std::string family = modelFamilyName((ModelFamily)f);
                 // each R8 setting's default for models that do not set it ("" = the built-in default)
                 for (const std::string& metaKey : modelSettingKeys()) {
+                    // the FBX conversion's keys are each model's own
+                    if (isModelOnlySettingKey(metaKey)) continue;
                     const std::vector<std::string>& choices = modelEnumValues(metaKey);
                     const bool isBool = metaKey == "weldVertices" || metaKey == "shipSource";
                     std::vector<std::string> values;
@@ -2334,6 +2336,27 @@ std::vector<Setting> mcpSettingsTable() {
                             e = "\"" + name + "\" is not one of automatic, keep, release";
                             return false;
                         }, {"automatic", "keep", "release"});
+            meshSetting("mesh.fbx_submesh_order", "enum",
+                        "An FBX mesh's submeshes: material_slots (submesh i is material slot i, Unity's order; new projects) or "
+                        "used_materials (the used slots in order, projects made before; a change reimports every FBX).",
+                        [](const ModelProjectSettings& m) { return Json(fbxSubmeshOrderName(m.fbxSubmeshOrder)); },
+                        [](ModelProjectSettings& m, const Json& v, std::string& e) {
+                            std::string name;
+                            if (!readString(v, name, e)) return false;
+                            if (fbxSubmeshOrderFromName(name, m.fbxSubmeshOrder)) return true;
+                            e = "\"" + name + "\" is not one of material_slots, used_materials";
+                            return false;
+                        }, {"material_slots", "used_materials"});
+            meshSetting("mesh.preserve_hierarchy_for_new_models", "bool",
+                        "Models made in the editor start with Preserve Hierarchy on (every glTF node its own GameObject; "
+                        "on in new projects).",
+                        [](const ModelProjectSettings& m) { return Json(m.preserveHierarchyForNewModels); },
+                        [](ModelProjectSettings& m, const Json& v, std::string& e) {
+                            bool flag = false;
+                            if (!readBool(v, flag, e)) return false;
+                            m.preserveHierarchyForNewModels = flag;
+                            return true;
+                        });
             meshSetting("mesh.material_creation_mode", "enum",
                         "Material Creation Mode of FBX models that do not set their own: import, or none (no materials or textures).",
                         [](const ModelProjectSettings& m) { return Json(materialCreationModeName(m.materialCreationMode)); },
@@ -2436,6 +2459,27 @@ std::vector<Setting> mcpSettingsTable() {
                 if (apply) {
                     HtmlUiRenderSettings settings = ctx.project()->getHtmlUiRenderSettings();
                     settings.glyphAtlasMiB = static_cast<int>(v);
+                    ctx.project()->setHtmlUiRenderSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+        // S93 R19: the image cache's budget of released images
+        {
+            Setting s;
+            s.key = "graphics.html_ui_image_cache_mib";
+            s.type = "int";
+            s.description = "MiB of HTML/CSS UI images kept on the GPU after no document draws them (an LRU), so the next "
+                            "scene that shows them neither decodes nor uploads them; -1 = the platform's default (64 on desktop, "
+                            "32 on Android, iOS and the web), 0 keeps none, else up to 1024.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getHtmlUiRenderSettings().imageCacheMiB); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, -1, Project::maxHtmlUiImageCacheMiB, v, error)) return false;
+                if (apply) {
+                    HtmlUiRenderSettings settings = ctx.project()->getHtmlUiRenderSettings();
+                    settings.imageCacheMiB = static_cast<int>(v);
                     ctx.project()->setHtmlUiRenderSettings(settings);
                 }
                 return true;
@@ -2548,19 +2592,22 @@ std::vector<Setting> mcpSettingsTable() {
             Setting s;
             s.key = "graphics.transparency_sort_mode";
             s.type = "enum";
-            s.values = {"default", "custom_axis"};
-            s.description = "custom_axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw by "
+            s.values = {"default", "perspective", "orthographic", "custom_axis"};
+            s.description = "How transparent draws sort, far first: perspective by the distance to the camera, orthographic by "
+                            "depth along its view axis, default orthographic for orthographic cameras and perspective otherwise. "
+                            "custom_axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw by "
                             "graphics.transparency_sort_axis (a larger dot(axis, position) first). Undoable (undo scope project).";
             s.get = [](SettingsContext& ctx) {
-                return Json(ctx.project()->getTransparencySortMode() == TransparencySortMode::CUSTOM_AXIS ? "custom_axis" : "default");
+                return Json(SortingLayers::transparencySortModeToken(ctx.project()->getTransparencySortMode()));
             };
             s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
-                if (!value.is_string() || (value.get<std::string>() != "default" && value.get<std::string>() != "custom_axis")) {
-                    error = "must be \"default\" or \"custom_axis\"";
+                TransparencySortMode mode = TransparencySortMode::DEFAULT;
+                if (!value.is_string() || !SortingLayers::transparencySortModeFromToken(value.get<std::string>(), mode)) {
+                    error = "must be \"default\", \"perspective\", \"orthographic\" or \"custom_axis\"";
                     return false;
                 }
                 SortingSettings changed = SortingSettings::of(*ctx.project());
-                changed.mode = value.get<std::string>() == "custom_axis" ? TransparencySortMode::CUSTOM_AXIS : TransparencySortMode::DEFAULT;
+                changed.mode = mode;
                 return setSorting(ctx, changed, apply, error);
             };
             add(s);
@@ -3566,6 +3613,43 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(std::move(s));
         }
+        add(boolSetting("input.simulate_touch_from_mouse",
+                        "The mouse also acts as finger 0 (onTouchStart/Move/End with the mouse events; Engine.callTouchInMouseEvent) "
+                        "in Play and in desktop and web builds. The Game view's Simulate Touch preference is per user.",
+                        [](Project& p) { return p.isSimulateTouchFromMouse(); },
+                        [](Project& p, bool v) { p.setSimulateTouchFromMouse(v); }));
+
+        // ---- time (Unity's Project Settings > Time, S95 REQ-13)
+        {
+            Setting s;
+            s.key = "time.fixed_timestep";
+            s.type = "number";
+            s.description = "Seconds per fixed step (onFixedUpdate, physics; default 1/60). Set before init in builds and at Play "
+                            "start; a scene's fixed_timestep overrides it while that scene is the main scene.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getFixedTimestep()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, Project::minFixedTimestep, Project::maxFixedTimestep, v, error)) return false;
+                if (apply) ctx.project()->setFixedTimestep(v);
+                return true;
+            };
+            add(std::move(s));
+        }
+        {
+            Setting s;
+            s.key = "time.maximum_delta_time";
+            s.type = "number";
+            s.description = "Longest frame delta in seconds (default 0.25): a longer frame is clamped (Time.maximumDeltaTime).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getMaximumDeltaTime()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, Project::minFixedTimestep, Project::maxFixedTimestep, v, error)) return false;
+                if (apply) ctx.project()->setMaximumDeltaTime(v);
+                return true;
+            };
+            add(std::move(s));
+        }
+
         // Input > Gamepad Cursor (GamepadCursor's project values)
         {
             auto cursorNumber = [&](const char* key, const char* description, double minimum, double maximum,
@@ -4844,6 +4928,7 @@ const Placement placements[] = {
     {"graphics.light_mode", "Graphics", "", "Light Mode", "forward+ forward plus tiled clustered per object pixel lights max lights"},
     {"graphics.html_ui_msaa_samples", "Graphics", "", "HTML UI MSAA", "anti-aliasing antialiasing multisampling"},
     {"graphics.html_ui_glyph_atlas_mib", "Graphics", "", "HTML UI Glyph Atlas", "font text memory budget mib"},
+    {"graphics.html_ui_image_cache_mib", "Graphics", "", "HTML UI Image Cache", "images textures decode memory budget mib lru"},
     {"graphics.html_ui_sdf_primitives", "Graphics", "", "HTML UI SDF Primitives", "batching shapes borders box shadows"},
     {"graphics.html_ui_transform_aware_text", "Graphics", "", "HTML UI Transform-Aware Text", "sharp text scale msdf distance field"},
     {"particles.world_budget", "Graphics", "", "World Particle Budget", "particles limit max effects sub-emitters"},
@@ -4933,6 +5018,9 @@ const Placement placements[] = {
     {"voxel.ignore_dimension_limits", "Voxels", "", "Ignore Dimension Limits", "voxel volume export oversize"},
     {"input.actions", "Input", "", "Default Actions Asset", "input actions bindings controls keyboard gamepad touch inputactions"},
     {"input.deadzone", "Input", "", "Default Deadzone", "input stick axis analog gamepad dead zone"},
+    {"input.simulate_touch_from_mouse", "Input", "", "Simulate Touch From Mouse", "input touch mouse finger emulate simulate mobile"},
+    {"time.fixed_timestep", "Time", "", "Fixed Timestep", "time fixed step fixeddeltatime physics hz rate onfixedupdate"},
+    {"time.maximum_delta_time", "Time", "", "Maximum Allowed Timestep", "time maximum delta frame cap clamp spiral"},
     {"input.gamepad_cursor.speed", "Input", "Gamepad Cursor", "Cursor Speed", "gamepad cursor pointer virtual mouse stick speed"},
     {"input.gamepad_cursor.acceleration_time", "Input", "Gamepad Cursor", "Acceleration Time", "gamepad cursor pointer acceleration ramp"},
     {"input.gamepad_cursor.slow_over_controls", "Input", "Gamepad Cursor", "Slow Over Controls", "gamepad cursor pointer slow buttons aim"},
@@ -5247,6 +5335,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Title Art", SettingsScope::Project, 19, "title art titleart logo bake baked outputs png export stale"},
         {"Localization", SettingsScope::Project, 20, "localization localisation language languages locale translation"},
         {"Dialogue", SettingsScope::Project, 21, "dialogue conversation npc dialog lines choices handlers prefixes variables speakers"},
+        {"Time", SettingsScope::Project, 22, "time fixed timestep step physics rate maximum delta"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},

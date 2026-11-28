@@ -1423,7 +1423,7 @@ bool HtmlUIInspector::documentInfo(Scene* scene, Entity entity, DocumentInfo& ou
     std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
     out.entity = entity;
     out.html = component->filename;
-    out.renderToTexture = component->renderMode == UIDocumentRenderMode::TEXTURE;
+    out.renderToTexture = rendersToTexture(component->renderMode);
     out.visible = component->enabled;
     out.sortOrder = component->sortOrder;
     if (!system)

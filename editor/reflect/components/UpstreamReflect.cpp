@@ -53,7 +53,7 @@ namespace {
         JE_FIELD(TrailRendererComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kTrailShader),
         JE_FIELD(TrailRendererComponent, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kTrailShader),
         JE_FIELD(TrailRendererComponent, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
-        JE_FIELD(TrailRendererComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kTrailShader),
+        JE_FIELD(TrailRendererComponent, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kTrailShader, .enumMask = enums::kComponentBlendModes),
         JE_FIELD(TrailRendererComponent, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kTrailShader),
         JE_FIELD(TrailRendererComponent, stencil, .flags = ListWhole, .updateFlags = kTrailShader),
         JE_FIELD(TrailRendererComponent, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kTrailShader, .min = -1.0f, .max = 15.0f),

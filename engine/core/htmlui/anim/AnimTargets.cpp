@@ -26,6 +26,7 @@ using namespace jasperengine;
 namespace {
 
     const double PI = 3.14159265358979323846;
+    Scene* animeSelectorScene = nullptr;
 
     // Anime's sync() target: an anime object's currentTime (and progress, speed)
     class TimerTarget : public AnimTarget {
@@ -75,6 +76,14 @@ namespace {
             AnimTargets::appendUnique(out, AnimProperty::elementTarget(element));
     }
 
+}
+
+AnimTargets::ScopedSceneTargets::ScopedSceneTargets(Scene* scene) : previous(animeSelectorScene){
+    animeSelectorScene = scene;
+}
+
+AnimTargets::ScopedSceneTargets::~ScopedSceneTargets(){
+    animeSelectorScene = previous;
 }
 
 AnimTarget::~AnimTarget() = default;
@@ -207,12 +216,16 @@ AnimTargetList AnimTargets::fromSelector(const std::string& selector, const UIEl
         if (scene && std::find(scenes.begin(), scenes.end(), scene) == scenes.end())
             scenes.push_back(scene);
     };
-    add(Engine::getScene());
-    add(Engine::getMainScene());
-    for (Scene* layer : Engine::getSceneLayers())
-        add(layer);
-    for (Scene* created : SceneManager::getScenePtrs())
-        add(created);
+    if (animeSelectorScene){
+        add(animeSelectorScene);
+    } else {
+        add(Engine::getScene());
+        add(Engine::getMainScene());
+        for (Scene* layer : Engine::getSceneLayers())
+            add(layer);
+        for (Scene* created : SceneManager::getScenePtrs())
+            add(created);
+    }
     for (Scene* scene : scenes){
         std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
         if (!system)

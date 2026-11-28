@@ -13,7 +13,7 @@
 
 namespace jasperengine::htmlui::compat {
 
-    // How an anchor's href is followed (no browser: the document decides through htmlnavigate)
+    // How an anchor's href is followed (the document decides through htmlnavigate)
     struct AnchorTarget {
         enum class Kind : uint8_t { None, Fragment, Document, Resource, External };
         Kind kind = Kind::None;
@@ -28,8 +28,8 @@ namespace jasperengine::htmlui::compat {
     // - anything else dispatches `htmlnavigate` on the document (bubbles, cancelable) with the
     //   parameters href (as written), url (asset-relative file, or the URL), fragment,
     //   document (true for .html/.htm: UIDocument's default action loads it in the same
-    //   component, hook H4) and external (http(s), protocol-relative and other schemes: no
-    //   browser, HTMLUI-HTML-0023 at load).
+    //   component, hook H4) and external (http(s), protocol-relative and other schemes: opened
+    //   with System.openURL when no listener prevents it, HTMLUI-HTML-0023 at load).
     class JASPERENGINE_INTERNAL HtmlAnchorElement : public Rml::Element {
     public:
         RMLUI_RTTI_DeclareWithParent(HtmlAnchorElement, Rml::Element)

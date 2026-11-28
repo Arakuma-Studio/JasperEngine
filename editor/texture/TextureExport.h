@@ -37,7 +37,8 @@ namespace jasperengine::editor {
 
     class TextureExport {
     public:
-        // The settings and references of every texture source (main thread)
+        // The settings and references of every texture source (main thread); false when a
+        // reference reads an editor-decoded source (TIFF, PSB) as a file
         static bool gather(Project& project, std::map<std::string, TextureCookInputs>& inputs, std::string& error);
 
         // Cooks `inputs` for `families` (any thread) into <assetsOut>/je-cooked; an empty

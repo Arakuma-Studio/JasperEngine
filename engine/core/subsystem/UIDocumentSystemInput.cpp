@@ -64,6 +64,16 @@ using namespace jasperengine;
 
 namespace {
 
+    // a mouse button is down (Input's level): one no document captured is the drag of whoever
+    // got its press (the game, the component UI, a document on a mesh)
+    bool anyMouseButtonDown(){
+        for (int button = 0; button <= D_MOUSE_BUTTON_LAST; button++){
+            if (Input::getMouseButton(button))
+                return true;
+        }
+        return false;
+    }
+
     // engine mouse buttons to RmlUi's (0 left, 1 right, 2 middle); -1 for the others
     int toRmlButton(int button){
         switch (button){
@@ -310,6 +320,9 @@ bool UIDocumentSystem::eventOnPointerUp(int pointer, int button, float x, float 
     HtmlUIInputState& state = getInputState();
     std::set<int>& captures = touch ? state.capturedTouches : state.capturedButtons;
     const int captureKey = touch ? pointer : button;
+    // the press decided the owner (S93 R1): a release is the documents' only when they captured
+    // its press, wherever it lands; the release of a pointer the game (or the component UI) got
+    // still reaches the context, for its hover and pointerup, but goes on to its owner
     const bool captured = captures.erase(captureKey) > 0;
     bool consumed = captured;
 
@@ -320,16 +333,12 @@ bool UIDocumentSystem::eventOnPointerUp(int pointer, int button, float x, float 
         const int rmlMods = RmlKeyMap::toRmlModifiers(mods);
 
         if (touch){
-            if (getContext()->hasTouch(pointer)){
-                if (getContext()->processTouchEnd(pointer, Rml::Vector2f(cx, cy), rmlMods))
-                    consumed = true;
-            }
+            if (getContext()->hasTouch(pointer))
+                getContext()->processTouchEnd(pointer, Rml::Vector2f(cx, cy), rmlMods);
         }else{
             const int rmlButton = toRmlButton(button);
             if (rmlButton >= 0){
                 getContext()->processMouseMove(Rml::Vector2f(cx, cy), rmlMods);
-                if (getContext()->isPointerOverContent())
-                    consumed = true;
                 getContext()->processMouseButtonUp(rmlButton, rmlMods);
             }
         }
@@ -344,7 +353,9 @@ bool UIDocumentSystem::eventOnPointerMove(int pointer, float x, float y, int mod
     StructuralDeferScope deferScope(*scene);
     if (isWorldPointerCaptured(pointer, -1, touch)) return dispatchWorldPointer(pointer, -1, x, y, mods, PointerPhase::MOVE, touch);
     HtmlUIInputState& state = getInputState();
-    bool consumed = false;
+    // the moves of a pointer a document captured at its press are the documents' until its
+    // release (S93 R1), also over the game or another document
+    bool consumed = touch ? state.capturedTouches.count(pointer) > 0 : !state.capturedButtons.empty();
 
     if (hasVisibleDocument()){
         float cx = x, cy = y;
@@ -352,13 +363,17 @@ bool UIDocumentSystem::eventOnPointerMove(int pointer, float x, float y, int mod
         const int rmlMods = RmlKeyMap::toRmlModifiers(mods);
 
         if (touch){
-            // fingers that started outside the documents do not hover
-            if (getContext()->hasTouch(pointer)){
-                consumed = getContext()->processTouchMove(pointer, Rml::Vector2f(cx, cy), rmlMods) ||
-                           state.capturedTouches.count(pointer) > 0;
-            }
+            // fingers that started outside the documents do not hover; the others hover (an
+            // element that reacts to a finger sliding onto it sees it) but a finger the game got
+            // at its press stays the game's
+            if (getContext()->hasTouch(pointer))
+                getContext()->processTouchMove(pointer, Rml::Vector2f(cx, cy), rmlMods);
         }else{
-            consumed = getContext()->processMouseMove(Rml::Vector2f(cx, cy), rmlMods) || !state.capturedButtons.empty();
+            // hover over content takes a free mouse; a button held since a press the documents
+            // did not take keeps its drag with whoever got that press
+            const bool overContent = getContext()->processMouseMove(Rml::Vector2f(cx, cy), rmlMods);
+            if (overContent && !anyMouseButtonDown())
+                consumed = true;
         }
     }
 

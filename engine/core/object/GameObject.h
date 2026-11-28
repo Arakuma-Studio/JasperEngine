@@ -124,6 +124,7 @@ namespace jasperengine{
         Quaternion getWorldRotation() const;
 
         void setScale(const float factor);
+        void setScale(const float x, const float y, const float z);
         void setScale(Vector3 scale);
         Vector3 getScale() const;
         Vector3 getWorldScale() const;

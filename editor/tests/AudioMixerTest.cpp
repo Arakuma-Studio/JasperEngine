@@ -29,6 +29,8 @@
 #include "component/CameraComponent.h"
 #include "io/UserSettings.h"
 #include "object/sound/AudioSource.h"
+#include "object/GameObject.h"
+#include "Engine.h"
 #include "player/PlayerConfig.h"
 #include "pool/SoundPool.h"
 #include "reflect/Reflect.h"
@@ -1915,4 +1917,43 @@ TEST_F(AudioMixerMathRuntimeTest, MusicSwitchInTheFrameOfASnapshotActionHolds) {
     for (int i = 0; i < 12; i++) actions->update(1.0 / 60.0);
     EXPECT_FALSE(scene->getComponent<AudioSnapshotComponent>(withMusic).applied) << "the action ended";
     EXPECT_EQ(AudioMixer::getCurrentSnapshot(), "Combat") << "its revert leaves the music's snapshot";
+}
+
+// S95 (the late transform pass): a 3D source and the listener's camera moved in onPostUpdate are
+// heard where they are drawn in that frame: the voice's 3D position and the listener's are the
+// frame's, not the last one's
+TEST_F(AudioSourceTest, MovedInPostUpdateIsHeardThereThatFrame) {
+    const Entity eye = camera(scene, CameraType::CAMERA_PERSPECTIVE, Vector3(0, 0, 0), Vector3(0, 0, -1));
+    scene->getComponent<CameraComponent>(eye).useTarget = false;
+    AudioSource sound = source3d();
+    sound.setLooping(true);
+    sound.play();
+    const bool eventsWereEnabled = Engine::onUpdate.isEnabled();
+    Engine::pauseGameEvents(false);
+    Engine::setFixedDeltatime(1.0 / 60.0);
+    int moves = 0;
+    Engine::onPostUpdate.add("lateAudioTest", [&]() {
+        if (moves == 0) return;
+        GameObject(scene, sound.getEntity()).setPosition(Vector3((float)moves, 0, -5));
+        GameObject(scene, eye).setPosition(Vector3(0, (float)moves, 0));
+    });
+    Engine::systemUpdate();
+    const unsigned int handle = sound.getComponent<AudioSourceComponent>().handle;
+    EXPECT_NE(handle, 0u);
+    for (moves = 1; moves <= 3 && handle != 0; moves++) {
+        Engine::systemUpdate();
+        SCOPED_TRACE("frame " + std::to_string(moves));
+        const Vector3 at = voicePosition(handle);
+        EXPECT_NEAR(at.x, (float)moves, 1e-4f);
+        EXPECT_NEAR(at.z, -5.0f, 1e-4f);
+        EXPECT_NEAR(listenerPosition().y, (float)moves, 1e-4f);
+    }
+    Engine::onPostUpdate.remove("lateAudioTest");
+    Engine::setFixedDeltatime(0.0);
+    // a paused frame zeroes the unscaled delta these frames left: later tests of the binary
+    // (CanvasGroupTest's unscaled fade at time scale 0) read it as the frame's
+    Engine::pauseGameEvents(true);
+    Engine::systemUpdate();
+    Engine::pauseGameEvents(!eventsWereEnabled);
+    sound.stop();
 }

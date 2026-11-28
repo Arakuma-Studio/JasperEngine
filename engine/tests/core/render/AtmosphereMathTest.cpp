@@ -5,7 +5,7 @@
 // closed-form optical depth against a numeric integration of the density, the composition of
 // ray segments the volumetric fog's handoff relies on (docs/specs/S12-atmosphere.md AC3), the
 // phase function, the Sky Map's hemi-octahedral mapping and the Local Volumetric Fog volumes'
-// density and selection (AC7).
+// density and selection (AC7), and the Lit colour mode's light (docs/specs/S101-vapor.md AC5).
 
 #include "render/AtmosphereMath.h"
 #include "component/CameraComponent.h"
@@ -191,6 +191,58 @@ TEST(AtmosphereMath, HorizonRingBlendsByAzimuth){
     EXPECT_NEAR(between.y, 0.5f, 1e-5f);
 }
 
+// docs/specs/S101-vapor.md R12, AC5: Lit fog's light is albedo × (sun·inscatter·HG + scene ambient ×
+// ambient multiplier) + emissive; the analytic fog reads it as one colour and one sun colour
+TEST(AtmosphereMath, LitColourFromAmbientAndSun){
+    FogComponent fog = heightFog();
+    fog.colorMode = FogColorMode::LIT;
+    fog.albedo = Vector3(0.2f, 0.8f, 0.5f);
+    fog.ambientMultiplier = 2.0f;
+    fog.emissive = Vector3(0.1f, 0.0f, 0.3f);
+    const Vector3 ambient(0.3f, 0.4f, 0.5f);
+    const Vector3 sun(2.0f, 1.8f, 1.5f);
+    const LitFogLight lit = AtmosphereMath::litLight(fog, ambient, sun);
+    EXPECT_NEAR(lit.color.x, 0.2f * 0.3f * 2.0f + 0.1f, 1e-6f);
+    EXPECT_NEAR(lit.color.y, 0.8f * 0.4f * 2.0f, 1e-6f);
+    EXPECT_NEAR(lit.color.z, 0.5f * 0.5f * 2.0f + 0.3f, 1e-6f);
+    EXPECT_NEAR(lit.sunColor.x, 0.2f * 2.0f, 1e-6f);
+    EXPECT_NEAR(lit.sunColor.y, 0.8f * 1.8f, 1e-6f);
+    EXPECT_NEAR(lit.sunColor.z, 0.5f * 1.5f, 1e-6f);
+    // what the march scatters: the light untinted, the fog's own albedo and emissive
+    EXPECT_TRUE(lit.ambient == ambient * 2.0f);
+    EXPECT_TRUE(lit.sun == sun);
+    EXPECT_TRUE(lit.albedo == fog.albedo);
+    EXPECT_TRUE(lit.emissive == fog.emissive);
+
+    // the analytic fog's light along a view direction is the spec's formula
+    const Vector3 sunDirection = Vector3(0.3f, 0.6f, -1.0f).normalized();
+    const Vector3 dir = Vector3(0.1f, 0.0f, -1.0f).normalized();
+    const float inscatter = 0.7f;
+    const float anisotropy = 0.4f;
+    const Vector3 analytic = AtmosphereMath::inscatteredLight(lit.color, lit.sunColor, sunDirection, inscatter, anisotropy, dir, 1.0f);
+    const float sunShare = inscatter * AtmosphereMath::phase(anisotropy, dir.dotProduct(sunDirection));
+    const Vector3 expected = fog.albedo * (sun * sunShare + ambient * fog.ambientMultiplier) + fog.emissive;
+    EXPECT_NEAR(analytic.x, expected.x, 1e-5f);
+    EXPECT_NEAR(analytic.y, expected.y, 1e-5f);
+    EXPECT_NEAR(analytic.z, expected.z, 1e-5f);
+
+    // night: no sun, the ambient alone; no ambient either: the emissive alone
+    const LitFogLight night = AtmosphereMath::litLight(fog, ambient, Vector3(0.0f, 0.0f, 0.0f));
+    EXPECT_TRUE(night.sunColor == Vector3(0.0f, 0.0f, 0.0f));
+    EXPECT_TRUE(night.color == lit.color);
+    fog.ambientMultiplier = 0.0f;
+    EXPECT_TRUE(AtmosphereMath::litLight(fog, ambient, Vector3(0.0f, 0.0f, 0.0f)).color == fog.emissive);
+
+    // a negative albedo, multiplier or emissive adds no negative light
+    fog.albedo = Vector3(-1.0f, 0.5f, 0.5f);
+    fog.ambientMultiplier = -3.0f;
+    fog.emissive = Vector3(-0.5f, 0.0f, 0.0f);
+    const LitFogLight clamped = AtmosphereMath::litLight(fog, ambient, sun);
+    EXPECT_TRUE(clamped.color == Vector3(0.0f, 0.0f, 0.0f));
+    EXPECT_FLOAT_EQ(clamped.sunColor.x, 0.0f);
+    EXPECT_FLOAT_EQ(clamped.sunColor.y, 0.5f * 1.8f);
+}
+
 TEST(AtmosphereMath, FogVolumeDensityFadesOverTheBlendDistance){
     FogVolumeData box = boxVolume(1, Vector3(0.0f, 0.0f, 0.0f), Vector3(10.0f, 10.0f, 10.0f));
     box.fog.blendDistance = 2.0f;
@@ -245,4 +297,60 @@ TEST(Atmosphere, VolumeSelection){
     AtmosphereMath::selectFogVolumes(ties, planes, 100.0f, Vector3(0.0f, 0.0f, 0.0f), 80.0f, 2, selected);
     ASSERT_EQ(selected.size(), 2u);
     EXPECT_EQ(ties[selected[0]].entity, 3u);
+}
+
+// why each volume was left out (docs/specs/S101-vapor.md R17's volume_culled)
+TEST(Atmosphere, VolumeSelectionReasons){
+    Plane planes[6];
+    atmosphereMathBoxFrustum(planes);
+    std::vector<FogVolumeData> volumes = {
+        boxVolume(1, Vector3(0.0f, 0.0f, -10.0f), Vector3(2.0f, 2.0f, 2.0f)),   // used
+        boxVolume(2, Vector3(0.0f, 0.0f, -20.0f), Vector3(2.0f, 2.0f, 2.0f)),   // past the cap of 1
+        boxVolume(3, Vector3(0.0f, 0.0f, 30.0f), Vector3(2.0f, 2.0f, 2.0f)),    // behind the camera
+        boxVolume(4, Vector3(0.0f, 0.0f, -90.0f), Vector3(2.0f, 2.0f, 2.0f)),   // past the distance
+    };
+    std::vector<int> selected;
+    std::vector<const char*> reasons;
+    AtmosphereMath::selectFogVolumes(volumes, planes, 100.0f, Vector3(0.0f, 0.0f, 0.0f), 80.0f, 1, selected, &reasons);
+    ASSERT_EQ(reasons.size(), volumes.size());
+    EXPECT_EQ(reasons[0], nullptr);
+    EXPECT_STREQ(reasons[1], "tier_cap");
+    EXPECT_STREQ(reasons[2], "frustum");
+    EXPECT_STREQ(reasons[3], "distance");
+}
+
+// the analytic fog's opacity (R18) is 1 - the transmittance each fog type applies (fog.glsl, height_fog.glsl)
+TEST(AtmosphereMath, FogOpacityFollowsEachFogType){
+    const Vector3 origin(0.0f, 2.0f, 0.0f);
+    const Vector3 forward(0.0f, 0.0f, -1.0f);
+    FogComponent fog;
+    fog.type = FogType::LINEAR;
+    fog.linearStart = 10.0f;
+    fog.linearEnd = 60.0f;
+    EXPECT_FLOAT_EQ(AtmosphereMath::fogOpacity(fog, origin, forward, 5.0f), 0.0f);
+    EXPECT_FLOAT_EQ(AtmosphereMath::fogOpacity(fog, origin, forward, 35.0f), 0.5f);
+    EXPECT_FLOAT_EQ(AtmosphereMath::fogOpacity(fog, origin, forward, 200.0f), 1.0f);
+
+    fog.type = FogType::EXPONENTIAL;
+    fog.density = 0.02f;
+    EXPECT_NEAR(AtmosphereMath::fogOpacity(fog, origin, forward, 50.0f), 1.0f - std::exp(-1.0f), 1e-6f);
+    fog.type = FogType::EXPONENTIALSQUARED;
+    EXPECT_NEAR(AtmosphereMath::fogOpacity(fog, origin, forward, 50.0f), 1.0f - std::exp(-1.0f), 1e-6f);
+
+    // below the base height a level ray sees the uniform medium; Max Opacity caps it
+    fog.type = FogType::HEIGHT;
+    fog.attenuationDistance = 100.0f;
+    fog.baseHeight = 5.0f;
+    fog.maximumHeight = 50.0f;
+    fog.startDistance = 0.0f;
+    fog.maxFogDistance = 2000.0f;
+    fog.maxOpacity = 1.0f;
+    EXPECT_NEAR(AtmosphereMath::fogOpacity(fog, origin, forward, 50.0f), 1.0f - std::exp(-0.5f), 1e-5f);
+    fog.maxOpacity = 0.3f;
+    EXPECT_NEAR(AtmosphereMath::fogOpacity(fog, origin, forward, 200.0f), 0.3f, 1e-6f);
+    // no fog nearer than the Start Distance
+    fog.maxOpacity = 1.0f;
+    fog.startDistance = 20.0f;
+    EXPECT_FLOAT_EQ(AtmosphereMath::fogOpacity(fog, origin, forward, 10.0f), 0.0f);
+    EXPECT_NEAR(AtmosphereMath::fogOpacity(fog, origin, forward, 50.0f), 1.0f - std::exp(-0.3f), 1e-5f);
 }

@@ -5,7 +5,8 @@
 // perspective, orthographic and Sky colour mode (AC4), the volumetric fog's handoff to the
 // analytic fog (AC5), light shafts (AC6), Local Volumetric Fog volumes (AC7), the clouds in both
 // modes with converged frames bit-identical (AC8), the zero-cost rule (AC2), transparents (AC16)
-// and the RGBA8 targets (R14). Goldens in engine/tests/core/golden/atmosphere_*.png, made on
+// and the RGBA8 targets (R14); the Lit colour mode under day and night (docs/specs/S101-vapor.md AC5)
+// and with volumes (AC17). Goldens in engine/tests/core/golden/atmosphere_*.png, made on
 // glcore (JASPER_TEST_UPDATE_GOLDEN=1) and matched on Vulkan.
 
 #include "Engine.h"
@@ -20,6 +21,9 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/AtmosphereRenderer.h"
 #include "render/AtmospherePresets.h"
+#include "render/FogProfile.h"
+#include "render/FogResolve.h"
+#include "object/environment/FogZone.h"
 #include "texture/TextureData.h"
 
 #include "GpuEnvironment.h"
@@ -178,6 +182,15 @@ namespace {
             fog.setDirectionalInscattering(0.5f);
             fog.setAnisotropy(0.6f);
             fog.setMaxFogDistance(3000.0f);
+        }
+
+        // a Lit fog of the valley: its look comes from the scene's light (docs/specs/S101-vapor.md R12)
+        void litFog(Fog& fog){
+            valleyFog(fog);
+            fog.setColorMode(FogColorMode::LIT);
+            fog.setAlbedo(Vector3(0.88f, 0.92f, 1.0f));
+            fog.setAmbientMultiplier(1.5f);
+            fog.setEmissive(Vector3(0.03f, 0.03f, 0.04f));
         }
 
         const AtmosphereInfo& info(){
@@ -349,6 +362,71 @@ TEST_F(AtmosphereGpu, VolumetricFogHandsOffToTheAnalyticFog){
         std::printf("[atmosphere] handoff %s: mean difference %.3f\n", AtmosphereTiers::getName(quality), difference);
         EXPECT_LE(difference, 2.0) << AtmosphereTiers::getName(quality);
     }
+
+    // the Lit colour mode hands off the same (docs/specs/S101-vapor.md R12, AC17): the march scatters
+    // the untinted light by the albedo and adds the emissive, as the analytic fog has them folded
+    Engine::setAtmosphereQuality(AtmosphereQuality::HIGH);
+    fog.setVolumetric(false);
+    fog.setColorMode(FogColorMode::LIT);
+    fog.setAlbedo(Vector3(0.6f, 0.8f, 1.0f));
+    fog.setAmbientMultiplier(2.0f);
+    fog.setEmissive(Vector3(0.15f, 0.08f, 0.0f));
+    scene.setGlobalIllumination(0.4f, Vector3(0.7f, 0.8f, 1.0f));
+    ASSERT_TRUE(render());
+    const std::vector<uint8_t> litAnalytic = readAtmosphereTarget();
+    writePng(getOutputDirectory() + "/atmosphere_handoff_lit_analytic.png", litAnalytic, width, height);
+    // Lit is not the Color mode's look
+    EXPECT_GE(atmosphereMeanDifference(analytic, litAnalytic), 10.0);
+    fog.setVolumetric(true);
+    for (AtmosphereQuality quality : {AtmosphereQuality::LOW, AtmosphereQuality::MEDIUM, AtmosphereQuality::HIGH}){
+        Engine::setAtmosphereQuality(quality);
+        ASSERT_TRUE(render());
+        EXPECT_TRUE(info().volumetricActive) << AtmosphereTiers::getName(quality);
+        const std::vector<uint8_t> volumetric = readAtmosphereTarget();
+        writePng(getOutputDirectory() + "/atmosphere_handoff_lit_" + AtmosphereTiers::getName(quality) + ".png", volumetric, width, height);
+        const double difference = atmosphereMeanDifference(litAnalytic, volumetric);
+        std::printf("[atmosphere] handoff lit %s: mean difference %.3f\n", AtmosphereTiers::getName(quality), difference);
+        EXPECT_LE(difference, 2.0) << AtmosphereTiers::getName(quality);
+    }
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// docs/specs/S101-vapor.md AC5: one Lit fog under a noon sun and on a moonlit night takes each
+// scene's light; its Color is not used
+TEST_F(AtmosphereGpu, LitFogDay){
+    JASPER_REQUIRE_GPU();
+    Light sun(&scene);
+    buildValley(sun);
+    sun.setDirection(-0.2f, -1.0f, -0.35f);
+    sun.setColor(1.0f, 0.97f, 0.92f);
+    sun.setIntensity(3.0f);
+    scene.setGlobalIllumination(0.6f, Vector3(0.55f, 0.7f, 1.0f));
+    Fog fog(&scene);
+    litFog(fog);
+    camera.setPosition(0.0f, 8.0f, 30.0f);
+    camera.setTarget(0.0f, 4.0f, -100.0f);
+    camera.setFarClip(3000.0f);
+    ASSERT_TRUE(render());
+    EXPECT_GOLDEN_OPTIONS("atmosphere_lit_day", atmosphereGoldenTolerance());
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(AtmosphereGpu, LitFogNight){
+    JASPER_REQUIRE_GPU();
+    scene.setBackgroundColor(0.02f, 0.03f, 0.06f, 1.0f);
+    Light moon(&scene);
+    buildValley(moon);
+    moon.setDirection(-0.3f, -0.6f, -1.0f);
+    moon.setColor(0.55f, 0.65f, 1.0f);
+    moon.setIntensity(0.15f);
+    scene.setGlobalIllumination(0.08f, Vector3(0.3f, 0.35f, 0.6f));
+    Fog fog(&scene);
+    litFog(fog);
+    camera.setPosition(0.0f, 8.0f, 30.0f);
+    camera.setTarget(0.0f, 4.0f, -100.0f);
+    camera.setFarClip(3000.0f);
+    ASSERT_TRUE(render());
+    EXPECT_GOLDEN_OPTIONS("atmosphere_lit_night", atmosphereGoldenTolerance());
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -431,6 +509,10 @@ TEST_F(AtmosphereGpu, LightShafts){
         std::printf("[atmosphere] shafts %s: lit %.1f shadowed %.1f\n", AtmosphereTiers::getName(quality), lit, shadowed);
         EXPECT_LE(shadowed, lit * 0.85) << AtmosphereTiers::getName(quality);
         EXPECT_GOLDEN_OPTIONS(goldens[index++], atmosphereGoldenTolerance());
+        // the two rotated sun taps and the 5x5 denoise are static per pixel: a frame is the one
+        // before it (S12 R12, docs/specs/S101-vapor.md AC7)
+        GpuEnvironment::drawFrames(1);
+        EXPECT_TRUE(readAtmosphereTarget() == image) << AtmosphereTiers::getName(quality);
 
         // without light shafts the fog is lit everywhere
         shafts.fog.setLightShafts(false);
@@ -505,6 +587,73 @@ TEST_F(AtmosphereGpu, LocalVolumetricFog){
         EXPECT_EQ(info().volumesCulled, 10 - caps[index]) << AtmosphereTiers::getName(quality);
         index++;
     }
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// docs/specs/S101-vapor.md AC17: a white Local Volumetric Fog inside green Lit fog scatters the
+// light white: the fog's albedo tints the fog, not the volume
+TEST_F(AtmosphereGpu, LitVolumeNotDoubleTinted){
+    JASPER_REQUIRE_GPU();
+    scene.setBackgroundColor(0.0f, 0.0f, 0.0f, 1.0f);
+    ground(200.0f, Vector3(0.02f, 0.02f, 0.02f));
+    box(Vector3(0.0f, 0.0f, -40.0f), Vector3(80.0f, 30.0f, 2.0f), Vector3(0.02f, 0.02f, 0.02f));
+    Light sun(&scene);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(0.2f, -1.0f, -0.3f);
+    sun.setColor(1.0f, 1.0f, 1.0f);
+    // dim enough that nothing saturates: a tint shows in the channels' ratios
+    sun.setIntensity(0.4f);
+    sun.setShadows(false);
+    scene.setGlobalIllumination(0.2f, Vector3(1.0f, 1.0f, 1.0f));
+    Fog fog(&scene);
+    fog.setType(FogType::HEIGHT);
+    fog.setColorMode(FogColorMode::LIT);
+    fog.setAlbedo(Vector3(0.1f, 1.0f, 0.1f));
+    fog.setAttenuationDistance(60.0f);
+    fog.setMaximumHeight(60.0f);
+    fog.setDirectionalInscattering(0.5f);
+    fog.setAnisotropy(0.0f);
+    fog.setVolumetric(true);
+    fog.setVolumetricDistance(60.0f);
+    fog.setSkyFill(false);
+    LocalVolumetricFog volume(&scene);
+    volume.setPosition(0.0f, 3.0f, -10.0f);
+    volume.setSize(6.0f, 6.0f, 6.0f);
+    volume.setAttenuationDistance(1.0f);
+    volume.setAlbedo(1.0f, 1.0f, 1.0f);
+    volume.setBlendDistance(0.5f);
+    camera.setPosition(0.0f, 3.0f, 0.0f);
+    camera.setTarget(0.0f, 3.0f, -40.0f);
+    camera.setFarClip(200.0f);
+    ASSERT_TRUE(render());
+    EXPECT_TRUE(info().volumetricActive);
+    EXPECT_EQ(info().volumesUsed, 1);
+
+    const std::vector<uint8_t> image = readAtmosphereTarget();
+    const int width = (int)GpuEnvironment::target().getWidth();
+    writePng(getOutputDirectory() + "/atmosphere_lit_volume.png", image, width, (int)GpuEnvironment::target().getHeight());
+    int insideX = 0, insideY = 0, outsideX = 0, outsideY = 0;
+    ASSERT_TRUE(project(camera, Vector3(0.0f, 3.0f, -10.0f), insideX, insideY));
+    // beside the volume on screen: the fog alone, up to the wall
+    ASSERT_TRUE(project(camera, Vector3(22.0f, 3.0f, -39.0f), outsideX, outsideY));
+    auto mean = [&](int x, int y, int c){
+        double sum = 0.0;
+        for (int j = y - 2; j < y + 2; j++)
+            for (int i = x - 2; i < x + 2; i++)
+                sum += image[((size_t)j * width + i) * 4 + c];
+        return sum / 16.0;
+    };
+    const double insideR = mean(insideX, insideY, 0), insideG = mean(insideX, insideY, 1), insideB = mean(insideX, insideY, 2);
+    const double outsideR = mean(outsideX, outsideY, 0), outsideG = mean(outsideX, outsideY, 1);
+    std::printf("[atmosphere] lit volume: inside %.1f %.1f %.1f, fog %.1f %.1f\n", insideR, insideG, insideB, outsideR, outsideG);
+    // the fog is green: its albedo scatters green
+    EXPECT_GT(outsideG, 20.0);
+    EXPECT_LT(outsideR, outsideG * 0.5);
+    // the volume is bright and white: only the thin green fog in front of it tints it
+    EXPECT_GT(insideR, 60.0);
+    EXPECT_LT(insideG, 250.0);
+    EXPECT_GT(insideR, insideG * 0.8);
+    EXPECT_NEAR(insideB, insideR, insideR * 0.05);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -684,5 +833,264 @@ TEST_F(AtmosphereGpu, TransparentsTakeTheAnalyticFog){
     const uint8_t* before = &clear[((size_t)y * width + x) * 4];
     const uint8_t* after = &fogged[((size_t)y * width + x) * 4];
     EXPECT_LT((int)after[1] - (int)after[0], (int)before[1] - (int)before[0] - 20);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+namespace {
+
+    // the valley fog written into the component itself: a running scene's Fog setters go to the
+    // runtime layer (docs/specs/S101-vapor.md R43), which is a layer to resolve
+    FogComponent& valleyFogComponent(Scene& scene, Fog& fog){
+        FogComponent& component = scene.getComponent<FogComponent>(fog.getEntity());
+        component.type = FogType::HEIGHT;
+        component.color = Color::sRGBToLinear(Vector3(0.62f, 0.68f, 0.78f));
+        component.attenuationDistance = 90.0f;
+        component.baseHeight = 0.0f;
+        component.maximumHeight = 30.0f;
+        component.directionalInscattering = 0.5f;
+        component.anisotropy = 0.6f;
+        component.maxFogDistance = 3000.0f;
+        return component;
+    }
+
+
+    // docs/specs/S101-vapor.md AC6: a ceiling (the wall between the light and the view) with one
+    // hole under a point or spot light above it; the camera, below, looks along the room. The
+    // light reaches the fog below only through the hole: a lit column in the middle of the view,
+    // and none to its sides, where an unshadowed light shines through the ceiling.
+    struct FogLightRoom{
+        Light light;
+        Fog fog;
+        int columnX = 0, columnY = 0, sideX = 0, sideY = 0, band = 0;
+        explicit FogLightRoom(Scene* scene): light(scene), fog(scene){}
+    };
+
+}
+
+TEST_F(AtmosphereGpu, NoProfileNoResolve){
+    // R11, R20 (AC4): with no profile, zone, blend or runtime write the passes read the Fog itself:
+    // no resolve, the same uploads, the same passes; a profile holding the very same values renders
+    // the very same frame through the resolve
+    JASPER_REQUIRE_GPU();
+    FogProfileLibrary::clear();
+    Light sun(&scene);
+    buildValley(sun);
+    Fog fog(&scene);
+    FogComponent& component = valleyFogComponent(scene, fog);
+    component.volumetric = true;
+    camera.setPosition(0.0f, 8.0f, 30.0f);
+    camera.setTarget(0.0f, 4.0f, -100.0f);
+    camera.setFarClip(3000.0f);
+
+    ASSERT_TRUE(render());
+    EXPECT_EQ(renderSystem().getFogLook(), &component);
+    EXPECT_EQ(component.runtime.get(), nullptr);
+    const std::vector<uint8_t> plain = readAtmosphereTarget();
+    const std::vector<std::string> plainPasses = info().passes;
+    ASSERT_FALSE(plainPasses.empty());
+
+    // the same look as a profile: resolved, and the frame is the same to the bit
+    FogProfileLibrary::set("FogProfiles/same.fogprofile", FogProfileData::fromFog(component, "Same"));
+    component.profile = "FogProfiles/same.fogprofile";
+    ASSERT_TRUE(render());
+    const FogComponent* look = renderSystem().getFogLook();
+    ASSERT_NE(look, nullptr);
+    EXPECT_NE(look, &component);
+    EXPECT_EQ(atmosphereMeanDifference(readAtmosphereTarget(), plain), 0.0);
+    EXPECT_EQ(info().passes, plainPasses);
+
+    // unlinked: the Fog itself again
+    component.profile.clear();
+    ASSERT_TRUE(render());
+    EXPECT_EQ(renderSystem().getFogLook(), &component);
+    EXPECT_EQ(atmosphereMeanDifference(readAtmosphereTarget(), plain), 0.0);
+    FogProfileLibrary::clear();
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(AtmosphereGpu, ProfilesZonesAndWritesReachThePasses){
+    // R7: what the renderer draws is the resolved look: a profile's colour, a zone around the
+    // camera, a runtime write, each on the frame it is set
+    JASPER_REQUIRE_GPU();
+    FogProfileLibrary::clear();
+    Light sun(&scene);
+    buildValley(sun);
+    Fog fog(&scene);
+    FogComponent& component = valleyFogComponent(scene, fog);
+    camera.setPosition(0.0f, 8.0f, 30.0f);
+    camera.setTarget(0.0f, 4.0f, -100.0f);
+    camera.setFarClip(3000.0f);
+    ASSERT_TRUE(render());
+    const std::vector<uint8_t> own = readAtmosphereTarget();
+
+    // the far buildings sit in the fog: their colour follows the fog's
+    int x = 0, y = 0;
+    ASSERT_TRUE(project(camera, Vector3(0.0f, 2.0f, -400.0f), x, y));
+    auto redness = [&](const std::vector<uint8_t>& rgba){
+        const int width = (int)GpuEnvironment::target().getWidth();
+        const size_t p = ((size_t)y * width + x) * 4;
+        return (int)rgba[p] - (int)rgba[p + 2];
+    };
+
+    FogComponent red;
+    red.color = Vector3(0.8f, 0.05f, 0.02f);
+    FogProfileData redProfile;
+    redProfile.setFrom(red, FogField::Color);
+    FogProfileLibrary::set("FogProfiles/red.fogprofile", redProfile);
+    component.profile = "FogProfiles/red.fogprofile";
+    ASSERT_TRUE(render());
+    const std::vector<uint8_t> linked = readAtmosphereTarget();
+    EXPECT_GT(atmosphereMeanDifference(linked, own), 2.0);
+    EXPECT_GT(redness(linked), redness(own) + 40);
+
+    // an edit of the profile shows on the next frame (R5)
+    FogComponent blue;
+    blue.color = Vector3(0.02f, 0.05f, 0.8f);
+    FogProfileData blueProfile;
+    blueProfile.setFrom(blue, FogField::Color);
+    FogProfileLibrary::set("FogProfiles/red.fogprofile", blueProfile);
+    ASSERT_TRUE(render());
+    EXPECT_LT(redness(readAtmosphereTarget()), redness(own) - 20);
+    FogProfileLibrary::set("FogProfiles/red.fogprofile", redProfile);
+
+    // a zone around the camera with the own look wins over the profile
+    FogProfileLibrary::set("FogProfiles/own.fogprofile", FogProfileData::fromFog(component, "Own"));
+    FogZone zone(&scene);
+    zone.setPosition(0.0f, 8.0f, 30.0f);
+    zone.setProfile("FogProfiles/own.fogprofile");
+    zone.setPriority(1);
+    ASSERT_TRUE(render());
+    EXPECT_EQ(atmosphereMeanDifference(readAtmosphereTarget(), own), 0.0);
+    // the camera leaves it: the profile's look again
+    zone.setPosition(0.0f, 8.0f, 500.0f);
+    ASSERT_TRUE(render());
+    EXPECT_EQ(atmosphereMeanDifference(readAtmosphereTarget(), linked), 0.0);
+
+    // a script's write (the scene runs) shows over all of it
+    fog.setColor(0.62f, 0.68f, 0.78f);
+    EXPECT_TRUE(FogScene::hasOverride(component, FogField::Color));
+    ASSERT_TRUE(render());
+    EXPECT_EQ(atmosphereMeanDifference(readAtmosphereTarget(), own), 0.0);
+    FogScene::resetRuntime(&scene);
+    FogProfileLibrary::clear();
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+class AtmosphereFogLightGpu : public AtmosphereGpu {
+protected:
+    void buildRoom(FogLightRoom& room, LightType type){
+        ground(200.0f, Vector3(0.3f, 0.3f, 0.3f));
+        box(Vector3(0.0f, 0.0f, -50.0f), Vector3(80.0f, 11.0f, 1.0f), Vector3(0.1f, 0.1f, 0.1f));
+        // the ceiling at 10 m, with a 4 x 4 m hole at x -2..2, z -27..-23
+        const Vector3 dark(0.1f, 0.1f, 0.1f);
+        box(Vector3(-21.0f, 10.0f, -20.0f), Vector3(38.0f, 1.0f, 60.0f), dark);
+        box(Vector3(21.0f, 10.0f, -20.0f), Vector3(38.0f, 1.0f, 60.0f), dark);
+        box(Vector3(0.0f, 10.0f, -38.5f), Vector3(4.0f, 1.0f, 23.0f), dark);
+        box(Vector3(0.0f, 10.0f, -6.5f), Vector3(4.0f, 1.0f, 33.0f), dark);
+
+        room.light.setType(type);
+        room.light.setPosition(0.0f, 18.0f, -25.0f);
+        room.light.setDirection(0.0f, -1.0f, 0.0f);
+        room.light.setConeAngle(60.0f, 80.0f);
+        room.light.setRange(40.0f);
+        room.light.setColor(1.0f, 0.9f, 0.75f);
+        room.light.setIntensity(300.0f);
+        room.light.setShadows(true);
+
+        room.fog.setType(FogType::HEIGHT);
+        room.fog.setColor(0.01f, 0.01f, 0.015f);
+        room.fog.setAttenuationDistance(30.0f);
+        room.fog.setBaseHeight(20.0f);
+        room.fog.setMaximumHeight(60.0f);
+        room.fog.setDirectionalInscattering(0.0f);
+        room.fog.setAnisotropy(0.0f);
+        room.fog.setVolumetric(true);
+        room.fog.setVolumetricDistance(60.0f);
+        room.fog.setSkyFill(false);
+        room.fog.setLightShafts(true);
+
+        camera.setPosition(0.0f, 3.0f, 0.0f);
+        camera.setTarget(0.0f, 3.0f, -25.0f);
+        camera.setFarClip(150.0f);
+        // the column under the hole, and a column of fog 8 m to its side (in the light's cone,
+        // under the ceiling): the side's rays never cross the lit column
+        const int height = (int)GpuEnvironment::target().getHeight();
+        room.band = height / 8;
+        ASSERT_TRUE(project(camera, Vector3(0.0f, 3.0f, -25.0f), room.columnX, room.columnY));
+        ASSERT_TRUE(project(camera, Vector3(-8.0f, 3.0f, -25.0f), room.sideX, room.sideY));
+    }
+
+    double column(const FogLightRoom& room, const std::vector<uint8_t>& image){
+        return atmosphereLuminance(image, room.columnX - 4, room.columnY - room.band / 2, 8, room.band);
+    }
+
+    double side(const FogLightRoom& room, const std::vector<uint8_t>& image){
+        return atmosphereLuminance(image, room.sideX - 4, room.sideY - room.band / 2, 8, room.band);
+    }
+
+    // what get_atmosphere_info reports of the room's one light (non-fatal: the images are checked
+    // whatever it says)
+    void expectFogLight(const FogLightRoom& room, const char* name, bool scattered, bool shadowed, const char* reason){
+        const std::vector<AtmosphereFogLight>& lights = info().fogLights;
+        EXPECT_EQ(lights.size(), 1u) << name;
+        if (lights.size() != 1)
+            return;
+        EXPECT_EQ(lights[0].entity, room.light.getEntity()) << name;
+        EXPECT_EQ(lights[0].scattered, scattered) << name;
+        EXPECT_EQ(lights[0].shadowed, shadowed) << name;
+        EXPECT_EQ(lights[0].reason, reason) << name;
+    }
+
+    // every tier: the light scatters through the hole only; without light shafts (no shadows in
+    // the fog) it shines through the ceiling too. High last: the golden.
+    void checkRoom(FogLightRoom& room, const char* golden){
+        for (AtmosphereQuality quality : {AtmosphereQuality::LOW, AtmosphereQuality::MEDIUM, AtmosphereQuality::HIGH}){
+            const char* name = AtmosphereTiers::getName(quality);
+            Engine::setAtmosphereQuality(quality);
+            room.light.setVolumetricIntensity(0.0f);
+            room.fog.setLightShafts(true);
+            ASSERT_TRUE(render());
+            const std::vector<uint8_t> dark = readAtmosphereTarget();
+            expectFogLight(room, name, false, false, "volumetric_intensity");
+
+            room.light.setVolumetricIntensity(1.0f);
+            room.fog.setLightShafts(false);
+            ASSERT_TRUE(render());
+            const std::vector<uint8_t> unshadowed = readAtmosphereTarget();
+            expectFogLight(room, name, true, false, "");
+
+            room.fog.setLightShafts(true);
+            ASSERT_TRUE(render());
+            const std::vector<uint8_t> shadowed = readAtmosphereTarget();
+            expectFogLight(room, name, true, true, "");
+            EXPECT_EQ(info().localLights, 1) << name;
+
+            std::printf("[atmosphere] %s %s: column dark %.1f unshadowed %.1f shadowed %.1f, side dark %.1f unshadowed %.1f shadowed %.1f\n",
+                        golden, name, column(room, dark), column(room, unshadowed), column(room, shadowed), side(room, dark),
+                        side(room, unshadowed), side(room, shadowed));
+            // the light through the hole
+            EXPECT_GE(column(room, shadowed), column(room, dark) + 10.0) << name;
+            // without shadows it shines through the ceiling (the scene shows what shadows remove)
+            EXPECT_GE(side(room, unshadowed), side(room, dark) + 10.0) << name;
+            // with them, no light behind the wall
+            EXPECT_LE(side(room, shadowed), side(room, dark) + 1.5) << name;
+        }
+        EXPECT_GOLDEN_OPTIONS(golden, atmosphereGoldenTolerance());
+    }
+};
+
+TEST_F(AtmosphereFogLightGpu, SpotLightShadowedInTheFog){
+    JASPER_REQUIRE_GPU();
+    FogLightRoom room(&scene);
+    ASSERT_NO_FATAL_FAILURE(buildRoom(room, LightType::SPOT));
+    ASSERT_NO_FATAL_FAILURE(checkRoom(room, "fog_spot_shadowed"));
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(AtmosphereFogLightGpu, PointLightShadowedInTheFog){
+    JASPER_REQUIRE_GPU();
+    FogLightRoom room(&scene);
+    ASSERT_NO_FATAL_FAILURE(buildRoom(room, LightType::POINT));
+    ASSERT_NO_FATAL_FAILURE(checkRoom(room, "fog_point_shadowed"));
     EXPECT_NO_ENGINE_ERRORS();
 }

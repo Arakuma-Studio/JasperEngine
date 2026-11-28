@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 0f0032c3fb0cab66
+digest 626eeba5fa05986f
 --- 0
 font: []
 text: "multi\nline"
@@ -9,8 +9,13 @@ multiline: false
 maxTextSize: 2177
 fixedWidth: true
 fixedHeight: false
-pivotBaseline: false
-pivotCentered: true
+anchorHorizontal: center
+anchorVertical: top
+fontSizeUnit: em
+horizontalAlignment: justified
+autoSize: true
+fontSizeMin: 2734
+fontSizeMax: 2732
 outlineColor: [8061.4214, 3e+38, 0, 9289.217]
 shadowEnabled: true
 shadowColor: [-0, 0, 72, 0]
@@ -24,9 +29,11 @@ multiline: false
 maxTextSize: 4294967295
 fixedWidth: true
 fixedHeight: false
-pivotBaseline: false
-pivotCentered: false
+anchorHorizontal: right
+anchorVertical: bottom
+verticalAlignment: bottom
 outlineColor: [90.14286, 5782.803, 1e-45, 17]
+shadowColor: [91.28571, -84, 95, 1e-45]
 shadowOffset: [0.9141565, 67]
 visibleCharacters: 0
 --- 2
@@ -38,8 +45,12 @@ multiline: false
 maxTextSize: 3760
 fixedWidth: false
 fixedHeight: true
-pivotBaseline: true
-pivotCentered: true
+anchorHorizontal: right
+anchorVertical: midline
+verticalAlignment: middle
+autoSize: true
+fontSizeMin: 2289
+fontSizeMax: 1281
 outlineWidth: 16
 outlineColor: [0.16723287, 76, 1.7142857, 0]
 shadowEnabled: true
@@ -55,9 +66,12 @@ multiline: false
 maxTextSize: 4294967295
 fixedWidth: false
 fixedHeight: true
-pivotBaseline: true
-pivotCentered: true
+anchorHorizontal: left
+anchorVertical: bottom
+fontSizeMax: 1228
+outlineColor: [99, 0, 3234.2798, 0.49476862]
 shadowOffset: [0.84386736, 2192.981]
+visibleCharacters: 3
 --- 4
 font: []
 text: "  padded  "
@@ -67,8 +81,13 @@ multiline: false
 maxTextSize: 33
 fixedWidth: false
 fixedHeight: true
-pivotBaseline: false
-pivotCentered: false
+anchorHorizontal: left
+anchorVertical: capline
+horizontalAlignment: justified
+verticalAlignment: baseline
+autoSize: true
+fontSizeMin: 2808
+fontSizeMax: 4755
 outlineWidth: 3e+38
 outlineColor: [0, 0, 82, 136.42857]
 shadowEnabled: true
@@ -83,8 +102,12 @@ multiline: true
 maxTextSize: 2422
 fixedWidth: true
 fixedHeight: true
-pivotBaseline: false
-pivotCentered: false
+anchorHorizontal: right
+anchorVertical: midline
+horizontalAlignment: right
+fontSizeMin: 4750
+fontSizeMax: 2525
+outlineColor: [3e+38, -0, 5256.1304, -22.714285]
 shadowEnabled: true
 shadowColor: [-94.57143, -102.28571, 0, 23]
 shadowOffset: [-47, 2822.8708]
@@ -97,8 +120,11 @@ multiline: true
 maxTextSize: 1703
 fixedWidth: false
 fixedHeight: false
-pivotBaseline: true
-pivotCentered: false
+anchorHorizontal: center
+anchorVertical: bottom
+autoSize: true
+fontSizeMin: 4294967295
+fontSizeMax: 2110
 outlineColor: [-55, 3957.2656, -16, 10.142858]
 shadowColor: [-0.3379538, -0.805099, -0.9656368, 3e+38]
 shadowOffset: [-0.16696316, 0.9542685]
@@ -112,8 +138,13 @@ multiline: true
 maxTextSize: 439
 fixedWidth: true
 fixedHeight: true
-pivotBaseline: false
-pivotCentered: false
-outlineColor: [-95, 0.80602574, 0.21493345, 3e+38]
+anchorHorizontal: center
+anchorVertical: midline
+verticalAlignment: middle
+autoSize: true
+fontSizeMin: 103
 shadowEnabled: true
+shadowColor: [3e+38, 0, 0, 4453.748]
+shadowOffset: [0.6752126, -88.57143]
+shadowSoftness: 6236.2314
 visibleCharacters: 14

@@ -692,7 +692,7 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
         return false;
 
     const bool pinnedClock = EffectClock::isFixed();
-    const double clock = EffectClock::now();
+    const double clock = EffectClock::now(instance.element);
     const double T = clock * instance.timeScale + instance.timeOffset;
     const double h = 1.0 / std::max(1.f, m.rateHz);
     EffectStatePool& pool = EffectStatePool::get();

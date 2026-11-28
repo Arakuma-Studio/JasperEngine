@@ -13,6 +13,7 @@
 #include "util/AssetDatabase.h"
 #include "util/FbxImporter.h"
 #include "util/FileUtils.h"
+#include "vertexcolor/VertexColorProject.h"
 
 #include <algorithm>
 #include <cctype>
@@ -98,6 +99,10 @@ bool editor::gatherModelCookRequest(Project& project, const std::string& assetPa
     }
     out.settings = settings.resolve(family, project.getModelSettings());
     out.blended = ModelUsageIndex::get().usageOf(assetPath).blended();
+    // V1 R9: the saved documents' paint, and the open scenes' not saved yet
+    out.painted = ModelUsageIndex::get().usageOf(assetPath).painted();
+    if (out.painted.empty() && livePaintedModels(project).count(assetPath))
+        out.painted = {{-1, -1}};
     if (FbxImporter::isFbxFile(absolute)){
         // an FBX cooks from its import, made now if it is missing or old; the main thread only
         // queues it (S98 REQ-32)

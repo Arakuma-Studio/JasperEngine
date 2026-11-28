@@ -24,6 +24,8 @@ namespace{
     const char* const filmGrainTypeValues[] = {"CLASSIC", "LENS", "FILMIC", nullptr};
     const char* const filmGateMaskNames[] = {"none", "rounded", "academy_137", "widescreen_185", "anamorphic_239", nullptr};
     const char* const filmGateMaskValues[] = {"NONE", "ROUNDED", "ACADEMY_137", "WIDESCREEN_185", "ANAMORPHIC_239", nullptr};
+    const char* const vignetteFalloffNames[] = {"smoothness", "radii", nullptr};
+    const char* const vignetteFalloffValues[] = {"SMOOTHNESS", "RADII", nullptr};
     const char* const cavityTypeNames[] = {"screen", "world", "both", nullptr};
     const char* const cavityTypeValues[] = {"SCREEN", "WORLD", "BOTH", nullptr};
     const char* const lutEncodingNames[] = {"auto", "srgb", "linear", "logc3", "acescct", "cineon", "davinci_intermediate", nullptr};
@@ -60,6 +62,7 @@ const std::vector<PostProcessingSettings::Field>& PostProcessingSettings::getFie
         PP_ENUM(lutInputEncoding, "lut_input_encoding", lutEncodingNames, "LutInputEncoding", lutEncodingValues,
                 "a .cube LUT's input: auto (from its title and range), srgb, linear (display), logc3, acescct, cineon, davinci_intermediate (scene, before the tone mapping)"),
         PP_FIELD(lutSize, "lut_size", T::Int, 16.0f, 32.0f, "side of the engine's colour LUT: 16 or 32"),
+        PP_FIELD(lutFlipGreen, "lut_flip_green", T::Bool, 0.0f, 1.0f, "an image strip LUT with green 0 at the top row (not Unity's layout)"),
         PP_FIELD(monochromeEnabled, "monochrome_enabled", T::Bool, 0.0f, 1.0f, "grayscale or sepia"),
         PP_ENUM(monochromeMode, "monochrome_mode", monochromeNames, "MonochromeMode", monochromeValues, "monochrome look: grayscale, sepia"),
         PP_FIELD(monochromeIntensity, "monochrome_intensity", T::Float, 0.0f, 1.0f, "monochrome mix (0..1)"),
@@ -68,6 +71,10 @@ const std::vector<PostProcessingSettings::Field>& PostProcessingSettings::getFie
         PP_FIELD(vignetteSmoothness, "vignette_smoothness", T::Float, 0.01f, 1.0f, "vignette falloff width (0..1)"),
         PP_FIELD(vignetteRoundness, "vignette_roundness", T::Float, 0.0f, 1.0f, "1 a circle, 0 the screen's shape"),
         PP_FIELD(vignetteColor, "vignette_color", T::Vector3, 0.0f, 1.0f, "vignette colour [r,g,b] (sRGB)"),
+        PP_ENUM(vignetteFalloff, "vignette_falloff", vignetteFalloffNames, "VignetteFalloff", vignetteFalloffValues,
+                "vignette falloff: smoothness (vignette_smoothness), radii (vignette_start to vignette_end)"),
+        PP_FIELD(vignetteStart, "vignette_start", T::Float, 0.0f, 2.0f, "radii falloff: radius the darkening starts at (1 the screen edge's midpoint)"),
+        PP_FIELD(vignetteEnd, "vignette_end", T::Float, 0.0f, 3.0f, "radii falloff: radius of full darkening (above vignette_start)"),
         PP_FIELD(ditherEnabled, "dither_enabled", T::Bool, 0.0f, 1.0f, "dither against 8-bit banding"),
         PP_FIELD(fxaaEnabled, "fxaa_enabled", T::Bool, 0.0f, 1.0f, "FXAA anti-aliasing (uber pass)"),
         PP_FIELD(chromaticAberrationEnabled, "chromatic_aberration_enabled", T::Bool, 0.0f, 1.0f, "chromatic aberration (uber pass)"),

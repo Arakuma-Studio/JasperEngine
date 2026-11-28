@@ -9,6 +9,7 @@
 #include "util/ProjectChecks.h"
 
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <set>
 #include <sstream>
@@ -315,6 +316,20 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
                 MeshShaderEnvironment unlitEnvironment;
                 addMesh(modeLabel + ", no scene lights", referenceOf({}), inputs, unlitEnvironment);
                 addMesh(modeLabel + ", no scene lights, all features", referenceOf(allOn), inputs, unlitEnvironment);
+            }
+
+            // V1 R102: the editor's Vertex Color Draw Mode, the view of the default variant of a
+            // skinned mesh with vertex colours (its colour, and its alpha over the checker)
+            if (mode == modes.front()){
+                for (int channel : {0, 4}){
+                    SubmeshShaderInputs viewInputs = inputs;
+                    viewInputs.vertexColor4 = true;
+                    viewInputs.skinning = true;
+                    viewInputs.features = ShaderReference::getFeatures(depthReferenceOf(referenceOf({})));
+                    const SubmeshShaderVariant view = RenderSystem::getSubmeshShaderVariant(environment, viewInputs);
+                    add(modeLabel + ", vertex color view " + (channel ? "a" : "rgb") + " [" + featureLabel(ShaderReference::getFeatures(referenceOf({}))) + "]",
+                        referenceOf({}), ShaderType::MESH, view.properties | ShaderPool::getVertexColorViewProperties(channel));
+                }
             }
 
             // the mesh variants, with the default features and with all of them
@@ -738,6 +753,99 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
         terrain.tangent = false;
         terrain.normalTexture = false;
         add(tag + "terrain hex tiling", RenderSystem::getSubmeshShaderVariant(scene, terrain));
+
+        // the Vertex Color section's masks over the lobes (the block's last vector, V1 R70)
+        Material masked = all;
+        MaterialPbrExtensions::VertexColor& vertexColor = masked.pbr.edit().vertexColor;
+        vertexColor.use = VertexColorUse::MASKS;
+        vertexColor.r = VertexColorTarget::OCCLUSION;
+        vertexColor.g = VertexColorTarget::ROUGHNESS_REPLACE;
+        vertexColor.b = VertexColorTarget::EMISSION;
+        vertexColor.a = VertexColorTarget::OPACITY;
+        SubmeshShaderInputs coloured = mesh;
+        coloured.lighting = MaterialLighting::PIXEL;
+        coloured.vertexColor4 = true;
+        coloured.material = &masked;
+        coloured.pbrTransmission = true;
+        add(tag + "all lobes, 3 maps, vertex colour masks", RenderSystem::getSubmeshShaderVariant(scene, coloured));
+    }
+
+    // V1 R70: the Vertex Color section, lit (every input masked, in two materials) and unlit,
+    // Off and Tint without the alpha, on a mesh with RGBA and one with RGB vertex colours
+    auto vertexColorMaterial = [](VertexColorUse use, std::array<VertexColorTarget, 4> targets, bool alphaOpacity){
+        Material material;
+        MaterialPbrExtensions::VertexColor& vertexColor = material.pbr.edit().vertexColor;
+        vertexColor.use = use;
+        vertexColor.alphaOpacity = alphaOpacity;
+        for (int channel = 0; channel < 4; channel++)
+            MaterialPbr::vertexColorTarget(vertexColor, channel) = targets[(size_t)channel];
+        return material;
+    };
+    const Material vertexColorMaterials[] = {
+        vertexColorMaterial(VertexColorUse::MASKS, {VertexColorTarget::OCCLUSION, VertexColorTarget::ROUGHNESS_MULTIPLY,
+                                                    VertexColorTarget::EMISSION, VertexColorTarget::OPACITY}, true),
+        vertexColorMaterial(VertexColorUse::MASKS, {VertexColorTarget::ROUGHNESS_REPLACE, VertexColorTarget::METALLIC,
+                                                    VertexColorTarget::ALBEDO_TINT, VertexColorTarget::NONE}, true),
+        vertexColorMaterial(VertexColorUse::MASKS, {VertexColorTarget::NONE, VertexColorTarget::NONE, VertexColorTarget::NONE,
+                                                    VertexColorTarget::ROUGHNESS_MULTIPLY}, true),
+        vertexColorMaterial(VertexColorUse::OFF, {VertexColorTarget::NONE, VertexColorTarget::NONE, VertexColorTarget::NONE, VertexColorTarget::NONE}, true),
+        vertexColorMaterial(VertexColorUse::TINT, {VertexColorTarget::NONE, VertexColorTarget::NONE, VertexColorTarget::NONE, VertexColorTarget::NONE}, false),
+    };
+    const char* const vertexColorLabels[] = {"masks occlusion, roughness, emission, opacity", "masks roughness replaced, metallic, albedo",
+                                             "masks alpha roughness, rgb tint", "off", "tint without alpha"};
+    for (size_t m = 0; m < sizeof(vertexColorMaterials) / sizeof(vertexColorMaterials[0]); m++){
+        for (int vec3 = 0; vec3 < 2; vec3++){
+            SubmeshShaderInputs inputs = mesh;
+            inputs.vertexColor4 = vec3 == 0;
+            inputs.vertexColor3 = vec3 != 0;
+            inputs.material = &vertexColorMaterials[m];
+            const std::string label = std::string("vertex colour ") + (vec3 ? "rgb, " : "rgba, ") + vertexColorLabels[m];
+            inputs.lighting = MaterialLighting::PIXEL;
+            add(label + ", pixel", RenderSystem::getSubmeshShaderVariant(worst, inputs));
+            add(label + ", unlit", RenderSystem::getSubmeshShaderVariant(MeshShaderEnvironment(), inputs));
+            inputs.alphaMode = MaterialAlphaMode::MASK;
+            inputs.instanced = true;
+            add(label + ", alpha clip, instanced, pixel", RenderSystem::getSubmeshShaderVariant(worst, inputs));
+        }
+    }
+
+    // V1 R102: the editor's Vertex Color Draw Mode, the view of a variant (its colour and its
+    // alpha over the checker) on the vertex inputs it reads them through
+    struct ViewCase { const char* label; std::function<void(SubmeshShaderInputs&)> apply; };
+    const ViewCase viewCases[] = {
+        {"rgba", [](SubmeshShaderInputs& i){ i.vertexColor4 = true; }},
+        {"rgb", [](SubmeshShaderInputs& i){ i.vertexColor3 = true; }},
+        {"none", [](SubmeshShaderInputs&){}},
+        {"rgba, skinning, morph targets", [](SubmeshShaderInputs& i){ i.vertexColor4 = true; i.skinning = true; i.morphTarget = true; }},
+        {"rgba, instancing", [](SubmeshShaderInputs& i){ i.vertexColor4 = true; i.instanced = true; i.instanceFade = true; }},
+        {"rgba, lattice", [](SubmeshShaderInputs& i){ i.vertexColor4 = true; i.lattice = true; }},
+        {"rgba, vat bones", [](SubmeshShaderInputs& i){ i.vertexColor4 = true; i.vat = VatVariant::BONES; }},
+        {"rgba, alpha clip", [](SubmeshShaderInputs& i){ i.vertexColor4 = true; i.alphaMode = MaterialAlphaMode::MASK; }},
+    };
+    for (const ViewCase& viewCase : viewCases){
+        SubmeshShaderInputs inputs = mesh;
+        inputs.lighting = MaterialLighting::PIXEL;
+        viewCase.apply(inputs);
+        for (int channel : {0, 1, 4}){
+            SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(worst, inputs);
+            variant.properties |= ShaderPool::getVertexColorViewProperties(channel);
+            add(std::string("vertex color view ") + (channel == 0 ? "rgb" : (channel == 1 ? "r" : "a")) + ", " + viewCase.label, variant, true);
+        }
+    }
+    // and of a material with every lobe and its masks
+    {
+        Material masked = all;
+        MaterialPbrExtensions::VertexColor& vertexColor = masked.pbr.edit().vertexColor;
+        vertexColor.use = VertexColorUse::MASKS;
+        vertexColor.g = VertexColorTarget::ROUGHNESS_MULTIPLY;
+        SubmeshShaderInputs inputs = mesh;
+        inputs.lighting = MaterialLighting::PIXEL;
+        inputs.vertexColor4 = true;
+        inputs.material = &masked;
+        inputs.pbrTransmission = true;
+        SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(worst, inputs);
+        variant.properties |= ShaderPool::getVertexColorViewProperties(4);
+        add("vertex color view a, all lobes, masks", variant);
     }
     return variants;
 }

@@ -33,6 +33,8 @@
 #include "component/SplineExtrudeComponent.h"
 #include "component/Transform.h"
 #include "component/UIDocumentComponent.h"
+#include "component/MeshComponent.h"
+#include "component/VertexColorsComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "component/VoxelVolumeComponent.h"
@@ -97,6 +99,17 @@ TEST(ModuleUsage, AnEmptyProjectNeedsNothing) {
     EXPECT_EQ(modules(plain.usage()), "");
     // a Lua script of math, input and logs
     EXPECT_EQ(modules(withLua("local v = Vector3(1, 2, 3)\nif Input.isKeyPressed(1) then Log.info(tostring(v:length())) end")), "");
+}
+
+// V1: vertex colors are the core's (an absent component costs nothing, R95): no module to keep
+TEST(ModuleUsage, VertexColorsNeedNoModule) {
+    OneEntity painted;
+    painted.scene.addComponent<MeshComponent>(painted.entity, {});
+    VertexColorsComponent colors;
+    colors.data = AssetRef("paint/Thing.vcolors");
+    colors.format = vertexcolor::Format::RGBA16F;
+    painted.scene.addComponent<VertexColorsComponent>(painted.entity, colors);
+    EXPECT_EQ(modules(painted.usage()), "");
 }
 
 // T5 AC17: a tree's capsule is a body the physics module has to build

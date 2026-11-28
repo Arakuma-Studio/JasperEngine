@@ -172,6 +172,9 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   desktop autoplay policy (`chrome_flags` in the baseline): the page's audio is suspended until the
   first key press (`keys`: trusted CDP key events, `eval_before_input` before them, `eval` after),
   and Meta, ContextMenu and events without a code reach the game as their engine keys.
+- `GATE=web-pointer` (after `WEB_PROJECT=web-pointer tools/build.sh web`) drags mouse presses off a
+  canvas smaller than the window (`drags`: trusted CDP mouse events): each release reaches the game
+  once, clamped to the canvas (S93 R2).
 - `GATE=pixel-perfect` (after
   `WEB_PROJECT=pixel-perfect tools/build.sh web`) runs at a device scale factor of 2 and checks that
   a Pixel Perfect Camera sizes the canvas backing store at its CSS size times `devicePixelRatio` and
@@ -319,6 +322,12 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
   $EMULATOR_GPU`: see "The emulator's GPU" below),
   installs the APK with every permission granted, clears logcat, launches the app and polls
   logcat until every `--expect` line is there, the app crashes, or `--timeout` (120 s) passes.
+- `--view-loss` sends the app to the background once it is ready (Home), calls `am send-trim-memory
+  <package> COMPLETE` (APP_CMD_LOW_MEMORY without a window drops the EGL context) and launches it
+  again; the run needs a new view and its expectations from both sides of the return. `--once TEXT`
+  fails on a second line containing TEXT. `tools/test-projects/app-lifecycle` uses both (S95 AC-17:
+  an HTML UI document keeps its DOM through the loss); its `main.cpp` says how to lose and restore
+  the WebGL context of its web build by hand.
 - `--expect` matches a `logcat -v tag` line: `W/JasperEngine: [render] text` checks the priority,
   the tag and the text. `--ordered` requires the order given, `--forbid` fails on a line,
   `--expect-file` reads expectations one per line. A `FATAL EXCEPTION`, a native crash of the

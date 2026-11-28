@@ -44,8 +44,9 @@ namespace jasperengine {
         static void clearLanguageFaces();
         // the registered language `language` selects ("" when none)
         static std::string matchLanguage(const std::string& language);
-        // that language's faces, then the fallback faces
-        static std::vector<std::shared_ptr<FontFace>> getFallbackFaces(const std::string& language);
+        // that language's faces, then the fallback faces, each matched to the text's weight and style
+        // as find() does (S93 R16: a bold text falls back to the family's bold face when it has one)
+        static std::vector<std::shared_ptr<FontFace>> getFallbackFaces(const std::string& language, int weight = 400, bool italic = false);
         static std::shared_ptr<FontFace> getBuiltInLatin();    // Roboto, family "Roboto"
         static std::shared_ptr<FontFace> getBuiltInArabic();   // Noto Sans Arabic
         // cache for STBText: the same file parsed once while someone holds it. On failure

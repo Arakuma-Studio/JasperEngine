@@ -135,6 +135,11 @@ json PlayerConfig::toJson() const {
     }
     out["foliageDistanceScale"] = {foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]};
     out["input"] = {{"deadzone", inputDeadzone}, {"actions", inputActions}};
+    if (simulateTouchFromMouse)
+        out["input"]["simulateTouchFromMouse"] = true;
+    // (only when set: a game at the defaults keeps its file)
+    if (fixedTimestep != PlayerConfig().fixedTimestep || maximumDeltaTime != PlayerConfig().maximumDeltaTime)
+        out["time"] = {{"fixedTimestep", fixedTimestep}, {"maximumDeltaTime", maximumDeltaTime}};
     if (!localization.empty()) out["localization"] = localization;
     if (gamepadCursor != GamepadCursorSettings()){
         out["input"]["gamepadCursor"] = {{"speed", gamepadCursor.speed}, {"accelerationTime", gamepadCursor.accelerationTime},
@@ -160,6 +165,9 @@ json PlayerConfig::toJson() const {
     out["textureDefaults"] = textures;
     out["htmlUi"] = {{"msaa", htmlUiMsaa}, {"glyphAtlasMiB", glyphAtlasMiB}, {"sdfPrimitives", sdfPrimitives},
                      {"transformAwareText", transformAwareText}};
+    // S93's image cache budget, only away from the platform's default (-1): a game without it keeps its file
+    if (imageCacheMiB >= 0)
+        out["htmlUi"]["imageCacheMiB"] = imageCacheMiB;
     out["mobilePbrTier"] = nameOf(kPbrTier, mobilePbrTier);
     out["dynamicBatching"] = dynamicBatching;
     out["pauseOnFocusLoss"] = pauseOnFocusLoss;
@@ -184,7 +192,7 @@ json PlayerConfig::toJson() const {
         for (const SortingLayerInfo& layer : sortingLayers) layers.push_back({{"id", layer.id}, {"name", layer.name}});
         out["sortingLayers"] = layers;
     }
-    if (transparencySortMode == TransparencySortMode::CUSTOM_AXIS) out["transparencySortMode"] = "custom_axis";
+    if (transparencySortMode != TransparencySortMode::DEFAULT) out["transparencySortMode"] = SortingLayers::transparencySortModeToken(transparencySortMode);
     if (transparencySortAxis != Vector3(0.0f, 1.0f, 0.0f))
         out["transparencySortAxis"] = {transparencySortAxis.x, transparencySortAxis.y, transparencySortAxis.z};
     out["collision3D"] = collision3D;
@@ -337,6 +345,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         if (const auto input = in.find("input"); input != in.end()) {
             config.inputDeadzone = input->value("deadzone", config.inputDeadzone);
             config.inputActions = input->value("actions", "");
+            config.simulateTouchFromMouse = input->value("simulateTouchFromMouse", false);
             if (const auto cursor = input->find("gamepadCursor"); cursor != input->end() && cursor->is_object()){
                 GamepadCursorSettings& c = config.gamepadCursor;
                 c.speed = cursor->value("speed", c.speed);
@@ -350,6 +359,17 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
                     (*hot)[0].is_number() && (*hot)[1].is_number())
                     c.hotSpot = Vector2((*hot)[0].get<float>(), (*hot)[1].get<float>());
             }
+        }
+        if (const auto time = in.find("time"); time != in.end() && time->is_object()) {
+            // a step the engine refuses keeps the default
+            auto seconds = [&](const char* key, double fallback) {
+                const auto value = time->find(key);
+                if (value == time->end() || !value->is_number()) return fallback;
+                const double v = value->get<double>();
+                return v > 0.0 && std::isfinite(v) ? v : fallback;
+            };
+            config.fixedTimestep = seconds("fixedTimestep", config.fixedTimestep);
+            config.maximumDeltaTime = seconds("maximumDeltaTime", config.maximumDeltaTime);
         }
         if (const auto voxel = in.find("voxel"); voxel != in.end()) {
             config.voxelMaxDimension = voxel->value("maxDimension", 0);
@@ -395,6 +415,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.glyphAtlasMiB = htmlUi->value("glyphAtlasMiB", config.glyphAtlasMiB);
             config.sdfPrimitives = htmlUi->value("sdfPrimitives", config.sdfPrimitives);
             config.transformAwareText = htmlUi->value("transformAwareText", config.transformAwareText);
+            config.imageCacheMiB = htmlUi->value("imageCacheMiB", config.imageCacheMiB);
         }
         valueOf(kPbrTier, in.value("mobilePbrTier", "reduced"), config.mobilePbrTier);
         config.dynamicBatching = in.value("dynamicBatching", config.dynamicBatching);
@@ -438,7 +459,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
                     config.sortingLayers.push_back({layer["id"].get<int32_t>(), layer["name"].get<std::string>()});
             }
         }
-        if (in.value("transparencySortMode", std::string()) == "custom_axis") config.transparencySortMode = TransparencySortMode::CUSTOM_AXIS;
+        SortingLayers::transparencySortModeFromToken(in.value("transparencySortMode", std::string()), config.transparencySortMode);
         if (const auto axis = in.find("transparencySortAxis"); axis != in.end() && axis->is_array() && axis->size() == 3 &&
                 (*axis)[0].is_number() && (*axis)[1].is_number() && (*axis)[2].is_number())
             config.transparencySortAxis = Vector3((*axis)[0].get<float>(), (*axis)[1].get<float>(), (*axis)[2].get<float>());

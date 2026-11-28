@@ -217,6 +217,10 @@ uint64_t Engine::droppedFixedSteps = 0;
 bool Engine::reportedDroppedFixedSteps = false;
 
 double Engine::updateTime = 1.0 / 60.0; //60Hz
+double Engine::projectUpdateTime = 1.0 / 60.0;
+bool Engine::sceneUpdateTimeApplied = false;
+int Engine::startScreenWidth = 0;
+int Engine::startScreenHeight = 0;
 
 double Engine::timeScale = 1.0;
 double Engine::fixedDeltatime = 0.0;
@@ -239,6 +243,7 @@ bool Engine::inFixedStep = false;
 float Engine::smoothDeltatime = 0.0f;
 std::atomic<bool> Engine::simulationHeld = false;
 bool Engine::clampNextDelta = false;
+bool Engine::releasingScenesGpu = false;
 
 std::atomic<bool> Engine::viewLoaded = false;
 std::atomic<bool> Engine::paused = false;
@@ -659,8 +664,24 @@ void Engine::setCanvasSize(int canvasWidth, int canvasHeight){
         refreshCanvas(true);
     }else{
         // Scenes and scripts can start before the view exists; the screen refines this once it loads
-        Engine::canvasWidth = canvasWidth;
-        Engine::canvasHeight = canvasHeight;
+        layoutBeforeView();
+    }
+}
+
+void Engine::setStartScreenSize(int width, int height){
+    startScreenWidth = std::max(width, 0);
+    startScreenHeight = std::max(height, 0);
+    if (!viewLoaded)
+        layoutBeforeView();
+}
+
+void Engine::layoutBeforeView(){
+    if (startScreenWidth > 0 && startScreenHeight > 0 && preferredCanvasWidth > 0 && preferredCanvasHeight > 0){
+        computeViewLayout(startScreenWidth, startScreenHeight, preferredCanvasWidth, preferredCanvasHeight, scalingMode,
+                          Engine::canvasWidth, Engine::canvasHeight, viewRect);
+    }else{
+        Engine::canvasWidth = preferredCanvasWidth;
+        Engine::canvasHeight = preferredCanvasHeight;
     }
 }
 
@@ -681,6 +702,8 @@ void Engine::setScalingMode(Scaling scalingMode){
 
     if (viewLoaded){
         refreshCanvas(true);
+    }else{
+        layoutBeforeView();
     }
 }
 
@@ -934,6 +957,30 @@ void Engine::setUpdateTime(float updateTime){
 
 float Engine::getUpdateTime(){
     return (float)Engine::updateTime;
+}
+
+void Engine::setProjectUpdateTime(double seconds){
+    if (!(seconds > 0.0) || !std::isfinite(seconds)){
+        Log::warn("Engine::setProjectUpdateTime: non-positive or non-finite value (%f) ignored", seconds);
+        return;
+    }
+    projectUpdateTime = seconds;
+    updateTime = seconds;
+    sceneUpdateTimeApplied = false;
+}
+
+double Engine::getProjectUpdateTime(){
+    return projectUpdateTime;
+}
+
+void Engine::applySceneUpdateTime(double sceneSeconds){
+    if (sceneSeconds > 0.0 && std::isfinite(sceneSeconds)){
+        updateTime = sceneSeconds;
+        sceneUpdateTimeApplied = true;
+    }else if (sceneUpdateTimeApplied){
+        updateTime = projectUpdateTime;
+        sceneUpdateTimeApplied = false;
+    }
 }
 
 int Engine::getFixedStepsLeft(){
@@ -2371,7 +2418,7 @@ void Engine::systemViewLoaded(){
     }
     
     for (Scene* scene : getScenesSnapshot()){
-        scene->load();
+        scene->restoreGpu();
     }
 }
 
@@ -2789,6 +2836,9 @@ void Engine::runFrame(bool draw){
             scenes[i]->advanceSceneTime(frameDelta);
         // the scheduler's game clocks: stopped by the editor's Pause too (gameTime is not)
         const bool gameClocks = advanceGameClocks(scheduler, frameTime);
+        // the Game Time UI Documents' clock (S93 R35): the scaled delta, while the game clocks run
+        if (gameClocks)
+            HtmlUIClock::advanceGame(frameDelta);
 
         unscaledTime += unscaledDeltatime;
         smoothDeltatime = (gameFrames <= 1) ? (float)frameDelta : smoothDeltatime + 0.2f * ((float)frameDelta - smoothDeltatime);
@@ -2923,6 +2973,22 @@ void Engine::runFrame(bool draw){
         // their holes in the component arrays closed now, not by whatever reads next
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->compactComponents();
+        }
+        // the late transform pass (S95 REQ-5): what onPostUpdate, the timers, the coroutines and
+        // the PixelFX and transition callbacks moved since the scenes' update is drawn this frame
+        // (a Camera Follow follows a target moved then); the 3D listener and sources are heard where
+        // they are drawn. Nothing moved: one compare per scene
+        bool lateMoved = false;
+        bool viewMoved = false;
+        for (int i = 0; i < scenes.size(); i++) {
+            const LateTransformResult late = scenes[i]->getSystem<RenderSystem>()->updateLateTransforms();
+            lateMoved = lateMoved || late.moved;
+            viewMoved = viewMoved || late.viewMoved;
+        }
+        if (lateMoved) {
+            for (int i = 0; i < scenes.size(); i++) {
+                scenes[i]->getSystem<AudioSystem>()->updateLate(viewMoved);
+            }
         }
         // what was for this frame only (the virtual sources' deltas) goes
         Input::endFrame();
@@ -3091,6 +3157,7 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.atmosphereQuality = layer.atmosphereQuality;
         desc.shadows = layer.shadows;
         desc.drawMode = (ViewDrawMode)layer.drawMode;
+        desc.vertexColorChannel = (ViewVertexColorChannel)layer.vertexColorChannel;
         desc.snapPreviewScale = layer.snapPreviewScale;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
@@ -3136,8 +3203,10 @@ void Engine::systemViewDestroyed(){
 
     //TODO: must destroy all scenes (even if not a layer)
     for (int i = 0; i < scenes.size(); i++){
-        scenes[i]->destroy();
+        scenes[i]->releaseGpu();
     }
+    // the frame that brings the view back measured the time without it
+    clampNextDelta = true;
 
     {
         std::lock_guard<std::mutex> lock(sceneListMutex);
@@ -3151,6 +3220,37 @@ void Engine::systemViewDestroyed(){
     clearPools();
 
     drawSemaphore.release();
+}
+
+void Engine::releaseScenesGpu(const std::vector<Scene*>& list){
+    if (!viewLoaded)
+        return;
+
+    drawSemaphore.acquire();
+    // the systems tell a view loss from a teardown by the view (RenderSystem keeps its CPU
+    // assets for the next load, UISystem its buttons' textures)
+    viewLoaded = false;
+    releasingScenesGpu = true;
+    for (Scene* scene : list){
+        if (scene)
+            scene->releaseGpu();
+    }
+    releasingScenesGpu = false;
+    viewLoaded = true;
+    clampNextDelta = true;
+    drawSemaphore.release();
+}
+
+void Engine::restoreScenesGpu(const std::vector<Scene*>& list){
+    for (Scene* scene : list){
+        if (scene)
+            scene->restoreGpu();
+    }
+    clampNextDelta = true;
+}
+
+bool Engine::isReleasingScenesGpu(){
+    return releasingScenesGpu;
 }
 
 void Engine::systemShutdown(){
@@ -3284,6 +3384,8 @@ void Engine::applyPause(){
     // the Performance sampler drops the paused seconds and the 2 s after a resume (R3)
     PerfSampler::notePaused(want);
     if (!want){
+        // the first frame back measured the time in the background: no game clock jumps by it
+        clampNextDelta = true;
         AudioSystem::setPlatformPaused(false);
         ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
             [](ScriptBase& script) { script.onApplicationPause(false); });
@@ -3564,27 +3666,41 @@ void Engine::getInputScenesTopFirst(std::vector<Scene*>& out){
     out.insert(out.end(), scenes.rbegin(), scenes.rend());
 }
 
+namespace {
+
+    // the canvas the pointer coordinates are in: a Pixel Perfect Camera's canvas is its base
+    // image over the Pixels Per Unit, which the integer canvas rounds (R6): the camera spans
+    // the exact one
+    Vector2 pointerCanvasSize(){
+        const pixelart::PixelPerfectLayout& layout = Engine::getPixelPerfectLayout();
+        if (Engine::getPixelPerfectView().active && layout.canvasWidth > 0.0f && layout.canvasHeight > 0.0f)
+            return Vector2(layout.canvasWidth, layout.canvasHeight);
+        return Vector2((float)Engine::getCanvasWidth(), (float)Engine::getCanvasHeight());
+    }
+
+    // a release outside the canvas, at its nearest point on the canvas (S93 R2)
+    void clampToCanvas(float& x, float& y){
+        const Vector2 canvas = pointerCanvasSize();
+        x = std::min(std::max(x, 0.0f), canvas.x);
+        y = std::min(std::max(y, 0.0f), canvas.y);
+    }
+
+}
+
 bool Engine::transformCoordPos(float& x, float& y){
 
     // the sub-pixel smoothing's shift of the drawn image (S41 R12)
     x = (x - viewShift.x - viewRect.getX()) / viewRect.getWidth();
     y = (y - viewShift.y - viewRect.getY()) / viewRect.getHeight();
     
-    // a Pixel Perfect Camera's canvas is its base image over the Pixels Per Unit, which the
-    // integer canvas rounds (R6): the camera spans the exact one
-    float canvasWidth = (float)Engine::getCanvasWidth();
-    float canvasHeight = (float)Engine::getCanvasHeight();
-    if (pixelPerfectRequest.active && pixelPerfectLayout.canvasWidth > 0.0f && pixelPerfectLayout.canvasHeight > 0.0f){
-        canvasWidth = pixelPerfectLayout.canvasWidth;
-        canvasHeight = pixelPerfectLayout.canvasHeight;
-    }
-    x = canvasWidth * x;
-    y = canvasHeight * y;
+    const Vector2 canvas = pointerCanvasSize();
+    x = canvas.x * x;
+    y = canvas.y * y;
     
     if (allowEventsOutCanvas || mouseMode == MouseMode::CAPTURED)
         return true;
     
-    return ((x >= 0) && (x <= canvasWidth) && (y >= 0) && (y <= canvasHeight));
+    return ((x >= 0) && (x <= canvas.x) && (y >= 0) && (y <= canvas.y));
 }
 
 // ---- input. Order per pointer event (phase-1 spec §3.6.1, §3.15): HTML UI screen documents,
@@ -3601,6 +3717,12 @@ namespace {
 
     // a document set the cursor on the last pointer move (systemMouseMove)
     bool documentCursorSet = false;
+
+    // The fingers and mouse buttons whose press the game got (onTouchStart, onMouseDown):
+    // their release reaches it also outside the canvas, clamped to it (S93 R2), so a game never
+    // misses the end of a press it saw. Set at every press, cleared at its release or cancel
+    std::set<int> gameTouches;
+    std::set<int> gameButtons;
 
     std::string toUtf8(const std::vector<uint32_t>& codepoints){
         std::string out;
@@ -3988,6 +4110,7 @@ void Engine::systemTouchStart(int pointer, float x, float y){
     const InputSourceScope sourceScope;
     // the debug overlay's gestures (three fingers held) see every finger; never consumed
     DebugOverlay::handleTouch(pointer, x, y, 0);
+    gameTouches.erase(pointer);
     if (transformCoordPos(x, y)){
         // the scheme's evidence before the UI routes it: a finger a document took is touch use
         InputSchemeTracker::noteTouchStart(x, y, InputSchemeTracker::clock());
@@ -4024,6 +4147,7 @@ void Engine::systemTouchStart(int pointer, float x, float y){
             Input::setTouchConsumedByUI(pointer);
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
+            gameTouches.insert(pointer);
             Engine::onTouchStart.call(pointer, x, y);
             if (Engine::isCallMouseInTouchEvent()){
                 // the simulated mouse is one device: a finger multiTouchEnabled hides does not press it
@@ -4049,13 +4173,24 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
 #if JASPERENGINE_AUDIO_CAPTURE
     if (AudioMarkers::isEnabled()) AudioMarkers::input("touch", "up", pointer, x, y);
 #endif
+    const bool gamePress = gameTouches.erase(pointer) > 0;
     if (!onCanvas){
-        // lifted outside the canvas: no event, but the finger is not down any more, and the
-        // documents and the component UI that tracked it let go of it without a click (D6)
+        // lifted outside the canvas: the finger is not down any more, and the documents and the
+        // component UI that tracked it let go of it without a click (D6). The game gets the end
+        // of a press it got, at the nearest canvas point (S93 R2)
+        clampToCanvas(x, y);
+        Input::setTouchPosition(pointer, x, y);
         Input::removeTouch(pointer);
         if (Engine::isCallMouseInTouchEvent() && visible)
             Input::releaseMousePressed(D_MOUSE_BUTTON_1);
         cancelUIPointer(pointer, true);
+        if (gamePress){
+            Engine::onTouchEnd.call(pointer, x, y);
+            if (Engine::isCallMouseInTouchEvent()){
+                Input::setMousePosition(x, y);
+                Engine::onMouseUp.call(D_MOUSE_BUTTON_1, x, y, 0);
+            }
+        }
         return;
     }
     {
@@ -4179,6 +4314,7 @@ void Engine::systemTouchCancel(int pointer){
     if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::TouchCancel, 0, (int16_t)pointer))) return;
     // the debug overlay sees every finger, also those outside the canvas that Input never had
     DebugOverlay::handleTouch(pointer, 0.0f, 0.0f, 3);
+    gameTouches.erase(pointer);
     // Drop this finger only. Pointer-up would release the control and can click it.
     size_t index = Input::findTouchIndex(pointer);
     if (index == -1)
@@ -4205,6 +4341,7 @@ void Engine::systemTouchCancel(int pointer){
 void Engine::systemMouseDown(int button, float x, float y, int mods){
     if (input::InputRecorder::isActive() && !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::MouseDown, button, 0, x, y, mods))) return;
     const InputSourceScope sourceScope;
+    gameButtons.erase(button);
     if (transformCoordPos(x, y)){
         InputSchemeTracker::noteMouseButton(x, y, InputSchemeTracker::clock());
 #if JASPERENGINE_AUDIO_CAPTURE
@@ -4244,6 +4381,7 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
             Input::setPressConsumedByUI(Input::mouseControl(button));
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
+            gameButtons.insert(button);
             Engine::onMouseDown.call(button, x, y, mods);
             if (Engine::isCallTouchInMouseEvent()){
                 Input::addTouch(0, x, y);
@@ -4260,13 +4398,24 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
 #if JASPERENGINE_AUDIO_CAPTURE
     if (AudioMarkers::isEnabled()) AudioMarkers::input("mouse", "up", button, x, y);
 #endif
+    const bool gamePress = gameButtons.erase(button) > 0;
     if (!onCanvas){
-        // released outside the canvas: no event, but the button is not held any more, and the
-        // documents and the component UI that tracked it let go of it without a click (D6)
+        // released outside the canvas: the button is not held any more, and the documents and
+        // the component UI that tracked it let go of it without a click (D6). The game gets the
+        // release of a press it got, at the nearest canvas point (S93 R2)
         Input::releaseMousePressed(button);
         if (Engine::isCallTouchInMouseEvent())
             Input::removeTouch(0);
         cancelUIPointer(button, false);
+        if (gamePress){
+            clampToCanvas(x, y);
+            Input::setMousePosition(x, y);
+            if (mods != 0)
+                Input::setModifiers(mods);
+            Engine::onMouseUp.call(button, x, y, mods);
+            if (Engine::isCallTouchInMouseEvent())
+                Engine::onTouchEnd.call(0, x, y);
+        }
         return;
     }
     {
@@ -4296,12 +4445,13 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
             }))
             uiEventReceived = true;
 
+        // the simulated touch ends with the button also when the release was consumed (S93 R3)
+        if (Engine::isCallTouchInMouseEvent())
+            Input::removeTouch(0);
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onMouseUp.call(button, x, y, mods);
-            if (Engine::isCallTouchInMouseEvent()){
-                Input::removeTouch(0);
+            if (Engine::isCallTouchInMouseEvent())
                 Engine::onTouchEnd.call(0, x, y);
-            }
         }
         uiEventReceived = false;
     }

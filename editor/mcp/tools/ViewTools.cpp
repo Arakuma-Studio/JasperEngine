@@ -3,6 +3,7 @@
 
 // W3: screenshots, Scene view camera, window focus, Game view settings
 #include "Screen.h"
+#include "window/SkinningEditorWindow.h"
 #include "window/widget/InputTextContextMenu.h"
 #include "window/AnimationWindow.h"
 #include "window/AnimatorWindow.h"
@@ -938,6 +939,11 @@ void captureView(const CallPtr& call, const CaptureRequest& request, std::functi
                   "window, or run the editor with mcp --headless.");
         return;
     }
+    if (request.view == "game" && Platform::isViewLostSimulated() && call->ctx().project()->isPlaySessionActive()) {
+        job->fail("The game's view is lost (send_input app view_lost): nothing draws. Send {type: \"app\", action: "
+                  "\"view_restored\"} first.");
+        return;
+    }
     if (request.view == "game" && Platform::isGameHiddenSimulated() && call->ctx().project()->isPlaySessionActive()) {
         job->fail("The game is hidden (send_input app hide): it updates without drawing. Send {type: \"app\", action: "
                   "\"show\"} first.");
@@ -1181,7 +1187,7 @@ void setSceneCameraTool(const CallPtr& call) {
             if (it.key() == "draw_mode") {
                 ViewDrawMode mode;
                 if (!it.value().is_string() || !drawModeFromKey(it.value().get<std::string>(), mode)) {
-                    call->fail("display.draw_mode must be shaded, wireframe, shaded_wireframe, lod_level or overdraw.");
+                    call->fail("display.draw_mode must be shaded, wireframe, shaded_wireframe, lod_level, overdraw or vertex_color.");
                     return;
                 }
                 if (!is3D && mode != ViewDrawMode::SHADED) {
@@ -1190,11 +1196,19 @@ void setSceneCameraTool(const CallPtr& call) {
                 }
                 continue;
             }
+            if (it.key() == "vertex_color_channel") {
+                ViewVertexColorChannel channel;
+                if (!it.value().is_string() || !vertexColorChannelFromKey(it.value().get<std::string>(), channel)) {
+                    call->fail("display.vertex_color_channel must be rgb, r, g, b or a (the channel draw_mode vertex_color shows).");
+                    return;
+                }
+                continue;
+            }
             if (!displayFlags().count(it.key()) || !it.value().is_boolean()) {
                 std::string valid;
                 for (const auto& [name, member] : displayFlags()) valid += " " + name;
                 call->fail("display." + it.key() + " is not a boolean display flag. Valid:" + valid +
-                           ", grid_spacing_2d, grid_spacing_3d (numbers).");
+                           ", grid_spacing_2d, grid_spacing_3d (numbers), draw_mode, vertex_color_channel.");
                 return;
             }
         }
@@ -1395,6 +1409,7 @@ void setSceneCameraTool(const CallPtr& call) {
                 if (it.key() == "grid_spacing_2d" && it.value().is_number()) s->displaySettings.gridSpacing2D = it.value().get<float>();
                 else if (it.key() == "grid_spacing_3d" && it.value().is_number()) s->displaySettings.gridSpacing3D = it.value().get<float>();
                 else if (it.key() == "draw_mode") drawModeFromKey(it.value().get<std::string>(), s->displaySettings.drawMode);
+                else if (it.key() == "vertex_color_channel") vertexColorChannelFromKey(it.value().get<std::string>(), s->displaySettings.vertexColorChannel);
                 else if (displayFlags().count(it.key())) s->displaySettings.*(displayFlags().at(it.key())) = it.value().get<bool>();
             }
             changed.push_back("display");
@@ -1406,6 +1421,8 @@ void setSceneCameraTool(const CallPtr& call) {
         Json displayJson = Json::object();
         for (const auto& [name, member] : displayFlags()) displayJson[name] = s->displaySettings.*member;
         displayJson["draw_mode"] = drawModeKey(s->displaySettings.drawMode);
+        if (s->displaySettings.drawMode == ViewDrawMode::VERTEX_COLOR)
+            displayJson["vertex_color_channel"] = vertexColorChannelKey(s->displaySettings.vertexColorChannel);
         data["display"] = displayJson;
         std::string text = (changed.empty() ? "Scene view camera of \"" : "Moved the Scene view camera of \"") + s->name +
                            "\": " + data["camera"].dump() + ".";
@@ -1901,13 +1918,17 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "pixel_art_cleanup") {
         app.getPixelArtCleanupWindow()->open();
         imguiName = PixelArtCleanupWindow::WINDOW_NAME;
+    } else if (window == "skinning_editor") {
+        // on the selected Sprite (S94 F49)
+        app.getSkinningEditorWindow()->open();
+        imguiName = SkinningEditorWindow::WINDOW_NAME;
     } else if (window == "title_designer") {
         imguiName = TitleDesignerWindow::WINDOW_NAME;
         if (!focusTitleDesigner(call, app.getTitleDesignerWindow())) return;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, particle_effect, pose_animation, terrain, mcp, "
                    "systems, jobs_memory, crash_reports, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
-                   "vertex_animation_baker, sprite_normals, pixel_art_cleanup, title_designer, graph_editor.");
+                   "vertex_animation_baker, sprite_normals, pixel_art_cleanup, skinning_editor, title_designer, graph_editor.");
         return;
     }
     // A window opened just now exists after its next draw.
@@ -2416,7 +2437,8 @@ void registerViewTools(McpRegistry& registry) {
         // Humanize, an added tab, or map_bones: the mapping popup)}; the result has the window's
         // state. Budget-neutral with the pose_animation window added. title_designer (S82 R78): its keys
         // are in jasper://docs/title-art and an unknown key fails listing them, which pays for its schema;
-        // its words were cut again when the wave-2 merges took core 16 characters over its limit.
+        // its words were cut again when the wave-2 merges took core 16 characters over its limit, and the
+        // parameter notes once more to pay for skinning_editor (S94 F49).
         tool.description =
             "Fronts a panel (screenshot needs none). console: "
             "its rows, categories, selection; systems: each row's Enabled rect; "
@@ -2425,17 +2447,17 @@ void registerViewTools(McpRegistry& registry) {
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "particle_effect", "pose_animation",
                                        "terrain", "mcp", "systems", "jobs_memory", "crash_reports", "profiler", "frame_debugger", "preferences",
                                        "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals",
-                                       "pixel_art_cleanup", "title_designer", "graph_editor"})},
-            {"scene", sceneRef("window scene: whose tab.")},
+                                       "pixel_art_cleanup", "skinning_editor", "title_designer", "graph_editor"})},
+            {"scene", sceneRef("window scene's tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "Categories the filter hides.")},
                 {"collapse", boolean("")},
-                {"select", integer("Click this message id's row.")}
+                {"select", integer("Clicks message id's row.")}
             })},
             {"page", string("preferences: a page title.")},
             {"close", boolean("preferences: close it.")},
-            {"profiler", object({{"load", string("A .jetrace.json to load.")}})},
-            {"path", string("graph_editor: file to open")},
+            {"profiler", object({{"load", string(".jetrace.json path.")}})},
+            {"path", string("graph_editor: its file")},
             {"pose", anyObject("")},
             {"title_designer", anyObject("")}
         }, {"window"});

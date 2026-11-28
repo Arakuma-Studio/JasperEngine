@@ -65,6 +65,10 @@ namespace jasperengine::editor::mcp {
     void registerSoundEventTools(McpRegistry& registry);
     // get_asset_info's block of a .soundevent
     nlohmann::json soundEventInfo(Project* project, const std::filesystem::path& file);
+    // DataAssetTools.cpp: edit_data_asset (Data Assets, docs/specs/S95-lua-runtime-gaps.md REQ-24)
+    void registerDataAssetTools(McpRegistry& registry);
+    // get_asset_info's block of a .dataasset: its class, values and problems
+    nlohmann::json dataAssetInfo(Project* project, const std::filesystem::path& file);
     void registerScriptTools(McpRegistry& registry);
     void registerAssetTools(McpRegistry& registry);
     void registerMaterialsLightingTools(McpRegistry& registry);
@@ -84,6 +88,8 @@ namespace jasperengine::editor::mcp {
     void registerAnimatorTools(McpRegistry& registry);
     void registerLatticeTools(McpRegistry& registry);
     void registerHtmlUiTools(McpRegistry& registry);
+    void registerUiFrameTools(McpRegistry& registry);
+    void stopUiFramePreviews();
     void registerUiEffectTools(McpRegistry& registry);
     void registerSynthesisTools(McpRegistry& registry);
     void registerPlacementTools(McpRegistry& registry);
@@ -115,6 +121,7 @@ namespace jasperengine::editor::mcp {
     void registerProfilerTools(McpRegistry& registry);
     // S54: capture_model_lods (group meshes, shared with S53's model import tools)
     void registerMeshLodTools(McpRegistry& registry);
+    void registerMeshColorTools(McpRegistry& registry);   // V1 (vertex colors)
     void registerDeviceTools(McpRegistry& registry);
     void registerScriptingTools(McpRegistry& registry);
     void registerGraphTools(McpRegistry& registry);

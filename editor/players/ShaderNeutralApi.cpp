@@ -17,7 +17,7 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"Sphere", 0x35e0411fu},
         {"Matrix3", 0x5afdc774u},
         {"Matrix4", 0xce8af031u},
-        {"Quaternion", 0x6f2e30e1u},
+        {"Quaternion", 0x3bbaca7eu},
         {"Plane", 0xdc3127fcu},
         {"AABB", 0xd4223d35u},
         {"OBB", 0xbf5e79a2u},
@@ -100,11 +100,12 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         // (S74's isIKReached, setIKSoften, setIKHingeAxis, setIKTwist, setIKAimOffset reviewed: an IK
         // constraint's shape and its last solve, bones only; mesh-space-rotation's
         // setLayerMeshSpaceRotation, getLayerMeshSpaceRotation reviewed: a layer's rotation space
-        // where its mask starts or stops, bones only)
-        {"Animator", 0xc0f7cb88u},
-        // (mesh-space-rotation's setLayerMeshSpaceRotation, getLayerMeshSpaceRotation reviewed: a
+        // where its mask starts or stops, bones only; S94's legacyRootDrift reviewed: where the root goes)
+        {"Animator", 0x687702ccu},
+        // (S94 applyRootMotion and legacyRootDrift reviewed: where the root goes, never what it draws with;
+        // mesh-space-rotation's setLayerMeshSpaceRotation, getLayerMeshSpaceRotation reviewed: a
         // layer's rotation space where its mask starts or stops, bones only)
-        {"AnimationPlayer", 0xc917096bu},
+        {"AnimationPlayer", 0x55468727u},
         {"PoseAnimator", 0x9efa391cu},
         {"AnimationEvent", 0x3191cc4eu},
         {"AnimationState", 0xd696bd82u},
@@ -131,8 +132,8 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"AnimationComponent", 0x1f9ef76eu},
         {"TweenComponent", 0x6fb2e681u},
         {"ActionSystem", 0x2b5420b8u},
-        {"AnimationPlayerComponent", 0xcf5f06f5u},
-        {"AnimatorComponent", 0xc953276au},
+        {"AnimationPlayerComponent", 0xbe9bec49u},
+        {"AnimatorComponent", 0x25dc74deu},
         {"PoseAnimatorComponent", 0x39f009a9u},
         {"SplineFrame", 0x2e6a235du},
         {"SplineHit", 0x923264d8u},
@@ -198,7 +199,7 @@ const std::map<std::string, std::set<std::string>>& ShaderNeutralApi::mixedClass
             "setGravity3D", "getPostProcessUniform", "isPostProcessPassEnabled", "canReceiveUIEvents",
             "getActionSystem", "getAudioSystem", "getPhysicsSystem", "getNavigationSystem", "getChangeTick",
             "findEntitiesWith", "findChangedEntities", "markChanged", "camera", "backgroundColor",
-            "gravity2D", "gravity3D", "physicsInterpolation", "enableUIEvents", "maxLightsPerObject",
+            "gravity2D", "gravity3D", "physicsInterpolation", "fixedTimestep", "enableUIEvents", "maxLightsPerObject",
             "shadowQuality", "litQuality", "effectiveShadowTier",
             // (Environment Lighting's source and gradient bind other textures and SH, never another variant)
             "ambientMode", "ambientSkyColor", "ambientEquatorColor", "ambientGroundColor"}},
@@ -217,7 +218,7 @@ const std::map<std::string, std::set<std::string>>& ShaderNeutralApi::mixedClass
         // its projection, transform and culling (not its render target, sorting or depth test)
         {"Camera", {
             "activate", "setOrtho", "setPerspective", "setType", "setTarget", "disableTarget",
-            "isUsingTarget", "setUp", "getUp", "getDirection", "getRight", "getWorldTarget",
+            "isUsingTarget", "useTarget", "setUp", "getUp", "getDirection", "getRight", "getWorldTarget",
             "getWorldDirection", "getWorldUp", "getWorldRight", "getViewMatrix", "getProjectionMatrix",
             "getViewProjectionMatrix", "rotateView", "rotatePosition", "elevateView", "elevatePosition",
             "walkForward", "zoom", "slide", "slideForward", "slideUp", "screenToRay",

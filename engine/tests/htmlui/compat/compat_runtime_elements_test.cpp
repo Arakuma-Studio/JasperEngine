@@ -262,6 +262,31 @@ TEST_F(CompatElementTest, AnchorsNavigateAndScroll){
     EXPECT_EQ(navigations.events.size(), 3u);
 }
 
+// S93 R32 (AC36): an external link opens with System.openURL after htmlnavigate, unless a listener prevents it; a
+// document link does not
+TEST_F(CompatElementTest, ExternalLinkOpensUrl){
+    ASSERT_NE(show("<a id='doc' href='other.html'>doc</a><a id='ext' href='https://example.com/'>ext</a>"
+                   "<a id='mail' href='mailto:support@example.com'>mail</a>", kControls), nullptr);
+    std::vector<std::string>& opened = TestSystem::get().openedUrls;
+    opened.clear();
+    click(byId("doc"));
+    EXPECT_TRUE(opened.empty());
+    click(byId("ext"));
+    ASSERT_EQ(opened.size(), 1u);
+    EXPECT_EQ(opened[0], "https://example.com/");
+    click(byId("mail"));
+    ASSERT_EQ(opened.size(), 2u);
+    EXPECT_EQ(opened[1], "mailto:support@example.com");
+
+    Recorder& navigations = recorder();
+    navigations.prevent = true;
+    listen(document, "htmlnavigate", navigations);
+    click(byId("ext"));
+    EXPECT_EQ(navigations.events.size(), 1u);
+    EXPECT_EQ(opened.size(), 2u);
+    opened.clear();
+}
+
 // ---------------------------------------------------------------- input
 
 TEST_F(CompatElementTest, InputTypesKeepTheirAttribute){

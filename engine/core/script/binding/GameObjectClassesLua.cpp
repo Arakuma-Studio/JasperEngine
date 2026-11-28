@@ -15,6 +15,7 @@
 #include "component/PanelComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SafeAreaComponent.h"
+#include "component/TextComponent.h"
 #include "component/ActionComponent.h"
 
 #include "lua.hpp"
@@ -541,6 +542,23 @@ bool luaObjectArg(lua_State* L, int index, Scene*& scene, Entity& entity, std::s
         return ok;
     }
     return false;
+}
+
+// GameObject's transform members on an entity without a Transform (an action, a tween, the
+// scene's own entities): the getters give nil, the setters raise an error (S95 REQ-3), never the
+// engine error and C++ exception of getComponent
+static const Transform* luaTransform(const GameObject* self){
+    Scene* scene = self->getScene();
+    return scene ? scene->findComponent<Transform>(self->getEntity()) : nullptr;
+}
+
+static GameObject& requireTransform(GameObject* self){
+    if (!luaTransform(self)){
+        Scene* scene = self->getScene();
+        const std::string name = scene ? scene->getEntityNameRef(self->getEntity()) : std::string();
+        throw std::runtime_error("GameObject '" + name + "' has no Transform");
+    }
+    return *self;
 }
 
 // GameObject:setParent / parent = : any GameObject handle, a script instance or nil (the root)
@@ -1561,6 +1579,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("anisotropy", &Fog::getAnisotropy, &Fog::setAnisotropy)
         .addProperty("skyFill", &Fog::isSkyFill, &Fog::setSkyFill)
         .addProperty("skyFillAngle", &Fog::getSkyFillAngle, &Fog::setSkyFillAngle)
+        .addProperty("albedo", &Fog::getAlbedo, &Fog::setAlbedo)
+        .addProperty("ambientMultiplier", &Fog::getAmbientMultiplier, &Fog::setAmbientMultiplier)
+        .addProperty("emissive", &Fog::getEmissive, &Fog::setEmissive)
         .addProperty("volumetric", &Fog::isVolumetric, &Fog::setVolumetric)
         .addProperty("volumetricDistance", &Fog::getVolumetricDistance, &Fog::setVolumetricDistance)
         .addProperty("lightShafts", &Fog::isLightShafts, &Fog::setLightShafts)
@@ -1701,6 +1722,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const float, const float, const float, const float>(&Skybox::setColor))
         .addProperty("alpha", &Skybox::getAlpha, &Skybox::setAlpha)
         .addProperty("rotation", &Skybox::getRotation, &Skybox::setRotation)
+        // false draws no sky (nor its probe captures) and keeps its lighting (S94 F16)
+        .addProperty("visible", &Skybox::isVisible, &Skybox::setVisible)
+        .addFunction("setVisible", &Skybox::setVisible)
         .addProperty("customShader", &Skybox::getCustomShader, &Skybox::setCustomShader)
         .addFunction("setShaderUniform",
             luabridge::overload<const std::string&, const Vector4&>(&Skybox::setShaderUniform),
@@ -1762,9 +1786,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // setParent(p [, worldPositionStays = true]), childCount, getChild(i) (0-based), getChildren(),
         // findChild("Arm/Hand")
         .addProperty("parent", &GameObject::getParent,
-            [](GameObject* self, luabridge::LuaRef value) { luaSetParent(self, value, true); })
+            [](GameObject* self, luabridge::LuaRef value) { luaSetParent(&requireTransform(self), value, true); })
         .addFunction("setParent", [](GameObject* self, luabridge::LuaRef parent, std::optional<bool> worldPositionStays) {
-            luaSetParent(self, parent, worldPositionStays.value_or(true));
+            luaSetParent(&requireTransform(self), parent, worldPositionStays.value_or(true));
         })
         .addProperty("childCount", &GameObject::getChildCount)
         .addFunction("getChild", &GameObject::getChild)
@@ -1774,17 +1798,37 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("moveUp", &GameObject::moveUp)
         .addFunction("moveDown", &GameObject::moveDown)
         .addFunction("moveToBottom", &GameObject::moveToBottom)
-        .addProperty("position", &GameObject::getPosition, (void(GameObject::*)(Vector3))&GameObject::setPosition)
-        .addFunction("setPosition", 
-            luabridge::overload<const float, const float, const float>(&GameObject::setPosition),
-            luabridge::overload<const float, const float>(&GameObject::setPosition))
-        .addFunction("getWorldPosition", &GameObject::getWorldPosition)
-        .addProperty("rotation", &GameObject::getRotation, (void(GameObject::*)(Quaternion))&GameObject::setRotation)
-        .addFunction("setRotation", (void(GameObject::*)(const float, const float, const float))&GameObject::setRotation)
-        .addFunction("getWorldRotation", &GameObject::getWorldRotation)
-        .addProperty("scale", &GameObject::getScale, (void(GameObject::*)(Vector3))&GameObject::setScale)
-        .addFunction("setScale", (void(GameObject::*)(const float))&GameObject::setScale)
-        .addFunction("getWorldScale", &GameObject::getWorldScale)
+        // nil without a Transform (an action, a tween); the setters raise an error then
+        .addProperty("position", [](const GameObject* self) -> std::optional<Vector3> {
+                if (!luaTransform(self)) return std::nullopt;
+                return self->getPosition(); },
+            [](GameObject* self, Vector3 position) { requireTransform(self).setPosition(position); })
+        // (x, y [, z = 0])
+        .addFunction("setPosition", [](GameObject* self, float x, float y, std::optional<float> z) {
+            requireTransform(self).setPosition(x, y, z.value_or(0.0f)); })
+        .addFunction("getWorldPosition", [](const GameObject* self) -> std::optional<Vector3> {
+            if (!luaTransform(self)) return std::nullopt;
+            return self->getWorldPosition(); })
+        .addProperty("rotation", [](const GameObject* self) -> std::optional<Quaternion> {
+                if (!luaTransform(self)) return std::nullopt;
+                return self->getRotation(); },
+            [](GameObject* self, Quaternion rotation) { requireTransform(self).setRotation(rotation); })
+        .addFunction("setRotation", [](GameObject* self, float xAngle, float yAngle, float zAngle) {
+            requireTransform(self).setRotation(xAngle, yAngle, zAngle); })
+        .addFunction("getWorldRotation", [](const GameObject* self) -> std::optional<Quaternion> {
+            if (!luaTransform(self)) return std::nullopt;
+            return self->getWorldRotation(); })
+        .addProperty("scale", [](const GameObject* self) -> std::optional<Vector3> {
+                if (!luaTransform(self)) return std::nullopt;
+                return self->getScale(); },
+            [](GameObject* self, Vector3 scale) { requireTransform(self).setScale(scale); })
+        // uniform, or per axis (S94 F31: distinct arities, no userdata miss)
+        .addFunction("setScale",
+            [](GameObject* self, float factor) { requireTransform(self).setScale(factor); },
+            [](GameObject* self, float x, float y, float z) { requireTransform(self).setScale(x, y, z); })
+        .addFunction("getWorldScale", [](const GameObject* self) -> std::optional<Vector3> {
+            if (!luaTransform(self)) return std::nullopt;
+            return self->getWorldScale(); })
         .addProperty("visible", &GameObject::isVisible, &GameObject::setVisible)
         .addFunction("setVisibleOnly", &GameObject::setVisibleOnly)
         .addFunction("setBillboard", (void(GameObject::*)(bool, bool, bool))&GameObject::setBillboard)
@@ -1793,9 +1837,16 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setBillboardRotation", (void(GameObject::*)(const float, const float, const float))&GameObject::setBillboardRotation)
         .addProperty("fakeBillboard", &GameObject::isFakeBillboard, &GameObject::setFakeBillboard)
         .addProperty("cylindricalBillboard", &GameObject::isCylindricalBillboard, &GameObject::setCylindricalBillboard)
-        .addProperty("localMatrix", &GameObject::getLocalMatrix, &GameObject::setLocalMatrix)
-        .addProperty("modelMatrix", &GameObject::getModelMatrix)
-        .addProperty("normalMatrix", &GameObject::getNormalMatrix)
+        .addProperty("localMatrix", [](const GameObject* self) -> std::optional<Matrix4> {
+                if (!luaTransform(self)) return std::nullopt;
+                return self->getLocalMatrix(); },
+            [](GameObject* self, Matrix4 localMatrix) { requireTransform(self).setLocalMatrix(localMatrix); })
+        .addProperty("modelMatrix", [](const GameObject* self) -> std::optional<Matrix4> {
+            if (!luaTransform(self)) return std::nullopt;
+            return self->getModelMatrix(); })
+        .addProperty("normalMatrix", [](const GameObject* self) -> std::optional<Matrix4> {
+            if (!luaTransform(self)) return std::nullopt;
+            return self->getNormalMatrix(); })
         .addFunction("updateTransform", &GameObject::updateTransform)
 #ifdef JASPERENGINE_PHYSICS_2D
         // the Mixer Snapshot action's component (S40 R24), nil without one
@@ -2060,6 +2111,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setOrtho", &Camera::setOrtho)
         .addFunction("setPerspective", &Camera::setPerspective)
         .addProperty("autoResize",  &Camera::isAutoResize, &Camera::setAutoResize)
+        // Unity's orthographic Size: half the view's height, the width follows the aspect (0 off)
+        .addProperty("orthographicSize",  &Camera::getOrthographicSize, &Camera::setOrthographicSize)
         .addProperty("nearClip",  &Camera::getNearClip, &Camera::setNearClip)
         .addProperty("farClip",  &Camera::getFarClip, &Camera::setFarClip)
         .addProperty("leftClip",  &Camera::getLeftClip, &Camera::setLeftClip)
@@ -2074,6 +2127,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setTarget", (void(Camera::*)(const float, const float, const float))&Camera::setTarget)
         .addFunction("disableTarget", &Camera::disableTarget)
         .addFunction("isUsingTarget", &Camera::isUsingTarget)
+        .addProperty("useTarget", &Camera::isUsingTarget, &Camera::setUseTarget)
         .addProperty("up",  &Camera::getUp, (void(Camera::*)(Vector3))&Camera::setUp)
         .addFunction("setUp", (void(Camera::*)(const float, const float, const float))&Camera::setUp)
         .addFunction("getUp", &Camera::getUp)
@@ -2816,6 +2870,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("loadGLTF", &Model::loadGLTF)
         .addFunction("loadModel", &Model::loadModel)
         .addProperty("filename", &Model::getFilename)
+        .addProperty("preserveHierarchy", &Model::isPreserveHierarchy, &Model::setPreserveHierarchy)
         .addFunction("getAnimationCount", &Model::getAnimationCount)
         .addFunction("getAnimation", &Model::getAnimation)
         .addFunction("findAnimation", &Model::findAnimation)
@@ -3379,6 +3434,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("width", &Sprite::getWidth, &Sprite::setWidth)
         .addProperty("height", &Sprite::getHeight, &Sprite::setHeight)
         .addProperty("flipY", &Sprite::isFlipY, &Sprite::setFlipY)
+        // Unity's Flip X and SpriteRenderer.size (world units; an axis at 0 follows width/height)
+        .addProperty("flipX", &Sprite::isFlipX, &Sprite::setFlipX)
+        .addProperty("size", &Sprite::getQuadSize, &Sprite::setQuadSize)
         .addProperty("textureScaleFactor", &Sprite::getTextureScaleFactor, &Sprite::setTextureScaleFactor)
         .addProperty("pixelsPerUnit", &Sprite::getPixelsPerUnit, &Sprite::setPixelsPerUnit)
         .addProperty("pixelRotation", &Sprite::getPixelRotation, &Sprite::setPixelRotation)
@@ -3694,9 +3752,31 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("colorWrite", &Polygon::getColorWrite, &Polygon::setColorWrite)
         .endClass();
 
+    // S93 R37: Text.horizontalAlignment / verticalAlignment (TextMeshPro's names)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextHorizontalAlignment")
+        .addVariable("LEFT", TextHorizontalAlignment::LEFT)
+        .addVariable("CENTER", TextHorizontalAlignment::CENTER)
+        .addVariable("RIGHT", TextHorizontalAlignment::RIGHT)
+        .addVariable("JUSTIFIED", TextHorizontalAlignment::JUSTIFIED)
+        .endNamespace()
+        .beginNamespace("TextVerticalAlignment")
+        .addVariable("TOP", TextVerticalAlignment::TOP)
+        .addVariable("MIDDLE", TextVerticalAlignment::MIDDLE)
+        .addVariable("BOTTOM", TextVerticalAlignment::BOTTOM)
+        .addVariable("BASELINE", TextVerticalAlignment::BASELINE)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .deriveClass<Text, RectTransform>("Text")
         .addConstructor(sceneconstructors::ofScene<Text>(), sceneconstructors::ofEntity<Text>())
+        // the box, laid out first when the text, font or size changed (S94 F25)
+        .addProperty("width", &Text::getWidth, +[](Text* self, unsigned int width) { self->setWidth(width); })
+        .addProperty("height", &Text::getHeight, +[](Text* self, unsigned int height) { self->setHeight(height); })
+        .addFunction("updateLayout", &Text::updateLayout)
+        .addProperty("anchorHorizontal", &Text::getAnchorHorizontal, &Text::setAnchorHorizontal)
+        .addProperty("anchorVertical", &Text::getAnchorVertical, &Text::setAnchorVertical)
+        .addProperty("fontSizeUnit", &Text::getFontSizeUnit, &Text::setFontSizeUnit)
         .addFunction("setFixedSize", &Text::setFixedSize)
         .addProperty("fixedWidth", &Text::isFixedWidth, &Text::setFixedWidth)
         .addProperty("fixedHeight", &Text::isFixedHeight, &Text::setFixedHeight)
@@ -3716,6 +3796,12 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::constOverload<>(&Text::getFont),
             luabridge::constOverload<unsigned int>(&Text::getFont))
         .addProperty("fontSize", &Text::getFontSize, &Text::setFontSize)
+        // S93 R37 (TextMeshPro): Alignment inside the fixed box, Auto Size between Min and Max
+        .addProperty("horizontalAlignment", &Text::getHorizontalAlignment, &Text::setHorizontalAlignment)
+        .addProperty("verticalAlignment", &Text::getVerticalAlignment, &Text::setVerticalAlignment)
+        .addProperty("autoSize", &Text::isAutoSize, &Text::setAutoSize)
+        .addProperty("fontSizeMin", &Text::getFontSizeMin, &Text::setFontSizeMin)
+        .addProperty("fontSizeMax", &Text::getFontSizeMax, &Text::setFontSizeMax)
         .addProperty("multiline", &Text::getMultiline, &Text::setMultiline)
         .addProperty("color", &Text::getColor, (void(Text::*)(Vector4))&Text::setColor)
         .addFunction("setColor", 
@@ -3766,6 +3852,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("depthWrite", &Text::getDepthWrite, &Text::setDepthWrite)
         .addProperty("stencil", &Text::getStencil, &Text::setStencil)
         .addProperty("colorWrite", &Text::getColorWrite, &Text::setColorWrite)
+        // deprecated aliases of anchorVertical Baseline and anchorHorizontal Center
         .addProperty("pivotBaseline", &Text::isPivotBaseline, &Text::setPivotBaseline)
         .addProperty("pivotCentered", &Text::isPivotCentered, &Text::setPivotCentered)
         .addProperty("outlineWidth", &Text::getOutlineWidth, &Text::setOutlineWidth)
@@ -4460,6 +4547,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("speed", &AnimationPlayer::getSpeed, &AnimationPlayer::setSpeed)
         // fps (0 = smooth): every track holds on whole steps from its previous key, fades step too
         .addProperty("poseFrameRate", &AnimationPlayer::getPoseFrameRate, &AnimationPlayer::setPoseFrameRate)
+        // Unity's Apply Root Motion: the base layer's clip root motion moves the GameObject
+        .addProperty("applyRootMotion", &AnimationPlayer::getApplyRootMotion, &AnimationPlayer::setApplyRootMotion)
+        .addProperty("legacyRootDrift", &AnimationPlayer::getLegacyRootDrift, &AnimationPlayer::setLegacyRootDrift)
         .addProperty("defaultClip", &AnimationPlayer::getDefaultClip, &AnimationPlayer::setDefaultClip)
         .addProperty("defaultFadeTime", &AnimationPlayer::getDefaultFadeTime, &AnimationPlayer::setDefaultFadeTime)
         .addProperty("playAutomatically", &AnimationPlayer::isPlayAutomatically, &AnimationPlayer::setPlayAutomatically)
@@ -4798,6 +4888,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // step too; root motion and events stay at the true time
         .addProperty("poseFrameRate", &Animator::getPoseFrameRate, &Animator::setPoseFrameRate)
         .addProperty("applyRootMotion", &Animator::isApplyRootMotion, &Animator::setApplyRootMotion)
+        .addProperty("legacyRootDrift", &Animator::isLegacyRootDrift, &Animator::setLegacyRootDrift)
         .addFunction("getDeltaPosition", &Animator::getDeltaPosition)
         .addFunction("getDeltaRotation", &Animator::getDeltaRotation)
         .addFunction("isHumanoid", &Animator::isHumanoid)

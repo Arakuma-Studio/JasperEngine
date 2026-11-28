@@ -33,6 +33,7 @@
 #include "component/CameraComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/FogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/ImageComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/OnScreenControlComponents.h"
@@ -301,6 +302,7 @@ namespace {
             {"UIDocument", hasComponent<UIDocumentComponent>()},
             {"Bone", hasComponent<BoneComponent>()},
             {"Fog", hasComponent<FogComponent>()},
+            {"FogZone", hasComponent<FogZoneComponent>()},
             {"Skybox", hasComponent<SkyboxComponent>()},
             {"ReflectionProbe", hasComponent<ReflectionProbeComponent>()},
             {"FluidSimulation", hasComponent<FluidSimulationComponent>()},

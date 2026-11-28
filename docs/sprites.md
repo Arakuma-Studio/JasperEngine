@@ -20,6 +20,8 @@ rectangles (**inline frames**, below); they keep working.
 | **Native Size** | Width and Height 0: each frame at its own size |
 | **Frame** | a dropdown with thumbnails and search, and the frame's index |
 | **Pivot** | the nine presets, or **From Frame** (the frame's own pivot) |
+| **Size** | the quad in world units, in every Draw Mode (Sliced corners keep theirs); 0 on an axis: Width / Height over Pixels Per Unit (Unity's `SpriteRenderer.size`) |
+| **Flip X**, **Flip Y** | Flip X mirrors the picture about the pivot |
 
 A Sliced frame without a border draws Simple, and the Inspector says so.
 
@@ -44,6 +46,47 @@ undo step.
 A texture named `name@WxH.png` (`coin@16x16.png`) is a grid of W x H cells without any setting:
 frames `coin_0`, `coin_1`, ... The importer shows "Grid from file name (16x16)". If the size does
 not divide the image, the importer says how many pixels are left over.
+
+## Photoshop layers (PSD Importer)
+
+A `.psd` or `.psb` imports as one flattened texture. Its importer's **Import Mode** set to
+**Layers (sprites + prefab)** makes each visible pixel layer a sprite: the layers are packed
+(trimmed) into one sheet whose frames are named after them, and `<file>.prefab` beside the document
+(`hero.psd.prefab`) places a Sprite per layer where it is in the document (its centre at the
+prefab's origin), layer groups as parent GameObjects, and the stack order as Order in Layer.
+Hidden layers and their groups are left out; adjustment, fill and text layers without pixels are
+left out with a warning, and blend modes other than Normal draw as Normal. Saving the document
+again reimports it: a layer keeps its sprite (key `layer:<id>`, Photoshop's layer id) and its prefab
+GameObject when it is renamed or moved, so prefab instances keep their overrides. **Character
+Rig** adds the layers' skin bones (below) to the prefab as one skeleton of GameObjects, each skinned
+layer's Sprite Skin bound to it: a rig where each part follows one bone at 100% is a quad per layer
+bound to its bone.
+
+## Skinning (Sprite Skin)
+
+**Add Component > Rendering > Sprite Skin** bends a Sprite with bones, Unity's 2D Animation. The
+skin (bones, a triangle mesh over the frame and up to four bone weights per vertex) belongs to the
+frame and is kept in the meta of the sheet's source (a texture, or a PSD/PSB in Layers mode), so
+every Sprite showing that frame shares it. The Sprite Skin binds one GameObject per bone (**Bones**)
+and names the **Root Bone**; moving, rotating or animating those GameObjects bends the Sprite on the
+GPU's skinning path, the same on every backend. A frame without a skin draws its quad, and a Sprite
+without a Sprite Skin costs nothing more.
+
+**Window > 2D > Skinning Editor** (or **Edit Skin** on the Sprite Skin) edits the selected Sprite's
+skin over its pixels:
+
+- **Create Bone**: drag from the head to the tail; the selected bone is the parent.
+- **Geometry**: **Auto Geometry** covers the opaque pixels with a grid of **Cell Size** pixels
+  (pixels at or below **Alpha Tolerance** are empty); **Clear** removes the mesh.
+- **Weights**: **Auto Weights** weights each vertex by its distance to the bones; **Bind to Bone
+  (100%)** binds every vertex to the selected bone; the **Weight Brush** paints the selected bone's
+  weight (**Add**, **Subtract**, **Smooth**; **Size**, **Strength**). **Show Weights** colours the
+  vertices by their bones.
+- **Preview Pose**: drag a bone to turn it; the mesh bends in the window only. **Reset Pose**.
+
+Every edit is one undo step: the skin is written and the bone GameObjects and the Sprite Skin follow
+(a GameObject per new bone under the Sprite at the rest pose). The Sprite Skin's **Create Bones**
+binds the skin's bones the same way and **Reset Bind Pose** puts the bone GameObjects back.
 
 ## Sprite Atlases
 

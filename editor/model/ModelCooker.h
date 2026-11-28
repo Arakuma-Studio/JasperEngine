@@ -10,7 +10,8 @@
 //   - Optimize Mesh: exact duplicates welded (Weld Vertices), the vertex cache and overdraw
 //     orders (threshold 1.05) and the fetch order, every stream remapped (morph targets too). A
 //     primitive drawn blended keeps its triangle order; a primitive whose vertex data is shared
-//     with other users keeps its vertex order (both are reported).
+//     with other users keeps its vertex order (both are reported); a primitive painted with vertex
+//     colors keeps both and is welded nowhere, so its paint's order is every family's.
 //   - Normals Calculate: area-weighted, with the Smoothing Angle as the crease.
 //   - Index Format, Generate LODs (JE_mesh_lods, built with MeshLodPool::buildLevels: contract
 //     C1/C2), Mesh Compression (KHR_meshopt_compression, KHR_mesh_quantization for the lossy
@@ -40,6 +41,10 @@ namespace jasperengine::editor {
         // (mesh, primitive) that a scene draws blended: their triangle order is kept. A mesh of
         // -1 is the primitive of that index in every mesh (a scene override names submeshes).
         std::set<std::pair<int, int>> blended;
+        // (mesh, primitive) that a scene paints with vertex colors (V1 R9, D11): their vertex and
+        // triangle order is the source's, nothing welded. A mesh of -1 is that primitive of every
+        // mesh, (-1, -1) every primitive.
+        std::set<std::pair<int, int>> painted;
     };
 
     struct ModelCookResult {

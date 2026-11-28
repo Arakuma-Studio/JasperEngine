@@ -221,9 +221,9 @@ bool editor::Exporter::resolvePlayer() {
     const std::string id = playerIdFor(config, config.developmentBuild);
     const std::string content = ::jasperengine::cook::buildContentFormatVersion(buildProfile != nullptr);
     std::string error;
-    std::optional<PlayerInfo> found = PlayerRuntimes::find(id, config.playersDir, config.allowPlayerMismatch, error, content);
+    std::optional<PlayerInfo> found = PlayerRuntimes::find(id, config.playersDir, config.allowPlayerMismatch, error, content, buildProfile != nullptr);
     if (!found) {
-        std::vector<PlayerInfo> variants = PlayerRuntimes::findVariants(id, config.playersDir, config.allowPlayerMismatch, content);
+        std::vector<PlayerInfo> variants = PlayerRuntimes::findVariants(id, config.playersDir, config.allowPlayerMismatch, content, buildProfile != nullptr);
         if (!variants.empty()) found = variants.front();
     }
     {
@@ -376,7 +376,7 @@ void editor::Exporter::runPlayerBuild() {
     if (!player) {
         std::string error;
         PlayerRuntimes::find(playerIdFor(config, config.developmentBuild), config.playersDir, config.allowPlayerMismatch, error,
-                             ::jasperengine::cook::buildContentFormatVersion(buildProfile != nullptr));
+                             ::jasperengine::cook::buildContentFormatVersion(buildProfile != nullptr), buildProfile != nullptr);
         // what would build it without the runtime
         if (config.platform == BuildPlatform::Web && config.method == BuildMethod::Auto)
             error += "; or install the Emscripten SDK (EMSDK, or Preferences > External Tools) to compile it";
@@ -436,7 +436,7 @@ bool editor::Exporter::selectPlayerVariant() {
     const std::vector<std::string> needed = moduleUsage.list();
     const std::string baseId = playerIdFor(config, config.developmentBuild);
     const std::vector<PlayerInfo> installed = PlayerRuntimes::findVariants(baseId, config.playersDir, config.allowPlayerMismatch,
-                                                                           ::jasperengine::cook::buildContentFormatVersion(buildProfile != nullptr));
+                                                                           ::jasperengine::cook::buildContentFormatVersion(buildProfile != nullptr), buildProfile != nullptr);
     const PlayerInfo* best = PlayerRuntimes::smallestWith(installed, needed);
     // (a development build is always the full player: its variants are release ones)
     const PlayerVariant& fitting = config.developmentBuild ? PlayerRuntimes::variants().front() : PlayerRuntimes::variantFor(needed);
@@ -569,6 +569,7 @@ bool editor::Exporter::runPrebuilt() {
     if (!writeLocalization()) return false;
     if (!writeDialogueSettings()) return false;
     if (!writeAssetMap()) return false;
+    if (!writeDataAssetIndex()) return false;
     if (!copyCustomShaderSources()) return false;
     if (cancelled()) return false;
     if (!buildAndSaveShaders()) return false;

@@ -4,6 +4,7 @@
 // What the project does with each model (spec S53 R10, R11, R20, R22), read from the scene and
 // prefab files (each parsed again only when it changed) and the project's scripts:
 //   - the submeshes a scene draws blended (a blend override): the cook keeps their triangle order;
+//   - the models a scene paints with vertex colors: the cook keeps their vertex and triangle order;
 //   - the runtime readers of a model's CPU copy (Read/Write Automatic): a Mesh Collider or a
 //     convex hull from its mesh, a navigation surface baking at runtime, a particle mesh shape,
 //     runtime LOD building, a skinned mesh (poses and retargeting read its vertices) and the
@@ -34,6 +35,7 @@ namespace jasperengine::editor {
         int objects = 0;                // GameObjects with a Model of the file
         bool lodEnabled = false;        // the scene draws mesh LOD
         std::set<int> blendedSubmeshes; // submesh indices a blend override marks
+        bool painted = false;           // a GameObject of it has Vertex Colors (V1 R9)
     };
 
     struct ModelUsage {
@@ -44,6 +46,9 @@ namespace jasperengine::editor {
         int objects() const;
         // the cook's blended set: a submesh index of every mesh
         std::set<std::pair<int, int>> blended() const;
+        // the cook's painted set (V1 R9, D11): every primitive, once a GameObject paints the model
+        // (its .vcolors file may gain a target with no change to the document)
+        std::set<std::pair<int, int>> painted() const;
         // a scene using it draws mesh LOD
         bool anyLod() const;
     };

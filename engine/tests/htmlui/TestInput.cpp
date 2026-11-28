@@ -103,8 +103,17 @@ namespace {
             Engine::onKeyUp.add(callbackTag, std::function<void(int, bool, int)>([this](int, bool, int){ keyUps++; }));
             Engine::onCharInput.add(callbackTag, std::function<void(char32_t)>([this](char32_t c){ chars.push_back((uint32_t)c); }));
             Engine::onTouchStart.add(callbackTag, std::function<void(int, float, float)>([this](int, float, float){ touchStarts++; }));
-            Engine::onTouchEnd.add(callbackTag, std::function<void(int, float, float)>([this](int, float, float){ touchEnds++; }));
             Engine::onTouchCancel.add(callbackTag, std::function<void(int, float, float)>([this](int, float, float){ touchCancels++; }));
+            Engine::onTouchMove.add(callbackTag, std::function<void(int, float, float)>([this](int, float, float){ touchMoves++; }));
+            Engine::onMouseMove.add(callbackTag, std::function<void(float, float, int)>([this](float, float, int){ mouseMoves++; }));
+            Engine::onMouseUp.add(callbackTag, std::function<void(int, float, float, int)>([this](int, float x, float y, int){
+                mouseUps++;
+                lastMouseUp = Vector2(x, y);
+            }));
+            Engine::onTouchEnd.add(callbackTag, std::function<void(int, float, float)>([this](int, float x, float y){
+                touchEnds++;
+                lastTouchEnd = Vector2(x, y);
+            }));
             TestSystem::get().clearLogs();
         }
 
@@ -117,6 +126,9 @@ namespace {
             Engine::onTouchStart.remove(callbackTag);
             Engine::onTouchEnd.remove(callbackTag);
             Engine::onTouchCancel.remove(callbackTag);
+            Engine::onTouchMove.remove(callbackTag);
+            Engine::onMouseUp.remove(callbackTag);
+            Engine::onMouseMove.remove(callbackTag);
             Engine::systemTouchCancel();
             Engine::setIgnoreEventsHandledByUI(true);
             fixture.reset();
@@ -150,8 +162,13 @@ namespace {
         UIDocument* uiDocument = nullptr;
         Rml::ElementDocument* document = nullptr;
         int mouseDowns = 0, scrolls = 0, keyDowns = 0, keyUps = 0, touchStarts = 0, touchEnds = 0, touchCancels = 0;
+        int touchMoves = 0, mouseUps = 0, mouseMoves = 0;
+        Vector2 lastTouchEnd{-1.0f, -1.0f}, lastMouseUp{-1.0f, -1.0f};
         std::vector<uint32_t> chars;
     };
+
+    // S93 P1 (pointer ownership): the spec's names for these tests
+    class HtmlUIInput : public InputTest {};
 
 }
 
@@ -1094,4 +1111,174 @@ TEST_F(InputTest, CursorFollowsTheHoveredElement){
     Engine::systemMouseMove(bodyX, bodyY, 0);
     EXPECT_EQ(Engine::getMouseCursor(), CursorType::ARROW);
     EXPECT_EQ(system.mouseCursor, CursorType::ARROW);
+}
+
+// ---- S93 P1: pointer ownership (U29). The press decides who owns a pointer: what the game got
+// at the press stays the game's, over any document; what a document captured stays the document's
+
+namespace {
+
+    // counts the events an element gets
+    class EventCounter : public Rml::EventListener {
+    public:
+        int count = 0;
+        void ProcessEvent(Rml::Event&) override{ count++; }
+    };
+
+    // fixtures/p1/input/popup.rml: #ok
+    const float popupOkX = 360, popupOkY = 280;
+
+}
+
+// AC1: a finger the game got at its press stays the game's when a full-screen popup appears under
+// it; its moves and its release over the popup's button reach the game, the button is not clicked
+// and Input has no finger left (the stuck joystick of U29). The mouse the same
+TEST_F(HtmlUIInput, GameOwnedTouchReleaseOverDocumentReachesGame){
+    Engine::systemTouchStart(3, bodyX, bodyY);
+    ASSERT_EQ(touchStarts, 1) << "the transparent body is the game's";
+
+    UIDocument& popup = fixture->add<UIDocument>();
+    ASSERT_TRUE(popup.load("p1/input/popup.rml"));
+    popup.setSortOrder(10);
+    updateDocuments(scene());
+    Rml::Element* ok = rmlById(rmlContext(scene()), "ok");
+    ASSERT_NE(ok, nullptr);
+    EventCounter clicks;
+    ok->AddEventListener(Rml::EventId::Click, &clicks);
+
+    Engine::systemTouchMove(3, popupOkX, popupOkY);
+    EXPECT_EQ(touchMoves, 1) << "the game's finger moved over the popup";
+    EXPECT_TRUE(ok->IsPseudoClassSet("hover")) << "the documents still see the finger";
+    Engine::systemTouchEnd(3, popupOkX, popupOkY);
+    EXPECT_EQ(touchEnds, 1) << "the game's finger lifted over the popup's button";
+    EXPECT_EQ(clicks.count, 0) << "a press the button never got is no click";
+    EXPECT_TRUE(Input::getTouches().empty());
+    EXPECT_FALSE(documentSystem(scene()).getContext()->hasTouch(3));
+
+    // a finger pressed on the popup's button is the popup's, as before
+    Engine::systemTouchStart(4, popupOkX, popupOkY);
+    Engine::systemTouchEnd(4, popupOkX, popupOkY);
+    EXPECT_EQ(clicks.count, 1);
+    EXPECT_EQ(touchStarts, 1);
+    EXPECT_EQ(touchEnds, 1);
+
+    // the mouse: pressed on the game, the popup shown, dragged onto its button and released there
+    popup.hide();
+    updateDocuments(scene());
+    Engine::systemMouseMove(bodyX, bodyY, 0);
+    Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, bodyX, bodyY, 0);
+    EXPECT_EQ(mouseDowns, 1);
+    popup.show();
+    updateDocuments(scene());
+    const int movesBefore = mouseMoves;
+    Engine::systemMouseMove(popupOkX, popupOkY, 0);
+    EXPECT_EQ(mouseMoves, movesBefore + 1) << "the game's drag moved over the popup";
+    EXPECT_TRUE(ok->IsPseudoClassSet("hover"));
+    Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, popupOkX, popupOkY, 0);
+    EXPECT_EQ(mouseUps, 1) << "the game's button released over the popup's button";
+    EXPECT_EQ(clicks.count, 1);
+    // with no button held, the hover over the popup is the popup's
+    Engine::systemMouseMove(popupOkX + 4, popupOkY, 0);
+    EXPECT_EQ(mouseMoves, movesBefore + 1);
+
+    ok->RemoveEventListener(Rml::EventId::Click, &clicks);
+}
+
+// AC2: a press a document captured stays the document's until its release, wherever it goes
+// (unchanged)
+TEST_F(HtmlUIInput, CapturedTouchStaysWithDocument){
+    Engine::systemTouchStart(2, touchAX, touchAY);
+    EXPECT_TRUE(element("touchA")->IsPseudoClassSet("active"));
+    Engine::systemTouchMove(2, bodyX, bodyY);
+    Engine::systemTouchEnd(2, bodyX, bodyY);
+    EXPECT_EQ(touchStarts, 0);
+    EXPECT_EQ(touchMoves, 0) << "a captured finger's moves over the game are the document's";
+    EXPECT_EQ(touchEnds, 0) << "a captured finger's release over the game is the document's";
+    EXPECT_FALSE(element("touchA")->IsPseudoClassSet("active"));
+
+    Engine::systemMouseMove(buttonX, buttonY, 0);
+    Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, buttonX, buttonY, 0);
+    const int movesBefore = mouseMoves;
+    Engine::systemMouseMove(bodyX, bodyY, 0);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, bodyX, bodyY, 0);
+    EXPECT_EQ(mouseDowns, 0);
+    EXPECT_EQ(mouseMoves, movesBefore);
+    EXPECT_EQ(mouseUps, 0);
+    EXPECT_FALSE(element("button")->IsPseudoClassSet("active"));
+}
+
+// AC3 (R2): a finger or a mouse button the game got, released outside the canvas, reaches the
+// game at the nearest canvas point, without Engine.allowEventsOutCanvas; a document's is
+// cancelled (unchanged)
+TEST_F(HtmlUIInput, OffCanvasReleaseOfGameTouchIsDelivered){
+    ASSERT_FALSE(Engine::isAllowEventsOutCanvas());
+
+    Engine::systemTouchStart(5, bodyX, 300);
+    Engine::systemTouchMove(5, 20, 300);
+    Engine::systemTouchEnd(5, -40, 300);
+    EXPECT_EQ(touchEnds, 1);
+    EXPECT_FLOAT_EQ(lastTouchEnd.x, 0.0f);
+    EXPECT_FLOAT_EQ(lastTouchEnd.y, 300.0f);
+    EXPECT_TRUE(Input::getTouches().empty());
+    EXPECT_FALSE(documentSystem(scene()).getContext()->hasTouch(5));
+
+    // past the other corner (the canvas is 640 x 360)
+    Engine::systemTouchStart(6, bodyX, bodyY);
+    Engine::systemTouchEnd(6, 700, 400);
+    EXPECT_EQ(touchEnds, 2);
+    EXPECT_FLOAT_EQ(lastTouchEnd.x, 640.0f);
+    EXPECT_FLOAT_EQ(lastTouchEnd.y, 360.0f);
+
+    // the mouse
+    Engine::systemMouseMove(bodyX, bodyY, 0);
+    Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, bodyX, bodyY, 0);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, -40, 300, 0);
+    EXPECT_EQ(mouseUps, 1);
+    EXPECT_FLOAT_EQ(lastMouseUp.x, 0.0f);
+    EXPECT_FLOAT_EQ(lastMouseUp.y, 300.0f);
+    EXPECT_FALSE(Input::getMouseButton(D_MOUSE_BUTTON_LEFT));
+
+    // a document's finger and button lifted outside: cancelled, the game gets nothing
+    Engine::systemTouchStart(7, touchAX, touchAY);
+    Engine::systemTouchEnd(7, -40, 300);
+    EXPECT_EQ(touchEnds, 2);
+    EXPECT_FALSE(element("touchA")->IsPseudoClassSet("active"));
+    Engine::systemMouseMove(buttonX, buttonY, 0);
+    Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, buttonX, buttonY, 0);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, -40, 300, 0);
+    EXPECT_EQ(mouseUps, 1);
+    EXPECT_FALSE(element("button")->IsPseudoClassSet("active"));
+
+    // a release outside the canvas of a press that started outside it is nobody's
+    Engine::systemTouchStart(8, -10, 300);
+    Engine::systemTouchEnd(8, -40, 300);
+    EXPECT_EQ(touchEnds, 2);
+}
+
+// AC4 (R3): with Engine.callTouchInMouseEvent the simulated touch 0 ends with the mouse button,
+// also when the release is the documents'
+TEST_F(HtmlUIInput, MouseUpOverUIRemovesSimulatedTouch){
+    const bool before = Engine::isCallTouchInMouseEvent();
+    Engine::setCallTouchInMouseEvent(true);
+
+    // pressed on the game, released over a button
+    Engine::systemMouseMove(bodyX, bodyY, 0);
+    Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, bodyX, bodyY, 0);
+    ASSERT_EQ(Input::getTouches().size(), 1u) << "the simulated touch";
+    Engine::systemMouseMove(buttonX, buttonY, 0);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, buttonX, buttonY, 0);
+    EXPECT_TRUE(Input::getTouches().empty());
+    EXPECT_EQ(touchEnds, 1);
+
+    // a release the button consumed (its own press) ends it too
+    Engine::systemMouseMove(bodyX, bodyY, 0);
+    Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, bodyX, bodyY, 0);
+    ASSERT_EQ(Input::getTouches().size(), 1u);
+    Engine::systemMouseMove(buttonX, buttonY, 0);
+    Engine::systemMouseDown(D_MOUSE_BUTTON_RIGHT, buttonX, buttonY, 0);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_RIGHT, buttonX, buttonY, 0);
+    EXPECT_TRUE(Input::getTouches().empty());
+    Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, buttonX, buttonY, 0);
+
+    Engine::setCallTouchInMouseEvent(before);
 }

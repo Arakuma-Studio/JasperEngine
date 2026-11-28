@@ -4,6 +4,7 @@
 #ifndef ECS_CHANGETRACKING_H
 #define ECS_CHANGETRACKING_H
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include "Export.h"
@@ -105,6 +106,29 @@ namespace jasperengine {
 
             void copy(size_t to, size_t from){
                 offsets[to] = offsets[from];
+            }
+
+            // The first index in [from, count) whose tick is past `tick`, else count: the offsets
+            // compared page by page (the late transform pass's scan, S95 REQ-33)
+            size_t findAfter(size_t from, size_t count, Tick tick) const {
+                if (tick < base){
+                    return from < count ? from : count;
+                }
+                if (tick - base >= kMaxOffset){
+                    return count;
+                }
+                const uint32_t limit = (uint32_t)(tick - base);
+                size_t i = from;
+                while (i < count){
+                    const size_t pageEnd = std::min(count, (i | PagedArray<uint32_t>::kPageMask) + 1);
+                    const uint32_t* offset = offsets.slot(i);
+                    for (; i < pageEnd; i++, offset++){
+                        if (*offset > limit){
+                            return i;
+                        }
+                    }
+                }
+                return count;
             }
 
             uint32_t raw(size_t index) const { return offsets[index]; }

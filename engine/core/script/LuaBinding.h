@@ -109,6 +109,8 @@ namespace jasperengine {
         static void registerSplineClasses(lua_State *L);
         static void registerNoiseClasses(lua_State *L);
         static void registerTerrainClasses(lua_State *L);
+        // V1: VertexColors (VertexColorClassesLua.cpp)
+        static void registerVertexColorClasses(lua_State *L);
 #if JASPERENGINE_VOXEL
         static void registerVoxelClasses(lua_State *L);
 #endif
@@ -118,9 +120,17 @@ namespace jasperengine {
         static void registerPixelArtClasses(lua_State *L);
         // S52: SortingLayer, the renderers' sorting fields, SortingGroup, SpriteBatch (SortingClassesLua.cpp)
         static void registerSortingClasses(lua_State *L);
+        // S94 F22: OutlineMode, OutlineWidthUnits, Outline (OutlineLua.cpp)
+        static void registerOutlineClasses(lua_State *L);
+        // S94 F49: SpriteSkin (SpriteSkinLua.cpp)
+        static void registerSpriteSkinClasses(lua_State *L);
+        // S94: MaterialPropertyBlock and the Mesh calls taking it, Mesh:setShaderTexture (MaterialPropertyBlockLua.cpp)
+        static void registerMaterialPropertyBlockClasses(lua_State *L);
         // S48: HitStop and HitStopExempt (HitStopClassesLua.cpp)
         static void registerHitStopClasses(lua_State *L);
         static void registerCullingClasses(lua_State *L);
+        // Fog Profiles, Fog's profile and blend, Fog Zones (after the GameObject classes: reopens Fog)
+        static void registerFogClasses(lua_State *L);
         // S48: Transition, TransitionHandle, TransitionKind, PixelFX.glitch (TransitionClassesLua.cpp)
         static void registerTransitionClasses(lua_State *L);
         // S48: PixelFX.play, PixelFX.set and PixelFXHandle (PixelFxClassesLua.cpp)
@@ -128,6 +138,7 @@ namespace jasperengine {
         // S50: Grid, TilemapLayer, Tileset, TileFlip (TilemapClassesLua.cpp)
         static void registerTilemapClasses(lua_State *L);
         static void registerCrashClasses(lua_State *L);
+        static void registerDataAssetClasses(lua_State *L);
         // InputRecording and InputReplay (InputRecordingClassesLua.cpp)
         static void registerInputRecordingClasses(lua_State *L);
         static void registerLocalizationClasses(lua_State *L);
@@ -185,6 +196,28 @@ namespace jasperengine {
         // Which Lua state this is: a new state (a restarted engine, an Android activity relaunched
         // in the same process) has a new generation, even at the address of the one it replaces
         static uint64_t getLuaStateGeneration();
+
+        // A private editor preview owns this registry reference until releaseLuaRef(). Its
+        // require() cache starts with engine modules only and persists across preview slices.
+        static int createPreviewModuleCache();
+        class JASPERENGINE_API ScopedModuleCache {
+        public:
+            explicit ScopedModuleCache(int moduleCacheRef);
+            ~ScopedModuleCache();
+            ScopedModuleCache(const ScopedModuleCache&) = delete;
+            ScopedModuleCache& operator=(const ScopedModuleCache&) = delete;
+        private:
+            lua_State* state = nullptr;
+            uint64_t stateGeneration = 0;
+            int previousRegistryRef = 0;
+            int previousPackageRef = 0;
+            int previousPackageLoadedRef = 0;
+            int previousPreviewContextKey = 0;
+        };
+        static bool isPreviewContext(); // main thread, while a ScopedModuleCache is active
+        static int getPreviewContextKey(); // its module-cache registry reference; negative outside previews
+        // Push the private globals shared by project chunks in this preview; false outside one.
+        static bool pushPreviewEnvironment(lua_State* L);
 
 #ifdef JASPERENGINE_PHYSICS_3D
         // Calls `function(self, hit)` on each enabled Lua script of the entity that defines it
@@ -312,6 +345,8 @@ namespace jasperengine {
         // The compiled chunk of a script path becomes the function at `index`: instances made
         // from now on run it
         static void setScriptChunk(lua_State* L, const std::string& path, int index);
+        // A private preview reads a saved script again without unloading unrelated modules.
+        static void invalidateScriptChunk(const std::string& path);
         // Pushes a script property's value as an instance field gets it at creation (an unset
         // prefab or asset is nil; an EntityReference is resolved in `scene` like init's pass 2)
         static void pushScriptPropertyValue(lua_State* L, Scene* scene, const ScriptProperty& property);

@@ -27,7 +27,9 @@
 #include "object/ui/HtmlUIScriptInternal.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Framebuffer.h"
+#include "htmlui/HtmlUIImageCache.h"
 #include "htmlui/compat/DocumentLoader.h"
+#include "htmlui/HtmlUIPrewarm.h"
 #include "htmlui/HtmlL10n.h"
 #include "json.hpp"
 
@@ -995,6 +997,162 @@ namespace {
         }
     }
 
+
+    // ---- S93 R15: prewarm ----
+
+    // HtmlUI.prewarmText{family, size, weight, style, effect, text}, read off the table (C++ objects die before an error)
+    bool prewarmTextFromLua(lua_State* L, ErrorText error, UIPrewarm& made){
+        const char* usage = "HtmlUI.prewarmText: {family = string, size = px, weight = number|'bold', style = 'normal'|'italic', "
+                            "effect = font-effect string, text = string} expected";
+        if (!lua_istable(L, 1)){
+            setError(error, usage);
+            return false;
+        }
+        UIPrewarmText text;
+        bool valid = true;
+        auto stringField = [&](const char* name, std::string& out){
+            lua_getfield(L, 1, name);
+            if (lua_type(L, -1) == LUA_TSTRING)
+                out = lua_tostring(L, -1);
+            else if (!lua_isnil(L, -1))
+                valid = false;
+            lua_pop(L, 1);
+        };
+        stringField("family", text.family);
+        stringField("effect", text.effect);
+        stringField("text", text.text);
+        lua_getfield(L, 1, "size");
+        if (lua_type(L, -1) == LUA_TNUMBER)
+            text.size = (int)std::lround(lua_tonumber(L, -1));
+        else if (!lua_isnil(L, -1))
+            valid = false;
+        lua_pop(L, 1);
+        lua_getfield(L, 1, "weight");
+        if (lua_type(L, -1) == LUA_TNUMBER)
+            text.weight = (int)std::lround(lua_tonumber(L, -1));
+        else if (lua_type(L, -1) == LUA_TSTRING && std::strcmp(lua_tostring(L, -1), "bold") == 0)
+            text.weight = 700;
+        else if (lua_type(L, -1) == LUA_TSTRING && std::strcmp(lua_tostring(L, -1), "normal") == 0)
+            text.weight = 400;
+        else if (!lua_isnil(L, -1))
+            valid = false;
+        lua_pop(L, 1);
+        std::string style;
+        stringField("style", style);
+        if (style == "italic" || style == "oblique")
+            text.italic = true;
+        else if (!style.empty() && style != "normal")
+            valid = false;
+        if (!valid || text.text.empty() || text.size <= 0){
+            setError(error, usage);
+            return false;
+        }
+        std::string parseError;
+        std::shared_ptr<HtmlUIPrewarmState> state = HtmlUIPrewarm::prewarmText(text, &parseError);
+        if (!parseError.empty()){
+            setError(error, "HtmlUI.prewarmText: " + parseError);
+            return false;
+        }
+        made = UIPrewarm(state);
+        return true;
+    }
+
+    int htmlUIPrewarmText(lua_State* L){
+        ErrorText error;
+        {
+            UIPrewarm made;
+            if (prewarmTextFromLua(L, error, made)){
+                if (!luabridge::push(L, made))
+                    lua_pushnil(L);
+                return 1;
+            }
+        }
+        return luaL_error(L, "%s", error);
+    }
+
+    // doc:prewarm([{images = false}])
+    int documentPrewarm(lua_State* L){
+        UIDocument* self = luabridge::detail::Userdata::get<UIDocument>(L, 1, false);
+        if (!self || !(lua_isnoneornil(L, 2) || lua_istable(L, 2)))
+            return luaL_error(L, "UIDocument.prewarm: an options table {images = boolean} (or nothing) expected");
+        bool images = true;
+        if (lua_istable(L, 2)){
+            lua_getfield(L, 2, "images");
+            if (!lua_isnil(L, -1))
+                images = lua_toboolean(L, -1) != 0;
+            lua_pop(L, 1);
+        }
+        {
+            const UIPrewarm made = self->prewarm(images);
+            if (!luabridge::push(L, made))
+                lua_pushnil(L);
+        }
+        return 1;
+    }
+
+    // HtmlUI.prewarmImage(path | {paths}), the paths read off the stack (C++ objects die before an error)
+    bool prewarmImageFromLua(lua_State* L, ErrorText error, UIPrewarm& made){
+        std::vector<std::string> paths;
+        if (lua_type(L, 1) == LUA_TSTRING){
+            paths.push_back(lua_tostring(L, 1));
+        }else if (lua_type(L, 1) == LUA_TTABLE){
+            const int count = (int)lua_rawlen(L, 1);
+            for (int i = 1; i <= count; i++){
+                lua_rawgeti(L, 1, i);
+                if (lua_type(L, -1) == LUA_TSTRING)
+                    paths.push_back(lua_tostring(L, -1));
+                lua_pop(L, 1);
+            }
+        }else{
+            setError(error, "HtmlUI.prewarmImage: an image path or a table of paths expected");
+            return false;
+        }
+        made = UIPrewarm::prewarmImages(paths);
+        return true;
+    }
+
+    int htmlUIPrewarmImage(lua_State* L){
+        ErrorText error;
+        {
+            UIPrewarm made;
+            if (prewarmImageFromLua(L, error, made)){
+                if (!luabridge::push(L, made))
+                    lua_pushnil(L);
+                return 1;
+            }
+        }
+        return luaL_error(L, "%s", error);
+    }
+
+    // UIPrewarm.onDone = function: called once when it is done (next frame if it already is); nil removes it
+    int prewarmSetOnDone(lua_State* L){
+        UIPrewarm* self = luabridge::detail::Userdata::get<UIPrewarm>(L, 1, false);
+        if (!self || !(lua_isfunction(L, 2) || lua_isnil(L, 2)))
+            return luaL_error(L, "UIPrewarm.onDone: a function (or nil) expected");
+        const std::shared_ptr<HtmlUIPrewarmState>& state = self->getState();
+        if (lua_isnil(L, 2)){
+            state->onDone.reset();
+            return 0;
+        }
+        state->onDone = HtmlUILuaRef(L, 2);
+        if (state->notified){
+            state->notified = false;
+            HtmlUIPrewarm::track(state);
+        }
+        return 0;
+    }
+
+    luabridge::LuaRef prewarmGetOnDone(const UIPrewarm* self, lua_State* L){
+        if (!self->getState()->onDone.push(L))
+            return luabridge::LuaRef(L);
+        luabridge::LuaRef function = luabridge::LuaRef::fromStack(L, -1);
+        lua_pop(L, 1);
+        return function;
+    }
+
+    // the HtmlUI table's static members
+    struct HtmlUILuaNamespace {};
+
 }
 
 // ---- HtmlUILuaRef ----
@@ -1141,7 +1299,7 @@ bool HtmlUILua::runDocumentScript(UIDocument& document, const htmlui::compat::Do
     // defines stays its own
     lua_newtable(L);
     lua_newtable(L);
-    lua_pushglobaltable(L);
+    if (!LuaBinding::pushPreviewEnvironment(L)) lua_pushglobaltable(L);
     lua_setfield(L, -2, "__index");
     lua_setmetatable(L, -2);
     if (!luabridge::push(L, document))
@@ -1260,6 +1418,10 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("disabled", &UIElement::getDisabled, &UIElement::setDisabled)
         .addProperty("scrollTop", &UIElement::getScrollTop, &UIElement::setScrollTop)
         .addProperty("scrollLeft", &UIElement::getScrollLeft, &UIElement::setScrollLeft)
+        // the scroll container's velocity in px/s, positive towards the end (its inertia, or the drag panning it); set it to fling
+        .addProperty("scrollVelocity", &UIElement::getScrollVelocity, &UIElement::setScrollVelocity)
+        // stops the container's inertia and smooth scroll (an elastic overscroll still springs back)
+        .addFunction("stopScrolling", &UIElement::stopScrolling)
         .addProperty("scrollWidth", &UIElement::getScrollWidth)
         .addProperty("scrollHeight", &UIElement::getScrollHeight)
         .addProperty("clientWidth", &UIElement::getClientWidth)
@@ -1483,11 +1645,20 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
     guardClass<UIStyle>(L);
     guardClass<UIDataset>(L);
 
-    // p1-rtt: SCREEN draws over the scene, TEXTURE into UIDocument:getTargetTexture()
+    // p1-rtt: SCREEN draws over the scene, TEXTURE into UIDocument:getTargetTexture(); S93 R36:
+    // WORLD, that texture as a quad at the GameObject (Canvas World Space)
     luabridge::getGlobalNamespace(L)
         .beginNamespace("UIDocumentRenderMode")
         .addVariable("SCREEN", UIDocumentRenderMode::SCREEN)
         .addVariable("TEXTURE", UIDocumentRenderMode::TEXTURE)
+        .addVariable("WORLD", UIDocumentRenderMode::WORLD)
+        .endNamespace();
+
+    // S93 R35: the clock of a document's animations (doc.updateMode)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("UIDocumentUpdateMode")
+        .addVariable("UNSCALED_TIME", UIDocumentUpdateMode::UNSCALED_TIME)
+        .addVariable("GAME_TIME", UIDocumentUpdateMode::GAME_TIME)
         .endNamespace();
 
     // the component of a UIDocument (UIDocument:getUIDocumentComponent())
@@ -1505,11 +1676,26 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("textureHeight", &UIDocumentComponent::textureHeight, &setTrackedMember<&UIDocumentComponent::textureHeight>)
         .addProperty("inputSurface", &UIDocumentComponent::inputSurface, &setTrackedMember<&UIDocumentComponent::inputSurface>)
         .addProperty("pixelRatio", &UIDocumentComponent::pixelRatio, &setTrackedMember<&UIDocumentComponent::pixelRatio>)
+        // S93: the Update Mode (applied at the next update; UIDocument.updateMode at once), and
+        // WORLD mode's size (texture pixels per unit) and billboard, both live
+        .addProperty("updateMode", &UIDocumentComponent::updateMode, &setTrackedMember<&UIDocumentComponent::updateMode>)
+        .addProperty("pixelsPerUnit", &UIDocumentComponent::pixelsPerUnit, &setTrackedMember<&UIDocumentComponent::pixelsPerUnit>)
+        .addProperty("billboard", &UIDocumentComponent::billboard, &setTrackedMember<&UIDocumentComponent::billboard>)
         // S92: a texture-mode document's MSAA samples (0: the scene's); next frame
         .addProperty("msaaSamples", &UIDocumentComponent::msaaSamples, &setTrackedMember<&UIDocumentComponent::msaaSamples>)
         .addProperty("onLoad", [] (UIDocumentComponent* self, lua_State* L) { return &self->onLoad; }, [] (UIDocumentComponent* self, lua_State* L) { self->onLoad = L; })
         .addProperty("onUnload", [] (UIDocumentComponent* self, lua_State* L) { return &self->onUnload; }, [] (UIDocumentComponent* self, lua_State* L) { self->onUnload = L; })
         .endClass();
+
+    // S93 R29: a style sheet doc:addStyleSheet / doc:addStyleSheetFile added (a weak handle)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<UIStyleSheet>("UIStyleSheet")
+        .addProperty("valid", &UIStyleSheet::isValid)
+        .addProperty("name", &UIStyleSheet::getName)
+        .addProperty("enabled", &UIStyleSheet::isEnabled, &UIStyleSheet::setEnabled)
+        .addFunction("remove", &UIStyleSheet::remove)
+        .endClass();
+    guardClass<UIStyleSheet>(L);
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<UIDocument, GameObject>("UIDocument")
@@ -1524,6 +1710,7 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addFunction("hide", &UIDocument::hide)
         .addProperty("visible", &UIDocument::isVisible, &UIDocument::setVisible)
         .addProperty("sortOrder", &UIDocument::getSortOrder, &UIDocument::setSortOrder)
+        .addProperty("updateMode", &UIDocument::getUpdateMode, &UIDocument::setUpdateMode)
         .addProperty("isMenu", &UIDocument::isMenu, &UIDocument::setMenu)
         .addProperty("gamepadCursor", &UIDocument::isGamepadCursor, &UIDocument::setGamepadCursor)
         .addFunction("getElementById", [](const UIDocument* self, const std::string& id) -> std::optional<UIElement> {
@@ -1592,9 +1779,39 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         })
         .addFunction("setColorScheme", &UIDocument::setColorScheme)
         .addFunction("setReducedMotion", &UIDocument::setReducedMotion)
+        // S93 R29: CSS cascading after the document's own sheets
+        .addFunction("addStyleSheet", [](UIDocument* self, const std::string& css, std::optional<std::string> name) -> UIStyleSheet {
+            return self->addStyleSheet(css, name.value_or(std::string()));
+        })
+        .addFunction("addStyleSheetFile", &UIDocument::addStyleSheetFile)
         .addStaticFunction("setEffectTime", [](std::optional<double> seconds){ UIDocument::setEffectTime(seconds); })
         .addStaticFunction("getEffectTime", &UIDocument::getEffectTime)
+        // S93 R15: the glyphs of every text (hidden parts too) and data-warm attribute, and the images, made before they show
+        .addFunction("prewarm", &documentPrewarm)
         .endClass();
+
+    // S93 R15: what doc:prewarm and HtmlUI.prewarmText return
+    luabridge::getGlobalNamespace(L)
+        .beginClass<UIPrewarm>("UIPrewarm")
+        // true once every glyph it asked for is in the atlas and every image uploaded (or failed)
+        .addProperty("done", &UIPrewarm::isDone)
+        // 0..1 of its glyphs and images
+        .addProperty("progress", &UIPrewarm::getProgress)
+        // a function called once when it is done (the next frame if it already is)
+        .addProperty("onDone", &prewarmGetOnDone, &prewarmSetOnDone)
+        .endClass();
+
+    // HTML UI settings and prewarm (S93 R15)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<HtmlUILuaNamespace>("HtmlUI")
+        // {family, size, weight, style, effect, text}: that text's glyphs made before it shows
+        .addStaticFunction("prewarmText", &htmlUIPrewarmText)
+        // path or {paths}: images decoded in the background and uploaded a few a frame before they show
+        .addStaticFunction("prewarmImage", &htmlUIPrewarmImage)
+        // ms of the main thread per frame for placing prewarmed glyphs (default 2)
+        .addStaticProperty("prewarmBudgetMs", &UIPrewarm::getBudgetMs, &UIPrewarm::setBudgetMs)
+        .endClass();
+
 
 #endif //DISABLE_LUA_BINDINGS
 }

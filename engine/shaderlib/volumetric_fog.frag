@@ -2,8 +2,11 @@
 
 // Atmosphere/VolumetricFog: the height fog's medium raymarched from the camera to the nearer of
 // the scene's surface and the volumetric distance, at a reduced resolution, with what the
-// analytic fog cannot have: the sun's shadow (light shafts, one shadow tap per step), a
-// density noise, Local Volumetric Fog volumes and (High quality) point and spot lights.
+// analytic fog cannot have: the sun's shadow (light shafts: one shadow tap per step on Low, two
+// rotated ones on Medium and High), a density noise, Local Volumetric Fog volumes and point and
+// spot lights (1, 2 or 4 by tier), shadowed by one tap per step when they cast shadows and light
+// shafts are on (docs/specs/S101-vapor.md R13-R15). SHADOW_DATA_POINT (the 'Pnt' variant) adds the
+// point lights' shadow block and atlas, bound only when a shadowed point light is selected.
 // Output (S, T) of that part of the ray; the composite puts it in place of the analytic fog the
 // opaque surfaces took over the same part (volumetric_composite.frag), so the two never overlap.
 //
@@ -12,6 +15,11 @@
 // volumes' and noise's, and its light is integrated energy-conserving (S += T L (1 - e^-tau)).
 // Without shadow, noise and volumes the steps telescope to L (1 - T) exactly: the image
 // equals the analytic fog's (docs/specs/S12-atmosphere.md R6).
+//
+// The Lit colour mode (docs/specs/S101-vapor.md R12): the height fog block of this pass carries the
+// light untinted (ambient as the fog colour, the sun as it is), and each step scatters it by
+// the albedo of the media there, mixed by their share of the extinction; the fog's emissive is
+// added by the global medium's share alone. A volume is so tinted by its own albedo only.
 
 #define ATMOSPHERE_BLUE_NOISE
 #define MAX_FOG_STEPS 64
@@ -31,9 +39,11 @@ uniform sampler u_fogNoise_smp;
 uniform u_fs_volumetricFog {
     vec4 target;              // xy 1 / target size, z steps, w volumetric distance
     vec4 camera;              // xyz camera world forward, w 1 orthographic (0 perspective)
-    vec4 depthInfo;           // x far clip, y near clip, z 1: RGBA8 output (compressed), w 1: light shafts
+    vec4 depthInfo;           // x far clip, y near clip, z 1: RGBA8 output (compressed), w sun shadow taps per step (0: no light shafts)
     vec4 noise;               // x intensity, y 1 / scale, z volumes, w lights
     vec4 noiseOffset;         // xyz wind offset (m)
+    vec4 fogAlbedo;           // rgb the global medium's albedo (linear), w 1: Lit colour mode (else rgb 1)
+    vec4 fogEmissive;         // rgb the global medium's emissive (linear, HDR; Lit colour mode)
     vec4 volumeFrame[MAX_FOG_VOLUMES * 3]; // rows of each volume's world -> volume frame (meters)
     vec4 volumeShape[MAX_FOG_VOLUMES];     // xyz half extents (m), w 0 box / 1 sphere
     vec4 volumeMedium[MAX_FOG_VOLUMES];    // x extinction, y blend distance, z 0 linear / 1 exponential falloff, w noise intensity
@@ -42,13 +52,15 @@ uniform u_fs_volumetricFog {
     vec4 lightPosition[MAX_FOG_LIGHTS];    // xyz world position, w 1 point / 2 spot
     vec4 lightColor[MAX_FOG_LIGHTS];       // rgb colour * intensity * volumetric intensity (linear), w range (0 unlimited)
     vec4 lightSpot[MAX_FOG_LIGHTS];        // xyz spot direction, w unused
-    vec4 lightCone[MAX_FOG_LIGHTS];        // x inner cone cos, y outer cone cos
+    vec4 lightCone[MAX_FOG_LIGHTS];        // x inner cone cos, y outer cone cos, z shadow slot (spot: projective, point: first face; -1 none)
 } volFog;
 
 #include "includes/depth_util.glsl"
 #include "includes/atmosphere.glsl"
 #include "includes/height_fog.glsl"
-// S10's shadow interface: u_fs_shadow_data and the projective atlas, sampleDirectionalShadow1
+// S10's shadow interface: u_fs_shadow_data and the projective atlas (with SHADOW_DATA_POINT the
+// point block and atlas), the single-tap lookups of a ray
+#define SHADOW_RAY_TAPS
 #include "includes/shadow_sampling.glsl"
 
 // the density factor of volume v at a world point (0 outside, 1 past its blend distance)
@@ -95,9 +107,24 @@ vec3 localLights(vec3 p, vec3 dir){
         float distance = length(toLight);
         vec3 l = toLight / max(distance, 1e-4);
         float attenuation = lightRangeAttenuation(volFog.lightColor[i].w, distance);
-        if (volFog.lightPosition[i].w > 1.5){
+        bool spot = volFog.lightPosition[i].w > 1.5;
+        if (spot){
             float cosAngle = dot(normalize(volFog.lightSpot[i].xyz), -l);
             attenuation *= smoothstep(volFog.lightCone[i].y, volFog.lightCone[i].x, cosAngle);
+        }
+        // one shadow tap where the light reaches
+        float shadowSlot = volFog.lightCone[i].z;
+        if (shadowSlot > -0.5 && attenuation > 0.0){
+            int slot = int(shadowSlot + 0.5);
+            #ifdef SHADOW_DATA_POINT
+                if (spot)
+                    attenuation *= sampleSpotShadow1(slot, volFog.lightPosition[i].xyz, p);
+                else
+                    attenuation *= samplePointShadow1(slot, volFog.lightPosition[i].xyz, p);
+            #else
+                if (spot)
+                    attenuation *= sampleSpotShadow1(slot, volFog.lightPosition[i].xyz, p);
+            #endif
         }
         radiance += volFog.lightColor[i].rgb * (attenuation * heightFogPhase(heightFog.sunDir_anisotropy.w, dot(dir, l)));
     }
@@ -123,7 +150,15 @@ void main(){
     float jitter = atmosphereBlueNoise();
     float noiseIntensity = volFog.noise.x;
     int volumes = int(volFog.noise.z);
-    bool shafts = volFog.depthInfo.w > 0.5;
+    int sunTaps = int(volFog.depthInfo.w + 0.5);
+    // the two sun taps' offset: 1.5 shadow texels either side, turned by a second static blue
+    // noise value (the tile read half a tile over, so it is not the step jitter)
+    vec2 sunTapOffset = vec2(0.0);
+    if (sunTaps > 1){
+        float angle = textureLod(sampler2D(u_blueNoise, u_blueNoise_smp), (gl_FragCoord.xy + vec2(32.0, 32.0)) / 64.0, 0.0).r * 6.2831853;
+        sunTapOffset = 1.5 * vec2(cos(angle), sin(angle));
+    }
+    bool lit = volFog.fogAlbedo.w > 0.5;
 
     vec3 fogColor = heightFogColor(dir);
     vec3 sunLight = heightFogSunInscatter(dir);
@@ -170,14 +205,22 @@ void main(){
         if (tau <= 0.0)
             continue;
 
-        float visibility = shafts ? sampleDirectionalShadow1(p) : 1.0;
+        float visibility = 1.0;
+        if (sunTaps > 1)
+            visibility = sampleDirectionalShadow2(p, sunTapOffset);
+        else if (sunTaps > 0)
+            visibility = sampleDirectionalShadow1(p);
         vec3 light = fogColor + sunLight * visibility;
         if (volFog.noise.w > 0.0)
             light += localLights(p, dir);
-        // the share of the extinction that scatters, per channel (the fog's albedo is 1)
-        vec3 albedo = (vec3(fogDepth) + volumeScatter) / tau;
+        // the share of the extinction that scatters, per channel (the fog's albedo is 1 outside
+        // the Lit colour mode)
+        vec3 fogScatter = lit ? volFog.fogAlbedo.rgb * fogDepth : vec3(fogDepth);
+        vec3 albedo = (fogScatter + volumeScatter) / tau;
         float extinction = exp(-tau);
         scattering += transmittance * light * albedo * (1.0 - extinction);
+        if (lit)
+            scattering += transmittance * volFog.fogEmissive.rgb * (fogDepth / tau) * (1.0 - extinction);
         transmittance *= extinction;
         if (transmittance < 1e-3)
             break;

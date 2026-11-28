@@ -119,6 +119,7 @@ namespace jasperengine::input {
         InputActionDown, InputActionUp,
         ReleaseAll,
         AppPause, AppResume, AppFocusLost, AppFocusGained, AppLowMemory, AppHide, AppShow,
+        AppViewLost, AppViewRestored,       // the GPU view lost and loaded again (S95 REQ-18; host_.appViewLost)
         AppOrientation,                     // string: portrait, landscape_left...
         AppBack,                            // Back, as Android's Back button (Engine::systemBack)
     };
@@ -230,6 +231,9 @@ namespace jasperengine::input {
         std::function<void(bool injected)> pointerInjected;
         // app hide / show; null: Engine::systemVisibilityChanged
         std::function<std::string(bool hidden)> appHidden;
+        // app view_lost / view_restored (S95 REQ-18): the running scenes' GPU objects released and
+        // rebuilt; null: refused (the editor simulates the loss)
+        std::function<std::string(bool lost)> appViewLost;
         // app orientation; null: refused (a simulated device turns, in the editor)
         std::function<std::string(const std::string& orientation)> appOrientation;
     };

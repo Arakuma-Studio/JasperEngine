@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // The `sprites` group (docs/specs/S44-aseprite-import.md §6.1, shared with S45 and S47):
-// set_sprite_import_settings, and the .aseprite parts of get_asset_info and view_asset.
+// set_sprite_import_settings, and the .aseprite parts of get_asset_info and view_asset; S94 F49's
+// edit_sprite_skin.
 
 #include "McpTools.h"
 #include "SpriteTools.h"
@@ -19,10 +20,13 @@
 #include "Project.h"
 #include "command/CommandHistory.h"
 #include "command/type/SetAssetMetaCmd.h"
+#include "mcp/McpRefs.h"
+#include "sprite/SpriteSkinEdit.h"
 #include "pixelart/aseprite/AsepriteContactSheet.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
 
 #include "jobs/JobSystem.h"
+#include "component/SpriteSkinComponent.h"
 #include "sprite/SpriteSheetPool.h"
 #include "util/Base64.h"
 
@@ -283,6 +287,191 @@ void setSpriteImportSettingsTool(const CallPtr& call) {
     });
 }
 
+// ---- edit_sprite_skin (S94 F49)
+
+Json skinPoint(const Vector2& p) { return Json::array({p.x, p.y}); }
+
+// the skin as the result shows it: bones (with their GameObjects), the mesh's size, per-bone counts
+Json skinSummary(SceneProject* scene, const SpriteSkinGeometry& skin, const std::vector<Entity>& bound) {
+    Json bones = Json::array();
+    std::vector<int> influenced(skin.bones.size(), 0);
+    for (const auto& vertex : sprite::weightTable(skin)) {
+        for (const auto& [bone, weight] : vertex) {
+            if (bone >= 0 && bone < static_cast<int>(influenced.size()) && weight > 0.0f) influenced[static_cast<size_t>(bone)]++;
+        }
+    }
+    for (size_t b = 0; b < skin.bones.size(); b++) {
+        const SpriteBone& bone = skin.bones[b];
+        Json j = {{"name", bone.name}, {"parent", bone.parent >= 0 ? Json(skin.bones[static_cast<size_t>(bone.parent)].name) : Json()},
+                  {"head", skinPoint(bone.head)}, {"tail", skinPoint(bone.tail)}, {"vertices", influenced[b]}};
+        if (b < bound.size() && bound[b] != NULL_ENTITY && scene) j["gameobject"] = McpRefs::entityJson(scene, bound[b]);
+        bones.push_back(j);
+    }
+    return Json{{"bones", bones}, {"vertices", skin.vertices.size()}, {"triangles", skin.indices.size() / 3},
+                {"weighted", !skin.weights.empty() && skin.weights.size() == skin.vertices.size()}};
+}
+
+bool skinPointArg(const Json& j, Vector2& out) {
+    if (!j.is_array() || j.size() != 2 || !j[0].is_number() || !j[1].is_number()) return false;
+    out = Vector2(j[0].get<float>(), j[1].get<float>());
+    return true;
+}
+
+void editSpriteSkinTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    const Json& args = call->args();
+    std::string error;
+    SceneProject* scene = McpRefs::resolveScene(project, args.value("scene", Json()), error);
+    if (!scene) {
+        call->fail(error);
+        return;
+    }
+    if (scene->playState != ScenePlayState::STOPPED) {
+        call->fail("Scene " + std::to_string(scene->id) + " is playing; stop play mode before editing its skins.");
+        return;
+    }
+    if (!args.contains("entity")) {
+        call->fail("entity is required: the Sprite GameObject whose skin to edit (an id or a name path).");
+        return;
+    }
+    const Entity entity = McpRefs::resolveEntity(scene, args["entity"], error);
+    if (entity == NULL_ENTITY) {
+        call->fail(error);
+        return;
+    }
+    sprite::SkinTarget target;
+    if (!sprite::resolveSkinTarget(project, scene->id, entity, target, error)) {
+        call->fail(error + ".");
+        return;
+    }
+    SpriteSkinGeometry skin = sprite::storedSkin(target);
+    std::vector<std::string> removed;
+    bool edited = false;
+    auto boneIndex = [&](const Json& ref, int& out) {
+        if (ref.is_string()) out = sprite::findBone(skin, ref.get<std::string>());
+        else if (ref.is_number_integer()) out = ref.get<int>() < static_cast<int>(skin.bones.size()) ? ref.get<int>() : -1;
+        else out = -1;
+        if (out >= 0) return true;
+        std::string names;
+        for (const SpriteBone& b : skin.bones) names += (names.empty() ? "" : ", ") + b.name;
+        error = "no bone " + ref.dump() + (names.empty() ? std::string(" (the skin has no bones: bones.create first)") : " (bones: " + names + ")");
+        return false;
+    };
+
+    if (args.contains("bones") && !args["bones"].is_null()) {
+        const Json& bones = args["bones"];
+        if (!bones.is_object()) {
+            call->fail("bones is {create: [{name, parent, head, tail}], remove: [names]}.");
+            return;
+        }
+        for (const Json& name : bones.value("remove", Json::array())) {
+            if (!name.is_string() || !sprite::removeBone(skin, name.get<std::string>(), error)) {
+                call->fail("bones.remove: " + (name.is_string() ? error : std::string("names are strings")) + ".");
+                return;
+            }
+            removed.push_back(name.get<std::string>());
+            edited = true;
+        }
+        for (const Json& b : bones.value("create", Json::array())) {
+            SpriteBone bone;
+            bone.name = b.value("name", std::string());
+            if (!b.is_object() || !b.contains("head") || !skinPointArg(b["head"], bone.head) || !b.contains("tail") || !skinPointArg(b["tail"], bone.tail)) {
+                call->fail("bones.create: each bone is {name, head: [x, y], tail: [x, y], parent?} in the frame's pixels (top-left origin, y down).");
+                return;
+            }
+            if (b.contains("parent") && !b["parent"].is_null() && !boneIndex(b["parent"], bone.parent)) {
+                call->fail("bones.create." + bone.name + ".parent: " + error + ".");
+                return;
+            }
+            if (!sprite::addBone(skin, bone, error)) {
+                call->fail("bones.create: " + error + ".");
+                return;
+            }
+            edited = true;
+        }
+    }
+    if (args.contains("auto_geometry") && !args["auto_geometry"].is_null() && args["auto_geometry"] != false) {
+        const Json options = args["auto_geometry"].is_object() ? args["auto_geometry"] : Json::object();
+        sprite::AutoGeometrySettings settings;
+        settings.cellSize = options.value("cell_size", settings.cellSize);
+        settings.alphaTolerance = options.value("alpha_tolerance", settings.alphaTolerance);
+        std::optional<pixelart::PixelImage> page = sprite::loadFramePage(project, *target.sheet, target.frameData(), &error);
+        if (!page || !sprite::autoGeometry(*page, target.frameData(), settings, skin, error)) {
+            call->fail("auto_geometry: " + error + ".");
+            return;
+        }
+        edited = true;
+    }
+    if (args.value("auto_weights", false)) {
+        if (!sprite::autoWeights(skin, error)) {
+            call->fail("auto_weights: " + error + ".");
+            return;
+        }
+        edited = true;
+    }
+    if (args.contains("set_weights") && !args["set_weights"].is_null()) {
+        if (!args["set_weights"].is_array()) {
+            call->fail("set_weights is a list of {bone, weight?, vertices? | rect?}.");
+            return;
+        }
+        for (const Json& entry : args["set_weights"]) {
+            int bone = -1;
+            if (!entry.is_object() || !entry.contains("bone") || !boneIndex(entry["bone"], bone)) {
+                call->fail("set_weights: " + (error.empty() ? std::string("each entry names a bone") : error) + ".");
+                return;
+            }
+            std::vector<int> vertices;
+            if (entry.contains("vertices")) {
+                for (const Json& v : entry["vertices"]) {
+                    if (v.is_number_integer()) vertices.push_back(v.get<int>());
+                }
+            } else if (entry.contains("rect")) {
+                const Json& r = entry["rect"];
+                if (!r.is_array() || r.size() != 4) {
+                    call->fail("set_weights.rect is [x, y, width, height] in the frame's pixels.");
+                    return;
+                }
+                const float x = r[0].get<float>(), y = r[1].get<float>(), w = r[2].get<float>(), h = r[3].get<float>();
+                for (size_t v = 0; v < skin.vertices.size(); v++) {
+                    const Vector2& p = skin.vertices[v];
+                    if (p.x >= x && p.y >= y && p.x <= x + w && p.y <= y + h) vertices.push_back(static_cast<int>(v));
+                }
+                if (vertices.empty()) {
+                    call->fail("set_weights.rect holds no vertex of the mesh.");
+                    return;
+                }
+            }
+            if (!sprite::setWeights(skin, vertices, bone, entry.value("weight", 1.0f), error)) {
+                call->fail("set_weights: " + error + ".");
+                return;
+            }
+        }
+        edited = true;
+    }
+
+    std::vector<Entity> bound;
+    if (const SpriteSkinComponent* component = scene->scene->findComponent<SpriteSkinComponent>(entity)) bound = component->bones;
+    bool changed = false;
+    if (edited && !sprite::applySkinEdit(target, skin, removed, args.value("bind", true), error, &bound, &changed)) {
+        call->fail("Nothing was changed (rolled back): " + error + ".");
+        return;
+    }
+
+    Json data = skinSummary(scene, skin, bound);
+    data["source"] = target.source;
+    data["frame"] = target.frameData().name;
+    data["changed"] = changed;
+    std::string next;
+    if (skin.bones.empty()) next = "Create bones (bones.create, frame pixels).";
+    else if (skin.vertices.empty()) next = "Run auto_geometry, then auto_weights.";
+    else if (!data["weighted"].get<bool>()) next = "Run auto_weights or set_weights.";
+    else next = "Move or rotate the bone GameObjects (set_properties transform) to pose the Sprite; check with screenshot.";
+    data["next"] = next;
+    call->ok(std::string(edited ? "Edited" : "Read") + " the skin of '" + target.frameData().name + "' (" + target.source + "): " +
+             std::to_string(skin.bones.size()) + " bones, " + std::to_string(skin.vertices.size()) + " vertices." +
+             (edited ? " One undo step (scope timeline)." : ""), data);
+}
+
 }
 
 Json asepriteAssetInfo(Project* project, const fs::path& file, std::string& text) {
@@ -360,6 +549,27 @@ void registerSpriteTools(McpRegistry& registry) {
     tool.group = "sprites";
     tool.handler = setSpriteImportSettingsTool;
     registry.addTool(std::move(tool));
+    {
+        ToolDef skinTool;
+        skinTool.name = "edit_sprite_skin";
+        skinTool.title = "Edit Sprite Skin";
+        skinTool.description = "2D skinning of a Sprite's frame (Unity's Sprite Skin): bones create/remove, auto_geometry, auto_weights, "
+                               "set_weights (weight 1 binds to a bone at 100%), in the frame's pixels; binds bone GameObjects and a Sprite Skin "
+                               "unless bind is false. One undo step; no edit reads the skin. Pose by moving the bone GameObjects.";
+        skinTool.inputSchema = schema::object({
+            {"scene", schema::sceneRef()},
+            {"entity", schema::entityRef("The Sprite.")},
+            {"bones", schema::anyObject("{create: [{name, head, tail, parent}], remove: [names]}.")},
+            {"auto_geometry", schema::any("true or {cell_size, alpha_tolerance}.")},
+            {"auto_weights", schema::boolean("")},
+            {"set_weights", schema::array(schema::anyObject("{bone, weight, vertices | rect}."), "")},
+            {"bind", schema::withDefault(schema::boolean(""), true)},
+        }, {"entity"});
+        skinTool.allowedWhilePlaying = false;
+        skinTool.group = "sprites";
+        skinTool.handler = editSpriteSkinTool;
+        registry.addTool(std::move(skinTool));
+    }
     // S45: edit_sprite_atlas, get_sprite_atlas
     registerSpriteAtlasTools(registry);
     // S47: create_sprite, get_sprite, read_sprite_pixels, edit_sprite, render_sprite, diff_sprite

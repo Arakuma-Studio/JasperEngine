@@ -115,8 +115,15 @@ namespace jasperengine {
         using FloatDecoder = bool (*)(const unsigned char* bytes, size_t length, std::vector<float>& rgba, int& width, int& height, std::string& error);
         static void registerFloatDecoder(const std::string& extension, FloatDecoder decoder);
         static bool hasFloatDecoder(const std::string& extension);
+        // 8-bit decoders of extensions stb_image does not read (the editor registers ".tif",
+        // ".tiff" and ".psb"); `rgba` gets width x height straight RGBA8, loaded as an sRGB
+        // RGBA8 texture like stb_image's colour images
+        using ImageDecoder = bool (*)(const unsigned char* bytes, size_t length, std::vector<uint8_t>& rgba, int& width, int& height, std::string& error);
+        static void registerImageDecoder(const std::string& extension, ImageDecoder decoder);
+        static bool hasImageDecoder(const std::string& extension);
     private:
         bool loadFloatTexture(FloatDecoder decoder, const unsigned char* bytes, size_t length);
+        bool loadImageTexture(ImageDecoder decoder, const unsigned char* bytes, size_t length);
     public:
 
         // SVG rasterization scale can be carried in a texture path/id as

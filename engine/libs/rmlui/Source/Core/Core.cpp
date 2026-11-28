@@ -1,4 +1,5 @@
 #include "../../Include/RmlUi/Core/Core.h"
+#include "../../Include/RmlUi/Core/CallbackTexture.h"
 #include "../../Include/RmlUi/Core/Context.h"
 #include "../../Include/RmlUi/Core/Element.h"
 #include "../../Include/RmlUi/Core/ElementInstancer.h"
@@ -159,6 +160,14 @@ bool Initialise()
 	return true;
 }
 
+// Fork (S93 R13): what outlives a render manager (callback texture sources, the font engine's pages) lets go of it first
+static void ReleaseRenderManagerResources(RenderManager* render_manager)
+{
+	CallbackTextureSource::ReleaseRenderManager(render_manager);
+	if (font_interface)
+		font_interface->ReleaseRenderManager(*render_manager);
+}
+
 void Shutdown()
 {
 	RMLUI_ASSERTMSG(initialised, "Rml::Shutdown() called, but RmlUi is not initialised!");
@@ -177,6 +186,9 @@ void Shutdown()
 	StyleSheetParser::Shutdown();
 	StyleSheetSpecification::Shutdown();
 	ElementStyle::Shutdown();
+
+	for (auto& render_manager : core_data->render_managers)
+		ReleaseRenderManagerResources(render_manager.second.get());
 
 	font_interface->Shutdown();
 
@@ -440,8 +452,8 @@ void ReleaseRenderManagers()
 	auto& contexts = core_data->contexts;
 	auto& render_managers = core_data->render_managers;
 
-	ReleaseFontResources();
-
+	// Fork (S93 R13): font resources stay (the glyph cache outlives contexts); each render manager that goes releases its
+	// textures of the callback texture sources and the font engine first
 	for (auto it = render_managers.begin(); it != render_managers.end();)
 	{
 		RenderManager* render_manager = it->second.get();
@@ -449,7 +461,10 @@ void ReleaseRenderManagers()
 			[&](const auto& context_pair) { return &context_pair.second->GetRenderManager() == render_manager; });
 
 		if (num_contexts_using_manager == 0)
+		{
+			ReleaseRenderManagerResources(render_manager);
 			it = render_managers.erase(it);
+		}
 		else
 			++it;
 	}

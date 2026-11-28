@@ -335,6 +335,11 @@ void JasperEngineMac::applySwapInterval(int interval) {
 
 int JasperEngineMac::init(int argc, char **argv) {
     @autoreleasepool {
+        // the window's size in points (its drawable is that times the screen's scale, known once
+        // it is on a screen): the scripts' init, before the window exists, sees the first frame's
+        // aspect; a pixel-size difference comes as onCanvasChanged before the first frame
+        if (platformConfig().windowMode == 0)
+            Engine::setStartScreenSize(platformConfig().width, platformConfig().height);
         Engine::systemInit(argc, argv, new SystemMac());
 
         if (platformConfig().headless) {

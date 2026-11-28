@@ -1976,6 +1976,31 @@ OVERRIDES = {
     },
 }
 
+# S93 R15: HtmlUI.prewarmImage and prewarmText read their arguments by hand
+OVERRIDES[('UIDocument', 'prewarm')] = {
+    'doc': ['Makes the glyphs of every text of the document (display: none parts too) and of its data-warm attributes, and its',
+            'images, before they show. `{images = false}`: the text only.'],
+    'overloads': [([('options?', '{images: boolean?}')], 'UIPrewarm')]}
+OVERRIDES[('HtmlUI', 'prewarmImage')] = {
+    'doc': ['Decodes images on a background thread and uploads a few a frame, so the first frame that shows them is complete.',
+            'Paths as in CSS: an asset path, with a `#xywh=x,y,w,h` or `#sprite=<name>` region. The images stay cached while',
+            'the UIPrewarm lives.'],
+    'overloads': [([('paths', 'string|string[]')], 'UIPrewarm')]}
+OVERRIDES[('HtmlUI', 'prewarmText')] = {
+    'doc': ['Makes the glyphs of a text (base, distance and font-effect glyphs) on background jobs before it is shown, at the',
+            'scale of every context drawing now; raises an error for bad options or a font-effect that does not parse.'],
+    'overloads': [([('options', 'UIPrewarmTextOptions')], 'UIPrewarm')]}
+
+# S95 REQ-1: Quaternion.euler reads its order by hand (an enum argument takes any value)
+OVERRIDES[('Quaternion', 'euler')] = {
+    'overloads': [([('x', 'number'), ('y', 'number'), ('z', 'number'), ('order?', 'RotationOrder')], 'Quaternion')]}
+
+# S95 REQ-3: GameObject's transform members are nil only on an entity without a Transform (an
+# action, a tween); typed as before, so a script reading go.position needs no nil check
+for _name, _type in (('getWorldPosition', 'Vector3'), ('getWorldRotation', 'Quaternion'), ('getWorldScale', 'Vector3')):
+    OVERRIDES[('GameObject', _name)] = {'doc': ['Current (composed when it moved since the last transform pass); nil without a Transform.'],
+                                        'overloads': [([], _type)]}
+
 # S96 REQ-29: the Ragdoll wizard at run time, its arguments read by hand (LuaRef)
 OVERRIDES[('Ragdoll', 'create')] = {
     'doc': ["Unity's Ragdoll Wizard on a live character: bodies, colliders and joints on its bones, all made before",
@@ -2898,6 +2923,8 @@ OVERRIDES.update({
 # Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
 # (Lua type, a copy)
 PROPERTY_OVERRIDES = {
+    # S93 R15: the prewarm's callback
+    ('UIPrewarm', 'onDone'): ('fun()|nil', False),
     # the null sentinel (stubs/Json.lua: JsonNull)
     ('Json', 'null'): ('JsonNull', False),
     # dialogue-graphs.md R8: the last line shown (stubs/Dialogue.lua: DialogueLine)
@@ -2912,6 +2939,10 @@ PROPERTY_OVERRIDES = {
         'forceOverLifetime', 'colorOverLifetime', 'colorBySpeed', 'sizeOverLifetime', 'sizeBySpeed',
         'rotationOverLifetime', 'rotationBySpeed', 'noise', 'textureSheetAnimation', 'collision', 'trails',
         'customData', 'externalForces', 'renderer', 'pixelArt')},
+    # S95 REQ-3: typed as before (nil only without a Transform), copies as before
+    **{('GameObject', _m): (_t, True) for _m, _t in (
+        ('position', 'Vector3'), ('rotation', 'Quaternion'), ('scale', 'Vector3'), ('localMatrix', 'Matrix4'),
+        ('modelMatrix', 'Matrix4'), ('normalMatrix', 'Matrix4'))},
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
     # ui-multitouch: the GameObjects of a PointerEventData (nil: none)
@@ -3217,6 +3248,17 @@ OVERRIDES[('SpriteBatch', 'setFx')] = {
     'doc': ['Every instance\'s amount of one effect slot: `"palette"`, `"flash"`, `"fade"` or `"dissolve"`.'],
     'overloads': [([('slot', 'string'), ('amounts', 'number[]')], '')]}
 
+# S94 MaterialPropertyBlock: its setters take any vector (engine/core/script/binding/MaterialPropertyBlockLua.cpp)
+OVERRIDES[('MaterialPropertyBlock', 'setFloat')] = {
+    'doc': ['Overrides the shader member `name` with a number.'],
+    'overloads': [([('name', 'string'), ('value', 'number')], '')]}
+OVERRIDES[('MaterialPropertyBlock', 'setVector')] = {
+    'doc': ['Overrides the shader member `name` with a vector (missing components 0).'],
+    'overloads': [([('name', 'string'), ('value', 'Vector4|Vector3|Vector2')], '')]}
+OVERRIDES[('MaterialPropertyBlock', 'setColor')] = {
+    'doc': ['Overrides the colour member `name`: sRGB in (Unity\'s SetColor), linear in the shader; a Vector3 is opaque.'],
+    'overloads': [([('name', 'string'), ('value', 'Vector4|Vector3')], '')]}
+
 # S48 Hit-Stop: HitStop.play takes an options table (HitStopOptions, engine/core/script/binding/stubs/CameraShake.lua)
 OVERRIDES[('HitStop', 'play')] = {
     'doc': ['Freezes (or slows, `opts.timeScale` 0..1) the game for `seconds` of unscaled time: Time.deltaTime,',
@@ -3463,6 +3505,37 @@ OVERRIDES[('Terrain', 'setHeights')] = {
     'doc': ['Writes w * h terrain-local heights to the height map\'s texel rectangle; needs Allow Runtime Edits.',
             'Returns the result table, as applyOps.'],
     'overloads': [([('x', 'integer'), ('y', 'integer'), ('w', 'integer'), ('h', 'integer'), ('values', 'number[]')], 'table')]}
+# V1 R125: VertexColors, raw functions taking and returning tables (docs/mcp/guide/lua-api.md 4.3.1)
+_VC_TARGET = 'integer|{node: integer, primitive: integer}|{submesh: integer}'
+OVERRIDES[('VertexColors', 'applyOps')] = {
+    'doc': ['Runs edit_mesh_colors\' op tables (world space) on every target or on `target`, all or nothing; errors name',
+            'ops[i] from 1. Returns one result table per target.'],
+    'overloads': [([('ops', 'table[]'), ('target?', _VC_TARGET)], 'table[]')]}
+OVERRIDES[('VertexColors', 'getValue')] = {
+    'doc': ['The stored value of a GPU vertex (0-based), without runtime paint.'],
+    'overloads': [([('target', _VC_TARGET), ('vertex', 'integer')], 'Vector4')]}
+OVERRIDES[('VertexColors', 'getValues')] = {
+    'doc': ['The stored values of `count` GPU vertices from `first` (0-based), at most 65,536.'],
+    'overloads': [([('target', _VC_TARGET), ('first', 'integer'), ('count', 'integer')], 'Vector4[]')]}
+OVERRIDES[('VertexColors', 'setValues')] = {
+    'doc': ['Sets GPU vertices from `first` (0-based) to `values` (Vector4 or {r, g, b[, a]}), clearing their face colours.'],
+    'overloads': [([('target', _VC_TARGET), ('first', 'integer'), ('values', 'table')], 'boolean')]}
+OVERRIDES[('VertexColors', 'stats')] = {
+    'doc': ['Per-channel count, min, mean, max, p05, p50, p95 and histogram of a target.'],
+    'overloads': [([('target', _VC_TARGET)], 'table')]}
+OVERRIDES[('VertexColors', 'sampleAt')] = {
+    'doc': ['The value drawn at the surface point nearest to a world point (bind pose) or at a MeshRaycast hit,',
+            'runtime paint included; nil when nothing is loaded.'],
+    'overloads': [([('point', 'Vector3')], 'Vector4|nil'), ([('hit', 'MeshRaycastHit')], 'Vector4|nil')]}
+OVERRIDES[('VertexColors', 'paint')] = {
+    'doc': ['Runtime paint over the stored colours at a world point or a MeshRaycast hit: radius (world), value,',
+            'channels, strength, hardness, hold and fade (game seconds). Returns the vertices touched.'],
+    'overloads': [([('point', 'Vector3'), ('opts?', '{radius: number|nil, value: table|Vector4|string|nil, channels: string|nil, '
+                    'strength: number|nil, hardness: number|nil, hold: number|nil, fade: number|nil}')], 'integer'),
+                  ([('hit', 'MeshRaycastHit'), ('opts?', 'table')], 'integer')]}
+PROPERTY_OVERRIDES[('VertexColors', 'channelNames')] = ('string[]', True)
+PROPERTY_OVERRIDES[('VertexColors', 'targets')] = ('{node: integer|nil, primitive: integer|nil, submesh: integer|nil, name: string, '
+                                                   'vertexCount: integer, triangleCount: integer}[]', True)
 # S75 navigation diagnostics: path reasons, isReachable's reason, locate, coverage, islands, the bake report
 OVERRIDES[('NavigationSystem', 'isReachable')] = {
     'doc': ['Whether a Complete path joins the points, then why not ("none" when it does): rejected at once',
@@ -3546,6 +3619,39 @@ OVERRIDES[('Palette', 'getRamp')] = {
     'overloads': [([('name', 'string')], 'Vector4[]')]}
 PROPERTY_OVERRIDES[('Palette', 'variants')] = ('string[]', True)
 PROPERTY_OVERRIDES[('Palette', 'ramps')] = ('string[]', True)
+
+# Fog Profiles (docs/specs/S101-vapor.md R36, R43; FogClassesLua.cpp): the field functions read a field
+# name and a value of that field's type from the Lua stack (colours sRGB, as Fog's properties)
+_FOG_VALUE = 'number|boolean|Vector3|FogColorMode'
+_FOG_PROFILE = 'FogProfile|string|nil'
+OVERRIDES[('FogProfile', 'get')] = {
+    'doc': ['The value the profile sets for a look field ("attenuationDistance", "color", ...), or nil when it',
+            'leaves the field to each Fog.'],
+    'overloads': [([('field', 'string')], _FOG_VALUE + '|nil')]}
+OVERRIDES[('FogProfile', 'isSet')] = {
+    'doc': ['Whether the profile sets the look field (an override); the others are each Fog\'s own.'],
+    'overloads': [([('field', 'string')], 'boolean')]}
+OVERRIDES[('FogProfile', 'set')] = {
+    'doc': ['Sets (and overrides) a look field of a clone. A loaded or built-in profile is shared by every Fog',
+            'using it and is read-only: change `profile:clone()`, then link the clone (`fog.profile = clone`).'],
+    'overloads': [([('field', 'string'), ('value', _FOG_VALUE)], '')]}
+OVERRIDES[('FogProfile', 'clear')] = {
+    'doc': ['Removes a clone\'s override of the field: each Fog\'s own value shows again.'],
+    'overloads': [([('field', 'string')], '')]}
+OVERRIDES[('Fog', 'blendTo')] = {
+    'doc': ['Cross-fades the fog to this Fog\'s own fields under `profile` (nil: none) over `seconds` of game',
+            'time; <= 0 applies at once. Called again mid-blend it starts from the current mix. At the end',
+            'the profile is the Fog\'s runtime profile (never saved).'],
+    'overloads': [([('profile', _FOG_PROFILE), ('seconds', 'number')], '')]}
+OVERRIDES[('Fog', 'getResolved')] = {
+    'doc': ['The look field as the main camera sees it now: own field, profile, blend, Fog Zones and script',
+            'writes applied.'],
+    'overloads': [([('field', 'string')], _FOG_VALUE)]}
+OVERRIDES[('Fog', 'clearOverride')] = {
+    'doc': ['Drops the script\'s writes to the field in Play: the profile, blend and zones show again.'],
+    'overloads': [([('field', 'string')], '')]}
+PROPERTY_OVERRIDES[('Fog', 'profile')] = ('FogProfile|nil', False)
+PROPERTY_OVERRIDES[('FogZone', 'profile')] = ('FogProfile|nil', False)
 
 # S48 PixelFX player: lua_CFunctions taking a GameObject, an effect name and an options table
 # (PixelFXOptions in engine/core/script/binding/stubs/PixelFX.lua)
@@ -3681,6 +3787,20 @@ _PARAM_TYPE_OVERRIDES = {
 # are the Anime*Params classes of engine/core/script/binding/stubs/anime.lua
 _ANIME_TARGETS = 'AnimeTargets'
 OVERRIDES.update({
+    ('anime', 'splitText'): {
+        'doc': ['Splits the first matching element into animatable words, grapheme characters and layout lines.',
+                'Words default on. Split options accept {wrap = "clip"} for masked reveals; revert restores the original markup.'],
+        'overloads': [([('target', _ANIME_TARGETS), ('params?', 'AnimeSplitTextParams')], 'AnimeTextSplitter')]},
+    ('AnimeTextSplitter', 'split'): {
+        'doc': ['Recomputes line metadata, rebuilding line splits from the original markup.',
+                'Retrieve chars, words and lines again after a line rebuild.'],
+        'overloads': [([], 'AnimeTextSplitter')]},
+    ('AnimeTextSplitter', 'refresh'): {
+        'doc': ['Rebuilds after layout or style edits. Width and font layout changes also refresh automatically.'],
+        'overloads': [([], 'AnimeTextSplitter')]},
+    ('AnimeTextSplitter', 'revert'): {
+        'doc': ['Restores the original markup and disconnects automatic layout refresh.'],
+        'overloads': [([], 'AnimeTextSplitter')]},
     ('anime', 'animate'): {
         'doc': ['Animates `targets` (a CSS selector, a UIElement, a plain table, or a list of them) as',
                 '`params` says: properties to animate plus duration, delay, ease, loop, callbacks ... (Anime.js v4).'],
@@ -3697,6 +3817,15 @@ OVERRIDES.update({
     ('anime', 'spring'): {
         'doc': ['Same as anime.createSpring.'],
         'overloads': [([('params?', 'AnimeSpringParams')], 'AnimeSpring')]},
+    ('anime', 'createDrawable'): {
+        'doc': ['SVG geometry targets with an animatable normalized `draw` range ("0 1", "0.5 1").'],
+        'overloads': [([('targets', _ANIME_TARGETS), ('start?', 'number'), ('finish?', 'number')], 'UIElement[]')]},
+    ('anime', 'morphTo'): {
+        'doc': ['A function value morphing a path, polygon or polyline to `target`; precision defaults to .33.'],
+        'overloads': [([('target', _ANIME_TARGETS), ('precision?', 'number')], 'AnimeStagger')]},
+    ('anime', 'createMotionPath'): {
+        'doc': ['Function values for translateX, translateY and rotate along SVG geometry.'],
+        'overloads': [([('path', _ANIME_TARGETS), ('offset?', 'number')], 'AnimeMotionPath|nil')]},
     ('anime', 'stagger'): {
         'doc': ['A function value spreading `value` (or the range {from, to}) over the targets: for',
                 'delays, property values or timeline positions.'],
@@ -3719,7 +3848,7 @@ OVERRIDES.update({
         'overloads': [([('t', 'number')], 'number'), ([('...', 'number')], 'AnimeEase')]},
     ('AnimeStagger', '__call'): {
         'doc': ['The staggered value of the target at `index` (0-based, as Anime) of `total`.'],
-        'overloads': [([('target', 'any'), ('index', 'integer'), ('total?', 'integer')], 'number|string')]},
+        'overloads': [([('target', 'any'), ('index', 'integer'), ('total?', 'integer')], 'number|string|table')]},
     ('AnimeTimer', 'andThen'): {
         'doc': ['Calls `fn(self)` once completed (at once when already completed): Anime\'s then(),',
                 'renamed because `then` is a Lua keyword.'],

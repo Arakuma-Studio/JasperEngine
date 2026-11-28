@@ -57,7 +57,9 @@ namespace jasperengine::editor::reflect {
         TitleArt,       // a .titleart (S81's Title Art Renderer)
         Mesh,           // a .mesh (S98 F1: a Mesh Renderer's geometry)
         IesProfile,     // an .ies light profile (S99)
-        Dialogue        // a .dialogue (dialogue-graphs.md R13)
+        Dialogue,       // a .dialogue (dialogue-graphs.md R13)
+        VertexColors,   // a .vcolors (V1's Vertex Colors)
+        FogProfile      // a .fogprofile (docs/specs/S101-vapor.md R1)
     };
 
     // How a field holds an asset reference (editor/asset/AssetRefSchema generates its table from the

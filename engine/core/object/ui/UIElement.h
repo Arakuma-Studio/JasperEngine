@@ -6,6 +6,7 @@
 
 #include "Export.h"
 #include "math/Rect.h"
+#include "math/Vector2.h"
 #include "math/Vector3.h"
 #include "UIValue.h"
 #include "object/ParticleSystem.h"
@@ -167,6 +168,9 @@ namespace jasperengine{
         void scrollTo(float x, float y, bool smooth = false); void scrollBy(float dx, float dy, bool smooth = false);
         float getScrollTop() const; void setScrollTop(float value); float getScrollLeft() const; void setScrollLeft(float value);
         float getScrollWidth() const; float getScrollHeight() const;
+        // uGUI ScrollRect.velocity and StopMovement for a scroll container
+        Vector2 getScrollVelocity() const; void setScrollVelocity(const Vector2& velocity);
+        void stopScrolling();
         float getClientWidth() const; float getClientHeight() const;
         float getOffsetWidth() const; float getOffsetHeight() const; float getOffsetLeft() const; float getOffsetTop() const;
         UIRect getBoundingClientRect() const;       // border box in document px, through the transforms of the last drawn frame

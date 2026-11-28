@@ -5,7 +5,8 @@
 // - Purpose: runs the scene's Camera Follow components, then its Camera Shakers, once per frame.
 //   Registered after the Vertex Animator system and before UISystem and RenderSystem: it sees
 //   this frame's animation, physics interpolation and Lua onUpdate writes, and RenderSystem builds
-//   the matrices from what it leaves. Writes made in onPostUpdate reach the camera a frame late.
+//   the matrices from what it leaves. A target moved later (onPostUpdate, timers, coroutines) is
+//   followed again in the late transform pass (updateLateFollowers), in the same frame.
 // - Follow (phase 2): the target's world pose of this frame (local TRS composed up its parents,
 //   not the cached world matrices of the last render update), the offset in its space, the dead
 //   zone (orthographic / UI cameras), the bounds, Unity's SmoothDamp per world axis, then look-at
@@ -96,6 +97,12 @@ namespace jasperengine{
         // One frame: the followers, then the shakers. update(dt) calls it with the scene delta and
         // Engine::getUnscaledDeltatime(); tests call it with their own
         void step(float scaledDt, float unscaledDt);
+
+        // The late transform pass (RenderSystem::updateLateTransforms, S95): a follower whose target
+        // moved after this frame's step (onPostUpdate, a timer, a coroutine) is stepped again from
+        // where the frame's step started, with its delta, toward where the target is now; its
+        // Transform and camera are stamped changed. False when none was
+        bool updateLateFollowers();
 
         // ---- shakers (the CameraShaker object and CameraShake use these) ----
 

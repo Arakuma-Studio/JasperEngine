@@ -203,6 +203,10 @@ but not for every frame). The pixel size stays `System.getScreenWidth()/getScree
   {type: "wait", ms: 500}, {type: "app", action: "resume"}]}`: the lifecycle as a device reports it
   (`focus_gained`, `low_memory` too). While "paused" the game does not update, as on a device;
   the input steps (a `resume` after a `wait`) keep going.
+- `{type: "app", action: "view_lost"}`, then `view_restored`: the GPU context lost and made again,
+  as on an Android return after `low_memory` or a lost WebGL context. The running scenes' GPU
+  objects go and come back; their state and their HTML UI documents stay (no `onLoad`/`onUnload`).
+  The game is paused and draws nothing until `view_restored`.
 - `{type: "app", action: "orientation", orientation: "landscape_left"}` turns the simulated device
   (needs `configure_game_view {device}`; refused when the game allows another orientation only).
 - `configure_game_view {device: "iphone_15_pro", orientation: "portrait", language: "es-MX"}`;
@@ -210,7 +214,7 @@ but not for every frame). The pixel size stays `System.getScreenWidth()/getScree
   rotation of the device ends with the Play.
 - `get_play_state` while playing: `platform: {focused, paused, visible, hidden_update_fps, orientation,
   requested_orientation, target_frame_rate, vsync_count, language, system_language, device, opened_urls,
-  vibrations, haptics}`.
+  vibrations, haptics, lifecycle: {view_lost, view_restored, view}}`.
 - Project settings: `player.default_orientation`, `player.allowed_orientations`,
   `player.keep_screen_on`, `player.target_frame_rate` (`android.orientation` and
   `android.keep_screen_on` were renamed to these; older project.yaml files migrate on load).

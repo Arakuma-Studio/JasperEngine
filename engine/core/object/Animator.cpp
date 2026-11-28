@@ -542,6 +542,14 @@ bool Animator::isApplyRootMotion() const{
     return getComponent<AnimatorComponent>().applyRootMotion;
 }
 
+void Animator::setLegacyRootDrift(bool keep){
+    getComponent<AnimatorComponent>().legacyRootDrift = keep;
+}
+
+bool Animator::isLegacyRootDrift() const{
+    return getComponent<AnimatorComponent>().legacyRootDrift;
+}
+
 Vector3 Animator::getDeltaPosition() const{
     anim::AnimatorInstance* instance = runtime();
     if (!instance || !instance->output.hasRootMotion) return Vector3(0, 0, 0);

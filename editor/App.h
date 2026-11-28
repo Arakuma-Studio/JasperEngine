@@ -100,6 +100,7 @@ namespace jasperengine::editor{
     class DialogueWindow;
     class LocalizationTablesWindow;
     class SpritePreviewWindow;
+    class SkinningEditorWindow;
     class GameWindow;
     class MainToolbar;
     class StatusBar;
@@ -302,6 +303,7 @@ namespace jasperengine::editor{
         // which generated normal maps are stale, and their opt-in auto-regenerate
         SpriteNormalsWatcher* spriteNormalsWatcher;
         SpritePreviewWindow* spritePreviewWindow;
+        SkinningEditorWindow* skinningEditorWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
         SystemsWindow* systemsWindow;
         MissingAssetsWindow* missingAssetsWindow;
@@ -770,6 +772,7 @@ namespace jasperengine::editor{
         DialogueWindow* getDialogueWindow() const { return dialogueWindow; }
         SpriteNormalsWatcher* getSpriteNormalsWatcher() const;
         SpritePreviewWindow* getSpritePreviewWindow() const { return spritePreviewWindow; }
+        SkinningEditorWindow* getSkinningEditorWindow() const { return skinningEditorWindow; }
         void openSpriteNormals(const std::vector<std::filesystem::path>& images, bool editRecipe) override;
         void openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now) override;
         void openPixelArtCleanup(const std::filesystem::path& image) override;

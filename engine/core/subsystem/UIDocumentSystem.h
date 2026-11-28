@@ -13,9 +13,12 @@
 
 #include "SubSystem.h"
 #include "UIDocumentInput.h"
+#include "math/Matrix4.h"
 #include "math/Rect.h"
+#include "render/PipelineState.h"
 #include "render/Render.h"
 #include "component/UIDocumentComponent.h"
+#include "htmlui/UIWorldRaycast.h"
 #include "System.h"
 #include "htmlui/HtmlUIRenderStats.h"
 
@@ -58,6 +61,7 @@ namespace jasperengine{
     struct HtmlUIReloadState;   // p1-editor  (UIDocumentSystemReload.cpp)
     struct HtmlUITextureState;  // p1-rtt     (UIDocumentSystemTexture.cpp)
     struct HtmlUICompatState;   // p2-html    (UIDocumentSystemCompat.cpp)
+    struct HtmlUIStyleSheetState;   // S93 R29 (UIDocumentSystemStyle.cpp)
 
     enum class HtmlUIMessageLevel { Info, Warning, Error };
 
@@ -79,6 +83,10 @@ namespace jasperengine{
 
         void load() override;                 // nothing heavy: the context is created lazily in update()
         void destroy() override;              // destroy context, HtmlUI::release() if acquired
+        // a view loss: the contexts, documents, DOM, element handles, listeners, data models and
+        // scroll stay; their textures, geometry buffers and targets go and are made again when
+        // they draw next (restoreGpu is load(): only documents that never loaded load)
+        void releaseGpu() override;
         void update(double dt) override;
         void draw() override;                 // empty: RenderSystem drives drawing
         void onComponentAdded(Entity entity, ComponentId componentId) override;    // mark needReload
@@ -153,6 +161,10 @@ namespace jasperengine{
         // htmlUiSdfPrimitives and htmlUiTransformAwareText. Documents already drawn generate
         // their backgrounds and text again
         static void setHtmlUiRenderOptions(int glyphAtlasMiB, bool sdfPrimitives, bool transformAwareText);
+        // S93 R19: MiB of released images the process's image cache keeps (negative: the platform's
+        // default, 64 on desktop and 32 on Android, iOS and the web; 0: none); the exported entry
+        // for the project's htmlUiImageCacheMiB
+        static void setHtmlUiImageCacheMiB(int mib);
 
         // --- p1-input (UIDocumentSystemInput.cpp, §3.6.2); the phase-0 pointer methods above become wrappers ---
         // world = false: the screen documents only (and a pointer a texture-mode document
@@ -297,6 +309,17 @@ namespace jasperengine{
         // NULL_ENTITY when that was the screen context, the game or nothing
         Entity getTextureFocus() const;
 
+        // --- S93 R36 World Space (UIDocumentSystemWorld.cpp) ---
+        // a WORLD-mode document in the scene (RenderSystem then looks for their GameObjects)
+        bool hasWorldDocuments() const;
+        // a World Space document's quad: maps its corners (-1,1) top-left .. (1,-1)
+        // bottom-right to the world (Billboard: turned to camera's view; no camera: unturned).
+        // False when the entity has no WORLD-mode document with a target
+        bool getWorldQuad(Entity entity, const CameraComponent* camera, Matrix4& worldFromQuad) const;
+        // RenderSystem's transparent queue: the shown document's quad inside camera's pass of
+        // format target (flipY: the pass renders flipped, as drawComposite's)
+        void drawWorldDocument(Entity entity, CameraComponent& camera, const RenderTargetFormat& target, bool flipY);
+
         // --- p2-html (UIDocumentSystemCompat.cpp, phase-2 §3.12, hooks H1b/H4) ---
         // the compile of an .html document (the compat layer's RML, source map, diagnostics);
         // null for .rml documents and before the load
@@ -311,6 +334,15 @@ namespace jasperengine{
         // the scene's Lua scripts started (LuaBinding::initializeLuaScripts): the documents'
         // <script type="text/lua"> run now and after every later (re)load, until the play stops
         void startDocumentScripts();
+        // --- S93 R29 (UIDocumentSystemStyle.cpp): style sheets a script adds to an .html document ---
+        // CSS text (its source "injected:<name>") or an asset .css file (path set, css ignored), compiled
+        // with the document's sheets and cascading after them; kept with the component over reloads, live
+        // patches and other files it loads. The id names it (never 0).
+        uint64_t addStyleSheet(Entity entity, const std::string& css, const std::string& name, const std::string& path);
+        bool removeStyleSheet(Entity entity, uint64_t id);   // false: no such sheet
+        bool setStyleSheetEnabled(Entity entity, uint64_t id, bool enabled);
+        // false when the sheet is not there (removed, or its component)
+        bool getStyleSheet(Entity entity, uint64_t id, bool* enabled, std::string* name) const;
         // ---- phase 2 ----
         // --- p2-importers: the editor's AppSettings::htmlUiVerboseDiagnostics; document loads
         // build CompatOptions::verboseDiagnostics from it (Info diagnostics logged one by one) ---
@@ -431,6 +463,7 @@ namespace jasperengine{
         void textureRenderOffscreen();               // renderOffscreen(): each texture context into its target
         bool textureAllRendered() const;             // isAllLoaded(): every shown texture document drawn once
         void textureDestroyAll();                    // destroyContext(): before RmlUi is released
+        void textureReleaseGpu();                    // releaseGpu(): each texture context's GPU objects and target
         std::vector<HtmlUIContext*> getTextureContexts() const;   // renderOffscreen(): statistics
         // the context data models of owner live in (its texture context, else the screen one; p1-lua)
         HtmlUIContext* modelContext(Entity owner) const;
@@ -444,6 +477,9 @@ namespace jasperengine{
         bool dispatchWorldWheel(float dx, float dy, int mods);   // the hovered texture document
         void textureMouseLeave();
         void textureCancelAll();   // ui-multitouch D6: pause, focus loss
+        // where a ray hits a document's input surface: a WORLD document's quad (unless a mesh
+        // in front of it takes the ray, as its depth test does), else its mesh's uv
+        UIWorldHit raycastDocumentSurface(Entity entity, const UIDocumentComponent& document, const Ray& ray) const;
 
         // --- p2-html ---
         std::shared_ptr<HtmlUICompatState> compatState;
@@ -466,6 +502,13 @@ namespace jasperengine{
         bool compatScriptsRun() const;
         // hook H2: the compat dependencies of a loaded .html document (CSS, imports, Lua src, manifest)
         std::vector<std::string> compatDependencies(Rml::ElementDocument* document) const;
+
+        // --- S93 R29 ---
+        std::shared_ptr<HtmlUIStyleSheetState> styleSheetState;
+        // the entity's enabled sheets compiled into its loaded document (a restyle) when they differ from
+        // what it has; compatDocumentLoaded (every load) and every change
+        void applyStyleSheets(Entity entity);
+        void styleSheetsComponentRemoved(Entity entity);
 
         // --- S17 (UIDocumentSystemPatch.cpp) ---
         std::optional<UIReloadMode> reloadMode;   // unset: the default (setDefaultReloadMode)

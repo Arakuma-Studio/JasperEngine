@@ -46,6 +46,9 @@ namespace jasperengine{
 
         // the file it loaded ("" before a load)
         std::string getFilename() const;
+        // Unity's Preserve Hierarchy: the next load gives every glTF node an entity of its own
+        void setPreserveHierarchy(bool preserve);
+        bool isPreserveHierarchy() const;
         // the entity animations getAnimation(index) reaches
         int getAnimationCount() const;
         Animation getAnimation(int index);

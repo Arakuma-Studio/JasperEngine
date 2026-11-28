@@ -1,4 +1,4 @@
-formatVersion: 1
+formatVersion: 2
 name: Pixel FX Game
 canvasWidth: 320
 canvasHeight: 180
@@ -29,9 +29,11 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
+transparencySortMode: perspective
 startSceneId: 2734926655
 mesh:
   animationEntities: auto
+  fbxSubmeshOrder: used_materials
 audio:
   mixer: audio/Main.mixer
   outputStage: linear

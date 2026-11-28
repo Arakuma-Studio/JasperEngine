@@ -66,11 +66,16 @@ namespace jasperengine {
         // The pointer routing rule (phase-1 spec §3.6.2, as implemented by p4-inspector): a
         // document, or the <body> of an HTML document (RML htmlbody), that paints no background
         // (no colour with alpha, decorator or image layer; for a document, nor its canvas body's)
-        // and whose document listens for no pointer event (on the document or its <body>:
-        // addEventListener from Lua or C++, or data-event-*) is not hit itself. Its elements still are, and the point goes on to the documents
-        // below in z-order, then to the game when none takes it. Every hit test of the context
-        // uses it (Rml::Context::SetPointerPassThrough): hover, presses, touches, wheel, drags.
-        static bool passesPointerThrough(Rml::Element* element);
+        // and whose document listens for no press (S93 R4: click, dblclick, contextmenu,
+        // mousedown, pointerdown or touchstart, on the document or its <body>: addEventListener
+        // from Lua or C++, or data-event-*) is not hit itself. Its elements still are, and the
+        // point goes on to the documents below in z-order, then to the game when none takes it.
+        // Every hit test of the context uses it (Rml::Context::SetPointerPassThrough): hover,
+        // presses, touches, drags. PointerHit::Wheel also stops at a page with a wheel or
+        // mousescroll listener (processMouseWheel). A page a press listener stops reports
+        // HTMLUI-INPUT-0001 once per document and event type (S93 R5).
+        enum class PointerHit { Press, Wheel };
+        static bool passesPointerThrough(Rml::Element* element, PointerHit hit = PointerHit::Press);
         // the element or an ancestor takes pointer input: a button, a link, a form control, [onclick],
         // a click or pointerdown listener (the gamepad cursor slows down over it)
         static bool takesPointerInput(Rml::Element* element);
@@ -107,6 +112,8 @@ namespace jasperengine {
         static int touchPointerId(int fingerId) { return fingerId + 2; }
         // engine wheel offsets (positive y = up, positive x = left, as GLFW) to RmlUi's
         // (positive = down/right), times the wheel scale. Returns Context::ProcessMouseWheel
+        // (false: scrolled or stopped); false too when the mouse is over the empty part of a page
+        // that listens for the wheel (S93 R4), which gets the event instead
         bool processMouseWheel(Rml::Vector2f offset, int modifiers);
         // RmlUi scroll units per platform wheel step (default 1; 0.25 on Web, whose layer
         // reports about 4 per notch)
@@ -167,6 +174,9 @@ namespace jasperengine {
         // the element a primary button press started on, until the release (RmlUi keeps it private)
         Rml::ObserverPtr<Rml::Element> activeElement;
         int mouseButtons = 0;   // the RmlUi mouse buttons held (bit per button), for processMouseCancel
+        Rml::Vector2i mousePosition{0, 0};          // the pixel of the last processMouseMove
+        bool mouseInside = false;                   // a processMouseMove since the last processMouseLeave
+        bool wheelHitTest = false;                  // the context's hit tests use PointerHit::Wheel
 
         // --- p1-input ---
         // outlives the RmlUi context (its text fields call OnDestroy when they go)

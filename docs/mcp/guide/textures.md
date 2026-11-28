@@ -3,7 +3,7 @@
 Texture import settings and cooks for agents: what the settings do, how to check a cook. The
 user reference (formats per platform, the cache, the runtime) is `docs/textures.md`.
 
-Every texture source (png, jpg, tga, bmp, psd, gif, hdr, exr) is cooked per platform family to a
+Every texture source (png, jpg, tga, bmp, psd, psb, tif, tiff, gif, hdr, exr) is cooked per platform family to a
 GPU format: **desktop** (Windows, Linux, macOS: BC1/BC4/BC5/BC6H/BC7), **mobile** (Android, iOS:
 ASTC), **android_etc2** (Android without ASTC, when Project Settings > Texture > Android ETC2
 Fallback is on) and **web** (Basis Universal ETC1S / UASTC, transcoded at load). The editor cooks

@@ -49,6 +49,7 @@ class GoldenLedgerTest(unittest.TestCase):
         self.assertIn("Chromium reference", problems[0])
 
     def test_a_new_fixture_adds_its_chromium_reference(self):
+        self.assertEqual(ledger.check([("A", "browser/paint/new-fixture")], LEDGER), [])
         self.assertEqual(ledger.check([("A", "browser/paint/clip-path-basic-shapes")], LEDGER), [])
         self.assertIn("Chromium reference", ledger.check([("D", "browser/paint/box-shadow")], LEDGER)[0])
 

@@ -311,6 +311,13 @@ PostProcessingRowState getPostProcessingRowState(const PostProcessingSettings& s
     const bool vhs = settings.vhsEnabled && settings.vhsIntensity > 0.0f;
     if (snakeName == "lut_input_encoding") {
         state.shown = isCubeLutPath(settings.lutTexture);
+    } else if (snakeName == "lut_flip_green") {
+        // an image strip's rows (a .cube's order is its format's)
+        state.shown = !settings.lutTexture.empty() && !isCubeLutPath(settings.lutTexture);
+    } else if (snakeName == "vignette_smoothness") {
+        state.shown = settings.vignetteFalloff == VignetteFalloff::SMOOTHNESS;
+    } else if (snakeName == "vignette_start" || snakeName == "vignette_end") {
+        state.shown = settings.vignetteFalloff == VignetteFalloff::RADII;
     } else if (snakeName == "film_grain_size") {
         state.shown = settings.filmGrainType != FilmGrainType::CLASSIC;
     } else if (snakeName == "film_grain_colored") {

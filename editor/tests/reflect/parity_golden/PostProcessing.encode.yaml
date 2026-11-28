@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest cd696d7cfbb05396
+digest 2a88d927f4f13c29
 --- 0
 exposure: 2718.8833
 tonemap: agx
@@ -14,6 +14,7 @@ lutTexture: fonts/Main.ttf
 lutContribution: -0.7551421
 lutInputEncoding: linear
 lutSize: 16
+lutFlipGreen: true
 monochromeMode: sepia
 monochromeIntensity: 30
 vignetteEnabled: true
@@ -21,6 +22,8 @@ vignetteIntensity: .nan
 vignetteSmoothness: -10
 vignetteRoundness: -94
 vignetteColor: [3e+38, 6415.2837, -47]
+vignetteStart: .nan
+vignetteEnd: -.inf
 ditherEnabled: true
 fxaaEnabled: true
 chromaticAberrationIntensity: .inf
@@ -118,6 +121,8 @@ vignetteIntensity: -.inf
 vignetteSmoothness: -0.9070846
 vignetteRoundness: 122.42857
 vignetteColor: [1547.4135, 7981.1475, 0]
+vignetteStart: 1329.9739
+vignetteEnd: 0.4203688
 ditherEnabled: true
 chromaticAberrationIntensity: 33
 pixelateEnabled: true
@@ -211,12 +216,15 @@ lutTexture: fonts/Main.ttf
 lutContribution: -36.142857
 lutInputEncoding: srgb
 lutSize: 20
+lutFlipGreen: true
 monochromeMode: sepia
 monochromeIntensity: -14
 vignetteIntensity: -.inf
 vignetteSmoothness: .inf
 vignetteRoundness: -0
 vignetteColor: [-49.714287, -0, 0]
+vignetteStart: 1827.2941
+vignetteEnd: 19
 chromaticAberrationEnabled: true
 chromaticAberrationIntensity: 0.16825324
 pixelateEnabled: true
@@ -319,6 +327,9 @@ vignetteIntensity: 22.857143
 vignetteSmoothness: -0.2784267
 vignetteRoundness: 0.7174981
 vignetteColor: [-0, 0, 0.2910294]
+vignetteFalloff: radii
+vignetteStart: 0.56022286
+vignetteEnd: .inf
 ditherEnabled: true
 chromaticAberrationIntensity: -24
 pixelateSize: -0.10567665
@@ -419,6 +430,9 @@ vignetteIntensity: 1e-45
 vignetteSmoothness: -.inf
 vignetteRoundness: -.inf
 vignetteColor: [0, 5542.604, 2344.4878]
+vignetteFalloff: radii
+vignetteStart: -0.5676828
+vignetteEnd: -0.46167052
 fxaaEnabled: true
 chromaticAberrationEnabled: true
 chromaticAberrationIntensity: 88
@@ -515,6 +529,8 @@ vignetteIntensity: -100.28571
 vignetteSmoothness: 132.28572
 vignetteRoundness: -29.142857
 vignetteColor: [2665.969, -43.42857, -0.4721999]
+vignetteStart: -.inf
+vignetteEnd: 0.741531
 fxaaEnabled: true
 chromaticAberrationIntensity: 105.42857
 pixelateEnabled: true
@@ -606,6 +622,7 @@ gain: [41, 0, -86.14286]
 lutContribution: -0
 lutInputEncoding: logc3
 lutSize: -14
+lutFlipGreen: true
 monochromeEnabled: true
 monochromeMode: sepia
 monochromeIntensity: .inf
@@ -613,6 +630,9 @@ vignetteIntensity: -34
 vignetteSmoothness: 4129.9897
 vignetteRoundness: -0.09852078
 vignetteColor: [0.11438704, 1e-45, -107.57143]
+vignetteFalloff: radii
+vignetteStart: 66.85714
+vignetteEnd: 1854.0228
 fxaaEnabled: true
 chromaticAberrationIntensity: 7727.315
 pixelateEnabled: true
@@ -707,11 +727,15 @@ gain: [-0.42673445, -0.49175474, 0.48483515]
 lutTexture: ui/menu.html
 lutContribution: -136.57143
 lutSize: 20
+lutFlipGreen: true
 monochromeIntensity: 81
 vignetteIntensity: .inf
 vignetteSmoothness: 0.41644153
 vignetteRoundness: -64
 vignetteColor: [0, -37, 2438.9873]
+vignetteFalloff: radii
+vignetteStart: 39
+vignetteEnd: 2555.96
 ditherEnabled: true
 chromaticAberrationIntensity: 0.92168254
 pixelateEnabled: true

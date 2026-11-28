@@ -195,6 +195,7 @@ const std::vector<EntityKind>& entityKinds() {
         {"skybox", EntityCreationType::SKYBOX, "Skybox"},
         {"fog", EntityCreationType::FOG, "Fog"},
         {"local_volumetric_fog", EntityCreationType::LOCAL_VOLUMETRIC_FOG, "Local Volumetric Fog"},
+        {"fog_zone", EntityCreationType::FOG_ZONE, "Fog Zone"},
         {"volumetric_clouds", EntityCreationType::VOLUMETRIC_CLOUDS, "Volumetric Clouds"},
         {"reflection_probe", EntityCreationType::REFLECTION_PROBE, "Reflection Probe"},
         {"particle_system", EntityCreationType::PARTICLE_SYSTEM, "Particle System"},
@@ -712,6 +713,28 @@ void createEntityRun(const CallPtr& call, bool waited) {
         });
     }
     if (!modelStored.empty()) {
+        // the Model values its load reads (animationEntities, preserveHierarchy) go before it, so
+        // the first load already follows them (S94 F47)
+        std::vector<McpValues::Change> loadOptions;
+        for (auto it = changes.begin(); it != changes.end();) {
+            if (it->component == ComponentType::ModelComponent && ModelLoadCmd::isLoadOption(it->property)) {
+                loadOptions.push_back(*it);
+                it = changes.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        if (!loadOptions.empty()) {
+            stepCount++;
+            steps->addStep([project, sceneId, created, loadOptions](std::string& why) -> Command* {
+                auto* multi = new MultiPropertyCmd();
+                if (!McpValues::appendChangeCommands(project, project->getScene(sceneId), {*created}, loadOptions, *multi, why)) {
+                    delete multi;
+                    return nullptr;
+                }
+                return multi;
+            });
+        }
         stepCount++;
         steps->addStep([project, sceneId, created, modelStored](std::string&) -> Command* {
             return new ModelLoadCmd(project, sceneId, *created, modelStored);
@@ -1262,10 +1285,10 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "create_entity";
         tool.title = "Create Entity";
         tool.description =
-            "GameObject > Create: parent, name (default: the type's Unity name), local transform, "
+            "GameObject > Create: parent, name (default: Unity name), local transform, "
             "components, values ({component: "
             "{property: value}} or set_properties changes). empty: Transform only; bare: "
-            "no components (root only); model: a project .gltf/.glb/.obj/.fbx; lattice: fitted and bound to "
+            "no components (root only); model: a project .gltf/.glb/.obj/.fbx; lattice: fitted, bound to "
             "targets; *_tween/*_tracks: animation actions.";
         tool.inputSchema = object({
             {"scene", sceneRef()},

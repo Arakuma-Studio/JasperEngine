@@ -803,7 +803,7 @@ bool RenderSystem::particleBoundsVisible(const ParticleSystemState& state, Camer
 }
 
 void RenderSystem::queueParticleTree(Entity entity, ParticleSystemComponent& particles, const EmitterRuntime& emitter, ParticleRenderData& rd,
-                                     Transform& transform, const Transform& cameraTransform, bool root, uint32_t& order){
+                                     Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, bool root, uint32_t& order){
     // a child with nothing alive has nothing to draw
     if (root || emitter.isAlive()){
         Vector3 center = transform.worldPosition;
@@ -813,7 +813,7 @@ void RenderSystem::queueParticleTree(Entity entity, ParticleSystemComponent& par
             center = matrixOf(emitter.simToWorld()) * Vector3((lo[0] + hi[0]) * 0.5f, (lo[1] + hi[1]) * 0.5f, (lo[2] + hi[2]) * 0.5f);
         }
         TransparentRenderData data{TransparentRenderType::PARTICLES, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
-                                   (center - cameraTransform.worldPosition).length(), rd.sortPriority, order++};
+                                   transparentSortDistance(camera, cameraTransform, center), rd.sortPriority, order++};
         data.particles = &particles;
         data.emitter = &emitter;
         data.emitterRender = &rd;
@@ -822,7 +822,7 @@ void RenderSystem::queueParticleTree(Entity entity, ParticleSystemComponent& par
     for (size_t c = 0; c < emitter.childCount() && c < rd.children.size(); c++){
         const EmitterRuntime* child = emitter.child(c);
         if (child && child->effect() && rd.children[c])
-            queueParticleTree(entity, particles, *child, *rd.children[c], transform, cameraTransform, false, order);
+            queueParticleTree(entity, particles, *child, *rd.children[c], transform, camera, cameraTransform, false, order);
     }
 }
 

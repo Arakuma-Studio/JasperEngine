@@ -7,9 +7,14 @@
 #include "RectTransform.h"
 #include "texture/Material.h"
 #include "localization/LocalizationArgs.h"
+#include "util/TextAlignment.h"
 
 namespace jasperengine{
     class JASPERENGINE_API STBText;
+    // component/TextComponent.h
+    enum class TextAnchorHorizontal;
+    enum class TextAnchorVertical;
+    enum class TextFontSizeUnit;
 
     class JASPERENGINE_API Text: public RectTransform{
 
@@ -25,6 +30,13 @@ namespace jasperengine{
 
         bool createText();
         bool load();
+
+        // the glyphs laid out now when the text, font or size changed since the last layout (S94
+        // F25): width and height are final right after setText. False without a font to load.
+        bool updateLayout();
+        // the text's box, laid out first when it is dirty (RectTransform's are the stored size)
+        unsigned int getWidth() const;
+        unsigned int getHeight() const;
 
         void setFixedSize(bool fixedSize);
 
@@ -76,11 +88,36 @@ namespace jasperengine{
         void setFlipY(bool flipY);
         bool isFlipY() const;
 
+        // Unity TextMesh's Anchor (S94 F24): the point of the text's box on the origin
+        void setAnchorHorizontal(TextAnchorHorizontal alignment);
+        TextAnchorHorizontal getAnchorHorizontal() const;
+        void setAnchorVertical(TextAnchorVertical alignment);
+        TextAnchorVertical getAnchorVertical() const;
+        // the font size as ascender to descender (the default) or as the em square (S94 F26)
+        void setFontSizeUnit(TextFontSizeUnit unit);
+        TextFontSizeUnit getFontSizeUnit() const;
+
+        // deprecated: the anchor before S94 (Baseline and Center)
         void setPivotBaseline(bool pivotBaseline);
         bool isPivotBaseline() const;
 
         void setPivotCentered(bool pivotCentered);
         bool isPivotCentered() const;
+
+        // S93 R37, TextMeshPro's Alignment: each line inside the fixed width, the lines inside
+        // the fixed height (without a fixed size the text's own box)
+        void setHorizontalAlignment(TextHorizontalAlignment alignment);
+        TextHorizontalAlignment getHorizontalAlignment() const;
+        void setVerticalAlignment(TextVerticalAlignment alignment);
+        TextVerticalAlignment getVerticalAlignment() const;
+        // TMP Auto Size: the largest whole font size from fontSizeMin to fontSizeMax whose text
+        // fits the fixed width and height (a vector font; fontSize is not used meanwhile)
+        void setAutoSize(bool autoSize);
+        bool isAutoSize() const;
+        void setFontSizeMin(unsigned int size);
+        unsigned int getFontSizeMin() const;
+        void setFontSizeMax(unsigned int size);
+        unsigned int getFontSizeMax() const;
 
         // Outline and shadow (TMP outline and underlay), in UI units; colours sRGB. Either
         // one switches the text to signed-distance glyphs.

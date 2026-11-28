@@ -3,7 +3,8 @@
 
 // Particle systems on the headless device (docs/specs/S20-particles.md AC6, AC8): one golden per
 // render mode family: the billboard alignments, stretched billboards, mesh particles, frame
-// blending, six-way lighting, soft particles with the near fade, and trails and ribbons. Each
+// blending, six-way lighting, soft particles with the near fade, and trails and ribbons, and
+// particles in a ground mist taking the meshes' height fog (docs/specs/S101-vapor.md AC8). Each
 // system is seeked to a fixed time with a fixed seed and paused, so every frame draws the same
 // particles. Goldens in engine/tests/core/golden/particles_*.png, made on glcore
 // (JASPER_TEST_UPDATE_GOLDEN=1) and matched on the other backends within the cross-backend bound.
@@ -18,10 +19,12 @@
 #include "object/Light.h"
 #include "object/ParticleSystem.h"
 #include "object/Primitive.h"
+#include "object/environment/Fog.h"
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleEffectLibrary.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/RenderSystem.h"
+#include "texture/Material.h"
 
 #include "GpuEnvironment.h"
 #include "HeadlessContext.h"
@@ -758,5 +761,136 @@ TEST_F(ParticlesGpu, CustomBlockReadsTheSceneClock){
     std::printf("[gpu] running: the scene clock ran %.3f s, the frame clock %.3f s\n", scene.getSceneTime() - sceneStart, frameRan);
     EXPECT_GT(frameRan, 0.25) << "the frame clock did not run (the test tells the clocks apart by it)";
     EXPECT_GT(scene.getSceneTime() - sceneStart, 0.1) << "the scene clock did not run";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+namespace particles_height_fog_test {
+
+    // a probe of the mist: a square at a fog distance, white (what the fog lets through plus what
+    // it adds) or black (what it adds)
+    struct FogProbe {
+        Vector3 position;
+        float size;
+        bool white;
+    };
+
+    // camera at (0, 2, 12) looking down -z: probes at 15, 35 and 70 m, the near ones in the mist's
+    // full density (below 1 m), the far ones above it
+    const std::vector<FogProbe>& fogProbes(){
+        static const std::vector<FogProbe> probes = {
+            {Vector3(-7.0f, 0.9f, -3.0f), 1.2f, true},  {Vector3(-5.5f, 0.9f, -3.0f), 1.2f, false},
+            {Vector3(-2.5f, 1.0f, -23.0f), 2.4f, true}, {Vector3(0.2f, 1.0f, -23.0f), 2.4f, false},
+            {Vector3(10.0f, 3.0f, -58.0f), 4.0f, true}, {Vector3(15.0f, 3.0f, -58.0f), 4.0f, false},
+        };
+        return probes;
+    }
+
+    // a dim ground mist (a white probe shows its transmittance): dense up to 1 m, thinning to
+    // nothing at 8 m, lit by a low sun
+    void groundMist(Fog& fog){
+        fog.setType(FogType::HEIGHT);
+        fog.setColor(0.3f, 0.34f, 0.42f);
+        fog.setAttenuationDistance(20.0f);
+        fog.setBaseHeight(1.0f);
+        fog.setMaximumHeight(8.0f);
+        fog.setDirectionalInscattering(0.3f);
+        fog.setAnisotropy(0.6f);
+        fog.setMaxFogDistance(2000.0f);
+    }
+
+    // the mean colour (0..255) of the 5x5 block at a world point's pixel
+    bool probeColor(const std::vector<uint8_t>& rgba, const CameraComponent& view, const Vector3& world, int color[3]){
+        Framebuffer& target = GpuEnvironment::target();
+        const int width = (int)target.getWidth(), height = (int)target.getHeight();
+        const Vector4 clip = view.viewProjectionMatrix * Vector4(world.x, world.y, world.z, 1.0f);
+        if (clip.w <= 0.0f)
+            return false;
+        const int cx = (int)std::lround((clip.x / clip.w * 0.5f + 0.5f) * (float)width);
+        const int cy = (int)std::lround((0.5f - clip.y / clip.w * 0.5f) * (float)height);
+        if (cx < 2 || cy < 2 || cx >= width - 2 || cy >= height - 2)
+            return false;
+        for (int c = 0; c < 3; c++){
+            int sum = 0;
+            for (int y = cy - 2; y <= cy + 2; y++){
+                for (int x = cx - 2; x <= cx + 2; x++)
+                    sum += rgba[((size_t)y * width + x) * 4 + c];
+            }
+            color[c] = (int)std::lround((double)sum / 25.0);
+        }
+        return true;
+    }
+
+}
+
+TEST_F(ParticlesGpu, HeightFogMatchesTheMeshFog){
+    JASPER_REQUIRE_GPU();
+    using namespace particles_height_fog_test;
+    // AC8: unlit squares in a ground mist, drawn once as meshes and once as particles at the same
+    // places: each particle's fogged colour is the mesh's within 3/255 (white probes show the fog's
+    // transmittance and inscattering, black ones the inscattering alone)
+    camera.setPosition(0.0f, 2.0f, 12.0f);
+    camera.setTarget(0.0f, 2.0f, -100.0f);
+    camera.setFarClip(2000.0f);
+    Light sun(&scene);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(-0.3f, -0.4f, -1.0f);
+    sun.setColor(1.0f, 0.86f, 0.7f);
+    sun.setIntensity(2.0f);
+    sun.setShadows(false);
+    plane(Vector3(0.0f, 0.0f, -40.0f), 400.0f, Vector3(0.35f, 0.42f, 0.3f));
+    Fog fog(&scene);
+    groundMist(fog);
+
+    // the meshes: thin unlit boxes whose front faces are where the particles' quads will be
+    std::vector<std::unique_ptr<Primitive>> boxes;
+    for (const FogProbe& probe : fogProbes()){
+        boxes.push_back(std::make_unique<Primitive>(&scene));
+        Primitive& box = *boxes.back();
+        box.createBox(probe.size, probe.size, 0.02f);
+        box.setPosition(probe.position.x, probe.position.y, probe.position.z - 0.01f);
+        Material material = box.getMaterial();
+        material.lighting = MaterialLighting::NONE;
+        const float value = probe.white ? 1.0f : 0.0f;
+        material.baseColorFactor = Vector4(value, value, value, 1.0f);
+        box.setMaterial(material);
+    }
+    ASSERT_TRUE(render(0.0));
+    const CameraComponent& view = scene.getComponent<CameraComponent>(scene.getCamera());
+    Framebuffer& target = GpuEnvironment::target();
+    std::vector<uint8_t> meshes;
+    ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), meshes));
+    ASSERT_TRUE(scene.getSystem<RenderSystem>()->getAtmosphereInfo(0).heightFog) << "the scene fog is not a height fog";
+
+    // the particles: one opaque square each, at rest
+    boxes.clear();
+    for (const FogProbe& probe : fogProbes()){
+        const std::string color = probe.white ? "1, 1, 1, 1" : "0, 0, 0, 1";
+        system(probe.position, R"({"version": 1, "duration": 5, "looping": false, "seed": 5, "maxParticles": 4, "modules": [
+            {"type": "main", "startLifetime": 100, "startSpeed": 0, "startSize": )" + std::to_string(probe.size) + R"(,
+             "startColor": [)" + color + R"(], "gravityModifier": 0},
+            {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 1}]},
+            {"type": "shape", "enabled": false},
+            {"type": "renderer", "renderMode": "billboard", "untexturedShape": "square", "blend": "alpha"}]})");
+    }
+    ASSERT_TRUE(render(0.5));
+    std::vector<uint8_t> particles;
+    ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), particles));
+    EXPECT_GOLDEN_OPTIONS("particles_height_fog", particlesGoldenTolerance());
+
+    for (const FogProbe& probe : fogProbes()){
+        int mesh[3], particle[3];
+        ASSERT_TRUE(probeColor(meshes, view, probe.position, mesh));
+        ASSERT_TRUE(probeColor(particles, view, probe.position, particle));
+        const float distance = 12.0f - probe.position.z;
+        std::printf("[gpu] %s probe at %.0f m: mesh (%d, %d, %d), particle (%d, %d, %d)\n", probe.white ? "white" : "black", distance,
+                    mesh[0], mesh[1], mesh[2], particle[0], particle[1], particle[2]);
+        // the mist is there to match: it dims the white probes and lights the black ones
+        if (probe.white)
+            EXPECT_LT(mesh[1], 235) << "the mesh at " << distance << " m is not fogged";
+        else
+            EXPECT_GT(mesh[1], 10) << "the mesh at " << distance << " m is not fogged";
+        for (int c = 0; c < 3; c++)
+            EXPECT_NEAR(particle[c], mesh[c], 3) << (probe.white ? "white" : "black") << " probe at " << distance << " m, channel " << c;
+    }
     EXPECT_NO_ENGINE_ERRORS();
 }

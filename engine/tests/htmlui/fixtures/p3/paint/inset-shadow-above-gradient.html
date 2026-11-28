@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: inset box shadows above background gradients, below the border</title>
+<style>
+  html, body { margin: 0; background: #0f172a; }
+  .b { position: absolute; width: 90px; height: 70px; }
+  #b1 { left: 10px; top: 10px; background: linear-gradient(#f59e0b, #ef4444); box-shadow: inset 0 0 0 10px #1e3a8a; }
+  #b2 { left: 120px; top: 10px; background: linear-gradient(90deg, #22c55e, #3b82f6); box-shadow: inset 0 0 16px 4px rgba(0, 0, 0, 0.8); }
+  #b3 { left: 230px; top: 10px; border-radius: 16px; background: radial-gradient(circle, #fde047, #a855f7); box-shadow: inset 6px 8px 0 #0f766e; }
+  #b4 { left: 340px; top: 10px; border: 4px solid #e2e8f0; background: linear-gradient(#ffffff, #94a3b8); box-shadow: inset 0 0 0 8px #be123c, 0 0 10px #f59e0b; }
+  #b5 { left: 10px; top: 100px; border: 4px dashed #e2e8f0; background: linear-gradient(#f59e0b, #ef4444); box-shadow: inset 0 0 0 10px #1e3a8a; }
+  #b6 { left: 120px; top: 100px; border: 3px solid; border-color: #f8fafc #f8fafc #94a3b8 #94a3b8; border-radius: 12px; background: linear-gradient(45deg, #22c55e, #3b82f6); box-shadow: inset 0 0 14px 6px #000000, 0 4px 8px rgba(245, 158, 11, 0.7); }
+  #b7 { left: 230px; top: 100px; background: #334155 linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0)); box-shadow: inset 0 -12px 0 #f43f5e; }
+  #b8 { left: 340px; top: 100px; border-radius: 20px; background: conic-gradient(#ef4444, #eab308, #22c55e, #3b82f6, #ef4444); box-shadow: inset 0 0 0 6px rgba(15, 23, 42, 0.9); }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div><div class="b" id="b4"></div><div class="b" id="b5"></div><div class="b" id="b6"></div><div class="b" id="b7"></div><div class="b" id="b8"></div></body>
+</html>

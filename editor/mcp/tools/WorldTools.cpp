@@ -14,6 +14,7 @@
 #include "FoliageTools.h"
 #include "AnimationClipTools.h"
 #include "AnimatorTools.h"
+#include "MeshColorTools.h"
 #include "AnimationKeys.h"
 
 #include "pixelart/aseprite/AsepriteSpriteSetup.h"
@@ -75,6 +76,10 @@
 #include "component/MeshComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/ModelComponent.h"
+#include "subsystem/MeshSystem.h"
+#include "util/FbxImporter.h"
+#include "util/FileUtils.h"
+#include "tiny_gltf.h"
 #include "component/MorphTracksComponent.h"
 #include "component/PanelComponent.h"
 #include "component/ParticleSystemComponent.h"
@@ -127,6 +132,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <map>
@@ -6234,6 +6240,103 @@ Json modelInfoJson(const Target& target, Entity entity) {
                 {"skeleton", model.skeleton != NULL_ENTITY && scene->isEntityCreated(model.skeleton) ? entityJson(target, model.skeleton) : Json(nullptr)}};
 }
 
+// The first value of a float VEC3 accessor (a translation sampler's output), false otherwise
+bool firstVec3(const tinygltf::Model& gltf, int accessorIndex, double out[3]) {
+    if (accessorIndex < 0 || accessorIndex >= (int)gltf.accessors.size()) return false;
+    const tinygltf::Accessor& accessor = gltf.accessors[(size_t)accessorIndex];
+    if (accessor.type != TINYGLTF_TYPE_VEC3 || accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT || accessor.count == 0 ||
+        accessor.bufferView < 0 || accessor.bufferView >= (int)gltf.bufferViews.size()) return false;
+    const tinygltf::BufferView& view = gltf.bufferViews[(size_t)accessor.bufferView];
+    // a compressed view (a cook's KHR_meshopt_compression) is decoded into its buffer by the parse
+    if (view.buffer < 0 || view.buffer >= (int)gltf.buffers.size()) return false;
+    const size_t at = view.byteOffset + accessor.byteOffset;
+    const std::vector<unsigned char>& data = gltf.buffers[(size_t)view.buffer].data;
+    if (at + 12 > data.size()) return false;
+    float values[3];
+    std::memcpy(values, data.data() + at, sizeof(values));
+    for (int c = 0; c < 3; c++) out[c] = values[c];
+    return true;
+}
+
+// The model file's mesh nodes and what draws each (S94 F45), and the root or hips translations its
+// clips start away from (S94 F40): read from the file, not the shared parse a load may have released
+void addModelFileInfo(const Target& target, Entity entity, Json& info) {
+    Scene* scene = target.engineScene();
+    const ModelComponent& model = scene->getComponent<ModelComponent>(entity);
+    // an FBX whose import is still running has no file to read yet: no failure, nothing to add
+    if (model.filename.empty() || MeshSystem::isModelImportPending(model.filename.str())) return;
+    tinygltf::Model gltf;
+    std::string parseError;
+    if (!MeshSystem::parseGLTFFile(model.filename.str(), gltf, &parseError)) return;
+    auto entityOf = [&](int node) -> Json {
+        for (const auto* mapping : {&model.nodesIdMapping, &model.bonesIdMapping}) {
+            auto it = mapping->find(node);
+            if (it != mapping->end() && scene->isEntityCreated(it->second)) return entityJson(target, it->second);
+        }
+        return Json(nullptr);
+    };
+    const MeshComponent* rootMesh = scene->findComponent<MeshComponent>(entity);
+    Json meshNodes = Json::array();
+    for (size_t n = 0; n < gltf.nodes.size(); n++) {
+        if (gltf.nodes[n].mesh < 0) continue;
+        Json drawnBy = nullptr;
+        auto part = model.meshNodesMapping.find((int)n);
+        if (part != model.meshNodesMapping.end() && scene->isEntityCreated(part->second)) drawnBy = entityJson(target, part->second);
+        else if (rootMesh && rootMesh->numSubmeshes > 0) drawnBy = entityJson(target, entity);
+        meshNodes.push_back({{"node", n}, {"name", gltf.nodes[n].name}, {"entity", entityOf((int)n)}, {"drawn_by", drawnBy}});
+    }
+    info["mesh_nodes"] = meshNodes;
+    info["preserve_hierarchy"] = model.preserveHierarchy;
+
+    // the skeleton's top joints, the scene's top nodes and any hips
+    std::set<int> candidates;
+    std::set<int> joints;
+    for (const tinygltf::Skin& skin : gltf.skins) joints.insert(skin.joints.begin(), skin.joints.end());
+    std::map<int, int> parentOf;
+    for (size_t n = 0; n < gltf.nodes.size(); n++)
+        for (int child : gltf.nodes[n].children) parentOf[child] = (int)n;
+    for (int joint : joints) {
+        auto parent = parentOf.find(joint);
+        if (parent == parentOf.end() || !joints.count(parent->second)) candidates.insert(joint);
+    }
+    for (const tinygltf::Scene& root : gltf.scenes) {
+        for (int node : root.nodes) {
+            candidates.insert(node);
+            if (node >= 0 && node < (int)gltf.nodes.size())
+                candidates.insert(gltf.nodes[(size_t)node].children.begin(), gltf.nodes[(size_t)node].children.end());
+        }
+    }
+    for (size_t n = 0; n < gltf.nodes.size(); n++) {
+        std::string lower = gltf.nodes[n].name;
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+        if (lower.find("hips") != std::string::npos) candidates.insert((int)n);
+    }
+    Json differs = Json::array();
+    for (const tinygltf::Animation& animation : gltf.animations) {
+        for (const tinygltf::AnimationChannel& channel : animation.channels) {
+            if (channel.target_path != "translation" || !candidates.count(channel.target_node) || channel.sampler < 0 ||
+                channel.sampler >= (int)animation.samplers.size() || channel.target_node >= (int)gltf.nodes.size()) continue;
+            double first[3];
+            if (!firstVec3(gltf, animation.samplers[(size_t)channel.sampler].output, first)) continue;
+            const std::vector<double>& t = gltf.nodes[(size_t)channel.target_node].translation;
+            const double node[3] = {t.size() == 3 ? t[0] : 0.0, t.size() == 3 ? t[1] : 0.0, t.size() == 3 ? t[2] : 0.0};
+            const double distance = std::sqrt((first[0] - node[0]) * (first[0] - node[0]) + (first[1] - node[1]) * (first[1] - node[1]) +
+                                              (first[2] - node[2]) * (first[2] - node[2]));
+            if (distance <= 0.01) continue;
+            differs.push_back({{"animation", animation.name}, {"node", gltf.nodes[(size_t)channel.target_node].name},
+                               {"node_translation", {node[0], node[1], node[2]}}, {"first_frame", {first[0], first[1], first[2]}},
+                               {"distance", distance}});
+        }
+    }
+    if (differs.empty()) return;
+    info["first_frame_differs"] = differs;
+    if (FbxImporter::isFbxFile(FileUtils::pathFromUtf8(model.filename.str()))) {
+        info["next"] = "Its clips start with the root or hips away from where the file's nodes put them (first_frame_differs). Unity "
+                       "imports such an FBX in the first frame's pose: set_model_import_settings with settings {rest_pose: \"first_frame\"} "
+                       "(rest_pose_take names another take) does the same, and the model reloads.";
+    }
+}
+
 void getModelInfoTool(const CallPtr& call) {
     Target target;
     if (!resolveEntityArg(call, target)) return;
@@ -6244,6 +6347,7 @@ void getModelInfoTool(const CallPtr& call) {
     }
     Json info = modelInfoJson(target, target.entity);
     if (!boolOr(call->args(), "include_bones", true)) info.erase("bones");
+    addModelFileInfo(target, target.entity, info);
     // the model cook of its file (S53 R23)
     {
         Project* project = call->ctx().project();
@@ -6252,6 +6356,8 @@ void getModelInfoTool(const CallPtr& call) {
         if (!filename.empty() && project->isInsideAssetsPath(absolute) && isModelSource(project->normalizeToAssetsRelative(absolute).generic_string()))
             info["cook"] = ModelAudit::cookSummaryJson(*project, project->normalizeToAssetsRelative(absolute).generic_string());
     }
+    // V1 R124: per submesh, what has vertex colors and what is painted (edit_mesh_colors' targets)
+    if (Json colors = vertexColorTargetsJson(call->ctx().project(), target.sceneId(), target.entity); !colors.is_null()) info["vertex_colors"] = colors;
     call->ok("Model \"" + scene->getEntityName(target.entity) + "\": " + std::to_string(info["meshes"].size()) + " mesh(es), " +
              std::to_string(info["bone_count"].get<size_t>()) + " bone(s), " + std::to_string(info["animations"].size()) + " animation(s).", info);
 }
@@ -6882,14 +6988,14 @@ void registerWorldTools(McpRegistry& registry) {
     // a key takes the channel-specific keys too (in/out tangents...): free-form, said so (S31)
     openKeyItem["additionalProperties"] = true;
     add("edit_animation", "Edit Animation",
-        "Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from its player's root; "
-        "create {from?, humanoid {model?}}; one project undo step. No clip: an entity "
-        "Animation under target (tweens, actions; a scene step). tracks: channel + keys {time, value|points, ease}; "
-        "audio: sound cues (no clip: audio actions).",
+        "Keyframes in seconds (jasper://docs/animation). clip (.anim): tracks by path from its player's root; "
+        "create {from?, humanoid?, unity: Unity .anim}; one project undo step. No clip: an entity "
+        "Animation under target (tweens, actions). tracks: channel + keys {time, value|points, ease}.",
         object({
             {"scene", sceneRef()},
             {"clip", assetPath("")},
-            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}, {"humanoid", object({{"model", assetPath("")}})}})},
+            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}, {"humanoid", object({{"model", assetPath("")}})},
+                               {"unity", string("")}, {"mirror_x", boolean("")}})},
             {"root", entityRef("")},
             {"animation", entityRef("")},
             {"target", entityRef("Required to create.")},

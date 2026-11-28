@@ -571,6 +571,12 @@ namespace jasperengine::editor {
         bool checkMissingAssets();
         // S04: assetmap.bin at the exported assets root, the runtime's GUID <-> path map
         bool writeAssetMap();
+        // S95 REQ-24: je-dataassets.json at the exported assets root (the data classes and their
+        // assets: DataAsset.loadAll); a Data Asset whose class is missing or does not ship is warned
+        bool writeDataAssetIndex();
+        // S95: a .dataasset written with its references' current paths (their GUIDs resolved), so a
+        // game finds them by path too; false (it ships as it is) when it does not parse or write
+        bool writeResolvedDataAsset(const fs::path& source, const fs::path& destination);
         // Runtime shader compilation builds a fork's variants from its sources, which it
         // reads from the build's assets at their project-relative paths: a script can
         // put any fork of the project on a mesh, so all of them ship
@@ -686,6 +692,10 @@ namespace jasperengine::editor {
         // without them, or not a well-formed PNG, as it is); false when it is not a .png or could
         // not be read or written this way (the caller then copies the file)
         static bool copyPngWithoutEditorChunks(const std::filesystem::path& source, const std::filesystem::path& destination);
+        // a .woff / .woff2 written as the sfnt it encodes (titlefonts::decodeWebFont), at the same
+        // path: players have no web font decoder. False when it is not a web font, or (warned with
+        // the decoder's reason) cannot be decoded or written; the caller then copies it as it is
+        static bool shipWebFontDecoded(const std::filesystem::path& source, const std::filesystem::path& destination);
         // dialogue-graphs.md R16: a .dialogue written to `destination` as its compiled program
         // (dialogue::Program::cook), which the game reads at `assetPath` without parsing JSON; false
         // with `error` when it does not compile (the caller ships it as it is: the game logs the same)

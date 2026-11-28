@@ -168,7 +168,7 @@ async def test_root_motion_toggles_are_one_undo_step(ed: Editor):
     await ui.click_revealed("##clip_asset_root_motion", "Inspector")
     await ed.call("wait", frames=5)
     await shot(ed, "ac18-2-root-motion-open")
-    await ui.click_revealed("##clip_root_xz", "Inspector")
+    await ui.click_revealed("##clip_root_bake_xz", "Inspector")
     await ed.call("wait", frames=10)
     after = json.loads(file.read_text())
     ed.check_eq(after["root_motion"]["bake_position_xz"], True, "the toggle wrote the block")

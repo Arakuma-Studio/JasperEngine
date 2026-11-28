@@ -1642,8 +1642,10 @@ namespace {
             normalize.calcNative = writesCalcNatively(row->rewrite) ||
                 (row->rewrite == RewriteId::Grid && session.options.fork.has(ForkFeature::Grid)) ||
                 // translate / rotate / scale written as they are: the fork reads them with its transform parser
-                (row->rewrite == RewriteId::IndividualTransform && session.options.fork.has(ForkFeature::IndividualTransforms));
-            normalize.unitsNative = normalize.calcNative;
+                (row->rewrite == RewriteId::IndividualTransform && session.options.fork.has(ForkFeature::IndividualTransforms)) ||
+                // clip-path shapes: the html-shape decorator evaluates them against the reference box (S93, U23)
+                row->rewrite == RewriteId::ClipPath;
+            normalize.unitsNative = normalize.calcNative && row->rewrite != RewriteId::ClipPath;
             // 'translate' combined into transform (no IndividualTransforms): a sum stays for the
             // rewrite to write as one translation per term
             normalize.lengthSums = row->rewrite == RewriteId::IndividualTransform && name == "translate" &&

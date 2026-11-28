@@ -81,6 +81,8 @@ const StructDesc kAnimatorClipOverrideStruct = JE_STRUCT_DESC(AnimatorClipOverri
 namespace {
 
     bool exposes(const void* c) { return static_cast<const AnimatorComponent*>(c)->writeBones == AnimatorWriteBones::Exposed; }
+    // shown while set: an Animator migrated from before S94 (unticking it gives Unity's in-place play)
+    bool animatorKeepsRootDrift(const void* c) { return static_cast<const AnimatorComponent*>(c)->legacyRootDrift; }
 
     constexpr FieldDesc kAnimatorFields[] = {
         JE_FIELD(AnimatorComponent, enabled),
@@ -89,6 +91,9 @@ namespace {
         JE_FIELD(AnimatorComponent, poseFrameRate, .flags = OmitIfDefault, .min = 0.0f, .max = 120.0f, .label = "Pose Frame Rate",
                  .tooltip = "Frames per second the poses hold on (0: smooth). Each track steps from its previous key, so every key shows; transitions step too. Root motion and events stay at the true time.", .drawer = "poseFrameRate"),
         JE_FIELD(AnimatorComponent, applyRootMotion, .tooltip = "The clips' root motion moves the GameObject (or its Character Controller)."),
+        JE_FIELD(AnimatorComponent, legacyRootDrift, .flags = OmitIfDefault, .label = "Legacy Root Drift",
+                 .tooltip = "Apply Root Motion off: a clip with Root Transform settings keeps its root's drift, as scenes saved before this version played it. Untick to play it in place, as Unity does.",
+                 .visibleIf = &animatorKeepsRootDrift),
         JE_FIELD(AnimatorComponent, rootMotionBone, .updateFlags = kReload, .tooltip = "Path or humanoid slot (empty: the clip's, the hips, the shallowest moving bone)."),
         JE_FIELD(AnimatorComponent, updateMode, .enumDesc = &enums::kAnimatorUpdateMode),
         JE_FIELD(AnimatorComponent, cullingMode, .enumDesc = &enums::kAnimatorCullingMode, .tooltip = "Cull Update Transforms: while no camera sees it, time, states, events and root motion advance; nothing is written."),

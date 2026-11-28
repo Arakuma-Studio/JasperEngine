@@ -580,4 +580,98 @@ TEST(HtmlUIRenderPerf, ProfileTarget){
     std::printf("[ profile  ] %d frames\n", frames);
 }
 
+// S93 R39 (AC14): the first draw of a cold "GO!" at 324 px with the port's outline and glow, the main thread's text
+// generation (RmlFontEngine::GenerateString) in that frame <= 8 ms: with GPU effects while the distance glyphs are pending,
+// and with transform-aware text off (the CPU path). Effects drawn on the CPU while pending: the distance-transform outline
+// and the recursive blur (R11), a big text's glyphs side by side on the workers; the dense kernel took 1.3-3 s (the port's
+// measure). The least of 3 cold runs, enforced by the benchmark run (JASPER_HTMLUI_PERF_SLACK set: a quiet machine; the
+// workers this needs are the ones a loaded host lacks), elsewhere printed.
+TEST(GlyphEffectPerf, OutlinedGoFirstDraw){
+    JASPER_REQUIRE_GPU();
+    RmlFontEngine& fonts = HtmlUI::getFontEngine();
+    const std::string rml = "<rml><head><style>body { margin: 0; font-family: sans-serif; font-weight: bold; color: #ffffff; } "
+                            "p { margin: 0; font-size: 324px; line-height: 340px; "
+                            "font-effect: outline(15px #000000), glow(4px 12px 0px 8px #000000); }</style></head>"
+                            "<body><p>GO!</p></body></rml>";
+    const double slack = compat::benchmarkPerfSlack();
+    const double budget = 8.0 * (slack > 0.0 ? slack : 1.0);
+    // the engine's way: distance glyphs on the background lane (this binary makes them at once for its goldens)
+    RmlFontEngine::setSynchronousDistanceGlyphsForTesting(false);
+    for (const bool gpu : {true, false}){
+        S16Mode mode(gpu);   // off: no transform-aware text, so no GPU effects
+        double least = 1e9;
+        uint32_t fallbacks = 0;
+        for (int run = 0; run < 3 && least > budget; run++){
+            RenderTestContext test(1280, 720);
+            ASSERT_TRUE(test.isValid());
+            fonts.ReleaseFontResources();
+            ASSERT_NE(test.loadFromMemory(rml, "render/go.rml"), nullptr);
+            const double before = fonts.getGenerateStringMs();
+            test.renderFrame();
+            least = std::min(least, fonts.getGenerateStringMs() - before);
+            fallbacks = test.renderer.getStats().textEffectFallbacks;
+        }
+        std::printf("[ ui-bench ] GO! 324 px, outline 15 px and glow, first draw (%s): %.3f ms of text generation, %u CPU effects "
+                    "(budget 8 ms%s)\n", gpu ? "GPU effects, distance glyphs pending" : "CPU path", least, fallbacks,
+                    slack > 0.0 ? "" : ", not enforced: JASPER_HTMLUI_PERF_SLACK unset");
+        EXPECT_GT(fallbacks, 0u) << "the effects were not drawn the CPU way";
+        if (slack > 0.0){
+            EXPECT_LE(least, budget) << (gpu ? "GPU effects pending" : "CPU path");
+        }
+        results()[gpu ? "S93 GO first draw (GPU pending)" : "S93 GO first draw (CPU)"] = {{"textMs", least}};
+    }
+    fonts.ReleaseFontResources();
+    RmlFontEngine::setSynchronousDistanceGlyphsForTesting(true);
+}
+
+// S93 AC13 (R43): hit testing follows the transforms and clips of each ancestor, and costs no more
+// than 110 % of the hit test of the S93 base (6e3924918) on the S17 10 000-row virtual list (B7's
+// fixture: rows in a rounded, clipped pane): 64 points over the list, the least of up to 15
+// medians (gatedCpuMs). The base's figure was measured by this test on the base, on the build host.
+TEST(HitTestPerf, TenThousandRowList){
+    JASPER_REQUIRE_GPU();
+    // ms for the 64 points on the base (the median of 20, least of 15; measured on the build box)
+    constexpr double baseMs = 0.1341;
+    FixtureRunner runner(1280, 720, 4);
+    ASSERT_TRUE(runner.valid());
+    ASSERT_TRUE(load(runner, "fixtures/bench/virtual-list.html"));
+    Rml::Element* element = runner.document() ? runner.document()->GetElementById("list") : nullptr;
+    htmlui::ItemsViewElement* list = rmlui_dynamic_cast<htmlui::ItemsViewElement*>(element);
+    ASSERT_NE(list, nullptr);
+    htmlui::ItemsViewElement::Provider provider;
+    provider.count = 10000;
+    provider.bind = [](Rml::Element* row, int index){
+        if (Rml::Element* name = row->QuerySelector(".name"))
+            name->SetInnerRML("Player " + std::to_string(index + 1));
+    };
+    list->setProvider(provider);
+    double clock = runner.time();
+    for (int i = 0; i < 5; i++){
+        clock += 1.0 / 60.0;
+        runner.frameAt(clock, true);
+    }
+    list->SetScrollTop(48.0f * 5000.0f);
+    for (int i = 0; i < 5; i++){
+        clock += 1.0 / 60.0;
+        runner.frameAt(clock, true);
+    }
+    Rml::Context* context = runner.context();
+    int hits = 0;
+    const auto work = [&](){
+        hits = 0;
+        for (int row = 0; row < 8; row++){
+            for (int column = 0; column < 8; column++){
+                const Rml::Vector2f point(44.0f + 70.0f * (float)column, 44.0f + 80.0f * (float)row);
+                hits += context->GetElementAtPoint(point) ? 1 : 0;
+            }
+        }
+    };
+    const double target = baseMs * 1.10 * compat::perfSlack();
+    const double ms = compat::gatedCpuMs(work, 200, target);
+    std::printf("[ ui-bench ] hit test, 64 points over a 10 000-row list: %.4f ms (base %.4f ms)\n", ms, baseMs);
+    results()["hitTestTenThousandRows"] = {{"ms", ms}, {"baseMs", baseMs}};
+    EXPECT_EQ(hits, 64) << "every point hits the document";
+    EXPECT_LE(ms, target);
+}
+
 #endif

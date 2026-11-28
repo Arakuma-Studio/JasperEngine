@@ -31,6 +31,7 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kFogType;
     extern const EnumDesc kFogVolumeFalloff;
     extern const EnumDesc kFogVolumeShape;
+    extern const EnumDesc kFogZoneShape;
     extern const EnumDesc kJoint2DType;
     extern const EnumDesc kJoint3DType;
     extern const EnumDesc kLayoutGroupType;
@@ -56,10 +57,17 @@ namespace jasperengine::editor::reflect::enums {
     // pixel art (PixelArtReflect.cpp, S41)
     extern const EnumDesc kPixelUpscaleMode;
     extern const EnumDesc kPixelRotation;
+    // Text alignment and font size unit (UIReflect.cpp, S94)
+    extern const EnumDesc kTextAnchorHorizontal;
+    extern const EnumDesc kTextAnchorVertical;
+    extern const EnumDesc kTextFontSizeUnit;
     // 2D sorting and Sprite Batch (SortingReflect.cpp, S52)
     extern const EnumDesc kSpriteSortPoint;
     extern const EnumDesc kSpriteBatchMode;
     extern const EnumDesc kSpriteBatchSpace;
+    // the Outline (OutlineReflect.cpp, S94)
+    extern const EnumDesc kOutlineMode;
+    extern const EnumDesc kOutlineWidthUnits;
     extern const EnumDesc kJointAnchorSpace;
     extern const EnumDesc kCollisionDetection2D;
     extern const EnumDesc kSleepMode2D;
@@ -88,10 +96,14 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kLodFadeMode;
     extern const EnumDesc kMaterialAlphaMode;
     extern const EnumDesc kMaterialBlendMode;
+    extern const EnumDesc kMaterialBlendFactor;
+    extern const EnumDesc kMaterialBlendOp;
     extern const EnumDesc kMaterialCullMode;
     extern const EnumDesc kMaterialDepthTest;
     extern const EnumDesc kMaterialDepthWrite;
     extern const EnumDesc kMaterialLighting;
+    extern const EnumDesc kVertexColorUse;
+    extern const EnumDesc kVertexColorTarget;
     extern const EnumDesc kTerrainQualitySetting;
     extern const EnumDesc kTerrainOffscreenShadows;
     extern const EnumDesc kTerrainMacroMode;
@@ -124,6 +136,9 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kTextureWrap;
     extern const EnumDesc kInputFieldKeyboardType;
     extern const EnumDesc kUIDocumentRenderMode;
+    extern const EnumDesc kUIDocumentUpdateMode;
+    extern const EnumDesc kTextHorizontalAlignment;
+    extern const EnumDesc kTextVerticalAlignment;
     extern const EnumDesc kUIEventState;
     extern const EnumDesc kWindingOrder;
     // navigation (S19, editor/reflect/components/NavigationReflect.cpp)
@@ -141,6 +156,9 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kVoxelQuality;
     extern const EnumDesc kVoxelNavigationUpdate;
     extern const EnumDesc kVoxelTerrainCut;
+    // the Vertex Colors component's (editor/reflect/components/VertexColorsReflect.cpp)
+    extern const EnumDesc kVertexColorFormat;
+    extern const EnumDesc kVertexColorInitialValue;
     // the Grid and Tilemap Layer components' (editor/reflect/components/TilemapReflect.cpp)
     extern const EnumDesc kTileGridLayout;
     extern const EnumDesc kTileGridPlane;
@@ -174,5 +192,7 @@ namespace jasperengine::editor::reflect::enums {
 
     // masks of enum values a field offers (FieldDesc::enumMask)
     constexpr uint64_t bit(int value) { return uint64_t(1) << value; }
+    // the blend modes a component (Points, Line, Trail, UI) offers: Custom's factors are a material's
+    constexpr uint64_t kComponentBlendModes = bit(0) | bit(1) | bit(2) | bit(3) | bit(4) | bit(5);
 
 }

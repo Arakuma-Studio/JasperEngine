@@ -13,6 +13,7 @@
 #include "hub/ProjectHubWindow.h"
 #include "mcp/McpLaunch.h"
 #include "reload/HotReloadService.h"
+#include "titleart/fonts/WebFontDecode.h"
 #include "titleart/library/TitleLibraryCli.h"
 #include "util/EditorDiagnostics.h"
 #include "util/ShellEnv.h"
@@ -300,6 +301,8 @@ int main(int argc, char* argv[]) {
     editor::TextEncoding::useUtf8Console();
     // before anything logs: the in-memory store and the terminal until a Console window exists
     editor::Out::startLogging();
+    // every mode loads fonts (the HTML UI's @font-face): .woff / .woff2 open in the editor too
+    editor::titlefonts::installWebFontDecoder();
     std::vector<char*> args(argv, argv + argc);
     takeAllowDebugCrashFlag(args);
     if (!takeLogLevelFlag(args) || !takeFileWatcherFlag(args) || !takeHubFlags(args)) {

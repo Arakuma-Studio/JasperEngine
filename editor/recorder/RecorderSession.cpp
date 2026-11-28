@@ -12,6 +12,8 @@
 #include "Out.h"
 #include "audio/AudioTap.h"
 #include "htmlui/VideoImporter.h"
+#include "htmlui/HtmlUIClock.h"
+#include "htmlui/anim/AnimEngine.h"
 #include "io/AtomicFile.h"
 #include "jobs/JobSystem.h"
 #include "Scene.h"
@@ -53,6 +55,11 @@ namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 
 namespace {
+
+    // Each recorded frame samples k / fps plus this: start + k / fps rounds up or down depending on
+    // the take's start, which decided whether a frame exactly at an authored boundary (a step, a
+    // child starting at 900 ms: frame 27 at 30 fps) was before or after it, differently per take
+    constexpr double RECORDER_BOUNDARY_NUDGE = 1e-7;
 
     void appendPng(void* context, void* data, int size) {
         auto* out = static_cast<std::string*>(context);
@@ -814,9 +821,22 @@ bool RecorderSession::arm(const Settings& settings, bool fromPlayStart, std::str
     // the game frames from now on are the recording's (frame 0: the first one Play runs)
     gameFramesAtStart = Engine::getGameFrames();
     gameFramesSeen = gameFramesAtStart;
+    previousFixedUiTime = HtmlUIClock::getFixedTime();
+    recordingUiStart = HtmlUIClock::now();
+    // Documents may load before Play's first frame. Holding their origin throughout arming
+    // keeps CSS and anime independent of how long that load took, while the shared UI
+    // epoch stays continuous for documents outside the recorded scene stack.
+    HtmlUIClock::setFixedTime(recordingUiStart);
+    // the Game Time clock holds while a fixed time is set: the recording advances it itself
+    previousFixedGameTime = HtmlUIClock::getFixedGameTime();
+    recordingGameTime = HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME);
+    recordingGameFrame = 0;
+    HtmlUIClock::setFixedGameTime(recordingGameTime);
+    animationClocksAligned = false;
     startTime = Clock::now();
     startedPlay = false;
     currentState = State::Arming;
+    if ((!playing || fromPlayStart) && host.resetUiDocuments) host.resetUiDocuments();
     if (!playing && !fromPlayStart) {
         std::string playError;
         if (!host.startPlay || !host.startPlay(playError)) {
@@ -872,6 +892,26 @@ void RecorderSession::warnAboutFreeSpace() {
 
 void RecorderSession::beginRecording() {
     currentState = State::Recording;
+}
+
+void RecorderSession::prepareFrame() {
+    if (!recording() || !host.isPlaying() || Engine::isSimulationHeld() || Engine::isPaused()) return;
+    const uint64_t frames = Engine::getGameFrames();
+    const uint64_t index = frames >= gameFramesAtStart ? frames - gameFramesAtStart : 0;
+    HtmlUIClock::setFixedTime(recordingUiStart + (double)index / current.frameRate + RECORDER_BOUNDARY_NUDGE);
+    // game time moves by the scaled step of each recorded frame (Engine.timeScale read per frame)
+    if (index > recordingGameFrame) {
+        recordingGameTime += (double)(index - recordingGameFrame) * Engine::getTimeScale() / current.frameRate;
+        recordingGameFrame = index;
+    }
+    HtmlUIClock::setFixedGameTime(recordingGameTime + RECORDER_BOUNDARY_NUDGE);
+    if (!animationClocksAligned) {
+        // frame zero: CSS and both anime clocks at their initial values
+        // anime's timers start at the frame's unnudged time, as the documents' CSS does
+        AnimEngine::instance().alignClockSources(HtmlUIClock::now() - RECORDER_BOUNDARY_NUDGE,
+                                                 HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME) - RECORDER_BOUNDARY_NUDGE);
+        animationClocksAligned = true;
+    }
 }
 
 bool RecorderSession::assetsLoading() const {
@@ -1084,6 +1124,9 @@ void RecorderSession::stop() {
 
 void RecorderSession::restoreEngine() {
     releaseHold();
+    HtmlUIClock::setFixedTime(previousFixedUiTime);
+    HtmlUIClock::setFixedGameTime(previousFixedGameTime);
+    AnimEngine::instance().alignClockSources(HtmlUIClock::now(), HtmlUIClock::now(UIDocumentUpdateMode::GAME_TIME));
     Engine::setFixedDeltatime(previousFixedDelta);
     if (host.setGameRenderSize) host.setGameRenderSize(0, 0);
     if (audio) {

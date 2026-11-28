@@ -628,6 +628,8 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Effects", "Fluid Simulation", ICON_FA_DROPLET, T::FLUID_SIMULATION, "Fluid Simulation", CREATE_IN_WORLD},
         {"Effects", "Fog", ICON_FA_SMOG, T::FOG, "Fog", CREATE_IN_3D, true},
         {"Effects", "Local Volumetric Fog", ICON_FA_SMOG, T::LOCAL_VOLUMETRIC_FOG, "Local Volumetric Fog", CREATE_IN_3D},
+        // a place with its own fog look, blended by the camera's position (docs/specs/S101-vapor.md R27)
+        {"Effects", "Fog Zone", ICON_FA_SMOG, T::FOG_ZONE, "Fog Zone", CREATE_IN_3D},
         {"Effects", "Volumetric Clouds", ICON_FA_CLOUD, T::VOLUMETRIC_CLOUDS, "Volumetric Clouds", CREATE_IN_3D},
         // S49's pixel presets (editor/pixelart/particles): a nested submenu, the entity name the preset's label
         {"Effects/Pixel", "Spark", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Spark", CREATE_IN_WORLD},

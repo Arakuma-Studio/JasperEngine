@@ -2,6 +2,7 @@
 
 #include "../../Include/RmlUi/Core/CompiledFilterShader.h"
 #include "../../Include/RmlUi/Core/Geometry.h"
+#include "../../Include/RmlUi/Core/StyleTypes.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
 #include "../../Include/RmlUi/Core/Types.h"
 
@@ -30,10 +31,10 @@ public:
 
 	// False when RenderEffects has nothing to do at any stage: no effects to instance or reload, no decorators, filters,
 	// backdrop filters, mask or group opacity. Element::Render tests it inline, as most elements have none of them.
-	bool NeedsRenderEffects(float opacity, bool has_mask_image) const
+	bool NeedsRenderEffects(float opacity, bool has_mask_image, Style::MixBlendMode blend) const
 	{
 		return effects_dirty || effects_data_dirty || !decorators.empty() || !filters.empty() || !backdrop_filters.empty() || bool(group_opacity) ||
-			opacity < 1.f || has_mask_image;
+			opacity < 1.f || has_mask_image || blend != Style::MixBlendMode::Normal;
 	}
 
 	// Fork (P7-F2): extends 'region' (window coordinates: the ink of the element's subtree) by the extent of the element's

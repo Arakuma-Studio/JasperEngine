@@ -40,6 +40,24 @@ Every map has a `<map>TexCoord` (`mapTexCoord`, `normalTexCoord`): the UV set it
 The volume needs transmission; Vertex lighting draws no lobe (hex tiling still applies), and an
 unlit variant (no lights or IBL in the scene) only hex tiling.
 
+## Vertex Color
+
+What Lit does with a mesh's vertex colours, `pbr.vertexColor` (Inspector: Vertex Color):
+
+```
+update_material path="materials/rock.material" values={"pbr": {"vertexColor": {"use": "masks", "r": "roughness_replace", "g": "emission"}}}
+set_properties entity="Rock" component="MeshComponent" properties={"submeshes[0].material.pbr.vertexColor.use": "off"}
+```
+
+- `use`: `tint` (default: RGB multiplies the albedo, A the opacity while `alphaOpacity` is true),
+  `masks`, `off` (ignored; the colours stay for other systems).
+- `masks`: `r`, `g`, `b`, `a` each one of `none`, `occlusion`, `roughness_multiply`,
+  `roughness_replace`, `metallic`, `emission`, `opacity`, `albedo_tint`. Channels on one input
+  multiply. With `r`, `g` and `b` all `none`, RGB still tints the albedo. Unlit keeps `opacity`
+  and `albedo_tint` only.
+- Each choice other than Tint is a variant (`LIT_VC_*`); a mesh without vertex colours costs
+  nothing. To blend texture layers by the colours use `library:vertex_blend` (`jasper://docs/shaders`).
+
 ## Maps and the 16-texture budget
 
 GLES3 and WebGL2 have 16 fragment textures, and the busiest built-in Lit variant already binds
@@ -137,6 +155,44 @@ Paint (clear coat), Velvet (sheen), Brushed Metal (anisotropy), Soap Bubble (iri
 Glass (transmission and volume), Tiled Floor (hex tiling). They set the built-in Lit on a
 material that had a library shader.
 
+## Outline
+
+To outline an object (hover, selection, team colour, an enemy through walls), add the **Outline**
+component (Add Component > Rendering > Outline; `add_component component="outline"`), not a
+material preset: it outlines the GameObject's Mesh and, with `includeChildren` (default on),
+every Mesh below it, so one Outline on a model root covers its skinned and nested meshes. Fields
+(`set_properties outline.*`, all undoable): `mode` `outline_all` (default, through walls),
+`outline_visible`, `outline_hidden`, `outline_and_silhouette` (covered parts filled),
+`silhouette_only`; `color` (linear, alpha blends); `width` in `widthUnits` `pixels` (default, the
+same on screen at any distance) or `world`; `includeChildren`; `enabled`. The nearest enabled
+Outline at or above a Mesh decides its look. It draws after the opaque queue (a 2D camera: after
+its sprites), two draws per outlined submesh, uses stencil bit 1 (the `outline_stencil` preset's:
+outlined objects never outline over each other) and costs nothing while disabled. Not outlined:
+Terrains, Tilemaps, Sprite Batch instances, lines and points. A flat quad facing the camera has no
+band in Pixels (its normal points at the camera): give it depth. Lua: `Outline(scene, entity)`
+(`jasper://docs/lua-api`). `apply_material_preset` on a GameObject without a Mesh applies to the
+meshes below it.
+
+## Property Overrides
+
+Per-object colours or textures over one shared material (Unity's MaterialPropertyBlock, saved
+with the mesh): `set_shader_uniform {entity, name: "baseColorFactor", value, override: true}`
+(with `submesh`: that submesh's, which wins). The built-in Lit takes `baseColorFactor`,
+`emissiveFactor` (linear) and, through `set_properties` `{"mesh": {"propertyOverrides.textures":
+{"baseColorTexture": path}}}`, its base map; a library or custom shader any parameter and
+`@texture`. `get_entity` lists `propertyOverrides` on the mesh and its submeshes. Do not put the
+value in the material (every user of the material changes) or in the Mesh's `shaderUniforms` (the
+material's parameter of the same name wins over it).
+
+## Blend Mode Custom
+
+`blendMode: custom` with `blendSrc`, `blendDst`, `blendSrcAlpha`, `blendDstAlpha` (`one`, `zero`,
+`src_color`, `src_alpha`, `dst_color`, `dst_alpha`, `one_minus_...`) and `blendOp` (`add`,
+`subtract`, `reverse_subtract`, `min`, `max`; `blendOpAlpha` the alpha channel's): Unity's ShaderLab
+`Blend` and `BlendOp`. Unity's
+2x multiply (`Blend DstColor SrcColor`) is `blendSrc: dst_color, blendDst: src_color`. It draws in
+the transparent queue like any other blend.
+
 ## Lua
 
 Flat `Material` properties on the copy `getMaterial` returns, then `setMaterial`:
@@ -146,7 +202,9 @@ Flat `Material` properties on the copy `getMaterial` returns, then `setMaterial`
 `iridescenceThicknessRange`, `transmissionEnabled`, `transmissionFactor`, `volumeEnabled`,
 `thicknessFactor`, `attenuationColor`, `attenuationDistance`, `specularEnabled`,
 `specularFactor`, `specularColor`, `ior`, `emissiveStrength`, `hexTilingEnabled`,
-`hexTilingRotation`, `hexTilingContrast` (maps read only). `Light`: `intensityUnit`
+`hexTilingRotation`, `hexTilingContrast` (maps read only), `vertexColorUse`
+(`VertexColorUse.*`), `vertexColorAlphaOpacity`, `vertexColorR`..`vertexColorA`
+(`VertexColorTarget.*`). `Light`: `intensityUnit`
 (`LightUnit.*`), `useColorTemperature`, `colorTemperature`, `setIntensityUnit(unit,
 preserveBrightness)`. `scene.litQuality` (`LitQuality.*`), `scene.physicalLightEV100`. Terrain
 layers: `hexTiling`, `hexRotation`. Details: `jasper://docs/lua-api`.

@@ -83,8 +83,7 @@ TEST(OutOfScopeDiagnostics, EveryItemIsReportedWithItsHint){
         {".a {\n  hyphens: auto;\n}", "HTMLUI-CSS-0003", "soft hyphens"},
         // text-align: justify is native (p6-justify); justify-all is dropped, as Chromium does not parse it
         {".a {\n  text-align: justify-all;\n}", "HTMLUI-CSS-0004", "text-align-last: justify"},
-        // mix-blend-mode, background-blend-mode
-        {".a {\n  mix-blend-mode: multiply;\n}", "HTMLUI-CSS-0002", "opacity"},
+        // background-blend-mode (mix-blend-mode is native: S93 R30)
         {".a {\n  background-blend-mode: screen;\n}", "HTMLUI-CSS-0002", "pre-blend"},
         // tables
         {".a {\n  display: ruby;\n}", "HTMLUI-CSS-0005", ""},

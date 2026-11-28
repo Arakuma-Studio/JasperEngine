@@ -19,9 +19,11 @@
 #include "component/UISelectable.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/TextComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/LightComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
+#include "component/FogZoneComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
@@ -238,6 +240,7 @@ namespace {
     constexpr EnumItem kFogColorModeItems[] = {
         {v(FogColorMode::COLOR), "color", "Constant Color", "FogColorMode::COLOR"},
         {v(FogColorMode::SKY), "sky", "Sky Color", "FogColorMode::SKY"},
+        {v(FogColorMode::LIT), "lit", "Lit", "FogColorMode::LIT"},
     };
 
     constexpr EnumItem kFogTypeItems[] = {
@@ -255,6 +258,10 @@ namespace {
     constexpr EnumItem kFogVolumeShapeItems[] = {
         {v(FogVolumeShape::BOX), "box", "Box", "FogVolumeShape::BOX"},
         {v(FogVolumeShape::SPHERE), "sphere", "Sphere", "FogVolumeShape::SPHERE"},
+    };
+    constexpr EnumItem kFogZoneShapeItems[] = {
+        {v(FogZoneShape::BOX), "box", "Box", "FogZoneShape::BOX"},
+        {v(FogZoneShape::SPHERE), "sphere", "Sphere", "FogZoneShape::SPHERE"},
     };
 
     constexpr EnumItem kJoint2DTypeItems[] = {
@@ -564,6 +571,30 @@ namespace {
         {v(MaterialBlendMode::PREMULTIPLIED), "PREMULTIPLIED", "Premultiplied", "MaterialBlendMode::PREMULTIPLIED", "premultiplied"},
         {v(MaterialBlendMode::ADDITIVE), "ADDITIVE", "Additive", "MaterialBlendMode::ADDITIVE", "additive"},
         {v(MaterialBlendMode::MULTIPLY), "MULTIPLY", "Multiply", "MaterialBlendMode::MULTIPLY", "multiply"},
+        {v(MaterialBlendMode::CUSTOM), "CUSTOM", "Custom", "MaterialBlendMode::CUSTOM", "custom"},
+    };
+
+    // Unity's BlendMode factor names (ShaderLab Blend)
+    constexpr EnumItem kMaterialBlendFactorItems[] = {
+        {v(MaterialBlendFactor::ZERO), "ZERO", "Zero", "MaterialBlendFactor::ZERO", "zero"},
+        {v(MaterialBlendFactor::ONE), "ONE", "One", "MaterialBlendFactor::ONE", "one"},
+        {v(MaterialBlendFactor::SRC_COLOR), "SRC_COLOR", "Src Color", "MaterialBlendFactor::SRC_COLOR", "src_color"},
+        {v(MaterialBlendFactor::ONE_MINUS_SRC_COLOR), "ONE_MINUS_SRC_COLOR", "One Minus Src Color", "MaterialBlendFactor::ONE_MINUS_SRC_COLOR", "one_minus_src_color"},
+        {v(MaterialBlendFactor::SRC_ALPHA), "SRC_ALPHA", "Src Alpha", "MaterialBlendFactor::SRC_ALPHA", "src_alpha"},
+        {v(MaterialBlendFactor::ONE_MINUS_SRC_ALPHA), "ONE_MINUS_SRC_ALPHA", "One Minus Src Alpha", "MaterialBlendFactor::ONE_MINUS_SRC_ALPHA", "one_minus_src_alpha"},
+        {v(MaterialBlendFactor::DST_COLOR), "DST_COLOR", "Dst Color", "MaterialBlendFactor::DST_COLOR", "dst_color"},
+        {v(MaterialBlendFactor::ONE_MINUS_DST_COLOR), "ONE_MINUS_DST_COLOR", "One Minus Dst Color", "MaterialBlendFactor::ONE_MINUS_DST_COLOR", "one_minus_dst_color"},
+        {v(MaterialBlendFactor::DST_ALPHA), "DST_ALPHA", "Dst Alpha", "MaterialBlendFactor::DST_ALPHA", "dst_alpha"},
+        {v(MaterialBlendFactor::ONE_MINUS_DST_ALPHA), "ONE_MINUS_DST_ALPHA", "One Minus Dst Alpha", "MaterialBlendFactor::ONE_MINUS_DST_ALPHA", "one_minus_dst_alpha"},
+    };
+
+    // Unity's BlendOp
+    constexpr EnumItem kMaterialBlendOpItems[] = {
+        {v(MaterialBlendOp::ADD), "ADD", "Add", "MaterialBlendOp::ADD", "add"},
+        {v(MaterialBlendOp::SUBTRACT), "SUBTRACT", "Subtract", "MaterialBlendOp::SUBTRACT", "subtract"},
+        {v(MaterialBlendOp::REVERSE_SUBTRACT), "REVERSE_SUBTRACT", "Reverse Subtract", "MaterialBlendOp::REVERSE_SUBTRACT", "reverse_subtract"},
+        {v(MaterialBlendOp::MIN), "MIN", "Min", "MaterialBlendOp::MIN", "min"},
+        {v(MaterialBlendOp::MAX), "MAX", "Max", "MaterialBlendOp::MAX", "max"},
     };
 
     constexpr EnumItem kMaterialCullModeItems[] = {
@@ -620,6 +651,23 @@ namespace {
         {v(MaterialLighting::VERTEX), "VERTEX", "Per Vertex", "MaterialLighting::VERTEX", "vertex"},
         {v(MaterialLighting::MIXED), "MIXED", "Mixed", "MaterialLighting::MIXED", "mixed"},
         {v(MaterialLighting::NONE), "NONE", "None", "MaterialLighting::NONE", "none"},
+    };
+
+    // V1 R70: the built-in Lit's Vertex Color section (texture/MaterialPbr.h)
+    constexpr EnumItem kVertexColorUseItems[] = {
+        {v(VertexColorUse::TINT), "tint", "Tint", "VertexColorUse::TINT"},
+        {v(VertexColorUse::MASKS), "masks", "Masks", "VertexColorUse::MASKS"},
+        {v(VertexColorUse::OFF), "off", "Off", "VertexColorUse::OFF"},
+    };
+    constexpr EnumItem kVertexColorTargetItems[] = {
+        {v(VertexColorTarget::NONE), "none", "None", "VertexColorTarget::NONE"},
+        {v(VertexColorTarget::OCCLUSION), "occlusion", "Occlusion", "VertexColorTarget::OCCLUSION"},
+        {v(VertexColorTarget::ROUGHNESS_MULTIPLY), "roughness_multiply", "Roughness (multiply)", "VertexColorTarget::ROUGHNESS_MULTIPLY"},
+        {v(VertexColorTarget::ROUGHNESS_REPLACE), "roughness_replace", "Roughness (replace)", "VertexColorTarget::ROUGHNESS_REPLACE"},
+        {v(VertexColorTarget::METALLIC), "metallic", "Metallic", "VertexColorTarget::METALLIC"},
+        {v(VertexColorTarget::EMISSION), "emission", "Emission", "VertexColorTarget::EMISSION"},
+        {v(VertexColorTarget::OPACITY), "opacity", "Opacity", "VertexColorTarget::OPACITY"},
+        {v(VertexColorTarget::ALBEDO_TINT), "albedo_tint", "Albedo Tint", "VertexColorTarget::ALBEDO_TINT"},
     };
 
     constexpr EnumItem kMaterialPassOrderItems[] = {
@@ -809,8 +857,29 @@ namespace {
     constexpr EnumItem kUIDocumentRenderModeItems[] = {
         {v(UIDocumentRenderMode::TEXTURE), "texture", "Texture", "UIDocumentRenderMode::TEXTURE"},
         {v(UIDocumentRenderMode::SCREEN), "screen", "Screen", "UIDocumentRenderMode::SCREEN"},
+        {v(UIDocumentRenderMode::WORLD), "world", "World Space", "UIDocumentRenderMode::WORLD"},
     };
-    constexpr int kUIDocumentRenderModeOrder[] = {v(UIDocumentRenderMode::SCREEN), v(UIDocumentRenderMode::TEXTURE)};
+    constexpr int kUIDocumentRenderModeOrder[] = {v(UIDocumentRenderMode::SCREEN), v(UIDocumentRenderMode::TEXTURE),
+                                                  v(UIDocumentRenderMode::WORLD)};
+
+    constexpr EnumItem kUIDocumentUpdateModeItems[] = {
+        {v(UIDocumentUpdateMode::UNSCALED_TIME), "unscaled", "Unscaled Time", "UIDocumentUpdateMode::UNSCALED_TIME"},
+        {v(UIDocumentUpdateMode::GAME_TIME), "game", "Game Time", "UIDocumentUpdateMode::GAME_TIME"},
+    };
+
+    constexpr EnumItem kTextHorizontalAlignmentItems[] = {
+        {v(TextHorizontalAlignment::LEFT), "left", "Left", "TextHorizontalAlignment::LEFT"},
+        {v(TextHorizontalAlignment::CENTER), "center", "Center", "TextHorizontalAlignment::CENTER"},
+        {v(TextHorizontalAlignment::RIGHT), "right", "Right", "TextHorizontalAlignment::RIGHT"},
+        {v(TextHorizontalAlignment::JUSTIFIED), "justified", "Justified", "TextHorizontalAlignment::JUSTIFIED"},
+    };
+
+    constexpr EnumItem kTextVerticalAlignmentItems[] = {
+        {v(TextVerticalAlignment::TOP), "top", "Top", "TextVerticalAlignment::TOP"},
+        {v(TextVerticalAlignment::MIDDLE), "middle", "Middle", "TextVerticalAlignment::MIDDLE"},
+        {v(TextVerticalAlignment::BOTTOM), "bottom", "Bottom", "TextVerticalAlignment::BOTTOM"},
+        {v(TextVerticalAlignment::BASELINE), "baseline", "Baseline", "TextVerticalAlignment::BASELINE"},
+    };
 
     constexpr EnumItem kUIEventStateItems[] = {
         {v(UIEventState::NOT_SET), "not_set", "Not Set", "UIEventState::NOT_SET"},
@@ -846,6 +915,7 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kFogType{"FogType", kFogTypeItems, v(FogType::LINEAR)};
     const EnumDesc kFogVolumeFalloff{"FogVolumeFalloff", kFogVolumeFalloffItems, v(FogVolumeFalloff::LINEAR)};
     const EnumDesc kFogVolumeShape{"FogVolumeShape", kFogVolumeShapeItems, v(FogVolumeShape::BOX)};
+    const EnumDesc kFogZoneShape{"FogZoneShape", kFogZoneShapeItems, v(FogZoneShape::BOX)};
     const EnumDesc kJoint2DType{"Joint2DType", kJoint2DTypeItems, v(Joint2DType::DISTANCE)};
     const EnumDesc kJoint3DType{"Joint3DType", kJoint3DTypeItems, v(Joint3DType::FIXED)};
     const EnumDesc kLayoutGroupType{"LayoutGroupType", kLayoutGroupTypeItems, v(LayoutGroupType::VERTICAL)};
@@ -894,10 +964,14 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kLodFadeMode{"LodFadeMode", kLodFadeModeItems, v(LodFadeMode::CROSS_FADE)};
     const EnumDesc kMaterialAlphaMode{"MaterialAlphaMode", kMaterialAlphaModeItems, v(MaterialAlphaMode::AUTO)};
     const EnumDesc kMaterialBlendMode{"MaterialBlendMode", kMaterialBlendModeItems, v(MaterialBlendMode::AUTO)};
+    const EnumDesc kMaterialBlendFactor{"MaterialBlendFactor", kMaterialBlendFactorItems, v(MaterialBlendFactor::ONE)};
+    const EnumDesc kMaterialBlendOp{"MaterialBlendOp", kMaterialBlendOpItems, v(MaterialBlendOp::ADD)};
     const EnumDesc kMaterialCullMode{"MaterialCullMode", kMaterialCullModeItems, v(MaterialCullMode::AUTO)};
     const EnumDesc kMaterialDepthTest{"MaterialDepthTest", kMaterialDepthTestItems, v(MaterialDepthTest::AUTO)};
     const EnumDesc kMaterialDepthWrite{"MaterialDepthWrite", kMaterialDepthWriteItems, v(MaterialDepthWrite::AUTO)};
     const EnumDesc kMaterialLighting{"MaterialLighting", kMaterialLightingItems, v(MaterialLighting::AUTO)};
+    const EnumDesc kVertexColorUse{"VertexColorUse", kVertexColorUseItems, v(VertexColorUse::TINT)};
+    const EnumDesc kVertexColorTarget{"VertexColorTarget", kVertexColorTargetItems, v(VertexColorTarget::NONE)};
     const EnumDesc kTerrainQualitySetting{"TerrainQualitySetting", kTerrainQualitySettingItems, v(TerrainQualitySetting::AUTO)};
     const EnumDesc kTerrainOffscreenShadows{"TerrainOffscreenShadows", kTerrainOffscreenShadowsItems, v(TerrainOffscreenShadows::AUTO)};
     const EnumDesc kTerrainMacroMode{"TerrainMacroMode", kTerrainMacroModeItems, v(TerrainMacroMode::OFF)};
@@ -931,6 +1005,9 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kTextureWrap{"TextureWrap", kTextureWrapItems, v(TextureWrap::REPEAT)};
     const EnumDesc kUIDocumentRenderMode{"UIDocumentRenderMode", kUIDocumentRenderModeItems, v(UIDocumentRenderMode::SCREEN), nullptr,
                                          kUIDocumentRenderModeOrder};
+    const EnumDesc kUIDocumentUpdateMode{"UIDocumentUpdateMode", kUIDocumentUpdateModeItems, v(UIDocumentUpdateMode::UNSCALED_TIME)};
+    const EnumDesc kTextHorizontalAlignment{"TextHorizontalAlignment", kTextHorizontalAlignmentItems, v(TextHorizontalAlignment::LEFT)};
+    const EnumDesc kTextVerticalAlignment{"TextVerticalAlignment", kTextVerticalAlignmentItems, v(TextVerticalAlignment::TOP)};
     const EnumDesc kUIEventState{"UIEventState", kUIEventStateItems, v(UIEventState::NOT_SET)};
     const EnumDesc kWindingOrder{"WindingOrder", kWindingOrderItems, v(WindingOrder::CCW)};
 

@@ -32,6 +32,7 @@ namespace jasperengine{
 
     // Where the value a custom-block member is written with came from
     enum class UniformSource : uint8_t{
+        Override,       // a renderer's Property Override (the submesh's, else the Mesh's)
         Global,         // the shader global the member is bound to
         Own,            // the material's or the component's own value
         Fallback,       // a mesh's shaderUniforms under its material's
@@ -39,10 +40,13 @@ namespace jasperengine{
         ShaderDefault,  // the manifest's @property default
         Zero
     };
-    JASPERENGINE_API const char* uniformSourceName(UniformSource source); // "global", "own", "fallback", "scene_default", "shader_default", "zero"
+    JASPERENGINE_API const char* uniformSourceName(UniformSource source); // "override", "global", "own", "fallback", "scene_default", "shader_default", "zero"
 
     // The layers a member's value is looked up in, first to last (null: the layer is absent)
     struct UniformChain{
+        // Property Overrides: a submesh's, then its renderer's (over everything below)
+        const ShaderUniformValues* submeshOverride = nullptr;
+        const ShaderUniformValues* rendererOverride = nullptr;
         const ShaderUniformValues* values = nullptr;
         const ShaderUniformValues* fallback = nullptr;
         const ShaderUniformValues* sceneDefault = nullptr;
@@ -68,6 +72,12 @@ namespace jasperengine{
         // the scene default, the manifest default, zero; source says which (the only place the
         // order lives: the render system, the Inspector and MCP all ask here)
         static Vector4 resolve(const UniformChain& chain, const std::string& name, UniformSource* source = nullptr);
+
+        // A Mesh's own value (MeshComponent::shaderUniforms) that its material's parameter of the
+        // same name hides: true, with one warning per owner (a scene's GameObject) and name
+        // naming Property Overrides, when materialParams has the name
+        static bool warnShadowedByMaterial(const void* scene, uint32_t entity, const std::string& owner, const std::string& name,
+                                           const ShaderUniformValues& materialParams);
     };
 
     // a user-declared uniform block (u_vs_customParams, u_fs_customParams,
@@ -77,7 +87,6 @@ namespace jasperengine{
         std::vector<ShaderUniform> members; // short names
         std::vector<uint8_t> data; // rounded up to the vec4 stride
         int timeMember = -1;
-        int gameTimeMember = -1;
         int resolutionMember = -1;
         int sceneTimeMember = -1;
         // the byte offsets of WATER_INTERACTION_PARAMS' first and last members (-1 without them)

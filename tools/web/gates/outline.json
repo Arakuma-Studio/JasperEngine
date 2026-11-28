@@ -1,0 +1,21 @@
+{
+  "description": "tools/test-projects/outline (WEB_PROJECT=outline tools/build.sh web): the Outline component on WebGL2 (S94 F-PB2, AC48) with the swapchain's stencil reported missing, so the camera draws through the offscreen target. The canvas centre falls on the green outline band of a red cube (Outline Visible, world width).",
+  "isolated": true,
+  "console": [
+    {
+      "text": "[gate] outline: no swapchain stencil, the camera draws offscreen",
+      "level": "log"
+    },
+    {
+      "text": "[gate] outline drawn",
+      "level": "log"
+    }
+  ],
+  "ordered": true,
+  "rgb": [
+    0,
+    255,
+    0
+  ],
+  "tolerance": 24
+}

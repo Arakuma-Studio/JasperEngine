@@ -4,6 +4,7 @@
 #include "AnimatorInstance.h"
 #include "animation/AvatarMaskWeights.h"
 
+#include "Log.h"
 #include "Scene.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimatorIK.h"
@@ -24,30 +25,14 @@ namespace{
 
     constexpr int kMaxDepth = 16;
     constexpr double kMaxLaps = 1000.0;
-    constexpr float kPi = 3.14159265358979323846f;
     // Foot IK's contact for the debug readouts: the animated ankle within this of its planted
     // height (footHeight above the rig's floor), the height its lift is measured from
     constexpr float kFootContactLift = 0.02f;
-
-    float wrapAngle(float a){
-        while (a > kPi) a -= 2.0f * kPi;
-        while (a <= -kPi) a += 2.0f * kPi;
-        return a;
-    }
-
-    float yawOf(const Quaternion& q){
-        const Vector3 f = q * Vector3(0, 0, 1);
-        return std::atan2(f.x, f.z);
-    }
 
     // a rotation by `yaw` radians about +y applied to v
     Vector3 rotateYaw(const Vector3& v, float yaw){
         const float c = std::cos(yaw), s = std::sin(yaw);
         return Vector3(c * v.x + s * v.z, v.y, -s * v.x + c * v.z);
-    }
-
-    Quaternion yawRotation(float yaw){
-        return Quaternion(std::cos(0.5f * yaw), 0.0f, std::sin(0.5f * yaw), 0.0f);
     }
 
     double fract(double t){
@@ -516,9 +501,35 @@ void anim::AnimatorInstance::bindClip(size_t index, const AnimatorComponent& com
         slot.rootParent = chain;
         slot.rootParentInverse = chain.inverse();
         slot.rootParentRotation = rotation;
-        Quaternion start;
-        rootSample(slot, 0.0f, slot.rootStart, start);
-        slot.rootStartYaw = yawOf(start);
+        // Based Upon Body Orientation / Center Of Mass / Feet: a humanoid whose body moves with
+        // the root bone (its slots under it), else Original
+        slot.rootBody = false;
+        if (rootMotionNeedsBody(slot.rootMotion)){
+            HumanBodyPoints rest;
+            bodyPoints(rig.rest, rest);
+            bool under = rest.usable();
+            for (size_t s = 0; under && s < (size_t)pose::HUMAN_BONE_COUNT; s++){
+                if (!rest.has.test(s)) continue;
+                int b = humanoid.slotBones[s];
+                while (b >= 0 && b != slot.rootBone) b = rig.parents[(size_t)b];
+                under = b == slot.rootBone;
+            }
+            slot.rootBody = under;
+            if (!under && warnOnce("root_motion_body:" + slot.path)){
+                Log::warn("Animator: %s: root motion Based Upon Body Orientation / Center Of Mass / Feet needs a humanoid rig under its root "
+                          "bone; it plays as Original", slot.path.c_str());
+            }
+        }
+        slot.rootFrame = RootMotionFrame();
+        const RootBasisSample start = rootBasisAt(slot, 0.0f);
+        if (slot.rootBody){
+            HumanBodyPoints rest, first;
+            bodyPoints(rig.rest, rest);
+            bodyPoints(basisPose, first);   // rootBasisAt(0) left time 0's pose there
+            slot.rootFrame = rootMotionFrame(slot.rootMotion, start, &first, &rest);
+        }else{
+            slot.rootFrame = rootMotionFrame(slot.rootMotion, start, nullptr, nullptr);
+        }
         rootPoint(slot, 0.0f, slot.lapStart, slot.lapStartHeading);
         rootPoint(slot, slot.length(), slot.lapEnd, slot.lapEndHeading);
     }
@@ -1380,16 +1391,50 @@ bool anim::AnimatorInstance::rootSample(const AnimatorClipSlot& slot, float clip
     return true;
 }
 
-void anim::AnimatorInstance::rootPoint(const AnimatorClipSlot& slot, float clipTime, Vector3& p, float& h) const{
-    const ClipRootMotion& rm = slot.rootMotion;
+void anim::AnimatorInstance::bodyPoints(const Pose& pose, HumanBodyPoints& out) const{
+    out = HumanBodyPoints();
+    if (!humanoid.valid || pose.boneCount() != rig.bones.size()) return;
+    int chain[kMaxDepth * 4];
+    for (size_t s = 0; s < (size_t)pose::HUMAN_BONE_COUNT; s++){
+        const int bone = humanoid.slotBones[s];
+        if (bone < 0) continue;
+        int depth = 0;
+        for (int b = bone; b >= 0 && depth < kMaxDepth * 4; b = rig.parents[(size_t)b]) chain[depth++] = b;
+        Affine world;
+        for (int i = depth - 1; i >= 0; i--){
+            const size_t b = (size_t)chain[i];
+            world = world * Affine::compose(pose.position(b), pose.rotation(b), pose.scale(b));
+        }
+        out.set(pose::boneAt((int)s), world.translation());
+    }
+}
+
+RootBasisSample anim::AnimatorInstance::rootBasisAt(const AnimatorClipSlot& slot, float clipTime) const{
+    Vector3 p;
     Quaternion q;
     rootSample(slot, clipTime, p, q);
-    h = rm.bakeRotation ? 0.0f : wrapAngle(yawOf(q) - slot.rootStartYaw);
-    if (rm.bakePositionY) p.y = slot.rootStart.y;
-    if (rm.bakePositionXZ){
-        p.x = slot.rootStart.x;
-        p.z = slot.rootStart.z;
+    if (!slot.rootBody) return rootBasis(slot.rootMotion, p, q, nullptr);
+    // the whole pose at clipTime, for the body's slots
+    basisPose.copyFrom(rig.rest);
+    if (slot.retargeted){
+        HumanoidSample sample;
+        slot.retarget.sample(*slot.clip, clipTime, nullptr, false, sample);
+        pose::HumanPose realised;
+        std::array<Quaternion, pose::HUMAN_EXTRA_BONE_COUNT> extraLocal;
+        std::bitset<pose::HUMAN_EXTRA_BONE_COUNT> extraLive;
+        realiseHumanoid(*humanoid.avatar, sample, false, false, realised, extraLocal, &extraLive);
+        writeRealised(humanoid, realised, extraLocal, extraLive, sample.hasHips, slot.retarget.slots.any(), basisPose);
+    }else{
+        basisCursors.resize(slot.binding.groups.size());
+        sampleClip(slot.binding, rig, clipTime, basisCursors, basisPose);
     }
+    HumanBodyPoints body;
+    bodyPoints(basisPose, body);
+    return rootBasis(slot.rootMotion, p, q, &body);
+}
+
+void anim::AnimatorInstance::rootPoint(const AnimatorClipSlot& slot, float clipTime, Vector3& p, float& h) const{
+    rootMotionPoint(slot.rootMotion, slot.rootFrame, rootBasisAt(slot, clipTime), p, h);
 }
 
 void anim::AnimatorInstance::rootDelta(const AnimatorClipSlot& slot, double from, double to, bool loops, bool pingPong,
@@ -1412,7 +1457,8 @@ void anim::AnimatorInstance::rootDelta(const AnimatorClipSlot& slot, double from
         }
         sampleAt(a, p0, h0);
         sampleAt(b, p1, h1);
-        delta = rotateYaw(p1 - p0, -h0);
+        // the motion turns with the pose (Body Orientation, Offset)
+        delta = rotateYaw(rotateYaw(p1 - p0, -h0), slot.rootFrame.turn);
         yaw = h1 - h0;
         return;
     }
@@ -1435,27 +1481,24 @@ void anim::AnimatorInstance::rootDelta(const AnimatorClipSlot& slot, double from
     sampleAt(t0, p0, h0);
     sampleAt(t1, p1, h1);
     const Vector3 inner = sum + rotateYaw(p1 - start, (float)n * turn) - (p0 - start);
-    delta = rotateYaw(inner, -h0);
+    delta = rotateYaw(rotateYaw(inner, -h0), slot.rootFrame.turn);
     yaw = (float)n * turn + h1 - h0;
 }
 
 void anim::AnimatorInstance::removeRootMotion(const AnimatorClipSlot& slot, Pose& out) const{
     if (slot.rootBone < 0) return;
-    const ClipRootMotion& rm = slot.rootMotion;
     const size_t b = (size_t)slot.rootBone;
     Vector3 p = slot.rootParent.transformPoint(out.position(b));
     Quaternion q = slot.rootParentRotation * out.rotation(b);
-    if (!rm.bakeRotation){
-        const float h = wrapAngle(yawOf(q) - slot.rootStartYaw);
-        const Quaternion unturn = yawRotation(-h);
-        q = unturn * q;
-        p = slot.rootStart + rotateYaw(p - slot.rootStart, -h);
+    RootBasisSample now;
+    if (slot.rootBody){
+        HumanBodyPoints body;
+        bodyPoints(out, body);
+        now = rootBasis(slot.rootMotion, p, q, &body);
+    }else{
+        now = rootBasis(slot.rootMotion, p, q, nullptr);
     }
-    if (!rm.bakePositionXZ){
-        p.x = slot.rootStart.x;
-        p.z = slot.rootStart.z;
-    }
-    if (!rm.bakePositionY) p.y = slot.rootStart.y;
+    anim::removeRootMotion(slot.rootMotion, slot.rootFrame, now, p, q);
     out.setPosition(b, slot.rootParentInverse.transformPoint(p));
     out.setRotation(b, (slot.rootParentRotation.inverse() * q).normalized());
 }
@@ -1679,7 +1722,7 @@ void anim::AnimatorInstance::sampleSlot(size_t index, float clipTime, Pose& out,
     // S48 Pose Frame Rate: held poses, the root bone's translation smooth
     sampleClip(slot.binding, rig, clipTime, slot.cursors, out, component.poseFrameRate, slot.rootBone);
     if (slot.retargeted) sampleHumanoid(slot, clipTime, out, mirror, footIK, slot.retargetCursors.data(), component.poseFrameRate);
-    if (component.applyRootMotion) removeRootMotion(slot, out);
+    if (removesRootMotion(slot, component)) removeRootMotion(slot, out);
     if (!additive) return;
     const uint8_t flags = (uint8_t)((mirror ? 1 : 0) | (footIK ? 2 : 0));
     if (!slot.hasReference || slot.referenceKind != reference || (reference == AdditiveReference::Time && slot.referenceTime != referenceTime) ||
@@ -1692,7 +1735,7 @@ void anim::AnimatorInstance::sampleSlot(size_t index, float clipTime, Pose& out,
                            : 0.0f;
             sampleClip(slot.binding, rig, at, slot.cursors, slot.reference);
             if (slot.retargeted) sampleHumanoid(slot, at, slot.reference, mirror, footIK, nullptr);
-            if (component.applyRootMotion) removeRootMotion(slot, slot.reference);
+            if (removesRootMotion(slot, component)) removeRootMotion(slot, slot.reference);
         }
         slot.hasReference = true;
         slot.referenceKind = reference;
@@ -2065,7 +2108,7 @@ void anim::AnimatorInstance::clearIKResults(){
 
 size_t anim::AnimatorInstance::runtimeStateBytes() const{
     // the instance less what it holds by value that is bone- or clip-sized
-    size_t bytes = sizeof(*this) - sizeof(rig) - sizeof(humanoid) - 6 * sizeof(Pose);
+    size_t bytes = sizeof(*this) - sizeof(rig) - sizeof(humanoid) - 7 * sizeof(Pose);
     bytes += parameters.capacity() * sizeof(float) + velocities.capacity() * sizeof(float);
     bytes += dampTargets.capacity() * sizeof(float) + dampTimes.capacity() * sizeof(float);
     bytes += layers.capacity() * sizeof(AnimatorLayerRun);

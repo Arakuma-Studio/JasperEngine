@@ -26,14 +26,36 @@ namespace jasperengine::editor {
             bool success = false;
             std::string error;
             std::vector<std::string> warnings;
+            // what the Console tells without a warning: the submeshes a reimport moved (spec S94 F42)
+            std::vector<std::string> notes;
         };
+
+        // The model import settings the conversion reads from the FBX's meta sidecar (spec S94 F40,
+        // F43): Rest Pose and its Take, and whether a Smoothness Source wants smoothing groups; and
+        // the project's FBX Submesh Order (S94 F42)
+        struct Options {
+            bool firstFrameRestPose = false;
+            std::string restPoseTake;   // empty: the first take
+            bool smoothingGroups = false;
+            // Used Materials (projects made before S94): the submeshes are the used material slots
+            // in order, so an empty slot shifts the ones after it; else submesh i is slot i
+            bool usedMaterialsOrder = false;
+
+            // stable text of what differs from the defaults, empty for the defaults
+            std::string canonical() const;
+        };
+        static Options readOptions(const std::filesystem::path& fbxPath);
+        // The open project's FBX Submesh Order (Project Settings > Mesh, S94 F42): true is Used
+        // Materials. The open project sets it; a change makes every FBX import stale.
+        static void setDefaultUsedMaterialsOrder(bool usedMaterials);
 
         static bool isFbxFile(const std::filesystem::path& path);
 
         static State getState(const std::filesystem::path& fbxPath, const std::filesystem::path& glbPath,
                               const std::filesystem::path& assetsRoot);
 
-        // What the model parts of an import come from: the FBX contents and the importer version
+        // What the model parts of an import come from: the FBX contents, the version of the parts and
+        // the options that change them
         static std::string getSourceId(const std::filesystem::path& fbxPath);
         // The source id a loaded model was imported from, empty when it is no import
         static std::string getImportId(const tinygltf::Model& model);

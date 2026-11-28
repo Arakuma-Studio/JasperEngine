@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "TextureEncoderParts.h"
+#include "TiffReader.h"
+#include "titleart/interchange/psd/PsdReader.h"
 
 #include "texture/Ktx2.h"
 #include "texture/TextureData.h"
@@ -32,6 +34,38 @@ namespace {
             return writeRawKtx2(request, request.choice.format, levels, ktx2, error);
         }
     };
+
+    bool decodeTiffRgba8(const unsigned char* bytes, size_t length, std::vector<uint8_t>& rgba, int& width, int& height, std::string& error){
+        TiffImage image;
+        if (!readTiff(bytes, length, image, error))
+            return false;
+        rgba = tiffToRgba8(image);
+        width = image.width;
+        height = image.height;
+        return true;
+    }
+
+    // a PSB's flattened (merged) image; its layers are the PSD layer import's
+    bool decodePsbRgba8(const unsigned char* bytes, size_t length, std::vector<uint8_t>& rgba, int& width, int& height, std::string& error){
+        psd::PsdFile file;
+        psd::PsdReadOptions options;
+        options.layerPixels = false;
+        if (!psd::readPsd(bytes, length, file, error, options))
+            return false;
+        if (!file.rgbOrGray() || (file.depth != 8 && file.depth != 16)){
+            error = std::string("a ") + psd::psdColorModeName(file.mode) + " " + std::to_string(file.depth) +
+                    "-bit Photoshop document is not a texture: only 8- or 16-bit RGB or Grayscale ones are";
+            return false;
+        }
+        if (!file.hasRealMergedData || !file.merged[0].present()){
+            error = "the Photoshop document has no flattened image: save it with Maximize Compatibility on";
+            return false;
+        }
+        rgba = psd::psdMergedRgba(file, 8);
+        width = file.width;
+        height = file.height;
+        return true;
+    }
 
 }
 
@@ -124,6 +158,9 @@ void editor::registerEditorTextureCodecs(){
                                         GpuTextureFormat::EAC_RG11})
             TextureDecode::registerDecoder(format, &decodeEtcLevel);
         TextureData::registerFloatDecoder(".exr", &decodeExr);
+        TextureData::registerImageDecoder(".tif", &decodeTiffRgba8);
+        TextureData::registerImageDecoder(".tiff", &decodeTiffRgba8);
+        TextureData::registerImageDecoder(".psb", &decodePsbRgba8);
     });
 }
 

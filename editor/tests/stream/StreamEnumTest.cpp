@@ -552,7 +552,8 @@ TEST(StreamEnum, TextureWrapRoundTrips){
 TEST(StreamEnum, UiDocumentRenderModeRoundTrips){
     expectRoundTrip<UIDocumentRenderMode>(StreamTestAccess::uiDocumentRenderModeToString, StreamTestAccess::stringToUIDocumentRenderMode, {
         UIDocumentRenderMode::TEXTURE,
-        UIDocumentRenderMode::SCREEN
+        UIDocumentRenderMode::SCREEN,
+        UIDocumentRenderMode::WORLD
     }, UIDocumentRenderMode::SCREEN);
 }
 

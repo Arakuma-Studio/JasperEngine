@@ -78,6 +78,29 @@ or more no longer drops steps in a long frame. A frame whose scaled time passes 
 and counted in `Time.droppedFixedSteps`: raise `Time.maximumDeltaTime` to run them.
 `Time.maximumFixedStepsPerFrame` only lowers the cap.
 
+### HTML UI pointer input (S93)
+
+Three pointer rules of the HTML UI apply to existing documents with no opt-in. No stored field
+changes meaning and nothing is migrated.
+
+- **Only press listeners make a transparent page take presses.** A page (`html` / `body`) that
+  paints no background used to take every press on its empty parts as soon as it had any pointer
+  listener, a `mousemove` or `pointerover` one too. Now only `click`, `dblclick`, `contextmenu`,
+  `mousedown`, `pointerdown` and `touchstart` listeners do; a `wheel` listener takes only the
+  wheel, and move, up, over, out, enter and leave listeners take nothing. A document that blocked
+  the game only through such a listener now lets presses through to the documents below and the
+  game. To keep blocking, give the page a background (`rgba(0, 0, 0, 0.01)` is enough) or a press
+  listener; the Console and `doc:getDiagnostics()` note `HTMLUI-INPUT-0001` when one turns a page
+  opaque.
+- **The press decides who owns a pointer.** A finger or mouse button pressed on the game keeps
+  reaching the game's `onTouchMove` / `onMouseMove` and its release, also over a document.
+- **A release off the canvas reaches the game** (`onTouchEnd`, `onMouseUp`), clamped to the
+  canvas, without `Engine.allowEventsOutCanvas`. The simulated touch 0 of
+  `callTouchInMouseEvent` is always removed on the release.
+
+`text-effect-time` now defaults to `auto`, which follows the document's Update Mode. An existing
+document's Update Mode is Unscaled Time, the old clock of text effects, so they run as before.
+
 ### IK solvers (S77)
 
 Three Animator IK fixes apply to existing scenes with no opt-in: poses change where the old ones
@@ -209,6 +232,19 @@ The first open applies rendering migrations that change how a scene looks, on pu
 - **Sub-emitters** (BF23): a sub-emitter's particles were simulated but never drawn. Effects with
   sub-emitters now show them, each with its child effect's Renderer, so they may look different and
   cost what they always should have; they count against the world particle budget.
+- **Fog** (S101): nothing is migrated and no stored value changes meaning, but scenes with fog look
+  different, old and new alike:
+  - A point or spot light with Shadows on no longer shines through walls in the volumetric fog: its
+    shadows reach the fog while the Fog's **Light Shafts** is on.
+  - At Low and Medium atmosphere quality the volumetric fog now scatters the nearest 1 and 2 point or
+    spot lights in view (High still 4; origin/main scattered none below High). A light's
+    **Volumetric Intensity** 0 keeps it out of the fog. This is a GPU cost on the tiers phones and
+    the web use.
+  - Sun shafts are softer: two shadow taps on Medium and High, a 5x5 denoise on Low.
+  - Particles under a Height fog take the height fog, as meshes do (they took the Fog's linear
+    range before).
+  - A Fog with a preset applied the old way keeps its own values and stays unlinked from any Fog
+    Profile; an agent's `apply_atmosphere_preset` now links a profile instead of copying values.
 
 The upgrade test takes screenshots at the same game frames in both editors and compares them at one
 size (480x270: the Game view's size follows each editor's layout, 904x509 against 869x489 here).

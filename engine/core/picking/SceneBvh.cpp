@@ -32,9 +32,6 @@
 #include "jobs/JobSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "profiler/Profile.h"
-#include "util/STBText.h"
-#include "pixelart/BitmapFont.h"
-#include "pixelart/BitmapText.h"
 
 #include <cstring>
 #include <algorithm>
@@ -74,21 +71,11 @@ namespace {
         return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     }
 
-    // what GraphicUtils::getRectTransformCenter gives the editor: a text's baseline and
-    // centring move its rect
-    Vector2 rectCenter(Scene* scene, Entity entity, const RectTransformComponent& layout){
-        Vector2 center(0, 0);
-        if (const TextComponent* text = scene->findComponent<TextComponent>(entity)){
-            if (text->pivotBaseline && text->stbtext){
-                center.y = (float)text->stbtext->getAscent();
-            }else if (text->pivotBaseline && text->bitmapText){
-                center.y = text->bitmapText->getAscent(text->pixelUnit);
-            }
-            if (text->pivotCentered){
-                center.x = layout.width / 2.0f;
-            }
-        }
-        return center;
+    // what GraphicUtils::getRectTransformCenter gives the editor: a text's alignment moves its rect
+    Vector2 rectCenter(Scene* scene, Entity entity, const RectTransformComponent&){
+        if (const TextComponent* text = scene->findComponent<TextComponent>(entity))
+            return Vector2(-text->boxMin.x, -text->boxMin.y);
+        return Vector2(0, 0);
     }
 
     Matrix4 instanceMatrix(const InstancedMeshComponent& instmesh, const InstanceData& instance){

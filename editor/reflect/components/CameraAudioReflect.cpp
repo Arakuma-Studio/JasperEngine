@@ -41,10 +41,16 @@ namespace {
     // its clips and aspect are the canvas's, set when it becomes the scene's camera and each
     // time the canvas changes (RenderSystem::updateCameraSizeForCanvas): in the editor, the size
     // of the view that drew last
+    // S94 F28: an Orthographic Size centres them on every canvas and render target
+    bool cameraOrthographicSized(const void* camera) {
+        const CameraComponent* component = static_cast<const CameraComponent*>(camera);
+        return component->type == CameraType::CAMERA_ORTHO && component->orthographicSize > 0.0f;
+    }
     bool cameraSizedByCanvas(const void* camera) {
         const CameraComponent* component = static_cast<const CameraComponent*>(camera);
-        return component->autoResize && !component->renderToTexture;
+        return (component->autoResize && !component->renderToTexture) || cameraOrthographicSized(camera);
     }
+    bool cameraOrthoOnly(const void* camera) { return static_cast<const CameraComponent*>(camera)->type == CameraType::CAMERA_ORTHO; }
 
     constexpr uint64_t kCamera = UpdateFlags_Camera;
 
@@ -79,6 +85,11 @@ namespace {
         JE_FIELD(CameraComponent, depthTest, .uiOrder = 13),
         JE_FIELD(CameraComponent, useTarget, .updateFlags = kCamera, .uiOrder = 2),
         JE_FIELD(CameraComponent, autoResize, .updateFlags = kCamera, .uiOrder = 14),
+        // S94 F28: Unity's Size, written only when set (0: off)
+        JE_FIELD(CameraComponent, orthographicSize, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault,
+                 .updateFlags = kCamera, .unit = Unit::Meters, .min = 0.0f, .label = "Size",
+                 .tooltip = "Half the view's height in world units; the width follows the aspect. 0: off, the clips stay as set.",
+                 .visibleIf = &cameraOrthoOnly, .uiOrder = 7),
         // applied by RenderSystem::update (no update flag needed)
         JE_FIELD(CameraComponent, framebufferWidth, .step = 1.0f, .label = "Width", .group = "Render Target", .visibleIf = &cameraRendersToTexture,
                  .uiOrder = 15),

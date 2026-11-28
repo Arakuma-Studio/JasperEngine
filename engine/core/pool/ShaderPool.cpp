@@ -707,6 +707,24 @@ uint64_t ShaderPool::getLodFadeProperty(){
     return shaderPropertyBit(40);
 }
 
+// MESH 56-59, after S78's 'Lst' 55: 'Vcv' the view, 'Vcs' one channel as grey, 'Vk1' 'Vk2' its index
+// (R 0, G 1, B 2, A 3). Only the editor's Scene view asks for them (RenderSystem::drawMesh)
+uint64_t ShaderPool::getVertexColorViewProperties(int channel){
+    if (channel <= 0)
+        return shaderPropertyBit(56);
+    const int index = std::min(channel, 4) - 1;
+    uint64_t bits = shaderPropertyBit(56) | shaderPropertyBit(57);
+    if (index & 1)
+        bits |= shaderPropertyBit(58);
+    if (index & 2)
+        bits |= shaderPropertyBit(59);
+    return bits;
+}
+
+uint64_t ShaderPool::getVertexColorViewMask(){
+    return shaderPropertyBit(56) | shaderPropertyBit(57) | shaderPropertyBit(58) | shaderPropertyBit(59);
+}
+
 uint64_t ShaderPool::getWaterExclusionProperty(){
     return shaderPropertyBit(42);
 }
@@ -808,7 +826,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 56;
+        case ShaderType::MESH:   return 60;
         case ShaderType::DEPTH:  return 27;
         case ShaderType::GBUFFER: return 28;
         case ShaderType::UI:     return 6;
@@ -826,13 +844,15 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::BLOOM:  return 4;
         case ShaderType::HTMLUI: return 1;
         case ShaderType::HTMLUI_GRADIENT: return 0;
-        case ShaderType::HTMLUI_POST: return 7;
+        case ShaderType::HTMLUI_POST: return 8;
         // Flt (filter form), Stp and Sct (phase 6: a stateful effect's step and scatter forms)
         case ShaderType::UI_EFFECT: return 3;
         case ShaderType::PROBE_FILTER: return 0;
         // Lok (the look program), Mfl (the solver with manual filtering)
         case ShaderType::FLUID:  return 2;
         case ShaderType::SHADOW_CACHE: return 1;
+        // 'Pnt': the point lights' shadows (a shadowed point fog light, docs/specs/S101-vapor.md R14)
+        case ShaderType::VOLUMETRIC_FOG: return 1;
         // the source's texture type: 2D (none), array, cube or 3D
         case ShaderType::PASS_PREVIEW: return 3;
         // ShaderPool::getParticlesProperties
@@ -949,6 +969,12 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 54: return shortName ? "Tcl" : "Tile Clamp Frame";
             // S78: the scene's Light Steps on a 2D-lit variant (LIGHT2D_STEPS, includes/lighting2d.glsl)
             case 55: return shortName ? "Lst" : "Light Steps";
+            // the editor's Vertex Color Draw Mode (V1 R102, getVertexColorViewProperties): the
+            // view, one channel as grey, and that channel's index
+            case 56: return shortName ? "Vcv" : "Vertex Color View";
+            case 57: return shortName ? "Vcs" : "Vertex Color View Channel";
+            case 58: return shortName ? "Vk1" : "Vertex Color View Channel Bit 1";
+            case 59: return shortName ? "Vk2" : "Vertex Color View Channel Bit 2";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -1052,6 +1078,7 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 4: return shortName ? "Blr" : "Blur";
             case 5: return shortName ? "Unp" : "Unpremultiply";
             case 6: return shortName ? "Yuv" : "YUV";
+            case 7: return shortName ? "Bmd" : "Blend Mode";
         }
     } else if (shaderType == ShaderType::SHADOW_CACHE) {
         switch (bit) {
@@ -1065,6 +1092,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
         switch (bit) {
             case 0: return shortName ? "Scr" : "Screen";
             case 1: return shortName ? "Wld" : "World";
+        }
+    } else if (shaderType == ShaderType::VOLUMETRIC_FOG) {
+        switch (bit) {
+            case 0: return shortName ? "Pnt" : "Point Shadows";
         }
     } else if (shaderType == ShaderType::PASS_PREVIEW) {
         switch (bit) {

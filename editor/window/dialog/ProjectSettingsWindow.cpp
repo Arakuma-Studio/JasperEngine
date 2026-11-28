@@ -242,6 +242,7 @@ enum class ProjectCategory {
     TitleArt,
     Localization,
     Dialogue,
+    Time,
     Count
 };
 
@@ -1125,6 +1126,9 @@ void ProjectSettingsWindow::open(Project* project, const char* category, const c
     m_physics3DEnabled = project->isPhysics3DEnabled();
     m_inputActionsAsset = project->getInputActionsAsset();
     m_inputDeadzone = project->getInputDeadzone();
+    m_simulateTouchFromMouse = project->isSimulateTouchFromMouse();
+    m_fixedTimestep = project->getFixedTimestep();
+    m_maximumDeltaTime = project->getMaximumDeltaTime();
     m_gamepadCursor = project->getGamepadCursorSettings();
     snprintf(m_gamepadCursorGraphic, sizeof(m_gamepadCursorGraphic), "%s", m_gamepadCursor.graphic.c_str());
     m_inputStatus.clear();
@@ -1401,6 +1405,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::PixelArt: drawPixelArtSettings(); break;
         case ProjectCategory::TitleArt: drawTitleArtSettings(); break;
         case ProjectCategory::Localization: drawLocalizationSettings(); break;
+        case ProjectCategory::Time: drawTimeSettings(); break;
         case ProjectCategory::Dialogue: drawDialogueSettings(); break;
         default: break;
     }
@@ -2329,6 +2334,17 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                                "0 is the platform's default (24 MiB on desktop, 12 on Android, iOS and the web). When text needs "
                                "more, pages not drawn lately are cleared and their glyphs made again.");
             }
+            if (settingsui::beginRow("graphics.html_ui_image_cache_mib")) {
+                if (projectBeginSettingsRow("HTML UI Image Cache (MiB)", m_htmlUiRender.imageCacheMiB != defaults.imageCacheMiB)) {
+                    m_htmlUiRender.imageCacheMiB = defaults.imageCacheMiB;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputInt("##HtmlUiImageCache", &m_htmlUiRender.imageCacheMiB);
+                m_htmlUiRender.imageCacheMiB = std::clamp(m_htmlUiRender.imageCacheMiB, -1, Project::maxHtmlUiImageCacheMiB);
+                endSettingsRow("GPU memory of HTML UI images kept after no document draws them, so the next scene that shows "
+                               "them neither decodes nor uploads them. -1 is the platform's default (64 MiB on desktop, 32 on "
+                               "Android, iOS and the web); 0 keeps none.");
+            }
             if (settingsui::beginRow("graphics.html_ui_sdf_primitives")) {
                 if (projectBeginSettingsRow("HTML UI SDF Primitives", m_htmlUiRender.sdfPrimitives != defaults.sdfPrimitives)) {
                     m_htmlUiRender.sdfPrimitives = defaults.sdfPrimitives;
@@ -2544,14 +2560,22 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                 SortingSettings changed = current;
                 if (projectBeginSettingsRow("Transparency Sort Mode", current.mode != TransparencySortMode::DEFAULT))
                     changed.mode = TransparencySortMode::DEFAULT;
-                int mode = current.mode == TransparencySortMode::CUSTOM_AXIS ? 1 : 0;
-                const char* modes[] = {"Default", "Custom Axis"};
+                // Unity's order of the modes
+                static const TransparencySortMode order[] = {TransparencySortMode::DEFAULT, TransparencySortMode::PERSPECTIVE,
+                                                             TransparencySortMode::ORTHOGRAPHIC, TransparencySortMode::CUSTOM_AXIS};
+                const char* modes[] = {"Default", "Perspective", "Orthographic", "Custom Axis"};
+                int mode = 0;
+                for (int m = 0; m < 4; m++) {
+                    if (order[m] == current.mode) mode = m;
+                }
                 ImGui::SetNextItemWidth(Theme::dpi(160.0f));
-                if (ImGui::Combo("##TransparencySortMode", &mode, modes, 2))
-                    changed.mode = mode == 1 ? TransparencySortMode::CUSTOM_AXIS : TransparencySortMode::DEFAULT;
+                if (ImGui::Combo("##TransparencySortMode", &mode, modes, 4))
+                    changed.mode = order[mode];
                 UIProbe::item("graphics.transparency_sort_mode");
-                endSettingsRow("Custom Axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw along the "
-                               "Transparency Sort Axis, a larger dot(axis, position) first. Default keeps the Hierarchy order.");
+                endSettingsRow("How transparent objects sort, far first. Perspective: by the distance to the camera. Orthographic: by "
+                               "depth along the camera's view. Default: Orthographic for orthographic cameras, else Perspective. "
+                               "Custom Axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw along the "
+                               "Transparency Sort Axis, a larger dot(axis, position) first.");
                 applySorting(changed);
             }
             if (settingsui::beginRow("graphics.transparency_sort_axis")) {
@@ -2803,9 +2827,24 @@ void ProjectSettingsWindow::drawMeshSettings() {
                 d.weldVertices = value < 0 ? std::optional<bool>() : std::optional<bool>(value == 1);
             }
             {
-                const std::vector<std::string> names = {"Built-in (Import)", "Import", "Calculate"};
-                const int value = optionCombo("Normals", "normals", names, d.normals ? (int)*d.normals : -1, "Calculate makes area-weighted normals, creased at the Smoothing Angle.");
+                const std::vector<std::string> names = {"Built-in (Import)", "Import", "Calculate", "None"};
+                const int value = optionCombo("Normals", "normals", names, d.normals ? (int)*d.normals : -1,
+                                              "Calculate makes normals that crease at the Smoothing Angle; None writes none (faces shade flat).");
                 d.normals = value < 0 ? std::optional<ModelNormals>() : std::optional<ModelNormals>((ModelNormals)value);
+            }
+            {
+                std::vector<std::string> names = {"Built-in (Area And Angle)"};
+                for (NormalsWeighting w : {NormalsWeighting::AreaAndAngle, NormalsWeighting::Area}) names.push_back(normalsWeightingLabel(w));
+                const int value = optionCombo("Normals Weighting", "normals_weighting", names, d.normalsWeighting ? (int)*d.normalsWeighting : -1,
+                                              "How Calculate weighs the faces at a corner: by their area and their angle there, or by area.");
+                d.normalsWeighting = value < 0 ? std::optional<NormalsWeighting>() : std::optional<NormalsWeighting>((NormalsWeighting)value);
+            }
+            {
+                std::vector<std::string> names = {"Built-in (Import)"};
+                for (ModelTangents t : {ModelTangents::Import, ModelTangents::Calculate, ModelTangents::None}) names.push_back(modelTangentsLabel(t));
+                const int value = optionCombo("Tangents", "tangents", names, d.tangents ? (int)*d.tangents : -1,
+                                              "Calculate Mikktspace makes tangents from the normals and the first UV set; None writes none.");
+                d.tangents = value < 0 ? std::optional<ModelTangents>() : std::optional<ModelTangents>((ModelTangents)value);
             }
             {
                 const std::vector<std::string> names = {"Built-in (Off)", "Off", "On"};
@@ -2813,6 +2852,24 @@ void ProjectSettingsWindow::drawMeshSettings() {
                                               "Exports keep the source model next to its cook (code that reads the file itself).");
                 d.shipSource = value < 0 ? std::optional<bool>() : std::optional<bool>(value == 1);
             }
+        }
+        if (settingsui::beginRow("mesh.preserve_hierarchy_for_new_models")) {
+            const ModelProjectSettings defaults;
+            if (projectBeginSettingsRow("Preserve Hierarchy for New Models", m.preserveHierarchyForNewModels != defaults.preserveHierarchyForNewModels))
+                m.preserveHierarchyForNewModels = defaults.preserveHierarchyForNewModels;
+            ImGui::Checkbox("##MeshPreserveHierarchy", &m.preserveHierarchyForNewModels);
+            endSettingsRow("A Model made in the editor starts with Preserve Hierarchy on: every node of its file gets a GameObject, "
+                           "and a lone mesh is never merged into the Model's own. New projects start with it on; models already "
+                           "placed keep theirs.");
+        }
+        if (settingsui::beginRow("mesh.fbx_submesh_order")) {
+            static const char* const orderLabels[] = {"Material Slots", "Used Materials"};
+            int value = (int)m.fbxSubmeshOrder;
+            drawComboSetting("FBX Submesh Order", "##MeshFbxSubmeshOrder", orderLabels, 2, value, 0,
+                             "Material Slots: an FBX mesh's submesh i is its node's material slot i, as in Unity. Used Materials: "
+                             "the used slots in order, so an empty slot moves the next ones up (projects made before Material Slots "
+                             "keep it, so their per-submesh materials stay where they are). A change reimports every FBX.");
+            m.fbxSubmeshOrder = (FbxSubmeshOrder)value;
         }
         if (settingsui::beginRow("mesh.material_creation_mode")) {
             static const char* const materialLabels[] = {"Import", "None"};
@@ -3622,6 +3679,14 @@ void ProjectSettingsWindow::drawInputSettings() {
                 endSettingsRow("The radial deadzone of stick and axis bindings of AXIS and VECTOR2 actions that set none of their own.");
             }
 
+            if (settingsui::beginRow("input.simulate_touch_from_mouse")) {
+                if (projectBeginSettingsRow("Simulate Touch From Mouse", m_simulateTouchFromMouse)) m_simulateTouchFromMouse = false;
+                ImGui::Checkbox("##SimulateTouchFromMouse", &m_simulateTouchFromMouse);
+                endSettingsRow("The mouse also acts as finger 0 (onTouchStart, onTouchMove, onTouchEnd beside the mouse events) "
+                    "in Play and in desktop and web builds: a touch game plays with a mouse. The Game view's Simulate Touch "
+                    "is a per-user preference for testing.");
+            }
+
             // Gamepad Cursor: what a UI Document with Gamepad Cursor on gives a pad player (GamepadCursor)
             if (settingsui::sectionVisible("Gamepad Cursor")) {
                 ImGui::SeparatorText("Gamepad Cursor");
@@ -3895,6 +3960,34 @@ void ProjectSettingsWindow::drawTitleArtSettings() {
             ImGui::EndTable();
         }
         drawSectionNote("Baked PNGs ship as ordinary textures; a .titleart ships only when a Realtime or Glyph Atlas title reads it.");
+    }
+    endSettingsPanel();
+}
+
+// Project Settings > Time (Unity's): applied before init in builds and at Play start
+void ProjectSettingsWindow::drawTimeSettings() {
+    if (beginSettingsPanel("##TimeSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("time.fixed_timestep")) {
+                if (projectBeginSettingsRow("Fixed Timestep", m_fixedTimestep != Project::defaultFixedTimestep))
+                    m_fixedTimestep = Project::defaultFixedTimestep;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputDouble("##FixedTimestep", &m_fixedTimestep, 0.001, 0.01, "%.6f s");
+                m_fixedTimestep = std::clamp(m_fixedTimestep, Project::minFixedTimestep, Project::maxFixedTimestep);
+                endSettingsRow("Seconds per fixed step: onFixedUpdate and physics run at 1 / this rate (Time.fixedDeltaTime; "
+                    "default 1/60). A scene's Fixed Timestep (Inspector > Scene > Time) overrides it while it is the main scene.");
+            }
+            if (settingsui::beginRow("time.maximum_delta_time")) {
+                if (projectBeginSettingsRow("Maximum Allowed Timestep", m_maximumDeltaTime != Project::defaultMaximumDeltaTime))
+                    m_maximumDeltaTime = Project::defaultMaximumDeltaTime;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputDouble("##MaximumDeltaTime", &m_maximumDeltaTime, 0.01, 0.1, "%.4f s");
+                m_maximumDeltaTime = std::clamp(m_maximumDeltaTime, Project::minFixedTimestep, Project::maxFixedTimestep);
+                endSettingsRow("The longest frame the game is given (Time.maximumDeltaTime; default 0.25 s): a hitch is "
+                    "clamped, so physics and scripts never take a huge step.");
+            }
+            ImGui::EndTable();
+        }
     }
     endSettingsPanel();
 }
@@ -6637,6 +6730,9 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
     m_project->setInputActionsAsset(m_inputActionsAsset);
     m_project->setInputDeadzone(m_inputDeadzone);
+    m_project->setSimulateTouchFromMouse(m_simulateTouchFromMouse);
+    m_project->setFixedTimestep(m_fixedTimestep);
+    m_project->setMaximumDeltaTime(m_maximumDeltaTime);
     m_gamepadCursor.graphic = m_gamepadCursorGraphic;
     m_project->setGamepadCursorSettings(m_gamepadCursor);
     m_project->setPixelArtSettings(m_pixelArt);

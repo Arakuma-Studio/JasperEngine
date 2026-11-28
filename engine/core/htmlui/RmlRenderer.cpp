@@ -10,6 +10,7 @@
 #include "RmlRendererInternal.h"
 
 #include "HtmlUI.h"
+#include "HtmlUIImageCache.h"
 #include "HtmlUITexture.h"
 #include "RmlFilterContext.h"
 #include "RmlFontEngine.h"
@@ -24,6 +25,7 @@
 #include "texture/Framebuffer.h"
 #include "texture/TextureData.h"
 #include "util/GlyphAtlas.h"
+#include "compat/DiagnosticCodes.h"
 #include "compat/VirtualFiles.h"
 #include "effects/EffectRenderer.h"
 #include "effects/EffectRuntime.h"
@@ -33,6 +35,7 @@
 #include <RmlUi/Core/Dictionary.h>
 #include <RmlUi/Core/Log.h>
 #include <RmlUi/Core/Math.h>
+#include <RmlUi/Core/RenderManager.h>
 
 #include <algorithm>
 #include <atomic>
@@ -1000,84 +1003,116 @@ void RmlRenderer::addTextStats(uint32_t glyphsRasterized, uint32_t textRegenerat
 
 Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& rmlSource){
     // phase-2 hook H7: "?htmlui-filter=nearest" (image-rendering: pixelated) asks for nearest
-    // sampling and is not part of the file; "@htmlui/..." paths are compat's virtual files
-    bool nearest = false, repeatX = false, repeatY = false;
-    const std::string source = stripTextureFilter(rmlSource, nearest, repeatX, repeatY);
-    const TextureFilter filter = nearest ? TextureFilter::NEAREST : TextureFilter::LINEAR;
+    // sampling and is not part of the file; "@htmlui/..." paths are compat's virtual files.
+    // S93: the image is the process cache's (R19), its decode on the Background lane (R18), a
+    // fragment a region of the file (R20)
+    const TextureSource parsed = parseTextureSource(rmlSource);
+    HtmlUIFileLog::recordLazyFile(this, parsed.path);   // hot reload: images are loaded at draw time
 
-    HtmlUIFileLog::recordLazyFile(this, source);   // hot reload: images are loaded at draw time
-    // the decoded pixels are copied into the GPU texture below: this copy frees them
-    TextureData data;
-    data.setDataOwned(true);
-    bool loaded = false;
-    if (htmlui::compat::VirtualFiles::isVirtual(source)){
-        // a "?svgScale=" suffix stays meaningful for virtual SVGs
-        float svgScale = 1.0f;
-        const std::string path = TextureData::parseSvgScalePath(source, &svgScale);
-        const std::shared_ptr<const std::string> content = htmlui::compat::VirtualFiles::find(path);
-        if (content && !content->empty()){
-            data.setSVGScale(svgScale);
-            loaded = data.loadTextureFromMemory(reinterpret_cast<unsigned char*>(const_cast<char*>(content->data())), (unsigned int)content->size());
-        }
-    }else{
-        loaded = !source.empty() && data.loadTextureFromFile(source.c_str());
-    }
-    if (!loaded){
-        Log::error("[HTML UI] could not load image '%s'", source.c_str());
-        return 0;
-    }
-    // the decoded pixels are this function's alone (the texture gets a premultiplied copy): a
-    // TextureData frees them only when it owns them
-    data.setDataOwned(true);
-
-    const int width = data.getWidth();
-    const int height = data.getHeight();
-    int channels = data.getChannels();
-    const unsigned char* pixels = static_cast<const unsigned char*>(data.getData());
-    // float images (.hdr, .exr) display-encoded to 8 bits like every texture
-    std::vector<uint8_t> converted;
-    if (data.getColorFormat() == ColorFormat::RGBA32F && data.toRgba8(converted)){
-        pixels = converted.data();
-        channels = 4;
-    }
-    if (data.getColorFormat() == ColorFormat::RED16 || !pixels || width <= 0 || height <= 0 || channels < 1 || channels > 4){
-        Log::error("[HTML UI] unsupported image format '%s'", source.c_str());
-        return 0;
-    }
-
-    // RGBA8 with premultiplied alpha, row 0 at the top (RmlUi's texture coordinates).
-    // The engine's TextureAlphaBorder fix is never applied: premultiplied colors need none
-    const size_t count = (size_t)width * (size_t)height;
-    std::vector<uint8_t> rgba(count * 4);
-    for (size_t i = 0; i < count; i++){
-        const unsigned char* p = pixels + i * channels;
-        uint8_t r, g, b, a;
-        if (channels == 1){
-            r = g = b = p[0]; a = 255;
-        }else if (channels == 2){
-            r = g = b = p[0]; a = p[1];
-        }else if (channels == 3){
-            r = p[0]; g = p[1]; b = p[2]; a = 255;
+    HtmlUIImageCache::Request request;
+    request.path = parsed.path;
+    request.filter = parsed.nearest ? TextureFilter::NEAREST : TextureFilter::LINEAR;
+    request.repeatX = parsed.repeatX;
+    request.repeatY = parsed.repeatY;
+    request.sync = parsed.syncDecode;
+    std::string error;
+    HtmlUIImageCache::AcquireInfo info;
+    std::shared_ptr<HtmlUIImageCache::Reference> image;
+    if (HtmlUIImageRegion::parse(parsed.fragment, request.region, &error))
+        image = HtmlUIImageCache::get().acquire(request, &error, &info);
+    else
+        info.regionFailed = true;
+    if (!image){
+        if (info.regionFailed){
+            // R20: drawn as nothing; compat adds it to the document's diagnostics (decorators::Image)
+            HtmlUIImageCache::get().setLastFailure(error);
+            Log::warn("[HTML UI] %s [%s]", error.c_str(), htmlui::compat::codes::ImageRegion.id().c_str());
         }else{
-            r = p[0]; g = p[1]; b = p[2]; a = p[3];
+            Log::error("[HTML UI] %s", error.c_str());
         }
-        uint8_t* out = &rgba[i * 4];
-        out[0] = (uint8_t)((r * a + 127) / 255);
-        out[1] = (uint8_t)((g * a + 127) / 255);
-        out[2] = (uint8_t)((b * a + 127) / 255);
-        out[3] = a;
-    }
-
-    HtmlUITexture* texture = createStaticTexture(rgba.data(), width, height, "htmlui-image", filter,
-                                                 repeatX ? TextureWrap::REPEAT : TextureWrap::CLAMP_TO_EDGE,
-                                                 repeatY ? TextureWrap::REPEAT : TextureWrap::CLAMP_TO_EDGE);
-    if (!texture){
-        Log::error("[HTML UI] could not create the texture of image '%s'", source.c_str());
         return 0;
     }
 
-    texture_dimensions = Rml::Vector2i(width, height);
+    const bool counted = (frameState == FrameState::ACTIVE);
+    if (info.decoded)
+        counted ? stats.imagesDecoded++ : imagesDecodedBetweenFrames++;
+    if (info.cacheHit)
+        counted ? stats.imageCacheHits++ : imageCacheHitsBetweenFrames++;
+
+    HtmlUITexture* texture = new HtmlUITexture();
+    texture->kind = HtmlUITexture::Kind::SHARED;
+    texture->image = image;
+    texture->width = image->getWidth();
+    texture->height = image->getHeight();
+    liveTextures.insert(texture);
+    if (!Engine::isViewLoaded()){
+        // no GPU yet (scripts laid a document out before the platform loaded the view): the size
+        // only, RmlUi loads it again once the view exists (the decode goes on meanwhile)
+        texture->dead = true;
+        texturesWithoutView = true;
+    }else{
+        texture->render = image->texture();
+        if (!texture->render && image->pending()){
+            pendingImages.insert(texture);
+            stats.imagesPending = decodingImageCount();
+        }
+    }
+
+    texture_dimensions = Rml::Vector2i(texture->width, texture->height);
     return reinterpret_cast<Rml::TextureHandle>(texture);
+}
+
+uint32_t RmlRenderer::decodingImageCount() const{
+    // (an image laid out but not drawn yet stays in pendingImages once decoded: it uploads when drawn)
+    uint32_t decoding = 0;
+    for (const HtmlUITexture* texture : pendingImages){
+        if (texture->image && texture->image->decoding())
+            decoding++;
+    }
+    return decoding;
+}
+
+RmlRenderer::TextureSource RmlRenderer::parseTextureSource(const std::string& source){
+    static const std::string parameter = "htmlui-filter=nearest";
+    static const std::string wrap = "rmlui-wrap=";
+    static const std::string decoding = "htmlui-decoding=";
+    TextureSource result;
+    // the fragment ends where a query added after it starts (compat and the fork append theirs to a
+    // url that kept its fragment: "atlas.png#xywh=0,0,8,8?rmlui-wrap=repeat")
+    std::string rest = source;
+    const size_t hash = rest.find('#');
+    if (hash != std::string::npos){
+        const size_t end = rest.find('?', hash);
+        result.fragment = rest.substr(hash, end == std::string::npos ? std::string::npos : end - hash);
+        rest.erase(hash, result.fragment.size());
+    }
+    const size_t query = rest.find('?');
+    if (query == std::string::npos){
+        result.path = rest;
+        return result;
+    }
+    // the query's parameters without the engine's (others, like svgScale, stay)
+    std::string kept;
+    size_t start = query + 1;
+    while (start <= rest.size()){
+        size_t end = rest.find('&', start);
+        if (end == std::string::npos)
+            end = rest.size();
+        const std::string item = rest.substr(start, end - start);
+        if (item == parameter)
+            result.nearest = true;
+        else if (item.compare(0, wrap.size(), wrap) == 0){
+            const std::string axes = item.substr(wrap.size());
+            result.repeatX = (axes == "repeat" || axes == "repeat-x");
+            result.repeatY = (axes == "repeat" || axes == "repeat-y");
+        }else if (item.compare(0, decoding.size(), decoding) == 0)
+            result.syncDecode = (item.substr(decoding.size()) == "sync");
+        else if (!item.empty())
+            kept += (kept.empty() ? "" : "&") + item;
+        start = end + 1;
+    }
+    result.path = rest.substr(0, query) + (kept.empty() ? "" : "?" + kept);
+    return result;
 }
 
 std::string RmlRenderer::stripTextureFilter(const std::string& source, bool& nearest){
@@ -1086,32 +1121,11 @@ std::string RmlRenderer::stripTextureFilter(const std::string& source, bool& nea
 }
 
 std::string RmlRenderer::stripTextureFilter(const std::string& source, bool& nearest, bool& repeatX, bool& repeatY){
-    static const std::string parameter = "htmlui-filter=nearest";
-    static const std::string wrap = "rmlui-wrap=";
-    nearest = false;
-    repeatX = repeatY = false;
-    const size_t query = source.find('?');
-    if (query == std::string::npos)
-        return source;
-    // the query's parameters without htmlui-filter (others, like svgScale, stay)
-    std::string kept;
-    size_t start = query + 1;
-    while (start <= source.size()){
-        size_t end = source.find('&', start);
-        if (end == std::string::npos)
-            end = source.size();
-        const std::string item = source.substr(start, end - start);
-        if (item == parameter)
-            nearest = true;
-        else if (item.compare(0, wrap.size(), wrap) == 0){
-            const std::string axes = item.substr(wrap.size());
-            repeatX = (axes == "repeat" || axes == "repeat-x");
-            repeatY = (axes == "repeat" || axes == "repeat-y");
-        }else if (!item.empty())
-            kept += (kept.empty() ? "" : "&") + item;
-        start = end + 1;
-    }
-    return source.substr(0, query) + (kept.empty() ? "" : "?" + kept);
+    const TextureSource parsed = parseTextureSource(source);
+    nearest = parsed.nearest;
+    repeatX = parsed.repeatX;
+    repeatY = parsed.repeatY;
+    return parsed.path + parsed.fragment;
 }
 
 Rml::TextureHandle RmlRenderer::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions){
@@ -1146,10 +1160,23 @@ HtmlUITexture* RmlRenderer::toTexture(Rml::TextureHandle handle){
     // like the renderer's own
     if (liveTextures.count(texture) == 0)
         liveTextures.insert(texture);
+    // S93 R18: an image whose decode finished is uploaded where it is first drawn; until then it
+    // draws nothing and the context renders again next frame (no relayout: its size is known)
+    if (texture->kind == HtmlUITexture::Kind::SHARED && !texture->render && !texture->dead && texture->image){
+        texture->render = texture->image->texture();
+        if (texture->render || texture->image->failed()){
+            pendingImages.erase(texture);
+            stats.imagesPending = decodingImageCount();
+        }else if (Rml::RenderManager* manager = getRenderManager()){
+            manager->RequestRender();
+        }
+    }
     return texture;
 }
 
 void RmlRenderer::destroyTexture(HtmlUITexture* texture){
+    if (pendingImages.erase(texture) > 0)
+        stats.imagesPending = decodingImageCount();
     if (liveTextures.erase(texture) > 0 && texture->savedLayer && stats.boxShadowTextures > 0)
         stats.boxShadowTextures--;
     if (texture->atlas)
@@ -2522,7 +2549,39 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
         draw.uvTransform[2] = (float)(destinationFrame.Left() - sourceFrame.Left()) / sourceSize.x;
         draw.uvTransform[3] = (float)(destinationFrame.Top() - sourceFrame.Top()) / sourceSize.y;
     }
-    // Plus (the fork's cross-fade of background images): the premultiplied colours added
+    // S93 R30: a CSS blend mode reads the destination, which it cannot while drawing into it: the destination's
+    // pixels under the composite are copied into a free post-process target first (the backdrop), and the blend
+    // program draws the source's part of source-over-backdrop with premultiplied blending, which adds the backdrop's
+    // part (so where the source has no coverage nothing changes). The backdrop is copied in the source's pixels, the
+    // post-process targets' frame, so both are read at the same coordinates: S92's region layers (sized to their
+    // element) blend too
+    if ((int)blendMode >= (int)Rml::BlendMode::Multiply && postTargetIn(context.postSet, 0) && postTargetIn(context.postSet, 1) &&
+        postTargetIn(context.postSet, 2)){
+        ensureLayerCleared(destination);
+        ensureResolved(*destinationLayer);
+        Framebuffer& backdrop = context.secondary();
+        PostDraw copy;
+        copy.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
+        copy.source = &destinationLayer->getRender().getColorTexture();
+        placeByFrames(copy, destinationFrame, sourceFrame);
+        const Rml::Vector2i shift = destinationFrame.p0 - sourceFrame.p0;
+        copy.scissor = intersect(Rml::Rectanglei::FromCorners(destinationScissor.p0 + shift, destinationScissor.p1 + shift),
+                                 Rml::Rectanglei::FromSize(sourceFrame.Size()));
+        if (isEmpty(copy.scissor))
+            return;
+        drawPost(backdrop, LoadAction::CLEAR, copy, postTargetState(BlendMode::NONE));
+        stats.blendBackdropCopies++;
+        draw.variant = (int)HtmlUIPostVariant::BLEND_MODE;
+        draw.mask = &backdrop.getRender().getColorTexture();
+        draw.params.params[0] = (float)((int)blendMode - (int)Rml::BlendMode::Multiply + 1);
+        if (!applyCompositeClip(draw, destinationFrame))
+            return;
+        if (clipMaskEnabled)
+            ensureMask(destination);
+        drawPost(*destinationLayer, LoadAction::LOAD, draw, getGeometryState(BlendMode::PREMULTIPLIED));
+        return;
+    }
+    // Plus (the fork's cross-fade of background images, CSS plus-lighter): the premultiplied colours added
     const BlendMode blend = (blendMode == Rml::BlendMode::Replace) ? BlendMode::NONE
                             : (blendMode == Rml::BlendMode::Plus) ? BlendMode::ADDITIVE_PREMULTIPLIED
                                                                     : BlendMode::PREMULTIPLIED;
@@ -3717,6 +3776,11 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     stats.geometryLive = geometryLive;
     stats.geometryBytes = geometryBytes;
     stats.boxShadowTextures = savedLayers;
+    // S93: the images loaded since the last frame, and those still decoding
+    stats.imagesDecoded = imagesDecodedBetweenFrames;
+    stats.imageCacheHits = imageCacheHitsBetweenFrames;
+    stats.imagesPending = decodingImageCount();
+    imagesDecodedBetweenFrames = imageCacheHitsBetweenFrames = 0;
     lastFrameDrawCount = 0;
     // live sources asked for since the last frame are this one's (S92 R2)
     frameLiveSources = pendingLiveSources;
@@ -4168,6 +4232,14 @@ RmlRenderer* RmlRenderer::forRenderManager(const Rml::RenderManager* renderManag
     return it == managerRenderers().end() ? nullptr : it->second;
 }
 
+Rml::RenderManager* RmlRenderer::getRenderManager() const{
+    for (const auto& [manager, renderer] : managerRenderers()){
+        if (renderer == this)
+            return const_cast<Rml::RenderManager*>(manager);
+    }
+    return nullptr;
+}
+
 RmlRenderer* RmlRenderer::forContext(const Rml::Context* context){
     auto it = contextRenderers().find(context);
     return it == contextRenderers().end() ? nullptr : it->second;
@@ -4310,7 +4382,8 @@ void RmlRenderer::getGpuHandles(std::vector<uint32_t>& buffers, std::vector<uint
     uint32_t placeholder = const_cast<TextureRender&>(placeholderWhite).backend.get().id;
     if (placeholder != 0) images.push_back(placeholder);
     for (HtmlUITexture* texture : liveTextures){
-        if (texture->render){
+        // (a shared image is the process cache's: HtmlUIImageCache::getGpuHandles)
+        if (texture->render && texture->kind != HtmlUITexture::Kind::SHARED){
             uint32_t id = texture->render->backend.get().id;
             if (id != 0) images.push_back(id);
         }

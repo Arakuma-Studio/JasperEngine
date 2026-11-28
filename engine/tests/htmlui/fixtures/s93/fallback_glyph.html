@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<!-- S93 R16, R17 (AC20, AC21): "CAÑÓN" in a face without Ó (Ahem less U+00D3): the Ó comes from the fallback chain (the
+     built-in Roboto Regular), emboldened for the bold text and outlined with it; HTMLUI-FONT-0001 names it. -->
+<html><head><style>
+  @font-face { font-family: "AhemNoO"; src: url("../fonts/Ahem-no-Oacute.ttf") format("truetype"); }
+  html, body { margin: 0; width: 512px; height: 384px; background: #1e1e1e; }
+  #title { position: absolute; left: 20px; top: 60px; font-family: "AhemNoO", sans-serif; font-weight: 700; font-size: 64px;
+           line-height: 80px; color: #ffffff; font-effect: outline(4px #ff8000); }
+  #plain { position: absolute; left: 20px; top: 200px; font-family: "AhemNoO", sans-serif; font-size: 64px; line-height: 80px;
+           color: #ffffff; }
+</style></head><body>
+<div id="title">CAÑÓN</div>
+<div id="plain">ÓN</div>
+</body></html>

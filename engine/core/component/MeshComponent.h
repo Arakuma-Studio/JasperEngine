@@ -35,6 +35,8 @@
 namespace jasperengine{
 
     namespace vat{ class VertexAnimation; }
+    // V1 (subsystem/VertexColorBinding.h)
+    struct SubmeshVertexColors;
 
     // Submesh fields a model load rewrites from its source file, so an edit to one only survives
     // the load while it is flagged in Submesh::overrideFields (64 bits, saved as a number).
@@ -84,6 +86,8 @@ namespace jasperengine{
         SubmeshOverride_ShaderGlobalBindings     = 1ull << 33,
         // material.shaderPalettes (S43 Palette Swap)
         SubmeshOverride_ShaderPalettes           = 1ull << 34,
+        // the submesh's Property Overrides (S94 F7): a model file never sets them
+        SubmeshOverride_PropertyOverrides        = 1ull << 35,
 
         SubmeshOverride_ShaderLibrary = SubmeshOverride_Shader | SubmeshOverride_ShaderParams |
                                         SubmeshOverride_ShaderTextures | SubmeshOverride_ShaderFeatures |
@@ -333,6 +337,9 @@ namespace jasperengine{
         int16_t pbrSetsOffset = -1;
         // and the Hair shading model's three vec4 after them (spec S57 R5; -1: no hair)
         int16_t pbrHairOffset = -1;
+        // and the material's vertex colour masks last (V1 R70; -1: none). A variant with the
+        // masks and no lobes has pbrParamsSize too, its pbrExtOffset the masks' offset
+        int16_t pbrVertexColorOffset = -1;
         // u_fs_lightOcclusion (includes/light_occlusion.glsl: capsule and contact shadows),
         // u_tiledLights and u_contactShadowTexture of the S57 variants ('Til', 'Cap', 'Cts')
         int slotFSLightOcclusion = -1;
@@ -427,6 +434,15 @@ namespace jasperengine{
         bool hasMorphTangent = false;
 
         bool alphaBlend = false;
+        // this submesh's Property Overrides, over the Mesh's (MeshComponent::propertyOverrides),
+        // out of line: almost no submesh has them
+        OutOfLineValue<ShaderPropertyOverrides> propertyOverrides;
+        // set at load when an override names a texture: what it binds (RenderSystem's
+        // drawnShaderTextures, drawnBaseColor); unset otherwise
+        OutOfLineValue<SubmeshOverrideTextures> overrideTextures;
+        // set at load: its queue order, the material's sortPriority plus its shader's @state
+        // priority= (lower first)
+        int sortPriority = 0;
         bool needUpdateTexture = false;
         bool needUpdateDepthTexture = false;
         bool needUpdateGBufferTexture = false;
@@ -483,6 +499,9 @@ namespace jasperengine{
         // over the same buffers: null until a shadow pass first draws it, then kept (empty when
         // they would not pay off)
         std::shared_ptr<ShadowIndexBuffer> shadowIndices;
+        // runtime, set at load: what its Vertex Colors component binds over its own geometry (V1
+        // R11, R12; VertexColorRenderer owns it, null: nothing). Never saved
+        std::shared_ptr<SubmeshVertexColors> vertexColors;
     };
 
     // The Vertex Animation variant a mesh draws with (vertex animation spec 3.5)
@@ -569,7 +588,11 @@ namespace jasperengine{
         // vertices or discards keeps its shadows in step.
         ShaderRef customDepthShader;
         // values of the fork's custom uniform blocks, by member name, shared by all submeshes
+        // (under its materials' parameters: Property Overrides win over those)
         ShaderUniformValues shaderUniforms;
+        // Property Overrides of every submesh (Unity's MaterialPropertyBlock, saved): over the
+        // materials' values; a submesh's own (Submesh::propertyOverrides) win over these; out of line
+        OutOfLineValue<ShaderPropertyOverrides> propertyOverrides;
         bool needUpdateShaderUniforms = false;
         // ShaderGlobals::getVersion() when the custom blocks of the submeshes whose materials
         // bind globals (Material::shaderGlobalBindings) were last written
@@ -684,6 +707,10 @@ namespace jasperengine{
         // ones read the scene: its opaque submeshes draw in the opaque queue (so they are in the
         // scene depth and colour it reads), the blended ones in the transparent queue
         bool splitQueues = false;
+        // set at load (autoTransparency): its submeshes differ in sort priority, so each queue
+        // draws them as one entry per priority (RenderSystem's opaque and transparent queues,
+        // through the entries' submesh masks; Unity's per-material render queue)
+        bool splitPriorities = false;
         // what it was registered to read before it loaded (RenderSystem::predictSceneInputUsers),
         // done once per load
         bool sceneInputsPredicted = false;

@@ -100,7 +100,7 @@ std::string BuildReport::categoryOf(const std::string& path){
     if (path.rfind(cooked, 0) == 0 || path.find(nested) != std::string::npos)
         return "textures";
     static const std::set<std::string, std::less<>> models = {".glb", ".gltf", ".fbx", ".obj", ".bin", ".vat"};
-    static const std::set<std::string, std::less<>> textures = {".png", ".jpg", ".jpeg", ".tga", ".bmp", ".psd", ".gif", ".hdr", ".exr", ".ktx2", ".svg", ".webp", ".jlut"};
+    static const std::set<std::string, std::less<>> textures = {".png", ".jpg", ".jpeg", ".tga", ".bmp", ".psd", ".psb", ".tif", ".tiff", ".gif", ".hdr", ".exr", ".ktx2", ".svg", ".webp", ".jlut"};
     static const std::set<std::string, std::less<>> audio = {".wav", ".ogg", ".mp3", ".flac", ".opus"};
     static const std::set<std::string, std::less<>> scripts = {".lua", ".luac"};
     static const std::set<std::string, std::less<>> scenes = {".scene", ".prefab", ".jscn", ".jpfb"};

@@ -18,6 +18,7 @@
 #include "model/GltfDocument.h"
 #include "model/ModelCooker.h"
 #include "model/ModelSourceDecode.h"
+#include "util/FbxImporter.h"
 #include "pool/MeshLodPool.h"
 #include "subsystem/GltfNormalize.h"
 #include "tiny_gltf.h"
@@ -25,6 +26,7 @@
 #include "meshoptimizer.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -508,6 +510,216 @@ TEST(ModelCook, CalculatedNormalsCreaseAtTheSmoothingAngle){
     settings.smoothingAngle = 180.0f;
     ASSERT_TRUE(cookModel(source, settings, cooked));
     EXPECT_EQ(floats(cooked.doc, attribute(cooked.doc, 0, 0, "NORMAL"), components).size() / 3, 8u);
+}
+
+// ---------------------------------------------------------------- spec S94 F43 (normals and tangents)
+
+namespace {
+
+    // a cube of 24 corners (each face its own normal), with tangents
+    fs::path writeLitCube(const ScratchDir& scratch){
+        GltfBuild build;
+        std::vector<float> positions, normals, tangents;
+        std::vector<uint32_t> indices;
+        const float axes[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+        for (int f = 0; f < 6; f++){
+            const float* n = axes[f];
+            // two directions across the face
+            const float u[3] = {n[1] != 0.0f ? 1.0f : 0.0f, n[1] == 0.0f ? 1.0f : 0.0f, 0.0f};
+            const float v[3] = {n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]};
+            const uint32_t base = (uint32_t)(positions.size() / 3);
+            for (int k = 0; k < 4; k++){
+                const float a = (k == 1 || k == 2) ? 1.0f : -1.0f, b = (k >= 2) ? 1.0f : -1.0f;
+                for (int c = 0; c < 3; c++) positions.push_back(n[c] + a * u[c] + b * v[c]);
+                normals.insert(normals.end(), {n[0], n[1], n[2]});
+                tangents.insert(tangents.end(), {u[0], u[1], u[2], 1.0f});
+            }
+            indices.insert(indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+        }
+        GJson primitive = {{"attributes", {{"POSITION", build.addFloats(positions, 3, gltf::ARRAY_BUFFER, true)},
+                                           {"NORMAL", build.addFloats(normals, 3, gltf::ARRAY_BUFFER)},
+                                           {"TANGENT", build.addFloats(tangents, 4, gltf::ARRAY_BUFFER)}}},
+                           {"indices", build.addIndices(indices, gltf::UNSIGNED_SHORT)}};
+        build.json["meshes"].push_back({{"name", "Cube"}, {"primitives", {primitive}}});
+        build.json["nodes"] = GJson::array({{{"mesh", 0}}});
+        return writeSource(scratch, build.glb(), "lit_cube.glb");
+    }
+
+    bool hasAttribute(const GltfDocument& doc, const char* semantic){
+        return doc.json()["meshes"][0]["primitives"][0]["attributes"].contains(semantic);
+    }
+
+    // the cooked normal at the vertex nearest `at`
+    std::array<float, 3> normalAt(const GltfDocument& doc, const std::array<float, 3>& at){
+        int components = 0;
+        const std::vector<float> positions = floats(doc, attribute(doc, 0, 0, "POSITION"), components);
+        const std::vector<float> normals = floats(doc, attribute(doc, 0, 0, "NORMAL"), components);
+        size_t best = 0;
+        float bestDistance = 1e30f;
+        for (size_t v = 0; v + 2 < positions.size(); v += 3){
+            const float d = std::fabs(positions[v] - at[0]) + std::fabs(positions[v + 1] - at[1]) + std::fabs(positions[v + 2] - at[2]);
+            if (d < bestDistance){
+                bestDistance = d;
+                best = v;
+            }
+        }
+        return {normals[best], normals[best + 1], normals[best + 2]};
+    }
+
+}
+
+TEST(ModelCook, NormalsNone){
+    ScratchDir scratch("model-cook-normals-none");
+    const fs::path source = writeLitCube(scratch);
+    GltfDocument original;
+    std::string error;
+    ASSERT_TRUE(original.load(source, error)) << error;
+    ResolvedModelSettings settings = modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
+    settings.normals = ModelNormals::None;
+    Cooked cooked;
+    ASSERT_TRUE(cookModel(source, settings, cooked));
+    EXPECT_FALSE(hasAttribute(cooked.doc, "NORMAL")) << "None writes no normals";
+    EXPECT_FALSE(hasAttribute(cooked.doc, "TANGENT")) << "tangents need normals";
+    EXPECT_TRUE(hasAttribute(cooked.doc, "POSITION"));
+    // the dropped accessors keep their indices, without bytes
+    ASSERT_EQ(cooked.doc.json()["accessors"].size(), original.json()["accessors"].size());
+    const size_t normal = original.json()["meshes"][0]["primitives"][0]["attributes"]["NORMAL"].get<size_t>();
+    EXPECT_FALSE(cooked.doc.json()["accessors"][normal].contains("bufferView"));
+    EXPECT_EQ(structure(cooked.doc.json()), structure(original.json()));
+
+    // Tangents None keeps the normals
+    settings.normals = ModelNormals::Import;
+    settings.tangents = ModelTangents::None;
+    ASSERT_TRUE(cookModel(source, settings, cooked));
+    EXPECT_TRUE(hasAttribute(cooked.doc, "NORMAL"));
+    EXPECT_FALSE(hasAttribute(cooked.doc, "TANGENT"));
+}
+
+TEST(ModelCook, AreaAndAngleWeighting){
+    // a vertex shared by a large and a small face (one edge in common, 45 degrees apart)
+    ScratchDir scratch("model-cook-weighting");
+    GltfBuild build;
+    const std::vector<float> corners = {0, 0, 0, 1, 0, 0, 3, 1, 0, 0, -1, -1};
+    const std::vector<uint32_t> faces = {0, 1, 2, 1, 0, 3};
+    GJson primitive = {{"attributes", {{"POSITION", build.addFloats(corners, 3, gltf::ARRAY_BUFFER, true)}}},
+                       {"indices", build.addIndices(faces, gltf::UNSIGNED_SHORT)}};
+    build.json["meshes"].push_back({{"name", "Fold"}, {"primitives", {primitive}}});
+    build.json["nodes"] = GJson::array({{{"mesh", 0}}});
+    const fs::path source = writeSource(scratch, build.glb());
+
+    // the reference: each face's unit normal times its area (and its angle at the vertex)
+    auto reference = [](bool withAngle){
+        const double n1[3] = {0, 0, 1}, n2[3] = {0, -0.70710678, 0.70710678};
+        const double area1 = 0.5, area2 = 0.70710678;
+        const double angle1 = std::acos(3.0 / std::sqrt(10.0)), angle2 = 3.14159265358979 / 2.0;
+        const double w1 = area1 * (withAngle ? angle1 : 1.0), w2 = area2 * (withAngle ? angle2 : 1.0);
+        double n[3];
+        for (int c = 0; c < 3; c++) n[c] = n1[c] * w1 + n2[c] * w2;
+        const double length = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+        return std::array<float, 3>{(float)(n[0] / length), (float)(n[1] / length), (float)(n[2] / length)};
+    };
+    ResolvedModelSettings settings = modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
+    settings.normals = ModelNormals::Calculate;
+    settings.smoothingAngle = 180.0f;
+    for (NormalsWeighting weighting : {NormalsWeighting::AreaAndAngle, NormalsWeighting::Area}){
+        settings.normalsWeighting = weighting;
+        Cooked cooked;
+        ASSERT_TRUE(cookModel(source, settings, cooked));
+        const std::array<float, 3> expected = reference(weighting == NormalsWeighting::AreaAndAngle);
+        const std::array<float, 3> normal = normalAt(cooked.doc, {0, 0, 0});
+        for (int c = 0; c < 3; c++)
+            EXPECT_NEAR(normal[c], expected[c], 1e-4f) << normalsWeightingName(weighting) << " component " << c;
+    }
+    // a section without the key keeps the earlier calculation, which is neither
+    settings.normalsWeighting.reset();
+    Cooked legacy;
+    ASSERT_TRUE(cookModel(source, settings, legacy));
+    const std::array<float, 3> before = normalAt(legacy.doc, {0, 0, 0});
+    EXPECT_GT(std::fabs(before[1] - reference(true)[1]), 1e-3f);
+}
+
+TEST(ModelCook, SmoothingGroupsFromFbx){
+    // the FBX cube with one smoothing group on every face: smooth, whatever the angle says
+    ScratchDir scratch("model-cook-smoothing-groups");
+    std::ifstream in(fs::path(JASPER_TEST_FIXTURES_DIR) / "rigged_cube.fbx", std::ios::binary);
+    std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const std::string layer = "\t\tLayer: 0 {";
+    ASSERT_NE(text.find(layer), std::string::npos);
+    auto withMasks = [&](const std::string& masks){
+        std::string out = text;
+        out.insert(out.find(layer), "\t\tLayerElementSmoothing: 0 {\n\t\t\tVersion: 102\n\t\t\tName: \"\"\n"
+                                    "\t\t\tMappingInformationType: \"ByPolygon\"\n\t\t\tReferenceInformationType: \"Direct\"\n"
+                                    "\t\t\tSmoothing: *6 {\n\t\t\t\ta: " + masks + "\n\t\t\t}\n\t\t}\n");
+        return out;
+    };
+    const fs::path assets = scratch.path / "assets";
+    const fs::path fbx = assets / "cube.fbx";
+    const fs::path glb = scratch.path / "imported" / "cube.fbx.glb";
+    fs::create_directories(assets);
+    std::ofstream(fs::path(fbx.string() + ".meta")) << "import:\n  modelImporter:\n    version: 1\n    smoothnessSource: from_smoothing_groups\n";
+    ResolvedModelSettings settings = modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
+    settings.normals = ModelNormals::Calculate;
+    settings.smoothingAngle = 0.0f;
+    settings.smoothnessSource = SmoothnessSource::FromSmoothingGroups;
+    auto cookedNormals = [&](const std::string& masks){
+        std::ofstream(fbx, std::ios::binary | std::ios::trunc) << withMasks(masks);
+        const FbxImporter::Result result = FbxImporter::import(fbx, glb, assets, true);
+        EXPECT_TRUE(result.success) << result.error;
+        Cooked cooked;
+        EXPECT_TRUE(cookModel(glb, settings, cooked));
+        EXPECT_FALSE(hasAttribute(cooked.doc, "_SMOOTHING_GROUP")) << "the groups are the cook's input, never shipped";
+        int components = 0;
+        std::set<std::array<long, 3>> directions;
+        const std::vector<float> normals = floats(cooked.doc, attribute(cooked.doc, 0, 0, "NORMAL"), components);
+        for (size_t v = 0; v + 2 < normals.size(); v += 3)
+            directions.insert({std::lround(normals[v] * 100), std::lround(normals[v + 1] * 100), std::lround(normals[v + 2] * 100)});
+        return directions;
+    };
+    // one group: a normal per corner (the cube's eight diagonals)
+    const std::set<std::array<long, 3>> smooth = cookedNormals("1,1,1,1,1,1");
+    EXPECT_EQ(smooth.size(), 8u);
+    for (const auto& d : smooth) EXPECT_EQ(std::abs(d[0]), 58) << "a diagonal";
+    // no smooth face: flat, the six axes
+    EXPECT_EQ(cookedNormals("0,0,0,0,0,0").size(), 6u);
+
+    // a glTF has no smoothing groups: the angle decides, and the record says so
+    settings.smoothnessSource = SmoothnessSource::PreferSmoothingGroups;
+    Cooked gltfCooked;
+    ASSERT_TRUE(cookModel(writeLitCube(scratch), settings, gltfCooked));
+    EXPECT_NE(std::find_if(gltfCooked.record.warnings.begin(), gltfCooked.record.warnings.end(),
+        [](const std::string& w){ return w.find("no smoothing groups") != std::string::npos; }), gltfCooked.record.warnings.end());
+}
+
+TEST(ModelCook, TangentsCalculateMikkt){
+    // a quad facing +Z, u along +X and the glTF v (down the image) along -Y
+    ScratchDir scratch("model-cook-tangents");
+    GltfBuild build;
+    const std::vector<float> positions = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0};
+    const std::vector<float> normals = {0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1};
+    const std::vector<float> uvs = {0, 1, 1, 1, 1, 0, 0, 0};
+    GJson primitive = {{"attributes", {{"POSITION", build.addFloats(positions, 3, gltf::ARRAY_BUFFER, true)},
+                                       {"NORMAL", build.addFloats(normals, 3, gltf::ARRAY_BUFFER)},
+                                       {"TEXCOORD_0", build.addFloats(uvs, 2, gltf::ARRAY_BUFFER)}}},
+                       {"indices", build.addIndices({0, 1, 2, 0, 2, 3}, gltf::UNSIGNED_SHORT)}};
+    build.json["meshes"].push_back({{"name", "Quad"}, {"primitives", {primitive}}});
+    build.json["nodes"] = GJson::array({{{"mesh", 0}}});
+    const fs::path source = writeSource(scratch, build.glb());
+    ResolvedModelSettings settings = modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
+    settings.tangents = ModelTangents::Calculate;
+    Cooked cooked;
+    ASSERT_TRUE(cookModel(source, settings, cooked));
+    ASSERT_TRUE(hasAttribute(cooked.doc, "TANGENT"));
+    int components = 0;
+    const std::vector<float> tangents = floats(cooked.doc, attribute(cooked.doc, 0, 0, "TANGENT"), components);
+    ASSERT_EQ(components, 4);
+    ASSERT_EQ(tangents.size(), 16u);
+    for (size_t v = 0; v < tangents.size(); v += 4){
+        EXPECT_NEAR(tangents[v], 1.0f, 1e-4f);
+        EXPECT_NEAR(tangents[v + 1], 0.0f, 1e-4f);
+        EXPECT_NEAR(tangents[v + 2], 0.0f, 1e-4f);
+        // the bitangent (cross(normal, tangent) * w) runs along v: -Y
+        EXPECT_EQ(tangents[v + 3], -1.0f);
+    }
 }
 
 TEST(ModelCook, CooksAreDeterministicAndCachedByContent){

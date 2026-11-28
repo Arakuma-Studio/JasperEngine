@@ -16,6 +16,7 @@
 #include "DataView.h"
 #include "ElementBackgroundBorder.h"
 #include "ElementStyle.h"
+#include "GeometryBackgroundBorder.h"
 #include "Layout/LayoutDetails.h"
 #include "Layout/LayoutEngine.h"
 #include "TransformState.h"
@@ -142,6 +143,53 @@ static bool IsProperAncestor(const Element* element, const Element* descendant)
 	return false;
 }
 
+// The rectangle a clipping ancestor clips its descendants to, in its own (untransformed) document space: the clip area
+// (the scrollport of a scroll container), extended without bound on the axis 'overflow: clip' leaves free.
+static Rectanglef ClipRectOf(Element* clipping_element, BoxArea clip_area, const Element* child_on_chain, bool force_clip_current_element,
+	bool clip_always)
+{
+	const ComputedValues& clip_computed = clipping_element->GetComputedValues();
+	// Shrink the scissor region to the element's client area.
+	Vector2f element_offset = clipping_element->GetAbsoluteOffset(clip_area).Round();
+	Vector2f element_size = clipping_element->GetRenderBoxFillSize(clip_area);
+	// The content of a scroll container is clipped to its scrollport: the padding box without the scrollbars (and
+	// a 'scrollbar-gutter'), which sit between its border and its padding (CSS Overflow 3 §3); the scrollbars
+	// themselves are not clipped by it. 6.3 clipped to the whole padding box, so a positioned descendant (a sticky
+	// header, say) painted over the scrollbars.
+	if (clip_area == BoxArea::Padding && !force_clip_current_element)
+	{
+		ElementScroll* scroll = clipping_element->GetElementScroll();
+		const float scrollbar_width = scroll->GetScrollbarSize(ElementScroll::VERTICAL);
+		const float scrollbar_height = scroll->GetScrollbarSize(ElementScroll::HORIZONTAL);
+		// (Without scrollbars there is nothing to take off, whether the element is a scrollbar part or not.)
+		if ((scrollbar_width == 0.f && scrollbar_height == 0.f) || !IsScrollbarPart(child_on_chain, clipping_element))
+		{
+			element_size.x = Math::Max(element_size.x - scrollbar_width, 0.f);
+			element_size.y = Math::Max(element_size.y - scrollbar_height, 0.f);
+		}
+	}
+	Rectanglef element_region = Rectanglef::FromPositionSize(element_offset, element_size);
+
+	// 'overflow: clip' clips its axis only, at the padding box extended by 'overflow-clip-margin' (CSS Overflow 3/4).
+	const Style::Overflow overflow_x = clip_computed.overflow_x(), overflow_y = clip_computed.overflow_y();
+	if (!force_clip_current_element && !clip_always && (overflow_x == Style::Overflow::Clip || overflow_y == Style::Overflow::Clip))
+	{
+		constexpr float unbounded = 1e9f;
+		const float margin = clip_computed.overflow_clip_margin();
+		Vector2f p0 = element_region.TopLeft(), p1 = element_region.BottomRight();
+		if (overflow_x == Style::Overflow::Clip)
+			p0.x -= margin, p1.x += margin;
+		else
+			p0.x = -unbounded, p1.x = unbounded;
+		if (overflow_y == Style::Overflow::Clip)
+			p0.y -= margin, p1.y += margin;
+		else
+			p0.y = -unbounded, p1.y = unbounded;
+		element_region = Rectanglef::FromCorners(p0, p1);
+	}
+	return element_region;
+}
+
 bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_region, ClipMaskGeometryList* out_clip_mask_list,
 	bool force_clip_self, const Element* clip_root)
 {
@@ -221,47 +269,9 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 
 			if (!disable_scissor_clipping)
 			{
-				// Shrink the scissor region to the element's client area.
-				Vector2f element_offset = clipping_element->GetAbsoluteOffset(clip_area).Round();
-				Vector2f element_size = clipping_element->GetRenderBoxFillSize(clip_area);
-				// The content of a scroll container is clipped to its scrollport: the padding box without the scrollbars (and
-				// a 'scrollbar-gutter'), which sit between its border and its padding (CSS Overflow 3 §3); the scrollbars
-				// themselves are not clipped by it. 6.3 clipped to the whole padding box, so a positioned descendant (a sticky
-				// header, say) painted over the scrollbars.
-				if (clip_area == BoxArea::Padding && !force_clip_current_element)
-				{
-					ElementScroll* scroll = clipping_element->GetElementScroll();
-					const float scrollbar_width = scroll->GetScrollbarSize(ElementScroll::VERTICAL);
-					const float scrollbar_height = scroll->GetScrollbarSize(ElementScroll::HORIZONTAL);
-					// (Without scrollbars there is nothing to take off, whether the element is a scrollbar part or not.)
-					if ((scrollbar_width == 0.f && scrollbar_height == 0.f) || !IsScrollbarPart(child_on_chain, clipping_element))
-					{
-						element_size.x = Math::Max(element_size.x - scrollbar_width, 0.f);
-						element_size.y = Math::Max(element_size.y - scrollbar_height, 0.f);
-					}
-				}
-				Rectanglef element_region = Rectanglef::FromPositionSize(element_offset, element_size);
-
-				// 'overflow: clip' clips its axis only, at the padding box extended by 'overflow-clip-margin' (CSS Overflow 3/4).
-				const Style::Overflow overflow_x = clip_computed.overflow_x(), overflow_y = clip_computed.overflow_y();
-				if (!force_clip_current_element && !clip_always && (overflow_x == Style::Overflow::Clip || overflow_y == Style::Overflow::Clip))
-				{
-					constexpr float unbounded = 1e9f;
-					const float margin = clip_computed.overflow_clip_margin();
-					Vector2f p0 = element_region.TopLeft(), p1 = element_region.BottomRight();
-					if (overflow_x == Style::Overflow::Clip)
-						p0.x -= margin, p1.x += margin;
-					else
-						p0.x = -unbounded, p1.x = unbounded;
-					if (overflow_y == Style::Overflow::Clip)
-						p0.y -= margin, p1.y += margin;
-					else
-						p0.y = -unbounded, p1.y = unbounded;
-					element_region = Rectanglef::FromCorners(p0, p1);
-				}
+				Rectanglef element_region = ClipRectOf(clipping_element, clip_area, child_on_chain, force_clip_current_element, clip_always);
 				if (projected)
 					element_region = axis_aligned.Map(element_region);
-
 				clip_region = element_region.IntersectIfValid(clip_region);
 			}
 		}
@@ -289,6 +299,109 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 	}
 
 	return clip_region.Valid();
+}
+
+// Fork (S93 R6): a point within the rounded clip shape of a clip area (ElementBackgroundBorder::GetClipShape: the area's
+// fill box with the inner curves of the border radii), in the clipping element's untransformed document space.
+static bool IsPointWithinRoundedClip(Element* clipping_element, BoxArea clip_area, Vector2f point)
+{
+	const RenderBox box = clipping_element->GetRenderBox(clip_area, 0, false);
+	const Vector2f p = point - clipping_element->GetAbsoluteOffset(BoxArea::Border).Round();
+	// Away from the corners (the inner radii are at most the outer ones) no curve is near: most points of a hit test.
+	const CornerSizes2 outer_radii = box.GetBorderRadius();
+	float reach = 0.f;
+	for (const Vector2f& radius : outer_radii)
+		reach = Math::Max(reach, Math::Max(radius.x, radius.y));
+	const Vector2f fill_offset = box.GetBorderOffset() + box.GetFillOffset();
+	const Vector2f fill_size = box.GetFillSize();
+	if (p.x >= fill_offset.x + reach && p.x <= fill_offset.x + fill_size.x - reach && p.y >= fill_offset.y + reach &&
+		p.y <= fill_offset.y + fill_size.y - reach)
+		return true;
+	const BorderMetrics metrics = GeometryBackgroundBorder::ComputeBorderMetrics(box.GetBorderOffset(), box.GetBorderWidths(), fill_size, outer_radii);
+	const Vector2f p0 = metrics.positions_inner[0], p1 = metrics.positions_inner[2];
+	// The distance into the box from the corner's two edges, for top-left, top-right, bottom-right, bottom-left.
+	const Vector2f from_corner[4] = {p - p0, {p1.x - p.x, p.y - p0.y}, p1 - p, {p.x - p0.x, p1.y - p.y}};
+	for (int corner = 0; corner < 4; corner++)
+	{
+		const Vector2f r = metrics.inner_radii[corner];
+		const Vector2f d = from_corner[corner];
+		if (r.x > 0.f && r.y > 0.f && d.x < r.x && d.y < r.y)
+		{
+			const Vector2f q = (r - d) / r;
+			if (q.x * q.x + q.y * q.y > 1.f)
+				return false;
+		}
+	}
+	return true;
+}
+
+// Fork (S93 R43): a point in a clip rectangle farther from its edges than any declared radius reaches (lengths only; a
+// percentage radius answers false) is inside the rounded clip: most points of a hit test, with no render box made.
+static bool IsAwayFromRoundedCorners(const ComputedValues& computed, Rectanglef region, Vector2f point)
+{
+	float reach = 0.f;
+	for (int corner = 0; corner < 4; corner++)
+	{
+		for (int axis = 0; axis < 2; axis++)
+		{
+			const Style::LengthPercentage& radius = computed.border_radius(corner, axis);
+			if (radius.type != Style::LengthPercentage::Length)
+				return false;
+			reach = Math::Max(reach, radius.value);
+		}
+	}
+	return point.x >= region.Left() + reach && point.x <= region.Right() - reach && point.y >= region.Top() + reach &&
+		point.y <= region.Bottom() - reach;
+}
+
+bool ElementUtilities::IsPointWithinClip(Element* element, Vector2f point)
+{
+	// The walk of GetClippingRegion (without force_clip_self and a clip root): the same ancestors clip, each tested on its
+	// own instead of their rectangles intersected in one space. Without a transform on the chain this is the snapped
+	// intersection test of 6.3, region by region (rounding commutes with the intersection).
+	using Style::Clip;
+	const Clip target_element_clip = element->GetComputedValues().clip();
+	if (target_element_clip == Clip::Type::None)
+		return true;
+
+	int num_ignored_clips = target_element_clip.GetNumber();
+	Element* clipping_element = element->GetOffsetParent();
+	const Element* child_on_chain = element;
+
+	while (clipping_element)
+	{
+		const ComputedValues& clip_computed = clipping_element->GetComputedValues();
+		const bool clip_enabled = (clip_computed.overflow_x() != Style::Overflow::Visible || clip_computed.overflow_y() != Style::Overflow::Visible);
+		const bool clip_always = (clip_computed.clip() == Clip::Type::Always);
+		const bool clip_none = (clip_computed.clip() == Clip::Type::None);
+		const int clip_number = clip_computed.clip().GetNumber();
+
+		if ((clip_always || clip_enabled) && num_ignored_clips == 0)
+		{
+			const BoxArea clip_area = clipping_element->GetClipArea();
+			// The clip is painted in the clipping element's space: the point goes there (a no-op without a transform).
+			Vector2f local = point;
+			if (!clipping_element->Project(local))
+				return false;
+			Rectanglef region = ClipRectOf(clipping_element, clip_area, child_on_chain, false, clip_always);
+			Math::SnapToPixelGrid(region);
+			if (!Rectanglei(region).Contains(Vector2i(local)))
+				return false;
+			if (clip_computed.has_border_radius() && !IsAwayFromRoundedCorners(clip_computed, region, local) &&
+				!IsPointWithinRoundedClip(clipping_element, clip_area, local))
+				return false;
+		}
+
+		if (num_ignored_clips > 0 && clip_enabled)
+			num_ignored_clips--;
+		num_ignored_clips = Math::Max(num_ignored_clips, clip_number);
+		if (clip_none)
+			break;
+
+		child_on_chain = clipping_element;
+		clipping_element = clipping_element->GetOffsetParent();
+	}
+	return true;
 }
 
 const void* ElementUtilities::GetClipMemoKey(Element* offset_parent)

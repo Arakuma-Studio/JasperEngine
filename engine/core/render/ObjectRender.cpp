@@ -136,8 +136,12 @@ bool ObjectRender::beginAccumulationDraw(PipelineType colorType, bool mirrored){
     return backend.beginAccumulationDraw(colorType, mirrored);
 }
 
-bool ObjectRender::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader){
-    return backend.beginDraw(pipType, disableFaceCulling, mirrored, lodFadeShader);
+bool ObjectRender::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader, ShaderRender* viewShader){
+    return backend.beginDraw(pipType, disableFaceCulling, mirrored, lodFadeShader, viewShader);
+}
+
+void ObjectRender::releaseViewVariants(){
+    backend.releaseViewVariants();
 }
 
 bool ObjectRender::isLodFadeReady(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader){

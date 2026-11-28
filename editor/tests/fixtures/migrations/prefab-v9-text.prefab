@@ -1,0 +1,23 @@
+type: Prefab
+version: 9
+guid: 1c9b7a0e4f2d4c3b8a6e5d4c3b2a1908
+nextEntity: 1002
+root: 1001
+members:
+  - type: Entity
+    entity: 1001
+    name: Sign
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      text:
+        text: Exit
+        fontSize: 20
+        multiline: true
+        maxTextSize: 100
+        fixedWidth: false
+        fixedHeight: false
+        pivotBaseline: true
+        pivotCentered: true

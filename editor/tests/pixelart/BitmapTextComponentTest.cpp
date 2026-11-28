@@ -26,7 +26,9 @@
 #include "Project.h"
 #include "manager/SceneManager.h"
 
+#include <algorithm>
 #include <cmath>
+#include <string>
 #include <vector>
 
 using namespace jasperengine;
@@ -98,6 +100,119 @@ TEST(BitmapText, ScaleThroughTheTextComponent){
             EXPECT_NEAR(std::fmod(std::fabs(p.y), (float)k), 0.0f, 1e-4f) << size;
         }
     }
+}
+
+TEST(BitmapText, AutoSizeFitsWholeScales){
+    // S93 R37 with a bitmap font: Auto Size takes the largest whole multiple of the native size
+    // within Min..Max whose layout fits the fixed box (brute force over the scales), else Min's
+    struct Case { std::string text; unsigned int width, height; bool multiline; unsigned int min, max; };
+    const std::vector<Case> cases = {
+        {"SCORE 120", 300, 40, false, 9, 90},                       // the height limits it
+        {"GAME OVER", 100, 200, false, 9, 90},                      // the width limits it
+        {"Press any key to continue", 120, 120, true, 9, 90},       // wrapped lines
+        {"A", 300, 300, true, 9, 45},                               // Max limits it
+        {"Far too long a line for this box", 20, 5, false, 18, 90}, // nothing fits: Min's scale
+        {"Hp 99", 400, 400, false, 20, 25},                         // no multiple in range: Max's
+    };
+    for (const Case& c : cases){
+        BitmapTextScene t(c.text, 9);
+        TextComponent& text = t.text();
+        RectTransformComponent& layout = t.scene.getComponent<RectTransformComponent>(t.entity);
+        text.fixedWidth = true;
+        text.fixedHeight = true;
+        text.multiline = c.multiline;
+        layout.width = c.width;
+        layout.height = c.height;
+        text.autoSize = true;
+        text.fontSizeMin = c.min;
+        text.fontSizeMax = c.max;
+        t.update();
+        ASSERT_TRUE(text.bitmapText) << c.text;
+        const ::jasperengine::pixelart::BitmapFont& font = *text.bitmapText->getFont();
+        const unsigned int native = (unsigned int)font.getNativeSize();
+
+        const unsigned int maxScale = std::max(c.max / native, 1u);
+        const unsigned int minScale = std::clamp((c.min + native - 1) / native, 1u, maxScale);
+        unsigned int expected = minScale;
+        for (unsigned int k = minScale; k <= maxScale; k++){
+            int width = 0, height = 0;
+            ::jasperengine::pixelart::BitmapText::measure(font, c.text, c.multiline, (int)(c.width / k), width, height);
+            if ((unsigned int)width * k <= c.width && (unsigned int)height * k <= c.height)
+                expected = k;
+        }
+        EXPECT_EQ(text.pixelScale, (int)expected) << c.text;
+        EXPECT_EQ(text.autoFontSize, expected * native) << c.text;
+        EXPECT_EQ(effectiveFontSize(text), expected * native) << c.text;
+        EXPECT_FLOAT_EQ(text.pixelUnit, (float)expected) << c.text;
+        // still whole font pixels, and inside the box when it fits
+        for (const Vector3& p : t.positions()){
+            EXPECT_NEAR(std::fmod(std::fabs(p.x), (float)expected), 0.0f, 1e-4f) << c.text;
+            if (expected > minScale){
+                EXPECT_LE(p.x, (float)c.width + 1e-4f) << c.text;
+            }
+        }
+        EXPECT_EQ(layout.width, c.width) << "the fixed box stays";
+
+        // off: fontSize again (9 is x1)
+        text.autoSize = false;
+        text.needUpdateText = true;
+        t.update();
+        EXPECT_EQ(text.pixelScale, 1) << c.text;
+        EXPECT_EQ(effectiveFontSize(text), 9u) << c.text;
+    }
+}
+
+TEST(BitmapText, AnchorAndAlignmentApplyTogether){
+    // S94's Anchor places the box on the origin and S93's Alignment places the lines inside the
+    // box: set at once, the glyphs move by the sum of what each moves them alone, and only the
+    // anchor moves the box (boxMin)
+    struct Placed { Vector2 low; Vector2 high; Vector2 boxMin; };
+    auto place = [](TextAnchorHorizontal anchorH, TextAnchorVertical anchorV, TextHorizontalAlignment alignH,
+                    TextVerticalAlignment alignV){
+        BitmapTextScene t("Hp 99", 9);
+        TextComponent& text = t.text();
+        RectTransformComponent& layout = t.scene.getComponent<RectTransformComponent>(t.entity);
+        text.fixedWidth = true;
+        text.fixedHeight = true;
+        layout.width = 120;
+        layout.height = 60;
+        text.anchorHorizontal = anchorH;
+        text.anchorVertical = anchorV;
+        text.horizontalAlignment = alignH;
+        text.verticalAlignment = alignV;
+        t.update();
+        Placed placed{Vector2(1e9f, 1e9f), Vector2(-1e9f, -1e9f), text.boxMin};
+        for (const Vector3& p : t.positions()){
+            placed.low = Vector2(std::min(placed.low.x, p.x), std::min(placed.low.y, p.y));
+            placed.high = Vector2(std::max(placed.high.x, p.x), std::max(placed.high.y, p.y));
+        }
+        return placed;
+    };
+    const Placed base = place(TextAnchorHorizontal::LEFT, TextAnchorVertical::BOTTOM, TextHorizontalAlignment::LEFT, TextVerticalAlignment::TOP);
+    const Placed aligned = place(TextAnchorHorizontal::LEFT, TextAnchorVertical::BOTTOM, TextHorizontalAlignment::RIGHT, TextVerticalAlignment::BOTTOM);
+    const Placed anchored = place(TextAnchorHorizontal::RIGHT, TextAnchorVertical::TOP, TextHorizontalAlignment::LEFT, TextVerticalAlignment::TOP);
+    const Placed both = place(TextAnchorHorizontal::RIGHT, TextAnchorVertical::TOP, TextHorizontalAlignment::RIGHT, TextVerticalAlignment::BOTTOM);
+
+    const Vector2 byAlignment = aligned.low - base.low;
+    const Vector2 byAnchor = anchored.low - base.low;
+    ASSERT_GT(std::fabs(byAlignment.x), 1.0f) << "Right alignment moves the line inside the box";
+    ASSERT_GT(std::fabs(byAlignment.y), 1.0f) << "Bottom alignment moves the line inside the box";
+    ASSERT_GT(std::fabs(byAnchor.x), 1.0f) << "the Right anchor moves the box";
+    ASSERT_GT(std::fabs(byAnchor.y), 1.0f) << "the Top anchor moves the box";
+    EXPECT_NEAR(both.low.x - base.low.x, byAlignment.x + byAnchor.x, 1e-3f);
+    EXPECT_NEAR(both.low.y - base.low.y, byAlignment.y + byAnchor.y, 1e-3f);
+    EXPECT_NEAR(both.high.x - base.high.x, byAlignment.x + byAnchor.x, 1e-3f);
+    EXPECT_NEAR(both.high.y - base.high.y, byAlignment.y + byAnchor.y, 1e-3f);
+
+    // the box is the anchor's alone, and the aligned glyphs stay inside it
+    EXPECT_FLOAT_EQ(aligned.boxMin.x, base.boxMin.x);
+    EXPECT_FLOAT_EQ(aligned.boxMin.y, base.boxMin.y);
+    EXPECT_FLOAT_EQ(both.boxMin.x, anchored.boxMin.x);
+    EXPECT_FLOAT_EQ(both.boxMin.y, anchored.boxMin.y);
+    EXPECT_GE(both.low.x, both.boxMin.x - 1e-3f);
+    EXPECT_LE(both.high.x, both.boxMin.x + 120.0f + 1e-3f);
+    EXPECT_GE(both.low.y, both.boxMin.y - 1e-3f);
+    EXPECT_LE(both.high.y, both.boxMin.y + 60.0f + 1e-3f);
 }
 
 TEST(BitmapText, NoSdf){

@@ -9,7 +9,9 @@ scaled label in a UI scene:
   text's raster (a bitmap at the label's on-screen scale);
 - the project settings graphics.html_ui_glyph_atlas_mib, graphics.html_ui_sdf_primitives and
   graphics.html_ui_transform_aware_text read and write project.yaml, reject bad values, and reach
-  the renderer at once (the cards become meshes, the label a stretched bitmap).
+  the renderer at once (the cards become meshes, the label a stretched bitmap);
+- S93: graphics.html_ui_image_cache_mib (-1 the platform's default, 0-1024) reads and writes
+  project.yaml and rejects values out of range; render_stats has the image counters.
 
 Runs on a scratch copy of the fixture project (canvas 1280 x 720).
 """
@@ -62,7 +64,8 @@ FIELDS = ["passes", "drawCalls", "pipelineApplies", "pipelineCacheMisses", "text
           "compositesFused", "regionLayers", "regionTargetsCreated", "clipMasksRedrawn", "geometryLive", "geometryBytes",
           "geometrySubmitted", "runsMerged", "runCacheHits", "instancesDrawn", "verticesGathered", "stencilDraws",
           "stencilClipsElided", "analyticClips", "boxShadowTextures", "glyphsRasterized", "msdfGlyphsPending",
-          "textRegenerations", "textEffectFallbacks", "atlasBytes", "atlasEvictions",
+          "textRegenerations", "textEffectFallbacks", "atlasBytes", "atlasEvictions", "imagesDecoded", "imageCacheHits",
+          "imagesPending",
           # S92 R6
           "framesKept", "liveSources", "keptMismatches", "compositeTiles", "compositePixels", "layerPixels", "layerCacheHits",
           "layerCacheMisses", "layerCacheBytes", "samples", "targetBytes", "depthStencilStores"]
@@ -166,6 +169,18 @@ async def test_project_settings(ed: Editor):
     await render(ed, "on")
     card = await detail(ed, "#card3")
     ed.check(card.get("paint", {}).get("path") == "primitive", f"primitives again: {card.get('paint')}")
+
+
+async def test_image_cache_setting(ed: Editor):
+    key = "graphics.html_ui_image_cache_mib"
+    got = await ed.call("get_project_settings", keys=[key])
+    ed.check_in("-1", str(got), "the image cache budget defaults to the platform's (-1)")
+    msg = await ed.call("set_project_settings", values={key: 5000}, expect_error=True)
+    ed.check_in("1024", msg, "the error names the range")
+    await ed.call("set_project_settings", values={key: 0})
+    yaml = (ed.project / "project.yaml").read_text()
+    ed.check("htmlUiImageCacheMiB: 0" in yaml, "the budget saved to project.yaml")
+    await ed.call("set_project_settings", values={key: -1})
 
 
 async def test_console_clean(ed: Editor):

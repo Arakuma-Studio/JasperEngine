@@ -40,6 +40,13 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/TextureSpriteMode.cpp
     ${EDITOR_DIR}/window/dialog/SpriteConversionDialog.cpp
 )
+# S94 F48-F49: PSD/PSB layer import, sprite skins (authoring, Inspector, Skinning Editor)
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/sprite/SpriteSkinEdit.cpp
+    ${EDITOR_DIR}/texture/PsdLayerImport.cpp
+    ${EDITOR_DIR}/window/InspectorSpriteSkin.cpp
+    ${EDITOR_DIR}/window/SkinningEditorWindow.cpp
+)
 jasperengine_skip_unity_build(
     REASON "S45's sprite modules: file-local helpers (problemJson, readText, invalid) shared in name with the Aseprite importer's"
     SOURCES

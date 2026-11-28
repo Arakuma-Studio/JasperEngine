@@ -25,6 +25,7 @@ namespace jasperengine{
     struct ForceFieldComponent;
     struct LightComponent;
     struct LocalVolumetricFogComponent;
+    struct FogZoneComponent;
     struct ParticleSystemComponent;
     struct PolygonPoint;
     struct ReflectionProbeComponent;
@@ -67,6 +68,8 @@ namespace jasperengine::editor{
         GizmoLineBatch reflectionProbeLines;
         // a selected Local Volumetric Fog's outer shape and its inner (blend distance) one
         GizmoLineBatch fogVolumeLines;
+        // a selected Fog Zone's shape and, fainter, its blend shell (docs/specs/S101-vapor.md R27)
+        GizmoLineBatch fogZoneLines;
         GizmoLineBatch controllerLines;
         GizmoLineBatch waterVolumeLines;
         GizmoLineBatch waterExcluderLines;
@@ -105,6 +108,7 @@ namespace jasperengine::editor{
         void createOrUpdateTrackLines(Entity entity, const TranslateTracksComponent& tracks, bool visible);
         void createOrUpdateReflectionProbeLines(Entity entity, const Transform& transform, const ReflectionProbeComponent& probe, bool visible);
         void createOrUpdateFogVolumeLines(Entity entity, const Transform& transform, const LocalVolumetricFogComponent& volume, bool visible);
+        void createOrUpdateFogZoneLines(Entity entity, const Transform& transform, const FogZoneComponent& zone, bool visible);
         void createOrUpdateWaterVolumeLines(Entity entity, const Transform& transform, const WaterVolumeComponent& volume, bool visible, bool highlighted);
         void createOrUpdateWaterExcluderLines(Entity entity, const Transform& transform, const WaterExcluderComponent& excluder, bool visible, bool highlighted);
         void createOrUpdateWaterWakeLines(Entity entity, const Transform& transform, const WaterWakeComponent& wake, bool visible);

@@ -31,6 +31,7 @@
 #include "util/UIProbe.h"
 #include "window/CodeEditor.h"
 #include "pool/ShaderPool.h"
+#include "reflect/Enums.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/MaterialPbr.h"
@@ -324,6 +325,52 @@ void editor::InspectorWindow::drawMaterialPbrLobeRows(ComponentType cpType, Scen
                 break;
         }
     }
+}
+
+void editor::InspectorWindow::drawMaterialVertexColorRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                                          unsigned int submesh, const RowSettings& settingsMaterial){
+    Scene* scene = sceneProject->scene;
+    MeshComponent* mesh = scene->findComponent<MeshComponent>(entities[0]);
+    if (!mesh || submesh >= mesh->numSubmeshes)
+        return;
+    // a Terrain has no vertex colours (its layers are its surface)
+    for (Entity entity : entities){
+        if (scene->findComponent<TerrainComponent>(entity))
+            return;
+    }
+    const Submesh& sub = mesh->submeshes[submesh];
+    const MaterialPbrExtensions::VertexColor& vertexColor = sub.material.pbr->vertexColor;
+    const std::string prefix = "submeshes[" + std::to_string(submesh) + "].material.pbr.vertexColor.";
+
+    ImGui::SeparatorText("Vertex Color");
+    beginTable(cpType, getLabelSize("Alpha Multiplies Opacity"), "submeshes_material_vertex_color");
+    RowSettings useSettings = settingsMaterial;
+    useSettings.enumEntries = enumEntries(reflect::enums::kVertexColorUse);
+    useSettings.help = "What the mesh's vertex colours do. Tint: RGB multiplies the albedo (and A the opacity). "
+                       "Masks: each channel masks an input of the surface. Off: the shader ignores them.";
+    propertyRow(RowPropertyType::Enum, cpType, prefix + "use", "Use", sceneProject, entities, useSettings);
+    if (vertexColor.use == VertexColorUse::TINT){
+        RowSettings alphaSettings = settingsMaterial;
+        alphaSettings.indent = true;
+        alphaSettings.help = "The alpha channel multiplies the opacity, as the material's base colour alpha does.";
+        propertyRow(RowPropertyType::Bool, cpType, prefix + "alphaOpacity", "Alpha Multiplies Opacity", sceneProject, entities, alphaSettings);
+    }else if (vertexColor.use == VertexColorUse::MASKS){
+        RowSettings channelSettings = settingsMaterial;
+        channelSettings.indent = true;
+        channelSettings.enumEntries = enumEntries(reflect::enums::kVertexColorTarget);
+        channelSettings.help = "The input this channel masks: Occlusion, Metallic, Emission and Roughness (multiply) multiply it, "
+                               "Roughness (replace) and Opacity are it, Albedo Tint multiplies the albedo. Channels on one input multiply.";
+        const char* const channels[] = {"r", "g", "b", "a"};
+        const char* const labels[] = {"R Channel", "G Channel", "B Channel", "A Channel"};
+        for (int channel = 0; channel < 4; channel++)
+            propertyRow(RowPropertyType::Enum, cpType, prefix + channels[channel], labels[channel], sceneProject, entities, channelSettings);
+    }
+    endTable();
+    if (vertexColor.use == VertexColorUse::MASKS && vertexColor.r == VertexColorTarget::NONE && vertexColor.g == VertexColorTarget::NONE &&
+            vertexColor.b == VertexColorTarget::NONE)
+        ImGui::TextDisabled("RGB tints the albedo (no colour channel is mapped)");
+    if (entities.size() == 1 && !sub.hasVertexColor3 && !sub.hasVertexColor4)
+        ImGui::TextDisabled("This mesh has no vertex colours");
 }
 
 void editor::InspectorWindow::drawMaterialShadingModelRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,

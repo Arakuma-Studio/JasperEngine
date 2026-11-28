@@ -14,6 +14,7 @@
 #include "SokolSystem.h"
 #include "Engine.h"
 #include "render/SystemRender.h"
+#include "render/ViewDrawMode.h"
 #include "profiler/Profile.h"
 
 #include <algorithm>
@@ -126,12 +127,14 @@ void SokolObject::resetWarm(){
 // GL with a worker context (spec S32 R4): the first draw of a pipeline with this object's
 // bindings waits for its warm draw on the worker, which makes the driver compile the program for
 // this state there. warmed holds the pipeline confirmed, key the warm draw asked for
-bool SokolObject::isWarm(sg_pipeline pipeline, int index, bool lodFade, sg_shader warmShader){
+bool SokolObject::isWarm(sg_pipeline pipeline, int index, WarmShader shaderTable, sg_shader warmShader){
     if (immediatePipelines || !SokolAsyncCreate::warmDrawsActive())
         return true;
     WarmTable& table = warm.make();
-    uint32_t& warmed = lodFade ? table.lodFadePipeline[index] : table.pipeline[index];
-    uint64_t& key = lodFade ? table.lodFadeKey[index] : table.key[index];
+    uint32_t& warmed = shaderTable == WarmShader::LOD_FADE ? table.lodFadePipeline[index]
+                     : (shaderTable == WarmShader::VIEW ? table.viewPipeline[index] : table.pipeline[index]);
+    uint64_t& key = shaderTable == WarmShader::LOD_FADE ? table.lodFadeKey[index]
+                  : (shaderTable == WarmShader::VIEW ? table.viewKey[index] : table.key[index]);
     if (warmed == pipeline.id)
         return true;
     if (key == 0)
@@ -171,6 +174,16 @@ void SokolObject::resetPipelines(){
     variants.clear();
     noCullSame = 0;
     lodFadeShaderId = SG_INVALID_ID;
+    viewShaderId = SG_INVALID_ID;
+}
+
+void SokolObject::releaseViewVariants(){
+    variants.removeKinds(VARIANT_VIEW, 4);
+    viewShaderId = SG_INVALID_ID;
+    if (warm){
+        std::fill(std::begin(warm->viewPipeline), std::end(warm->viewPipeline), 0u);
+        std::fill(std::begin(warm->viewKey), std::end(warm->viewKey), 0ull);
+    }
 }
 
 size_t SokolObject::getSharedVariantCount(){
@@ -256,10 +269,10 @@ void SokolVariantRefs::add(uint8_t kind, uint8_t type, sg_pipeline pipeline){
     list.push_back({kind, type, pipeline, SystemRender::getContextId()});
 }
 
-void SokolVariantRefs::removeFrom(uint8_t kind){
+void SokolVariantRefs::removeKinds(uint8_t first, uint8_t count){
     const uint64_t context = SystemRender::getContextId();
     for (size_t i = 0; i < list.size();){
-        if (list[i].kind >= kind){
+        if (list[i].kind >= first && list[i].kind < first + count){
             if (list[i].context == context)
                 SokolPipelineCache::releaseVariant(list[i].pipeline);
             list.erase(list.begin() + (std::ptrdiff_t)i);
@@ -428,6 +441,20 @@ void SokolObject::applyBlend(sg_color_target_state& target, bool offscreen) cons
             target.blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
             target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
             return;
+        // a material's own factors (Blend Mode Custom), alpha included offscreen or not: MIN
+        // and MAX take ONE for every factor of their channel (sokol validates it)
+        case BlendMode::CUSTOM:{
+            const BlendState& custom = loadState.customBlend;
+            const bool minMaxRGB = custom.opRGB == BlendOperation::MIN || custom.opRGB == BlendOperation::MAX;
+            const bool minMaxAlpha = custom.opAlpha == BlendOperation::MIN || custom.opAlpha == BlendOperation::MAX;
+            target.blend.op_rgb = getBlendOp(custom.opRGB);
+            target.blend.op_alpha = getBlendOp(custom.opAlpha);
+            target.blend.src_factor_rgb = minMaxRGB ? SG_BLENDFACTOR_ONE : getBlendFactor(custom.srcFactorRGB);
+            target.blend.dst_factor_rgb = minMaxRGB ? SG_BLENDFACTOR_ONE : getBlendFactor(custom.dstFactorRGB);
+            target.blend.src_factor_alpha = minMaxAlpha ? SG_BLENDFACTOR_ONE : getBlendFactor(custom.srcFactorAlpha);
+            target.blend.dst_factor_alpha = minMaxAlpha ? SG_BLENDFACTOR_ONE : getBlendFactor(custom.dstFactorAlpha);
+            return;
+        }
         case BlendMode::ERASE_PREMULTIPLIED:
             target.blend.src_factor_rgb = SG_BLENDFACTOR_ZERO;
             target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
@@ -739,6 +766,7 @@ sg_blend_op SokolObject::getBlendOp(BlendOperation operation){
     case BlendOperation::SUBTRACT: return SG_BLENDOP_SUBTRACT;
     case BlendOperation::REVERSE_SUBTRACT: return SG_BLENDOP_REVERSE_SUBTRACT;
     case BlendOperation::MAX: return SG_BLENDOP_MAX;
+    case BlendOperation::MIN: return SG_BLENDOP_MIN;
     }
     return _SG_BLENDOP_DEFAULT;
 }
@@ -1277,14 +1305,15 @@ namespace {
 }
 
 void SokolObject::setOverdraw(bool overdraw){
-#ifdef JASPERENGINE_EDITOR
+#ifdef JE_VIEW_DRAW_MODES
     overdrawDraws = overdraw;
 #else
     (void)overdraw;
 #endif
 }
 
-SokolObject::Selection SokolObject::selectPipeline(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader, sg_pipeline& selected){
+SokolObject::Selection SokolObject::selectPipeline(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader, ShaderRender* viewShader,
+                                                   sg_pipeline& selected){
     const int index = pipelineIndex(pipType);
     if (overdrawDraws && index < PIPELINE_TYPES){
         // every layer adds its heat (the colour the draw's material gives), nothing hides another
@@ -1313,19 +1342,27 @@ SokolObject::Selection SokolObject::selectPipeline(PipelineType pipType, bool di
         }
         return Selection::WAIT;
     }
-    if (!disableFaceCulling && !mirrored && !lodFadeShader)
+    // the view variant's draw has no fade (the Draw Mode draws the dominant level)
+    if (viewShader)
+        lodFadeShader = nullptr;
+    // a variant of the shader: the fade's or the view's, on its own kinds
+    ShaderRender* variantShader = viewShader ? viewShader : lodFadeShader;
+    if (!disableFaceCulling && !mirrored && !variantShader)
         return Selection::READY;
     if (index >= PIPELINE_TYPES)
-        return lodFadeShader ? Selection::FAIL : Selection::READY;
+        return variantShader ? Selection::FAIL : Selection::READY;
 
     sg_shader fadeShader = {SG_INVALID_ID};
-    if (lodFadeShader){
-        fadeShader = lodFadeShader->backend.get();
+    if (variantShader){
+        fadeShader = variantShader->backend.get();
         if (fadeShader.id == SG_INVALID_ID || sg_query_shader_state(fadeShader) != SG_RESOURCESTATE_VALID)
             return Selection::FAIL;
-        // made on another fade shader (its variant was built again since): those go
-        if (fadeShader.id != lodFadeShaderId){
-            variants.removeFrom(VARIANT_LOD_FADE);
+        // made on another shader (its variant was built again since): those go
+        if (viewShader && fadeShader.id != viewShaderId){
+            releaseViewVariants();
+            viewShaderId = fadeShader.id;
+        }else if (!viewShader && fadeShader.id != lodFadeShaderId){
+            variants.removeKinds(VARIANT_LOD_FADE, 4);
             lodFadeShaderId = fadeShader.id;
             if (warm){
                 std::fill(std::begin(warm->lodFadePipeline), std::end(warm->lodFadePipeline), 0u);
@@ -1335,15 +1372,17 @@ SokolObject::Selection SokolObject::selectPipeline(PipelineType pipType, bool di
     }
 
     // 0 plain, 1 mirrored, 2 no cull, 3 both: the variant kinds, from VARIANT_LOD_FADE for a fade
+    // and VARIANT_VIEW for a view
     const int modifier = mirrored ? (disableFaceCulling ? 3 : 1) : (disableFaceCulling ? 2 : 0);
-    const int kind = lodFadeShader ? VARIANT_LOD_FADE + modifier
+    const int kind = viewShader ? VARIANT_VIEW + modifier
+                   : lodFadeShader ? VARIANT_LOD_FADE + modifier
                                    : (modifier == 1 ? VARIANT_MIRRORED : (modifier == 2 ? VARIANT_NO_CULL : VARIANT_MIRRORED_NO_CULL));
     const bool sameAsPipeline = (kind == VARIANT_NO_CULL) && (noCullSame & (1u << index));
     const SokolVariantRefs::Variant* held = variants.find((uint8_t)kind, (uint8_t)index);
     if (!held && !sameAsPipeline){
         sg_pipeline_desc desc = makePipelineDesc(pipType);
         const bool culls = desc.cull_mode == SG_CULLMODE_BACK || desc.cull_mode == SG_CULLMODE_FRONT;
-        if (lodFadeShader){
+        if (variantShader){
             desc.shader = fadeShader;
         }
         if (disableFaceCulling){
@@ -1374,8 +1413,9 @@ SokolObject::Selection SokolObject::selectPipeline(PipelineType pipType, bool di
         return Selection::READY;
     }
     const bool making = held && held->pipeline.id != SG_INVALID_ID && sg_query_pipeline_state(held->pipeline) == SG_RESOURCESTATE_ALLOC;
-    if (lodFadeShader){
-        // a fading draw has no stand-in (the plain pipeline would draw both levels whole)
+    if (variantShader){
+        // a fading draw has no stand-in (the plain pipeline would draw both levels whole), nor a
+        // view (it would draw the shaded mesh)
         return making ? Selection::WAIT : Selection::FAIL;
     }
     if (mirrored && making){
@@ -1386,7 +1426,7 @@ SokolObject::Selection SokolObject::selectPipeline(PipelineType pipType, bool di
     return Selection::READY;
 }
 
-bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader){
+bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader, ShaderRender* viewShader){
     // a batcher's held draws first (SokolSystem::setDeferredFlush)
     SokolSystem::beforeForeignDraw();
     uniformsDropped = false; // a new draw: its uniforms come next
@@ -1418,7 +1458,15 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling, bool 
     disableFaceCulling = false;
 #endif
 
-    const Selection selection = selectPipeline(pipType, disableFaceCulling, mirrored, lodFadeShader, selectedPipeline);
+    if (viewShader)
+        lodFadeShader = nullptr;
+    Selection selection = selectPipeline(pipType, disableFaceCulling, mirrored, lodFadeShader, viewShader, selectedPipeline);
+    // a view variant that cannot be made: the draw is the shaded one
+    if (selection == Selection::FAIL && viewShader){
+        viewShader = nullptr;
+        selectedPipeline = pipelineOf(pipType);
+        selection = selectPipeline(pipType, disableFaceCulling, mirrored, nullptr, nullptr, selectedPipeline);
+    }
     if (selection != Selection::READY){
         drawWaiting = selection == Selection::WAIT;
         waitingDraws += drawWaiting ? 1 : 0;
@@ -1427,8 +1475,9 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling, bool 
 
     {
         const int index = pipelineIndex(pipType);
-        const sg_shader warmShader = lodFadeShader ? lodFadeShader->backend.get() : shader;
-        if (index < PIPELINE_TYPES && !isWarm(selectedPipeline, index, lodFadeShader != nullptr, warmShader)){
+        const sg_shader warmShader = viewShader ? viewShader->backend.get() : (lodFadeShader ? lodFadeShader->backend.get() : shader);
+        const WarmShader warmTable = viewShader ? WarmShader::VIEW : (lodFadeShader ? WarmShader::LOD_FADE : WarmShader::BASE);
+        if (index < PIPELINE_TYPES && !isWarm(selectedPipeline, index, warmTable, warmShader)){
             drawWaiting = true;
             waitingDraws++;
             return false;
@@ -1459,10 +1508,10 @@ bool SokolObject::isLodFadeReady(PipelineType pipType, bool disableFaceCulling, 
 #ifndef JASPERENGINE_EDITOR
     disableFaceCulling = false;
 #endif
-    if (selectPipeline(pipType, disableFaceCulling, mirrored, lodFadeShader, selected) != Selection::READY)
+    if (selectPipeline(pipType, disableFaceCulling, mirrored, lodFadeShader, nullptr, selected) != Selection::READY)
         return false;
     const int index = pipelineIndex(pipType);
-    return index < PIPELINE_TYPES && isWarm(selected, index, true, lodFadeShader->backend.get());
+    return index < PIPELINE_TYPES && isWarm(selected, index, WarmShader::LOD_FADE, lodFadeShader->backend.get());
 }
 
 uint32_t SokolObject::getAppliedPipelineId() const{
@@ -2191,7 +2240,7 @@ bool SokolObject::batchPipeline(int index, const sg_bindings& bindings, sg_pipel
     // (the GL warm draw with the batch's bindings: its textures are the source's)
     const sg_bindings own = bind;
     bind = bindings;
-    const bool warm = isWarm(pipeline, index, false, shader);
+    const bool warm = isWarm(pipeline, index, WarmShader::BASE, shader);
     bind = own;
     return warm;
 }

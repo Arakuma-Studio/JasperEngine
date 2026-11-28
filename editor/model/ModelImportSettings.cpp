@@ -36,7 +36,18 @@ namespace {
     const EnumName<ModelReadWrite> readWriteNames[] = {
         {ModelReadWrite::Automatic, "automatic", "Automatic"}, {ModelReadWrite::On, "on", "On"}};
     const EnumName<ModelNormals> normalsNames[] = {
-        {ModelNormals::Import, "import", "Import"}, {ModelNormals::Calculate, "calculate", "Calculate"}};
+        {ModelNormals::Import, "import", "Import"}, {ModelNormals::Calculate, "calculate", "Calculate"}, {ModelNormals::None, "none", "None"}};
+    const EnumName<NormalsWeighting> weightingNames[] = {
+        {NormalsWeighting::AreaAndAngle, "area_and_angle", "Area And Angle"}, {NormalsWeighting::Area, "area", "Area"}};
+    const EnumName<SmoothnessSource> smoothnessNames[] = {
+        {SmoothnessSource::FromAngle, "from_angle", "From Angle"},
+        {SmoothnessSource::FromSmoothingGroups, "from_smoothing_groups", "From Smoothing Groups"},
+        {SmoothnessSource::PreferSmoothingGroups, "prefer_smoothing_groups", "Prefer Smoothing Groups"}};
+    const EnumName<ModelTangents> tangentsNames[] = {
+        {ModelTangents::Import, "import", "Import"}, {ModelTangents::Calculate, "calculate", "Calculate Mikktspace"},
+        {ModelTangents::None, "none", "None"}};
+    const EnumName<RestPose> restPoseNames[] = {
+        {RestPose::NodeValues, "node_values", "Node Values"}, {RestPose::FirstFrame, "first_frame", "First Frame"}};
     const EnumName<GenerateLods> lodsNames[] = {
         {GenerateLods::Automatic, "automatic", "Automatic"}, {GenerateLods::On, "on", "On"}, {GenerateLods::Off, "off", "Off"}};
     const EnumName<LodReduction> reductionNames[] = {
@@ -47,6 +58,8 @@ namespace {
         {ScriptMeshData::Release, "release", "Release"}};
     const EnumName<AnimationEntitiesMode> animationEntitiesNames[] = {
         {AnimationEntitiesMode::Always, "always", "Always"}, {AnimationEntitiesMode::Auto, "auto", "Auto"}};
+    const EnumName<FbxSubmeshOrder> submeshOrderNames[] = {
+        {FbxSubmeshOrder::MaterialSlots, "material_slots", "Material Slots"}, {FbxSubmeshOrder::UsedMaterials, "used_materials", "Used Materials"}};
     const EnumName<MaterialCreationMode> materialModeNames[] = {
         {MaterialCreationMode::Import, "import", "Import"}, {MaterialCreationMode::None, "none", "None"}};
     // a model-level key, outside R8's per-platform settings
@@ -90,7 +103,9 @@ namespace {
 
     const char* const settingKeys[] = {
         "optimizeMesh", "meshCompression", "weldVertices", "indexFormat", "readWrite", "normals", "smoothingAngle",
-        "generateLods", "lodCount", "lodReduction", "shipSource"};
+        "normalsWeighting", "smoothnessSource", "tangents", "generateLods", "lodCount", "lodReduction", "shipSource",
+        "restPose", "restPoseTake"};
+    const char* const modelOnlyKeys[] = {"smoothnessSource", "restPose", "restPoseTake"};
 
     bool isSettingKey(const std::string& key){
         return std::find_if(std::begin(settingKeys), std::end(settingKeys), [&](const char* k){ return key == k; }) != std::end(settingKeys);
@@ -129,6 +144,14 @@ namespace {
                 return true;
             }catch (...){ return fail(field, "expected a number"); }
         }
+        bool text(const char* field, std::optional<std::string>& out){
+            if (!node[field]) return true;
+            std::string value;
+            try { value = node[field].Scalar(); } catch (...) { value.clear(); }
+            if (!node[field].IsScalar() || value.empty()) return fail(field, "expected a take's name");
+            out = value;
+            return true;
+        }
         template<class E, size_t N>
         bool enumeration(const char* field, const EnumName<E> (&table)[N], std::optional<E>& out){
             if (!node[field]) return true;
@@ -151,10 +174,15 @@ namespace {
         r.enumeration("readWrite", readWriteNames, v.readWrite);
         r.enumeration("normals", normalsNames, v.normals);
         r.number("smoothingAngle", v.smoothingAngle, 0.0f, 180.0f);
+        r.enumeration("normalsWeighting", weightingNames, v.normalsWeighting);
+        r.enumeration("smoothnessSource", smoothnessNames, v.smoothnessSource);
+        r.enumeration("tangents", tangentsNames, v.tangents);
         r.enumeration("generateLods", lodsNames, v.generateLods);
         r.integer("lodCount", v.lodCount, 1, 3);
         r.enumeration("lodReduction", reductionNames, v.lodReduction);
         r.boolean("shipSource", v.shipSource);
+        r.enumeration("restPose", restPoseNames, v.restPose);
+        r.text("restPoseTake", v.restPoseTake);
     }
 
     void writeValues(YAML::Node& node, const ModelSettingValues& v){
@@ -165,10 +193,15 @@ namespace {
         if (v.readWrite) node["readWrite"] = entryOf(readWriteNames, *v.readWrite).name;
         if (v.normals) node["normals"] = entryOf(normalsNames, *v.normals).name;
         if (v.smoothingAngle) node["smoothingAngle"] = *v.smoothingAngle;
+        if (v.normalsWeighting) node["normalsWeighting"] = entryOf(weightingNames, *v.normalsWeighting).name;
+        if (v.smoothnessSource) node["smoothnessSource"] = entryOf(smoothnessNames, *v.smoothnessSource).name;
+        if (v.tangents) node["tangents"] = entryOf(tangentsNames, *v.tangents).name;
         if (v.generateLods) node["generateLods"] = entryOf(lodsNames, *v.generateLods).name;
         if (v.lodCount) node["lodCount"] = *v.lodCount;
         if (v.lodReduction) node["lodReduction"] = entryOf(reductionNames, *v.lodReduction).name;
         if (v.shipSource) node["shipSource"] = *v.shipSource;
+        if (v.restPose) node["restPose"] = entryOf(restPoseNames, *v.restPose).name;
+        if (v.restPoseTake) node["restPoseTake"] = *v.restPoseTake;
     }
 
     // the first value that is set: the platform override, the model's, the project default
@@ -190,7 +223,8 @@ namespace {
 
 bool ModelSettingValues::empty() const{
     return !optimizeMesh && !meshCompression && !weldVertices && !indexFormat && !readWrite && !normals && !smoothingAngle &&
-           !generateLods && !lodCount && !lodReduction && !shipSource;
+           !normalsWeighting && !smoothnessSource && !tangents && !generateLods && !lodCount && !lodReduction && !shipSource &&
+           !restPose && !restPoseTake;
 }
 
 const char* editor::modelFamilyName(ModelFamily family){ return entryOf(familyNames, family).name; }
@@ -201,20 +235,34 @@ const char* editor::meshCompressionName(MeshCompression value){ return entryOf(c
 const char* editor::indexFormatName(IndexFormat value){ return entryOf(indexNames, value).name; }
 const char* editor::modelReadWriteName(ModelReadWrite value){ return entryOf(readWriteNames, value).name; }
 const char* editor::modelNormalsName(ModelNormals value){ return entryOf(normalsNames, value).name; }
+const char* editor::normalsWeightingName(NormalsWeighting value){ return entryOf(weightingNames, value).name; }
+const char* editor::smoothnessSourceName(SmoothnessSource value){ return entryOf(smoothnessNames, value).name; }
+const char* editor::modelTangentsName(ModelTangents value){ return entryOf(tangentsNames, value).name; }
+const char* editor::restPoseName(RestPose value){ return entryOf(restPoseNames, value).name; }
 const char* editor::generateLodsName(GenerateLods value){ return entryOf(lodsNames, value).name; }
 const char* editor::lodReductionName(LodReduction value){ return entryOf(reductionNames, value).name; }
 const char* editor::scriptMeshDataName(ScriptMeshData value){ return entryOf(scriptNames, value).name; }
 const char* editor::animationEntitiesModeName(AnimationEntitiesMode value){ return entryOf(animationEntitiesNames, value).name; }
+const char* editor::fbxSubmeshOrderName(FbxSubmeshOrder value){ return entryOf(submeshOrderNames, value).name; }
+const char* editor::fbxSubmeshOrderLabel(FbxSubmeshOrder value){ return entryOf(submeshOrderNames, value).label; }
+bool editor::fbxSubmeshOrderFromName(const std::string& name, FbxSubmeshOrder& value){ return valueOf(submeshOrderNames, name, value); }
 const char* editor::materialCreationModeName(MaterialCreationMode value){ return entryOf(materialModeNames, value).name; }
 const char* editor::optimizeMeshLabel(OptimizeMesh value){ return entryOf(optimizeNames, value).label; }
 const char* editor::meshCompressionLabel(MeshCompression value){ return entryOf(compressionNames, value).label; }
 const char* editor::indexFormatLabel(IndexFormat value){ return entryOf(indexNames, value).label; }
 const char* editor::lodReductionLabel(LodReduction value){ return entryOf(reductionNames, value).label; }
+const char* editor::modelNormalsLabel(ModelNormals value){ return entryOf(normalsNames, value).label; }
+const char* editor::normalsWeightingLabel(NormalsWeighting value){ return entryOf(weightingNames, value).label; }
+const char* editor::smoothnessSourceLabel(SmoothnessSource value){ return entryOf(smoothnessNames, value).label; }
+const char* editor::modelTangentsLabel(ModelTangents value){ return entryOf(tangentsNames, value).label; }
+const char* editor::restPoseLabel(RestPose value){ return entryOf(restPoseNames, value).label; }
 
 const std::vector<std::string>& editor::modelEnumValues(const std::string& field){
     static const std::map<std::string, std::vector<std::string>> values = {
         {"optimizeMesh", namesOf(optimizeNames)}, {"meshCompression", namesOf(compressionNames)},
         {"indexFormat", namesOf(indexNames)}, {"readWrite", namesOf(readWriteNames)}, {"normals", namesOf(normalsNames)},
+        {"normalsWeighting", namesOf(weightingNames)}, {"smoothnessSource", namesOf(smoothnessNames)},
+        {"tangents", namesOf(tangentsNames)}, {"restPose", namesOf(restPoseNames)},
         {"generateLods", namesOf(lodsNames)}, {"lodReduction", namesOf(reductionNames)}, {"platform", namesOf(familyNames)},
         {"scriptMeshData", namesOf(scriptNames)}, {materialModeKey, namesOf(materialModeNames)}};
     static const std::vector<std::string> none;
@@ -225,6 +273,10 @@ const std::vector<std::string>& editor::modelEnumValues(const std::string& field
 const std::vector<std::string>& editor::modelSettingKeys(){
     static const std::vector<std::string> keys(std::begin(settingKeys), std::end(settingKeys));
     return keys;
+}
+
+bool editor::isModelOnlySettingKey(const std::string& key){
+    return std::find_if(std::begin(modelOnlyKeys), std::end(modelOnlyKeys), [&](const char* k){ return key == k; }) != std::end(modelOnlyKeys);
 }
 
 const std::vector<std::string>& editor::modelImporterKeys(){
@@ -274,6 +326,9 @@ bool ModelImportSettings::parse(const YAML::Node& node, ModelImportSettings& out
                 std::optional<bool> overrides;
                 pr.boolean("override", overrides);
                 p.override = overrides.value_or(false);
+                for (const char* key : modelOnlyKeys)
+                    if (block[key])
+                        pr.fail(key, "is a setting of the model, not of a platform (the FBX conversion reads it)");
                 readValues(pr, p.values);
             }
         }
@@ -351,6 +406,11 @@ ResolvedModelSettings ModelImportSettings::resolve(ModelFamily family, const Mod
     r.readWrite = pick(p.values.readWrite, o, v.readWrite, d.readWrite, r.readWrite);
     r.normals = pick(p.values.normals, o, v.normals, d.normals, r.normals);
     r.smoothingAngle = pick(p.values.smoothingAngle, o, v.smoothingAngle, d.smoothingAngle, r.smoothingAngle);
+    if (o && p.values.normalsWeighting) r.normalsWeighting = p.values.normalsWeighting;
+    else if (v.normalsWeighting) r.normalsWeighting = v.normalsWeighting;
+    else r.normalsWeighting = d.normalsWeighting;
+    r.smoothnessSource = v.smoothnessSource.value_or(SmoothnessSource::FromAngle);
+    r.tangents = pick(p.values.tangents, o, v.tangents, d.tangents, r.tangents);
     r.generateLods = pick(p.values.generateLods, o, v.generateLods, d.generateLods, r.generateLods);
     r.lodCount = pick(p.values.lodCount, o, v.lodCount, d.lodCount, r.lodCount);
     r.lodReduction = pick(p.values.lodReduction, o, v.lodReduction, d.lodReduction, r.lodReduction);
@@ -369,8 +429,16 @@ std::string ResolvedModelSettings::canonical() const{
         << ",\"weldVertices\":" << (weldVertices ? 1 : 0)
         << ",\"indexFormat\":\"" << indexFormatName(indexFormat) << "\""
         << ",\"normals\":\"" << modelNormalsName(normals) << "\"";
-    if (normals == ModelNormals::Calculate)
+    if (normals == ModelNormals::Calculate){
         out << ",\"smoothingAngle\":" << canonicalNumber(smoothingAngle);
+        // written only when set: the keys of older sections stay what they were
+        if (normalsWeighting)
+            out << ",\"normalsWeighting\":\"" << normalsWeightingName(*normalsWeighting) << "\"";
+        if (smoothnessSource != SmoothnessSource::FromAngle)
+            out << ",\"smoothnessSource\":\"" << smoothnessSourceName(smoothnessSource) << "\"";
+    }
+    if (tangents != ModelTangents::Import)
+        out << ",\"tangents\":\"" << modelTangentsName(tangents) << "\"";
     out << ",\"generateLods\":\"" << generateLodsName(generateLods) << "\"";
     // Automatic bakes the runtime's recipe whatever LOD Count and Reduction say
     if (generateLods == GenerateLods::On)
@@ -408,6 +476,10 @@ YAML::Node editor::encodeModelProjectSettings(const ModelProjectSettings& settin
         node["keepCpuDataForScripts"] = scriptMeshDataName(settings.scriptMeshData);
     if (settings.animationEntities != defaults.animationEntities)
         node["animationEntities"] = animationEntitiesModeName(settings.animationEntities);
+    if (settings.preserveHierarchyForNewModels != defaults.preserveHierarchyForNewModels)
+        node["preserveHierarchyForNewModels"] = settings.preserveHierarchyForNewModels;
+    if (settings.fbxSubmeshOrder != defaults.fbxSubmeshOrder)
+        node["fbxSubmeshOrder"] = fbxSubmeshOrderName(settings.fbxSubmeshOrder);
     if (settings.materialCreationMode != defaults.materialCreationMode)
         node[materialModeKey] = materialCreationModeName(settings.materialCreationMode);
     YAML::Node budgets(YAML::NodeType::Map);
@@ -439,7 +511,7 @@ void editor::decodeModelProjectSettings(const YAML::Node& node, ModelProjectSett
                 continue;
             // each value on its own: a bad one is skipped, not the platform's whole block
             for (const std::string& key : modelSettingKeys()){
-                if (!family[key])
+                if (!family[key] || isModelOnlySettingKey(key))
                     continue;
                 YAML::Node single(YAML::NodeType::Map);
                 single[key] = family[key];
@@ -457,6 +529,8 @@ void editor::decodeModelProjectSettings(const YAML::Node& node, ModelProjectSett
                 if (value.readWrite) target.readWrite = value.readWrite;
                 if (value.normals) target.normals = value.normals;
                 if (value.smoothingAngle) target.smoothingAngle = value.smoothingAngle;
+                if (value.normalsWeighting) target.normalsWeighting = value.normalsWeighting;
+                if (value.tangents) target.tangents = value.tangents;
                 if (value.generateLods) target.generateLods = value.generateLods;
                 if (value.lodCount) target.lodCount = value.lodCount;
                 if (value.lodReduction) target.lodReduction = value.lodReduction;
@@ -481,6 +555,17 @@ void editor::decodeModelProjectSettings(const YAML::Node& node, ModelProjectSett
         try { name = node["animationEntities"].Scalar(); } catch (...) { name.clear(); }
         if (valueOf(animationEntitiesNames, name, value))
             settings.animationEntities = value;
+    }
+    try{
+        if (node["preserveHierarchyForNewModels"])
+            settings.preserveHierarchyForNewModels = node["preserveHierarchyForNewModels"].as<bool>();
+    }catch (...){}
+    if (node["fbxSubmeshOrder"]){
+        FbxSubmeshOrder value;
+        std::string name;
+        try { name = node["fbxSubmeshOrder"].Scalar(); } catch (...) { name.clear(); }
+        if (valueOf(submeshOrderNames, name, value))
+            settings.fbxSubmeshOrder = value;
     }
     if (node[materialModeKey]){
         MaterialCreationMode value;

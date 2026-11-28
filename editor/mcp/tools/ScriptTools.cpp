@@ -148,6 +148,7 @@ std::string assetType(const fs::path& path) {
     if (Util::isSoundEventFile(p)) return "sound_event";
     // .mesh assets (S98 F1)
     if (Util::isMeshAssetFile(p)) return "mesh";
+    if (Util::isDataAssetFile(p)) return "data_asset";
     return "other";
 }
 
@@ -156,7 +157,8 @@ bool isTextFile(const fs::path& path) {
         ".lua", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".hxx", ".inl",
         ".material", ".scene", ".prefab", ".yaml", ".yml", ".json", ".txt", ".md", ".csv", ".ini", ".cfg", ".bitmapfont",
         ".glsl", ".vert", ".frag", ".hlsl", ".cmake", ".xml", ".gltf", ".obj", ".mtl", ".svg", ".tsx", ".tmx",
-        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller", ".shake", ".titleart", ".soundevent", ".particles"
+        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller", ".shake", ".titleart", ".soundevent", ".particles", ".dataasset",
+        ".fogprofile"
     };
     if (path.filename() == "CMakeLists.txt" || path.filename() == "AGENTS.md") return true;
     return text.count(extensionOf(path)) > 0 || graph::GraphRegistry::get().kindForFile(FileUtils::pathToUtf8(path));
@@ -527,7 +529,14 @@ std::string scriptPropertyTypeName(const ScriptProperty& prop) {
         case ScriptPropertyType::EntityReference:
             return prop.ptrTypeName.empty() ? "entity" : "entity:" + prop.ptrTypeName;
         case ScriptPropertyType::Prefab: return "prefab";
-        case ScriptPropertyType::Asset: return prop.assetType.empty() ? "asset" : "asset:" + prop.assetType;
+        case ScriptPropertyType::Asset:
+            if (!prop.ptrTypeName.empty()) return prop.ptrTypeName;   // a data class: its Data Assets
+            return prop.assetType.empty() ? "asset" : "asset:" + prop.assetType;
+        case ScriptPropertyType::List: {
+            ScriptProperty element = prop;
+            element.type = prop.elementType;
+            return "list:" + scriptPropertyTypeName(element);
+        }
     }
     return "unknown";
 }

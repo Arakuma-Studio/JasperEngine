@@ -209,7 +209,7 @@ one the editor, the game and `write_file` use):
 ```
 assets/anim/bob.anim:5:1: error: not valid JSON: syntax error while parsing value - unexpected '}'; expected '[', '{', or a literal
 assets/anim/walk.anim: warning: tracks[2].keys[0].value: expected [x, y, z]
-assets/anim/old.anim: error: This is a Unity .anim (YAML). JasperEngine clips are JSON {"format": "jasperengine.anim"}: create one with Assets > Create > Animation Clip or edit_animation {clip, create}.
+assets/anim/old.anim: error: This is a Unity .anim (YAML). JasperEngine clips are JSON {"format": "jasperengine.anim"}: import it with Assets > Import Unity Animation... or edit_animation {clip, create: {unity: "<absolute .anim path>"}}.
 Main Scene.scene: error: an Animation Player plays 'anim/run.anim', which does not exist (paths are relative to the assets folder)
 ```
 

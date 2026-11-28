@@ -1063,6 +1063,21 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	// Pointer Events (fork, engine-gaps G5-4): 'auto | none | pan-x | pan-y | pan-x pan-y | manipulation', not inherited;
 	// the context reads it from a touch's target up to its scroll container when the touch starts.
 	RegisterProperty(PropertyId::TouchAction, "touch-action", "auto", false, false).AddParser("string");
+	// Fork (S93 R30): Compositing and Blending 1
+	RegisterProperty(PropertyId::MixBlendMode, "mix-blend-mode", "normal", false, false)
+		.AddParser("keyword", "normal, multiply, screen, overlay, darken, lighten, color-dodge, color-burn, hard-light, soft-light, difference, exclusion, hue, saturation, color, luminosity, plus-lighter");
+	// Fork (S93 R31): none | <length> <length>, read by the document's fit (ElementDocument::FitTextAutosize)
+	RegisterProperty(PropertyId::TextAutosize, "text-autosize", "none", false, true).AddParser("keyword", "none").AddParser("string");
+	// Fork (S93 R8): the drag scrolling physics of a scroll container (engine extensions with uGUI ScrollRect's names), not
+	// inherited; the context reads them from the container when a press may pan it (ScrollPhysics). 'scroll-elasticity' is a
+	// <time> read from its text ("0.1s", "100ms").
+	RegisterProperty(PropertyId::ScrollDrag, "scroll-drag", "touch", false, false).AddParser("keyword", "touch, pointer");
+	RegisterProperty(PropertyId::ScrollMovement, "scroll-movement", "clamped", false, false).AddParser("keyword", "clamped, elastic, unrestricted");
+	RegisterProperty(PropertyId::ScrollElasticity, "scroll-elasticity", "0.1s", false, false).AddParser("string");
+	RegisterProperty(PropertyId::ScrollInertia, "scroll-inertia", "auto", false, false).AddParser("keyword", "auto, none");
+	RegisterProperty(PropertyId::ScrollDecelerationRate, "scroll-deceleration-rate", "auto", false, false)
+		.AddParser("keyword", "auto")
+		.AddParser("number");
 
 	// -- Values (p3-values), continued: the logical shorthands, which name the physical properties and shorthands of
 	// the other packages (border-<side> of p3-paint) --

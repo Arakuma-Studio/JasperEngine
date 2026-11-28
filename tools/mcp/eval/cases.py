@@ -32,6 +32,27 @@ README = "# Space Dodge\n\nA small arcade game made with JasperEngine.\n\nContro
 
 GAME_FILES = {"scripts/player.lua": PLAYER_LUA, "README.md": README}
 
+UI_FRAME_FILES = {
+    "assets/ui/title.html": """<html><head><link type="text/rcss" href="title.rcss" /></head>
+<body><h1>Motion title</h1></body></html>
+""",
+    "assets/ui/title.rcss": """body { width: 1080px; height: 1350px; background-color: #182438; }
+h1 { color: white; animation: reveal 3s linear both; }
+@keyframes reveal { from { opacity: 0; } to { opacity: 1; } }
+""",
+}
+
+HUD_HTML = """<!DOCTYPE html>
+<html>
+<head><link rel="stylesheet" href="hud.css"></head>
+<body><div id="panel"><span id="score">0</span></div></body>
+</html>
+"""
+
+HUD_CSS = """#panel { position: absolute; left: 20px; top: 20px; width: 240px; height: 80px; }
+#score { color: #ffffff; font-size: 32px; }
+"""
+
 # engine/tests/core/fixtures/dialogue/walk.dialogue as a guard's talk, with a line nothing leads to (n12)
 GUARD_DIALOGUE = """{
   "formatVersion": 1, "kind": "dialogue", "kindVersion": 1, "nextId": 21,
@@ -105,6 +126,10 @@ def ok(text, structured=None):
     return {"text": text, "structured": structured}
 
 
+# a hand-written result in the editor's real shape: sent with its structuredContent, as the editor sends it
+REAL = {"real": True}
+
+
 def err(text):
     return {"text": text, "is_error": True}
 
@@ -112,6 +137,46 @@ def err(text):
 def real(text, structured):
     """A result as the editor sends it: a client like Claude Code shows the model only the structuredContent"""
     return {**ok(text, structured), "real": True}
+
+
+# edit_mesh_colors and sample_mesh_colors, in their real shapes (V1 R120, R121)
+ROCK = {"id": 50, "name": "Rock", "path": "Rock"}
+ROCK_TARGET = {"index": 0, "name": "Rock (node 0, primitive 0)", "node": 0, "primitive": 0}
+ROCK_COLORS = [dict(ROCK_TARGET, mesh=51, mesh_submesh=0, vertex_count=2400, has_vertex_colors=False, painted=False)]
+MESH_COLORS_NEXT = ("Check the values with sample_mesh_colors {entity: 50, query: \"stats\"}, then look with set_scene_camera "
+                    "{display: {draw_mode: \"vertex_color\"}} and screenshot {view: \"scene\"}: a shaded view hides what the material "
+                    "does not use.")
+
+
+def mesh_colors_edit(vertices=640, corners=0, next_text=MESH_COLORS_NEXT, created=False):
+    """edit_mesh_colors' structuredContent for one target (V1 R120)"""
+    stats = {"count": 14400, "min": [0, 0, 0, 1], "mean": [0.42, 0.5, 0.31, 1], "max": [1, 1, 1, 1]}
+    out = {"entity": ROCK, "dry_run": False, "created": {"component": created, "file": created},
+           "targets": [{"target": ROCK_TARGET, "changed": {"vertices": vertices, "corners": corners, "split_added": corners},
+                        "split_vertices": corners, "ops": [{"changed_vertices": vertices, "changed_corners": corners, "split_added": corners,
+                                                            "filtered_out": 0, "in_target": vertices}],
+                        "stats": {"before": stats, "after": stats}}],
+           "changed": {"vertices": vertices, "corners": corners, "split_added": corners},
+           "warnings": [{"code": "created", "message": "Added the Vertex Colors component and its .vcolors file (in the same undo step)."}] if created else [],
+           "undo_name": "Edit Vertex Colors (Rock)"}
+    if next_text:
+        out["next"] = next_text
+    return ok(f"\"Rock\": {vertices} vertices and {corners} corners changed in 1 target(s) (one undo step).", out)
+
+
+ROCK_MOCKS = [
+    {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nRock [50] model transform", {"entities": [{"id": 50, "path": "Rock"}]})},
+    {"tool": "get_entity", "result": ok("Rock [50] components: transform model", dict(ROCK, components={"transform": {}, "model": {}},
+                                                                                     vertex_colors=ROCK_COLORS))},
+    {"tool": "get_model_info", "result": ok("Model \"Rock\": 1 mesh(es), 0 bone(s), 0 animation(s).",
+                                            {"model": ROCK, "file": "models/rock.glb", "meshes": [{"id": 51, "name": "Rock", "node": 0, "submeshes": 1}],
+                                             "vertex_colors": ROCK_COLORS})},
+    {"tool": "sample_mesh_colors", "result": ok("\"Rock\": stats of 1 target(s).", {"entity": ROCK, "query": "stats", "targets": [
+        {"target": ROCK_TARGET, "painted": True, "stats": {"count": 14400, "min": [0, 0, 0, 1], "mean": [0.5, 0.5, 0.5, 1], "max": [1, 1, 1, 1]}}]})},
+    {"tool": "frame_entity", "result": ok("Framed \"Rock\" in the Scene view.", {"entity": ROCK})},
+    {"tool": "set_scene_camera", "result": ok("Scene view camera of \"Main\": {}.", {"display": {"draw_mode": "vertex_color"}})},
+    {"tool": "screenshot", "result": ok("Scene view, 1280x720.", {"view": "scene"})},
+]
 
 
 RENAME_DIALOG = {"kind": "modal", "title": "Rename File", "message": "Rename 'RenameMe.lua' to:", "choices": ["ok", "cancel"],
@@ -227,8 +292,63 @@ LAMP_64 = (30, "Lamp", "light2d transform", {"transform": {"position": [300.0, 0
 BOSS_512 = (20, "Boss", "sprite transform", {"sprite": {"texture": "assets/sprites/boss.png", "width": 512, "height": 512}}, "boss")
 
 
+# PostProcessingSettings::getFields' snake names, as set_scene_settings lists them in its unknown-field error
+POST_PROCESSING_FIELDS = (
+    "exposure, tonemap, color_grading_enabled, temperature, tint, contrast, saturation, lift, gamma, "
+    "gain, lut_texture, lut_contribution, lut_input_encoding, lut_size, monochrome_enabled, "
+    "monochrome_mode, monochrome_intensity, vignette_enabled, vignette_intensity, vignette_smoothness, "
+    "vignette_roundness, vignette_color, dither_enabled, fxaa_enabled, chromatic_aberration_enabled, "
+    "chromatic_aberration_intensity, pixelate_enabled, pixelate_size, crt_enabled, crt_scanlines, "
+    "crt_mask, crt_curvature, crt_vignette, edge_detect_enabled, edge_detect_threshold, "
+    "edge_detect_intensity, edge_detect_color, film_grain_enabled, film_grain_intensity, "
+    "film_grain_response, film_grain_type, film_grain_size, film_grain_colored, film_frame_rate, "
+    "vhs_enabled, vhs_intensity, vhs_wobble, vhs_tracking, vhs_color_bleed, vhs_tape_noise, "
+    "vhs_chroma_streaks, vhs_dropouts, vhs_scanlines, vhs_interference, vhs_glitches, vhs_speed, "
+    "film_damage_enabled, film_damage_intensity, film_hair_amount, film_scratch_amount, "
+    "film_dust_amount, film_dust_size, film_gate_weave, film_gate_mask, film_gate_mask_feather, "
+    "sharpen_enabled, sharpen_intensity, bloom_enabled, bloom_threshold, bloom_knee, bloom_intensity, "
+    "bloom_tint, bloom_scatter, blur_enabled, blur_radius, blur_intensity, halation_enabled, "
+    "halation_intensity, halation_threshold, halation_radius, halation_tint, render_scale, msaa_samples, "
+    "dynamic_resolution_enabled, dynamic_resolution_min_scale, dynamic_resolution_target_fps, "
+    "palette_enabled, palette, palette_dither, palette_dither_strength, palette_distance, "
+    "palette_precision, glitch_enabled, glitch_intensity, glitch_rgb_split, glitch_tears, "
+    "glitch_tear_shift, glitch_interlace, glitch_burst_rate, glitch_burst_length, glitch_fps, "
+    "glitch_seed"
+)
 
 CASES = [
+    {
+        "id": "guard_ui_frames_exact_preview",
+        "kind": "guard",
+        "what_happened": "UI motion design needs exact CSS/anime sample times without entering Play or recording intermediate frames.",
+        "text_at_issue": "render_ui_frames: exact seconds without Play; document, times, out and watch",
+        "source": "requested motion-graphics preview",
+        "files": UI_FRAME_FILES,
+        "prompt": "Preview assets/ui/title.html at 0.3, 1 and 2.5 seconds as sheet.png. Keep the editor out of Play.",
+        "mocks": [{"tool": "render_ui_frames", "result": {"text": "Rendered 3 UI frame(s).", "real": True,
+            "structured": {"files": ["sheet.png"], "times": [0.3, 1, 2.5], "width": 1080, "height": 1350, "revision": 1}}}],
+        "checks": {"calls": [{"tool": "render_ui_frames", "args": {
+            "document": "assets/ui/title.html", "times": [0.3, 1, 2.5], "out": "sheet.png"}}],
+            "must_not_call": ["record_game", {"tool": "play", "args": {"action": "start"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_ui_frames_watch",
+        "kind": "guard",
+        "what_happened": "A motion-design preview should regenerate after source saves and keep its watch job alive.",
+        "text_at_issue": "render_ui_frames watch parameter and structured next explaining source-save regeneration and cancel_job",
+        "source": "requested motion-graphics watch preview",
+        "files": UI_FRAME_FILES,
+        "prompt": "Render assets/ui/title.html at 0.3, 1 and 2.5 seconds to sheet.png, stepping animation callbacks at 30 fps. "
+                  "Keep the preview updating whenever I save the HTML or stylesheet.",
+        "mocks": [{"tool": "render_ui_frames", "result": {"text": "Rendered 3 UI frame(s).", "real": True,
+            "structured": {"files": ["sheet.png"], "times": [0.3, 1, 2.5], "job_id": "ui-preview-1", "status": "running", "watching": True,
+            "next": "Saving a document or one of its dependencies regenerates the output; cancel_job stops watching."}}}],
+        "checks": {"calls": [{"tool": "render_ui_frames", "args": {
+            "document": "assets/ui/title.html", "times": [0.3, 1, 2.5], "out": "sheet.png", "fps": 30, "watch": True}}],
+            "must_not_call": ["record_game", "cancel_job", {"tool": "play", "args": {"action": "start"}}]},
+        "max_turns": 10,
+    },
     # -- controls: ordinary work where a trigger word must not pull in the editor tools --------
     {
         "id": "control_readme_typo",
@@ -766,6 +886,79 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "control_time_settings",
+        "kind": "control",
+        "what_happened": "A game port set Time.fixedDeltaTime in every scene's init and reset it by hand at Play stop, "
+                         "as there was no project setting (S95 REQ-13 adds Project Settings > Time).",
+        "text_at_issue": "get_project_settings rows time.fixed_timestep and time.maximum_delta_time (their descriptions)",
+        "source": "S95 spec, ledger item S14 (a port's Framework.lua fixed-step reset)",
+        "files": GAME_FILES,
+        "prompt": "Physics should run at 50 Hz in the whole game, in Play and in builds, and a hitch should never give the "
+                  "game a frame longer than 0.1 s.",
+        "mocks": [
+            {"tool": "get_project_settings", "args": {"search": "*"}, "result": ok(
+                "2 setting(s) match. The ones with a value are keys for set_project_settings.",
+                {"matches": [{"key": "time.fixed_timestep", "page": "Time", "label": "Fixed Timestep", "scope": "project",
+                              "value": 1 / 60},
+                             {"key": "time.maximum_delta_time", "page": "Time", "label": "Maximum Allowed Timestep",
+                              "scope": "project", "value": 0.25}]})},
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "time.fixed_timestep = 0.02; time.maximum_delta_time = 0.1",
+                {"settings": {"time.fixed_timestep": 0.02, "time.maximum_delta_time": 0.1}})},
+            {"tool": "get_project_settings", "result": ok(
+                "time.fixed_timestep = 0.0166667 (Seconds per fixed step (onFixedUpdate, physics; default 1/60). Set before "
+                "init in builds and at Play start; a scene's fixed_timestep overrides it while that scene is the main scene.); "
+                "time.maximum_delta_time = 0.25 (Longest frame delta in seconds (default 0.25): a longer frame is clamped "
+                "(Time.maximumDeltaTime).)",
+                {"settings": {"time.fixed_timestep": 1 / 60, "time.maximum_delta_time": 0.25},
+                 "schema": {"time.fixed_timestep": {"type": "number", "description":
+                                "Seconds per fixed step (onFixedUpdate, physics; default 1/60). Set before init in builds and "
+                                "at Play start; a scene's fixed_timestep overrides it while that scene is the main scene."},
+                            "time.maximum_delta_time": {"type": "number", "description":
+                                "Longest frame delta in seconds (default 0.25): a longer frame is clamped (Time.maximumDeltaTime)."}}})},
+            {"tool": "set_project_settings", "result": ok("Set 2 project settings; saved project.yaml.",
+                                                         {"changed": ["time.fixed_timestep", "time.maximum_delta_time"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"time.fixed_timestep": "re:^0\\.02$"}}},
+                             {"tool": "set_project_settings", "args": {"values": {"time.maximum_delta_time": "re:^0\\.1$"}}}],
+                   "edits_must_not": [r"\.lua$", r"project\.yaml$"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "control_simulate_touch_from_mouse",
+        "kind": "control",
+        "what_happened": "A touch-only game port set Engine.callTouchInMouseEvent from a script for desktop testing; the "
+                         "Game view's Simulate Touch is a per-user preference and builds never had it (S95 REQ-12).",
+        "text_at_issue": "get_project_settings row input.simulate_touch_from_mouse (its description); configure_game_view "
+                         "simulate_touch",
+        "source": "S95 spec, ledger item S8 (a port's Framework.lua mouseAsTouch)",
+        "files": GAME_FILES,
+        "prompt": "Our game is touch-only. Make the mouse act as a finger for the whole team: in Play and in the desktop "
+                  "and web builds.",
+        "mocks": [
+            {"tool": "get_project_settings", "args": {"search": "*"}, "result": ok(
+                "2 setting(s) match. The ones with a value are keys for set_project_settings.",
+                {"matches": [{"key": "input.simulate_touch_from_mouse", "page": "Input", "label": "Simulate Touch From Mouse",
+                              "scope": "project", "value": False},
+                             {"key": "preferences.simulate_touch", "page": "General", "section": "Game View",
+                              "label": "Simulate Touch", "scope": "preference", "value": False}]})},
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "input.simulate_touch_from_mouse = true", {"settings": {"input.simulate_touch_from_mouse": True}})},
+            {"tool": "get_project_settings", "result": ok(
+                "input.simulate_touch_from_mouse = false (The mouse also acts as finger 0 (onTouchStart/Move/End with the "
+                "mouse events; Engine.callTouchInMouseEvent) in Play and in desktop and web builds. The Game view's Simulate "
+                "Touch preference is per user.)",
+                {"settings": {"input.simulate_touch_from_mouse": False}})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["input.simulate_touch_from_mouse"]})},
+            {"tool": "configure_game_view", "result": ok("Game view: simulate_touch on (this editor only).",
+                                                        {"changed": ["simulate_touch"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"input.simulate_touch_from_mouse": True}}}],
+                   "edits_must_not": [r"\.lua$", r"project\.yaml$"]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_duplicate_name",
         "kind": "bad",
         "what_happened": "create_entity renamed the new camera \"Main Camera 2\" because the name was taken; the agent then "
@@ -860,6 +1053,32 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "app", "action": "hide"}]}}],
                    "must_not_call": ["play"], "shell_must_not": [r"xdotool"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_app_view_lost",
+        "playing": True,
+        "kind": "bad",
+        "what_happened": "An Android return after the GPU context went rebuilt every HTML UI document from its file; in "
+                         "editor Play agents could only pause and resume or send low_memory, which keep the context, so "
+                         "the reset never showed before a device test.",
+        "text_at_issue": "send_input description: 'app: action ...|low_memory|hide|show|view_lost|view_restored|orientation'",
+        "source": "JasperArcade port ledger S30; docs/specs/S95-lua-runtime-gaps.md REQ-18",
+        "prompt": "The game is playing. On Android, after the app sits in the background, the system sometimes drops the "
+                  "game's OpenGL context and the app makes it again on return. Reproduce that GPU context loss and "
+                  "return here in Play, then check the HUD's state.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "view_lost"}]}, "result": ok(
+                "Sent 3 events over 5 frames; playing.", {"frames": 5, "state": "playing"})},
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "view_restored"}]}, "result": ok(
+                "Sent 1 event over 1 frame; playing.", {"frames": 1, "state": "playing"})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\"). Session: 9 s, 0 error(s) logged.",
+                                                     {"state": "playing", "platform": {"paused": False, "lifecycle": {
+                                                         "view_lost": 1, "view_restored": 1, "view": "loaded"}}})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "app", "action": "view_lost"}]}}],
+                   "shell_must_not": [r"adb|xdotool"]},
         "max_turns": 10,
     },
     {
@@ -1860,6 +2079,24 @@ CASES = [
         "max_turns": 14,
     },
     {
+        "id": "bad_ui_atlas_frame_cut_by_hand",
+        "kind": "bad",
+        "what_happened": "The JasperArcade port cut every 9-slice and icon it needed out of its atlases into separate PNGs "
+                         "(ENGINE_LIMITATIONS U16): HTML UI URLs could not address a region. S93 R20 added #xywh= and "
+                         "#sprite= fragments, which the guide's Images table names.",
+        "text_at_issue": "Guide html-ui 'Images and SVG': 'url(\"ui/atlas.png#sprite=coin\")': the frame of the texture's "
+                         "Sprite Mode sheet",
+        "source": "JasperArcade port ENGINE_LIMITATIONS U16; S93 R20",
+        "files": {"assets/ui/atlas.png": "binary placeholder", "assets/ui/hud.html": HUD_HTML, "assets/ui/hud.css": HUD_CSS},
+        "prompt": "The HUD panel's frame should come from the 'panel' frame of assets/ui/atlas.png (it has a Sprite Mode "
+                  "sheet), drawn as a 24 px 9-slice. Set it in assets/ui/hud.css.",
+        "checks": {"file_must": {"assets/ui/hud.css": [r"atlas\.png#sprite=panel"]},
+                   "file_must_not": {"assets/ui/hud.css": [r"panel\.png|frame\.png"]},
+                   "shell_must_not": [r"convert\s|magick|PIL|Image\.open|crop"],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_html_ui_template",
         "kind": "guard",
         "what_happened": "Agents wrote XML/RCSS UI when the guide described it so (git 2d918eddf); the guide's HTML UI digest "
@@ -1882,6 +2119,90 @@ CASES = [
         "checks": {"calls": [{"tool": "create_ui_document", "args": {"template": "main_menu"}}],
                    "must_not_call": ["create_ui"], "file_must_not": {"assets/ui/main_menu.html": [r"<rml|\.rcss"]}},
         "max_turns": 14,
+    },
+    {
+        "id": "guard_html_ui_prewarm",
+        "kind": "guard",
+        "what_happened": "The JasperArcade port wrote its own UIWarm.lua (hidden layers shown off-screen for a frame) to stop "
+                         "the first show of outlined text stalling; S93 R15 added doc:prewarm and the guide's 'Prewarming text'.",
+        "text_at_issue": "Guide 'HTML/CSS UI' > Fonts > 'Prewarming text': doc:prewarm(), HtmlUI.prewarmText, data-warm",
+        "source": "JasperArcade port, docs/port/ENGINE_LIMITATIONS.md U30 (scripts/shared/ui/UIWarm.lua); spec S93 R15",
+        "files": {"README.md": README,
+                  "assets/ui/pause.html": "<!DOCTYPE html>\n<html><head><link rel=\"stylesheet\" href=\"pause.css\"></head>\n<body>\n"
+                                          "<div id=\"pause\"><h1>PAUSED</h1><button id=\"resume\">Resume</button></div>\n"
+                                          "</body></html>\n",
+                  "assets/ui/pause.css": "#pause { display: none; }\n#pause.open { display: block; }\n"
+                                         "h1 { font-size: 160px; font-effect: outline(12px #000), glow(4px 10px 0px 6px #000); }\n",
+                  "assets/ui/pause.lua": "local Pause = { properties = {} }\n\nfunction Pause:init()\n"
+                                         "    self.doc = UIDocument(self.scene, self.entity)\nend\n\n"
+                                         "function Pause:open()\n    self.doc:getElementById(\"pause\").classList:add(\"open\")\nend\n\n"
+                                         "return Pause\n"},
+        "prompt": "The first time the pause menu (assets/ui/pause.html, its script assets/ui/pause.lua) opens, the game hitches "
+                  "for a moment: the big outlined PAUSED title. Later opens are smooth. Fix the first open in the script; don't "
+                  "play the game.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("assets/ui/pause.lua: no syntax errors.", {"ok": True, "problems": []})},
+        ],
+        "checks": {"file_must": {"assets/ui/pause.lua": [r"prewarm\s*\("]},
+                   "file_must_not": {"assets/ui/pause.lua": [r"left\s*=\s*[\"']?-\d{3,}"]},
+                   "must_not_call": ["play"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_html_ui_page_press_listener",
+        "kind": "guard",
+        "what_happened": "S93 R4 changed the pass-through rule: only press listeners (click, mousedown, pointerdown, ...) on a "
+                         "transparent page make it take presses; the old guide listed mouseup and mousemove too, which now "
+                         "take nothing, so a 'release outside closes it' handler on mouseup never runs.",
+        "text_at_issue": "Guide 'Pointer input and pass-through': 'add a press listener (click, dblclick, contextmenu, mousedown, "
+                         "pointerdown ...) on the document or doc.body ... Move, up, over, out ... listeners on the page take "
+                         "nothing'",
+        "source": "docs/specs/S93-htmlui-gaps.md R4, D3",
+        "prompt": "The pause overlay assets/ui/pause.html is transparent around its #panel. In assets/ui/pause.lua, hide the "
+                  "overlay when the player clicks or taps anywhere outside the panel.",
+        "files": {
+            "assets/ui/pause.html": "<!DOCTYPE html>\n<html><head><style>html, body { margin: 0; } #panel { margin: 120px auto; "
+                                    "width: 320px; background: #222; color: #fff; padding: 24px; }</style></head>\n"
+                                    "<body><div id=\"panel\"><h1>Paused</h1><button id=\"resume\">Resume</button></div>"
+                                    "</body></html>\n",
+            "assets/ui/pause.lua": "---@class pause : ScriptInstance\nlocal pause = {}\n\nfunction pause:init()\n"
+                                   "    local doc = UIDocument(self.scene, self.entity)\n"
+                                   "    doc:getElementById(\"resume\"):addEventListener(\"click\", function() doc:hide() end)\n"
+                                   "end\n\nreturn pause\n",
+        },
+        "mocks": [
+            {"tool": "inspect_ui", "result": ok("pause: #panel (320x180) with #resume; the page around it is transparent.",
+                                               {"elements": [{"selector": "#panel"}, {"selector": "#resume"}]})},
+            {"tool": "read_console", "result": ok("No new console entries.", {"entries": []})},
+        ],
+        # the page's own listener: on the document or its body (the button's click is there already)
+        "checks": {"file_must": {"assets/ui/pause.lua": [r"(doc|body)\s*:\s*addEventListener\(\s*[\"'](click|mousedown|pointerdown)[\"']"]},
+                   "file_must_not": {"assets/ui/pause.lua": [r"addEventListener\(\s*[\"'](mouseup|pointerup)[\"']"]}},
+        "max_turns": 14,
+    },
+    {
+        "id": "bad_ui_tween_for_game_time",
+        "kind": "bad",
+        "what_happened": "A port scripted Lua tweens (Tween.lua, Timer.lua) so its HUD's CSS animations would freeze with the "
+                         "game (S93 U3); a UI Document's Update Mode Game Time does it (S93 R35).",
+        "text_at_issue": "Guide 'HTML/CSS UI' > Animation: 'A document whose HUD should freeze and slow with the game takes "
+                         "Update Mode Game Time (updateMode: game ...)'",
+        "source": "S93 U3",
+        "prompt": "The pulsing coin counter of the HUD (UI Document \"Hud\", assets/ui/hud.html, a CSS @keyframes pulse) "
+                  "keeps pulsing while the game is paused with Engine.timeScale = 0. Make the HUD's animations pause and "
+                  "slow down with the game; the pause menu document must keep animating.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("2 GameObjects: Hud [12] (UI Document assets/ui/hud.html), PauseMenu [13] "
+                                                   "(UI Document assets/ui/pause.html).",
+                                                   {"entities": [{"id": 12, "path": "Hud"}, {"id": 13, "path": "PauseMenu"}]})},
+            {"tool": "set_properties", "result": ok("Set 1 property on Hud [12].", {"changed": 1})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {key: {"updateMode": "re:(?i)game"}}}}]}
+                              for key in ("UIDocumentComponent", "uidocument", "UIDocument")],
+                   "must_not_call": [{"tool": "set_properties", "args": {"entity": "re:PauseMenu|^13$"}}],
+                   "edits_must_not": [r"\.lua$"]},
+        "max_turns": 12,
     },
     {
         "id": "guard_l10n_keyed_html",
@@ -2070,29 +2391,201 @@ CASES = [
     {
         "id": "guard_atmosphere_preset",
         "kind": "guard",
-        "what_happened": "The guide's Atmosphere digest names height fog and apply_atmosphere_preset (a rendering_fx tool); "
-                         "guards the digest and the group route when the guide is cut.",
-        "text_at_issue": "Guide 'Atmosphere': 'A Fog of type \"height\" ... apply_atmosphere_preset sets a look "
-                         "(list_atmosphere_presets)'",
-        "source": "guide digest (atmosphere); no failure on record",
+        "what_happened": "Asked for haze, agents looked for fog in the scene settings (Unity keeps it in Lighting), found none "
+                         "and tinted the background or the ambient instead (1/4; main's case 2/3 on main's atmosphere text, 1/3 "
+                         "on R37's): fog is a Fog GameObject here, whose look is a profile apply_atmosphere_preset links. "
+                         "4/4 with the next; 0/4 when it names create_entity only.",
+        "text_at_issue": "get_scene_settings' next in a 3D scene without a Fog ('No Fog in this scene: fog, haze or mist is a "
+                         "Fog GameObject, not a scene setting ...'); list_atmosphere_presets' fog result (the built-in ids)",
+        "source": "eval runs of this case on docs/specs/S101-vapor.md R37's surface (every sample opened get_scene_settings first)",
         "prompt": "Add a soft morning haze over the level.",
         "mocks": [
+            {"tool": "get_scene_settings", "after": "create_entity", "result": {"recorded": "get_scene_settings_fog"}},
+            # as the editor answers: post_processing has no fog field, real settings apply
+            {"tool": "set_scene_settings", "args": {"settings": {"post_processing": {"fog": "*"}}}, "result": err(
+                "post_processing: unknown field \"fog\". Fields: " + POST_PROCESSING_FIELDS + ".")},
+            {"tool": "set_scene_settings", "result": ok("Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "settings": {}})},
             {"tool": "create_entity", "args": {"type": "re:(?i)fog"}, "result": ok(
                 "Created Fog \"Fog\" [30] at Fog (one undo step).", {"entity": {"id": 30, "name": "Fog", "path": "Fog"}})},
             {"tool": "add_component", "args": {"component": "re:(?i)fog"}, "result": ok(
                 "Added fog to GameObject 30 \"Fog\".", {"entity": {"id": 30}})},
-            {"tool": "list_atmosphere_presets", "result": ok(
-                "fog presets: morning_haze, valley_mist, dense_fog, desert_heat, night_murk",
-                {"presets": [{"id": "morning_haze"}, {"id": "valley_mist"}]})},
-            {"tool": "apply_atmosphere_preset", "result": ok(
-                "Applied morning_haze to the Fog of GameObject 30 \"Fog\" (type height; one undo step).",
-                {"entity": {"id": 30}, "preset": "morning_haze"})},
-            {"tool": "set_properties", "result": ok("Set 2 properties on GameObject 30 \"Fog\".", {"entity": {"id": 30}})},
+            {"tool": "list_atmosphere_presets", "args": {"kind": "clouds"}, "result": ok(
+                "5 Volumetric Clouds presets: custom sparse cloudy overcast stormy", {"kind": "clouds", "presets": []})},
+            {"tool": "list_atmosphere_presets", "result": {"recorded": "list_atmosphere_presets_fog"}},
+            {"tool": "apply_atmosphere_preset", "args": {"preset": "re:(?i)morning_haze"}, "result": REAL | ok(
+                "Linked the Fog of Fog to FogProfiles/morning_haze.fogprofile (the project's new copy of "
+                "builtin:morning_haze); its Type is now Height (one undo step). Used by 1.",
+                {"changed": True, "entity": 30, "component": "fog", "profile": "FogProfiles/morning_haze.fogprofile",
+                 "created": True, "typeChanged": True, "usedBy": 1})},
+            {"tool": "set_properties", "result": ok("Set 2 properties on 1 GameObject(s) (one undo step).", {"entities": [{"id": 30}]})},
+            {"tool": "get_entity", "args": {"entity": "re:^(30|Fog)$"}, "after": "apply_atmosphere_preset", "result": REAL | ok(
+                "Fog [30] components: transform fog",
+                {"id": 30, "name": "Fog", "path": "Fog", "active": True, "layer": 0, "scene_id": 1, "child_count": 0,
+                 "components": {"transform": {"position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+                                "fog": {"type": "height", "profile": "FogProfiles/morning_haze.fogprofile"}}})},
+            {"tool": "get_entity", "args": {"entity": "re:^(30|Fog)$"}, "result": REAL | ok(
+                "Fog [30] components: transform fog",
+                {"id": 30, "name": "Fog", "path": "Fog", "active": True, "layer": 0, "scene_id": 1, "child_count": 0,
+                 "components": {"transform": {"position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+                                "fog": {"type": "linear"}}})},
         ],
         "checks": {"any_of": [{"calls": [{"tool": "create_entity", "args": {"type": "re:(?i)fog"}}]},
                               {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)fog"}}]}],
+                   "calls": [{"tool": "apply_atmosphere_preset", "args": {"preset": "re:(?i)morning_haze"}}],
                    "must_not_call": ["fork_shader", "apply_post_processing_preset"]},
         "max_turns": 16,
+    },
+    {
+        "id": "guard_cave_fog_through_a_zone",
+        "kind": "guard",
+        "what_happened": "An agent asked for fog inside one cave only must not thicken the scene's one Fog (set_properties or a "
+                         "profile on it), which fogs the whole level; it creates a Fog Zone. Recorded red without the "
+                         "apply_atmosphere_preset sentence on Fog Zones: agents found fog_zone through create_entity's types and "
+                         "list_component_types anyway (3/3), so the sentence was cut and this case guards the route.",
+        "text_at_issue": "create_entity's type fog_zone; list_component_types' Fog Zone; docs/mcp/guide/atmosphere.md Fog Zones",
+        "source": "docs/specs/S101-vapor.md R37 (the first new case): a fog for one cave goes through a Fog Zone",
+        "prompt": "Inside the cave (the Cave GameObject, a hollow rock box around x=40) the fog should be thick and dark green "
+                  "whenever the camera is in there. Outside it the level keeps its light haze. Set that up.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings_fog"}},
+            {"tool": "get_scene_tree", "result": ok(
+                "Scene 1 \"Main\" (3D, 10 GameObjects). Each line: Name [id] components (flags); children indented.\n"
+                "Main Camera [10] camera\nGround [11] mesh rigidbody\nPlayer [12] script sprite\n  Gun [13] sprite\n"
+                "  Shield [18] sprite\nEnemy [14] script sprite\nCrate [15] mesh\nDirectional Light [16] light\n"
+                "Skybox [17] skybox (no transform)\nFog [1005] fog\nCave [1010] mesh\n",
+                {"entity_count": 10, "scene_id": 1, "scene_name": "Main", "truncated": False})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nCave [1010] mesh", {"entities": [{"id": 1010, "path": "Cave"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:^(1010|Cave)$"}, "result": REAL | ok(
+                "Cave [1010] components: transform mesh",
+                {"id": 1010, "name": "Cave", "path": "Cave", "active": True, "layer": 0, "scene_id": 1, "child_count": 0,
+                 "components": {"transform": {"position": [40, 4, 0], "rotation": [0, 0, 0, 1], "scale": [20, 8, 20]},
+                                "mesh": {"submeshes": 1}}})},
+            {"tool": "get_entity", "args": {"entity": "re:^(1005|Fog)$"}, "result": REAL | ok(
+                "Fog [1005] components: transform fog",
+                {"id": 1005, "name": "Fog", "path": "Fog", "active": True, "layer": 0, "scene_id": 1, "child_count": 0,
+                 "components": {"transform": {"position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+                                "fog": {"type": "height", "color": [0.8, 0.82, 0.85], "colorMode": "color",
+                                        "attenuationDistance": 600.0, "baseHeight": 0.0, "maximumHeight": 80.0,
+                                        "volumetric": False}}})},
+            {"tool": "get_atmosphere_info", "result": {"recorded": "get_atmosphere_info_fog_shown"}},
+            {"tool": "list_atmosphere_presets", "result": {"recorded": "list_atmosphere_presets_fog"}},
+            {"tool": "create_entity", "args": {"type": "fog_zone"}, "result": {"recorded": "create_entity_fog_zone"}},
+            {"tool": "create_entity", "result": ok("Created GameObject [1020] (one undo step).", {"entity": {"id": 1020}})},
+            {"tool": "add_component", "result": ok("Added the component (one undo step).", {"entity": {"id": 1010}})},
+            {"tool": "edit_fog_profile", "result": {"recorded": "edit_fog_profile_cave"}},
+            {"tool": "apply_atmosphere_preset", "args": {"entity": "re:^(1005|Fog)$"}, "result": {"recorded": "apply_fog_profile_night"}},
+            {"tool": "apply_atmosphere_preset", "result": {"recorded": "apply_fog_profile_zone"}},
+            {"tool": "set_properties", "result": ok("Set the properties (one undo step).", {"entities": [{"id": 1020}]})},
+            {"tool": "set_transform", "result": ok("Moved 1 GameObject(s) (one undo step).", {"entities": [{"id": 1020}]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "create_entity", "args": {"type": "fog_zone"}}]},
+                              {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)fog_?zone"}}]}],
+                   "must_not_call": [{"tool": "apply_atmosphere_preset", "args": {"entity": "re:^(1005|Fog)$"}},
+                                     {"tool": "set_properties", "args": {"entity": "re:^(1005|Fog)$"}}]},
+        "max_turns": 24,
+    },
+    {
+        "id": "bad_shared_fog_profile_copied_for_one_scene",
+        "kind": "bad",
+        "what_happened": "A Fog linked to a profile another scene uses: an agent asked to change this scene's fog only either "
+                         "wrote the Fog's own field (hidden beneath the profile) or edited the shared profile, changing the "
+                         "other scene too.",
+        "text_at_issue": "set_properties' refusal of a field the profile sets ('For every user: edit_fog_profile {path, set}. "
+                         "For this scene only: edit_fog_profile {path: <a new .fogprofile>, from: {profile}}, then "
+                         "apply_atmosphere_preset'); edit_fog_profile description ('It changes every user: for one scene only, "
+                         "create a copy (from: {profile}) and link that.')",
+        "source": "docs/specs/S101-vapor.md R37 (the third new case), R43",
+        "prompt": "Make the fog in Main much denser: attenuation distance 30. Level2 uses the same fog profile and must keep "
+                  "its look.",
+        # the shared profile, as the editor copied builtin night on first use
+        "files": {"FogProfiles/night.fogprofile": "{\n  \"version\": 1,\n  \"name\": \"Night\",\n  \"description\": \"A dark blue fog close to the ground, little sun scattering\",\n  \"fields\": {\n    \"color\": [0.0020508443, 0.0028788275, 0.00778151],\n    \"attenuationDistance\": 200.0,\n    \"baseHeight\": 0.0,\n    \"maximumHeight\": 60.0,\n    \"startDistance\": 0.0,\n    \"maxFogDistance\": 2000.0,\n    \"maxOpacity\": 0.95,\n    \"directionalInscattering\": 0.05,\n    \"anisotropy\": 0.3,\n    \"skyFill\": true,\n    \"skyFillAngle\": 4.0\n  }\n}\n"},
+        "mocks": [
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings_fog"}},
+            {"tool": "get_scene_tree", "result": ok(
+                "Scene 1 \"Main\" (3D, 9 GameObjects). Each line: Name [id] components (flags); children indented.\n"
+                "Main Camera [10] camera\nGround [11] mesh rigidbody\nPlayer [12] script sprite\n  Gun [13] sprite\n"
+                "  Shield [18] sprite\nEnemy [14] script sprite\nCrate [15] mesh\nDirectional Light [16] light\n"
+                "Skybox [17] skybox (no transform)\nFog [1005] fog\n",
+                {"entity_count": 9, "scene_id": 1, "scene_name": "Main", "truncated": False})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nFog [1005] fog", {"entities": [{"id": 1005, "path": "Fog"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:^(1005|Fog)$"}, "result": REAL | ok(
+                "Fog [1005] components: transform fog",
+                {"id": 1005, "name": "Fog", "path": "Fog", "active": True, "layer": 0, "scene_id": 1, "child_count": 0,
+                 "components": {"transform": {"position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+                                "fog": {"type": "height", "profile": "FogProfiles/night.fogprofile", "color": [0.8, 0.8, 0.8],
+                                        "attenuationDistance": 400.0, "baseHeight": 0.0, "maximumHeight": 50.0,
+                                        "volumetric": False}}})},
+            {"tool": "get_atmosphere_info", "result": REAL | ok(
+                "Atmosphere (game view): quality high, 1 passes, fog profile FogProfiles/night.fogprofile.",
+                {"view": "game", "quality": "high", "fog": {"present": True, "type": "height",
+                                                            "profile": "FogProfiles/night.fogprofile"},
+                 "zones": [], "blend": None, "diagnostics": [], "opacity": {"at10": 0.04, "at50": 0.19, "at200": 0.55,
+                                                                           "includes": "analytic"}})},
+            {"tool": "list_atmosphere_presets", "result": REAL | ok(
+                "9 built-in fog profiles: morning_haze ground_mist mountain_valley horizon_haze night bright_haze murky "
+                "infernal toxic; 1 project profiles: FogProfiles/night.fogprofile (used by 2).",
+                {"kind": "fog", "profiles": [{"path": "FogProfiles/night.fogprofile", "name": "Night", "overrides": 10,
+                                              "usedBy": 2}]})},
+            {"tool": "set_properties", "result": {"recorded": "set_properties_fog_profile_field"}},
+            {"tool": "edit_fog_profile", "args": {"from": {"profile": "*"}}, "result": {"recorded": "edit_fog_profile_copy"}},
+            # as the editor answers: from given as text (not an object), a new path without from
+            {"tool": "edit_fog_profile", "args": {"from": "re:."}, "result": err(
+                "from takes one of builtin (an id), entity (a GameObject with a Fog or Fog Zone) or profile (a .fogprofile path).")},
+            {"tool": "edit_fog_profile", "args": {"path": "re:(^|/)night\\.fogprofile$"}, "result": {"recorded": "edit_fog_profile_shared"}},
+            {"tool": "undo", "after": {"tool": "edit_fog_profile", "args": {"path": "re:(^|/)night\\.fogprofile$"}},
+             "result": {"recorded": "undo_fog_profile_shared"}},
+            {"tool": "edit_fog_profile", "result": err(
+                "No fog profile at that path: pass from ({builtin}, {entity} or {profile}) to create it. Project profiles: "
+                "FogProfiles/night.fogprofile.")},
+            {"tool": "apply_atmosphere_preset", "after": "edit_fog_profile", "result": {"recorded": "apply_fog_profile_copy"}},
+            {"tool": "apply_atmosphere_preset", "result": err(
+                "Unknown fog profile: no fog profile at that path: give a project .fogprofile path or builtin:<id> (morning_haze, "
+                "ground_mist, mountain_valley, horizon_haze, night, bright_haze, murky, infernal, toxic). Project profiles: "
+                "FogProfiles/night.fogprofile.")},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_fog_profile", "args": {"from": {"profile": "re:night"}}},
+                             {"tool": "apply_atmosphere_preset", "args": {"preset": "re:\\.fogprofile$"}}],
+                   "order": [["edit_fog_profile", "apply_atmosphere_preset"]],
+                   "must_not_call": [{"tool": "edit_fog_profile", "args": {"path": "re:(^|/)night\\.fogprofile$", "set": "*"}}]},
+        "max_turns": 20,
+    },
+    {
+        "id": "bad_fog_not_showing_reads_diagnostics",
+        "kind": "bad",
+        "what_happened": "Before get_atmosphere_info's diagnostics an agent told the fog does not show could only guess: the "
+                         "Fog's fields and the passes looked right, so it thickened the fog, while the Scene view's Disable "
+                         "fog display setting hid it.",
+        "text_at_issue": "get_atmosphere_info description ('... diagnostics: why fog does not show or looks wrong, each with "
+                         "its fix. Call it first when fog is missing ...'); its result's diagnostics (scene_view_fog_disabled) "
+                         "and next ('set_scene_camera {display: {disable_fog: false}}'); docs/mcp/guide/atmosphere.md Diagnostics",
+        "source": "docs/specs/S101-vapor.md R37 (the second case): an agent reads diagnostics and fixes the named cause",
+        "prompt": "I added a height fog to Main (the Fog GameObject), but I can't see any fog in the editor. Fix it.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings_fog"}},
+            {"tool": "get_scene_tree", "result": ok(
+                "Scene 1 \"Main\" (3D, 9 GameObjects). Each line: Name [id] components (flags); children indented.\n"
+                "Main Camera [10] camera\nGround [11] mesh rigidbody\nPlayer [12] script sprite\n  Gun [13] sprite\n"
+                "  Shield [18] sprite\nEnemy [14] script sprite\nCrate [15] mesh\nDirectional Light [16] light\n"
+                "Skybox [17] skybox (no transform)\nFog [1005] fog\n",
+                {"entity_count": 9, "scene_id": 1, "scene_name": "Main", "truncated": False})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nFog [1005] fog", {"entities": [{"id": 1005, "path": "Fog"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:^(1005|Fog)$"}, "result": ok(
+                "Fog [1005] components: transform fog",
+                {"id": 1005, "name": "Fog", "path": "Fog", "active": True, "active_in_hierarchy": True, "layer": 0, "tag": "",
+                 "scene_id": 1, "child_count": 0,
+                 "components": {"transform": {"position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+                                "fog": {"type": "height", "color": [0.6, 0.6, 0.6], "colorMode": "color",
+                                        "attenuationDistance": 400.0, "baseHeight": 0.0, "maximumHeight": 50.0,
+                                        "maxOpacity": 1.0, "volumetric": False}}})},
+            {"tool": "set_scene_camera", "result": {"recorded": "scene_view_enable_fog"}},
+            {"tool": "get_atmosphere_info", "after": "set_scene_camera", "result": {"recorded": "get_atmosphere_info_fog_shown"}},
+            {"tool": "get_atmosphere_info", "result": {"recorded": "get_atmosphere_info_fog_hidden"}},
+            {"tool": "set_properties", "result": ok("Set 1 property on GameObject 1005 \"Fog\" (one undo step).", {"entity": {"id": 1005}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_camera", "args": {"display": {"disable_fog": False}}}]},
+        "max_turns": 20,
     },
     {
         "id": "bad_privacy_manifest_by_hand",
@@ -5366,6 +5859,25 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "guard_lua_api_frame_order",
+        "kind": "guard",
+        "what_happened": "A Unity port wrote its own LateUpdate module because a camera moved in onPostUpdate was drawn a "
+                         "frame late and a handler swapped after RegisterEngineEvent kept the old function (JasperArcade "
+                         "S13, S24, S26); the engine now draws what onPostUpdate moves that frame, getWorldPosition is "
+                         "current, and handlers are looked up by name at each call.",
+        "text_at_issue": "docs/mcp/guide/lua-api.md 1.3 (the lookup by name; onPostUpdate's row), 2.17 frame order, "
+                         "4.2 getWorldPosition",
+        "source": "docs/specs/S95-lua-runtime-gaps.md REQ-5, REQ-6, REQ-7",
+        "prompt": "Going by the editor's Lua API guide: my camera script sets its position from the player's "
+                  "getWorldPosition() in onPostUpdate, after the player moved in onUpdate. Is the camera drawn a frame late, "
+                  "so I need a workaround? And after RegisterEngineEvent(self, 'onUpdate'), if I assign "
+                  "self.onUpdate = self.fastUpdate, which function runs on the next frame? Answer in a few lines, change nothing.",
+        "checks": {"must_not_call": ["write_file", "eval_lua"],
+                   "reply_must": [r"(same|this) frame", r"fastUpdate"],
+                   "reply_must_not": [r"(is|are|gets?|be) drawn (a|one) frame late", r"(the )?old (one|function|method|onUpdate) (still )?runs"]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_lua_api_model_parts",
         "kind": "guard",
         "what_happened": "On a model imported from a glTF with several mesh nodes, Mesh/Model calls changed the root's empty mesh; "
@@ -6676,6 +7188,448 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- S94 P7 model import: rest pose and the GameObject that draws a model's mesh
+    {
+        "id": "guard_model_rest_pose_first_frame",
+        "kind": "guard",
+        "what_happened": "New text (S94 F40): get_model_info reports first_frame_differs (a take starting with the hips away from "
+                         "the file's nodes, CLEIVER's 5.6 m) and its next names set_model_import_settings rest_pose: first_frame; "
+                         "an agent fixes the pose there instead of moving bones by hand.",
+        "text_at_issue": "get_model_info next: 'Its clips start with the root or hips away from where the file's nodes put them "
+                         "... set_model_import_settings with settings {rest_pose: \"first_frame\"} ...'",
+        "source": "S94 F40 (new result text); ARCADE R37",
+        "prompt": "The Cleiver model stands about 5 metres too low compared to how it looks in its animations. Fix the model so it "
+                  "imports in the right pose.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nCleiver [30] model", {"entities": [{"id": 30, "path": "Cleiver"}]})},
+            {"tool": "get_model_info", "result": ok(
+                "Model \"Cleiver\": 1 mesh(es), 52 bone(s), 1 animation(s).",
+                {"model": {"id": 30, "name": "Cleiver"}, "file": "assets/models/cleiver@T-Pose.fbx", "loading": False,
+                 "first_frame_differs": [{"animation": "mixamo.com", "node": "Hips", "node_translation": [0, 0.2, 0],
+                                          "first_frame": [0, 5.8, 0], "distance": 5.6}],
+                 "next": "Its clips start with the root or hips away from where the file's nodes put them (first_frame_differs). Unity "
+                         "imports such an FBX in the first frame's pose: set_model_import_settings with settings {rest_pose: "
+                         "\"first_frame\"} (rest_pose_take names another take) does the same, and the model reloads."})},
+            {"tool": "get_entity", "result": ok("Cleiver [30] components: model mesh transform", {"id": 30, "name": "Cleiver"})},
+            {"tool": "set_model_import_settings", "result": ok(
+                "Updated 1 model(s) (0 unchanged); cooked, 0 failed. Undo with scope project.",
+                {"updated": ["assets/models/cleiver@T-Pose.fbx"], "unchanged": 0, "models": []})},
+        ],
+        "checks": {"calls": [{"tool": "set_model_import_settings", "args": {"settings": {"rest_pose": "first_frame"}}}],
+                   "must_not_call": ["set_properties", "set_transform"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_model_node_material_on_root",
+        "kind": "guard",
+        "what_happened": "New text (S94 F45): a mesh value sent to a model node whose mesh the model's own GameObject draws fails "
+                         "naming that GameObject and preserveHierarchy; the agent sets it on the root (or turns Preserve Hierarchy "
+                         "on) instead of giving up or adding a Mesh to the node.",
+        "text_at_issue": "set_properties error: 'Shark/Body is a node of the model Shark, whose own GameObject draws this node's "
+                         "mesh: set the mesh and material values on Shark, or set model.preserveHierarchy true on it ...'",
+        "source": "S94 F45 (new error text); ARCADE R52 (M's shark)",
+        "prompt": "Turn off shadow casting on the shark's Body mesh (GameObject Shark/Body).",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("2 GameObject(s) match:\nShark [50] model\nShark/Body [51] bone",
+                                                  {"entities": [{"id": 50, "path": "Shark"}, {"id": 51, "path": "Shark/Body"}]})},
+            {"tool": "set_properties", "args": {"entity": "re:(?i)^(51|Shark/Body)$"}, "result": err(
+                "Shark/Body is a node of the model Shark, whose own GameObject draws this node's mesh: set the mesh and material "
+                "values on Shark, or set model.preserveHierarchy true on it (every node then draws its own mesh).")},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 50 \"Shark\".", {"entity": {"id": 50}})},
+            {"tool": "get_entity", "result": ok("Shark/Body [51] components: bone transform", {"id": 51, "name": "Body"})},
+            {"tool": "get_model_info", "result": ok("Model \"Shark\": 1 mesh(es), 12 bone(s), 0 animation(s).",
+                {"model": {"id": 50, "name": "Shark"}, "mesh_nodes": [{"node": 1, "name": "Body", "entity": {"id": 51},
+                                                                       "drawn_by": {"id": 50, "name": "Shark"}}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_properties", "args": {"entity": "re:(?i)^(50|Shark)$"}}],
+                   "must_not_call": ["add_component"]},
+        "max_turns": 10,
+    },
+    # ---- S94 P6: Root Transform Based Upon (F32)
+    {
+        "id": "guard_root_motion_body_orientation",
+        "kind": "guard",
+        "what_happened": "New text (S94 F32): edit_animation's root_motion takes Unity's Based Upon; asked to make a clip that "
+                         "starts turned away face forward, an agent sets rotation_based_upon instead of rewriting the hips' keys.",
+        "text_at_issue": "animation.md clip mode arguments: root_motion '... rotation_based_upon ... a clip that starts turned away "
+                         "or off the ground: rotation_based_upon: \"body_orientation\"'",
+        "source": "docs/specs/S94-rendering-anim-gaps.md F32 (new text); no failure on record",
+        "prompt": "assets/anims/walk.anim was captured with the actor turned about 30 degrees, so the character walks along its "
+                  "forward but faces off to the side. Make the clip face the GameObject's forward when it plays.",
+        "mocks": [
+            {"tool": "get_animation", "result": ok(
+                "assets/anims/walk.anim: 1.00 s, loop, 2 tracks (Hips position, Hips rotation), root_motion {bake_position_y}.",
+                {"clip": "assets/anims/walk.anim", "length": 1.0, "wrap": "loop",
+                 "tracks": [{"index": 0, "path": "Hips", "channel": "position", "keys": 3},
+                            {"index": 1, "path": "Hips", "channel": "rotation", "keys": 3}],
+                 "root_motion": {"bone": "", "bake_rotation": False, "bake_position_y": True, "bake_position_xz": False,
+                                 "rotation_based_upon": "original", "rotation_offset": 0, "position_y_based_upon": "original",
+                                 "position_y_offset": 0, "position_xz_based_upon": "original"}})},
+            {"tool": "edit_animation", "args": {"clip": "re:walk\\.anim", "root_motion": "*"}, "result": ok(
+                "assets/anims/walk.anim: root_motion changed (one project undo step).",
+                {"clip": "assets/anims/walk.anim", "changed": True})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim",
+                                                                  "root_motion": {"rotation_based_upon": "body_orientation"}}}],
+                   "must_not_call": [{"tool": "edit_animation", "args": {"tracks": "*"}}]},
+        "max_turns": 8,
+    },
+    # ---- S94 P5: Text alignment, the Orthographic Size, Sprite Flip X ------------------------------------------------------
+    {
+        "id": "guard_camera_orthographic_size",
+        "kind": "guard",
+        "what_happened": "New text (S94 F28, R46): the camera guide names camera.orthographicSize (Unity's Size, following the "
+                         "aspect); without it an agent writes fixed left/right/top/bottom bounds for one aspect (the port's "
+                         "workaround) or leaves Auto Resize showing the canvas in pixels.",
+        "text_at_issue": "jasper://docs/camera 'Orthographic bounds': 'For Unity's Size, set camera.orthographicSize (> 0) ...'",
+        "source": "S94 F28 (new guide text); ARCADE ENGINE_LIMITATIONS R46",
+        "prompt": "The 2D level was made in Unity with an orthographic camera Size of 11. Make the Main Camera show the same "
+                  "vertical extent on every screen shape.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nMain Camera [10] camera transform",
+                                                   {"entities": [{"id": 10, "path": "Main Camera"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(10|Main Camera)$"}, "result": ok(
+                "Main Camera [10] components: camera transform; camera: type orthographic, autoResize true, left 0, right 1280, "
+                "bottom 0, top 720, orthographicSize 0", {"id": 10, "name": "Main Camera"})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 1 GameObject(s) (one undo step).", {"entities": [{"id": 10}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"camera": {"orthographicSize": 11}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "orthographicSize", "value": 11}]}}]}],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_text_capline_anchor",
+        "kind": "guard",
+        "what_happened": "New text (S94 F24, R42): the UI guide's Text anchor names center + capline for a number centred on a "
+                         "point; without it an agent offsets the Text's position by guessed font metrics (the port's door numbers "
+                         "sat too high).",
+        "text_at_issue": "jasper://docs/ui 'Text anchor and size': 'To centre a number on a plaque, use center + capline.'",
+        "source": "S94 F24 (new guide text); ARCADE ENGINE_LIMITATIONS R42",
+        "prompt": "The world-space Text 'Door12' should have its digits centred exactly on its GameObject's position "
+                  "(it sits at the plaque's centre). Fix how the text is anchored.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nDoor12 [21] text transform ui",
+                                                   {"entities": [{"id": 21, "path": "Door12"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(21|Door12)$"}, "result": ok(
+                "Door12 [21] components: rectTransform text transform ui; text: text \"12\", fontSize 40, anchorHorizontal "
+                "left, anchorVertical bottom", {"id": 21, "name": "Door12"})},
+            {"tool": "set_properties", "result": ok("Set 2 properties on 1 GameObject(s) (one undo step).", {"entities": [{"id": 21}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"text": {"anchorHorizontal": "center",
+                                                                                                  "anchorVertical": "re:capline|middle"}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "anchorVertical", "value": "re:capline|middle"}]}}]}],
+                   "must_not_call": ["set_transform"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_sprite_flip_x",
+        "kind": "guard",
+        "what_happened": "New text (S94 F29, R9): the sprites guide names sprite.flipX; without it an agent mirrors a sprite with a "
+                         "negative scale, which also flips its colliders and children.",
+        "text_at_issue": "jasper://docs/sprites 'Flip and Size': 'sprite.flipX mirrors the quad about its pivot'",
+        "source": "S94 F29 (new guide text); ARCADE ENGINE_LIMITATIONS R9",
+        "prompt": "Make the Hero sprite face left: mirror its picture horizontally, but leave its transform and collider alone.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nHero [7] sprite mesh transform rigidbody2d",
+                                                   {"entities": [{"id": 7, "path": "Hero"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)^(7|Hero)$"}, "result": ok(
+                "Hero [7] components: mesh rigidbody2d sprite transform; sprite: width 32, height 32, flipX false, flipY true",
+                {"id": 7, "name": "Hero"})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 1 GameObject(s) (one undo step).", {"entities": [{"id": 7}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"values": {"sprite": {"flipX": True}}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "flipX", "value": True}]}}]}],
+                   "must_not_call": ["set_transform"]},
+        "max_turns": 10,
+    },
+
+    {   # -- S94 F1: Points sprite frames are UV rects (a Sprite's are pixels) ----------------------------------------
+        "id": "guard_points_frames_in_uv",
+        "kind": "guard",
+        "what_happened": "New text (S94 F1, the port's R54): Points:addSpriteFrame takes UV rects (0..1) while Sprite:addFrame "
+                         "takes pixels; a port passed pixel rects and the frames sampled outside the texture.",
+        "text_at_issue": "lua-api.md 4.18 Points: 'addSpriteFrame([id,] [name,] rect) takes the rect in UV units (0..1), not "
+                         "pixels as Sprite:addFrame does'",
+        "source": "JasperArcade-Ported ENGINE_LIMITATIONS.md R54 (paraphrased)",
+        "files": GAME_FILES,
+        "prompt": "Write scripts/confetti_frames.lua: a module with a function add(points) that adds the 8 cells of our "
+                  "confetti sheet (assets/confetti.png, 256x128 pixels, 4 columns x 2 rows of 64x64 cells) as sprite frames "
+                  "named c0..c7 on a Points object, row by row. Just write the file; don't attach or run it.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("scripts/confetti_frames.lua: no syntax errors.", {"ok": True, "problems": []})},
+        ],
+        "checks": {"file_must": {"scripts/confetti_frames.lua": [r"addSpriteFrame", r"0\.25|1\s*/\s*4|/\s*(?:256|128|4\.0)\b"]},
+                   "file_must_not": {"scripts/confetti_frames.lua": [r"(?:addSpriteFrame|Rect)\(.*,\s*64\s*,\s*64\s*\)"]},
+                   "must_not_call": ["play", "attach_script", "write_file"]},
+        "max_turns": 16,
+    },
+    # ---- S94 F23: an outline on a model root (the ledger's R32)
+    {
+        "id": "bad_outline_preset_on_model_root",
+        "kind": "bad",
+        "what_happened": "The JasperArcade port (ledger R32) applied an outline preset to a skinned model's root, which has no "
+                         "Mesh; apply_material_preset failed and the outline was given up. It now applies to the meshes below "
+                         "and its next names the Outline component, which outlines the whole model.",
+        "text_at_issue": "apply_material_preset next: 'Applied to the meshes below Drone ..., which have no Mesh of their own. "
+                         "To outline a whole object, add the Outline component to its root instead (add_component outline; "
+                         "set_properties outline.mode, outline.color, outline.width).'",
+        "source": "S94 F23 (new result text); JasperArcade-Ported ENGINE_LIMITATIONS.md R32",
+        "prompt": "Outline the Drone model in orange, a few pixels wide, and keep the outline when the drone flies behind walls.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nDrone [20] model transform", {"entities": [{"id": 20, "path": "Drone"}]})},
+            {"tool": "get_scene_tree", "result": ok("Scene 1 \"Main\" (3D).\nDrone [20] model\n  RootNode [21]\n    Body [22] mesh (skinned)\n",
+                                                    {"scene_id": 1})},
+            {"tool": "get_entity", "result": ok("Drone [20] components: model transform", {"id": 20, "name": "Drone"})},
+            {"tool": "list_material_presets", "result": ok(
+                "3 material preset(s); apply_material_preset applies one:\noutline_hull (Outline (hull)): Outline as an extra pass ...\n"
+                "outline_stencil (Outline (stencil)): through walls ...\nsee_through_silhouette (See-through silhouette) ...",
+                {"presets": [{"id": "outline_hull"}, {"id": "outline_stencil"}, {"id": "see_through_silhouette"}]})},
+            {"tool": "apply_material_preset", "result": ok(
+                "Applied preset outline_stencil to 1 submesh(es) (one undo step).",
+                {"preset": "outline_stencil", "applied": [{"entity": {"id": 22, "name": "Body"}, "submesh": 0}],
+                 "next": "Applied to the meshes below Drone (1 mesh(es)), which have no Mesh of their own. To outline a whole "
+                         "object, add the Outline component to its root instead (add_component outline; set_properties "
+                         "outline.mode, outline.color, outline.width)."})},
+            {"tool": "undo", "result": ok("Undid: Apply material preset.", {"undone": 1})},
+            {"tool": "add_component", "result": ok("Added Outline to Drone.", {"added": [{"entity": {"id": 20}, "component": "outline"}]})},
+            {"tool": "set_properties", "result": ok("Set properties of Drone.", {"entity": {"id": 20}})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)outline"}}],
+                   "must_not_call": ["fork_shader"]},
+        "max_turns": 12,
+    },
+    # ---- S94 F42: an older project keeps the old FBX submesh order (the project migration)
+    {
+        "id": "guard_fbx_submesh_order_setting",
+        "kind": "guard",
+        "what_happened": "New text (S94 F42): projects made before submeshes followed the FBX material slots keep "
+                         "mesh.fbx_submesh_order used_materials; an agent porting a Unity model whose submeshes come out "
+                         "shifted (an empty slot) switches the setting instead of reordering the materials by hand.",
+        "text_at_issue": "get_project_settings describe: mesh.fbx_submesh_order 'An FBX mesh's submeshes: material_slots "
+                         "(submesh i is material slot i, Unity's order; new projects) or used_materials (the used slots in "
+                         "order, projects made before; a change reimports every FBX).'",
+        "source": "S94 F42 and the lead's old-projects rule (new setting text); no failure on record",
+        "prompt": "This project is older. In Unity, submesh 1 of assets/models/robot.fbx is the eyes (its material slot 0 "
+                  "is unused), but here the eyes are submesh 0. Make every FBX's submeshes follow Unity's material slots.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "mesh.fbx_submesh_order = used_materials (enum: material_slots, used_materials): An FBX mesh's submeshes: "
+                "material_slots (submesh i is material slot i, Unity's order; new projects) or used_materials (the used "
+                "slots in order, projects made before; a change reimports every FBX).",
+                {"mesh.fbx_submesh_order": "used_materials"})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["mesh.fbx_submesh_order"]})},
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "mesh.fbx_submesh_order = material_slots", {"mesh.fbx_submesh_order": "material_slots"})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"mesh.fbx_submesh_order": "material_slots"}}}],
+                   "must_not_call": ["set_properties", "link_material", "set_model_import_settings"],
+                   "edits_must_not": [r"project\.yaml$", r"\.meta$"]},
+        "max_turns": 10,
+    },
+    # ---- S94 P2: Property Overrides (MaterialPropertyBlock) and the shadowed Mesh value
+    {
+        "id": "guard_property_override_per_object_colour",
+        "kind": "guard",
+        "what_happened": "New text (S94 F7): set_shader_uniform's override parameter writes a Mesh's Property Override; "
+                         "an agent asked to tint one of several boxes sharing a material uses it instead of editing the shared "
+                         "material (which tints every box) or the Mesh's shaderUniforms (which the material's parameter hides).",
+        "text_at_issue": "set_shader_uniform: '... (+ component, + submesh; override: a Property Override, over its materials) ...'",
+        "source": "S94 F7, ARCADE ledger R15 (M's zone colours stuck under the material's values)",
+        "prompt": "Crate and Crate2 share the material materials/crate.material (library:unlit). Make only Crate2 red; Crate must stay as it is.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("2 GameObject(s) match:\nCrate [30] mesh transform\nCrate2 [31] mesh transform",
+                                                   {"entities": [{"id": 30, "path": "Crate"}, {"id": 31, "path": "Crate2"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 31 \"Crate2\": transform, mesh (submeshes[0] material materials/crate.material, "
+                                               "shader library:unlit, shaderParams {baseColor: [1, 1, 1, 1]}).", {"id": 31, "name": "Crate2"})},
+            {"tool": "get_shader_uniforms", "result": ok("library:unlit on Crate2 submesh 0: baseColor [1, 1, 1, 1] (own), tiling [1, 1, 0, 0] (shader_default).",
+                                                        {"parameters": [{"member": "baseColor", "source": "own", "effective": [1, 1, 1, 1]}]})},
+            {"tool": "set_shader_uniform", "args": {"override": True}, "result": ok(
+                "Set baseColor on Crate2 (Property Override).", {"entity": {"id": 31, "name": "Crate2"}, "property": "propertyOverrides.values",
+                                                                 "name": "baseColor", "declared": True, "value": [1, 0, 0, 1]})},
+            {"tool": "set_shader_uniform", "result": ok(
+                "Set baseColor on Crate2 (submesh 0 material).", {"entity": {"id": 31, "name": "Crate2"}, "property": "submeshes[0].material.shaderParams",
+                                                                  "name": "baseColor", "declared": True, "value": [1, 0, 0, 1]})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 31 \"Crate2\".", {"entity": {"id": 31}})},
+        ],
+        "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"override": True}}],
+                   "must_not_call": ["update_material"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_shadowed_mesh_uniform_next",
+        "kind": "guard",
+        "what_happened": "New text (S94 F8): set_shader_uniform's next says a Mesh value is hidden by its material's parameter "
+                         "of the same name and names override: true; the agent sets the value again as an override.",
+        "text_at_issue": "set_shader_uniform next: 'Submesh 0's material sets 'speed', which wins over this value: set it again "
+                         "with override: true (a Property Override) to win.'",
+        "source": "S94 F8, ARCADE ledger R15 (a silent failure)",
+        "prompt": "Set the Conveyor's shader uniform speed to 3.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nConveyor [40] mesh transform", {"entities": [{"id": 40, "path": "Conveyor"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 40 \"Conveyor\": transform, mesh (customShader shaders/belt, submeshes[0] material "
+                                               "shaderParams {speed: 1}).", {"id": 40, "name": "Conveyor"})},
+            {"tool": "set_shader_uniform", "args": {"override": True}, "result": ok(
+                "Set speed on Conveyor (Property Override).", {"entity": {"id": 40}, "property": "propertyOverrides.values", "name": "speed",
+                                                               "declared": True, "value": [3, 0, 0, 0]})},
+            {"tool": "set_shader_uniform", "result": ok(
+                "Set speed on Conveyor.", {"entity": {"id": 40}, "property": "shaderUniforms", "name": "speed", "declared": True,
+                                           "value": [3, 0, 0, 0],
+                                           "next": "Submesh 0's material sets 'speed', which wins over this value: set it again with "
+                                                   "override: true (a Property Override) to win."})},
+        ],
+        "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"override": True}}]},
+        "max_turns": 8,
+    },
+    # ---- S94 F35, F36: Unity .anim / .controller / .mask import
+    {
+        "id": "guard_unity_anim_import",
+        "kind": "guard",
+        "what_happened": "New text (S94 F35): edit_animation's create.unity imports a Unity YAML .anim; an agent given a Unity "
+                         "clip imports it instead of hand-converting its curves into tracks or copying the YAML.",
+        "text_at_issue": "edit_animation: 'create {from?, humanoid?, unity: Unity .anim}' (schema: create.unity, create.mirror_x)",
+        "source": "S94 F35 (new description text); the JasperArcade port converted .anim files with its own script",
+        "prompt": "Bring the Unity clip /home/me/UnityGame/Assets/Anim/Walk.anim into this project as assets/anim/walk.anim.",
+        "mocks": [
+            {"tool": "edit_animation", "result": ok(
+                "assets/anim/walk.anim: created, 3 tracks, 1 s, loop; no Animation Player uses it yet (set_properties clips) "
+                "(one project undo step: undo scope project)\nimported the Unity clip Assets/Anim/Walk.anim (3 tracks, 1 event)",
+                {"path": "assets/anim/walk.anim", "created": True, "tracks": [], "wrap": "loop", "length": 1,
+                 "unity": {"source": "Assets/Anim/Walk.anim", "tracks": 3, "events": 1, "unmapped": [], "notes": [],
+                           "muscle_curves": {"count": 0, "names": []}}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim$", "create": {"unity": "re:Walk\\.anim$"}}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.anim$"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_unity_anim_unmapped_next",
+        "kind": "guard",
+        "what_happened": "New text (S94 F35): edit_animation create.unity's next sends the agent to list_properties when Unity "
+                         "bindings did not map, so it keys their engine equivalents instead of reporting the clip done.",
+        "text_at_issue": "edit_animation next: 'unity.unmapped lists the Unity bindings with no engine property: key their engine "
+                         "equivalents with tracks (get_animation {root, list_properties} lists what a GameObject can animate)'",
+        "source": "S94 F35 (new result text); no failure on record",
+        "prompt": "Import the Unity clip /home/me/UnityGame/Assets/Anim/Blink.anim as assets/anim/blink.anim for the Hero "
+                  "GameObject, and make sure everything it animated in Unity is animated here too.",
+        "mocks": [
+            {"tool": "edit_animation", "args": {"create": "*"}, "result": ok(
+                "assets/anim/blink.anim: created, 1 track, 0.5 s, once; no Animation Player uses it yet (set_properties clips) "
+                "(one project undo step: undo scope project)\nimported the Unity clip Assets/Anim/Blink.anim (1 track, 0 events)",
+                {"path": "assets/anim/blink.anim", "created": True, "tracks": [], "wrap": "once", "length": 0.5,
+                 "unity": {"source": "Assets/Anim/Blink.anim", "tracks": 1, "events": 0, "notes": [],
+                           "unmapped": [{"binding": "Face: MonoBehaviour.eyeOpen", "reason": "script fields of Unity MonoBehaviours "
+                                         "have no engine binding: key the Lua script's field (script:<Class>) with edit_animation"}],
+                           "muscle_curves": {"count": 0, "names": []}},
+                 "next": "unity.unmapped lists the Unity bindings with no engine property: key their engine equivalents with tracks "
+                         "(get_animation {root, list_properties} lists what a GameObject can animate)"})},
+            {"tool": "get_animation", "result": ok(
+                "\"Face\": animatable properties (track component, property, kind):\nscript:face eyeOpen float\nmesh "
+                "submeshes[0].material.baseColorFactor color4",
+                {"properties": [{"component": "script:face", "property": "eyeOpen", "kind": "float"}]})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nHero [7] transform\nHero/Face [8] mesh script",
+                                                   {"entities": [{"id": 7, "path": "Hero"}, {"id": 8, "path": "Hero/Face"}]})},
+            {"tool": "edit_animation", "args": {"tracks": "*"}, "result": ok(
+                "assets/anim/blink.anim: 2 tracks, 0.5 s, once (one project undo step: undo scope project)",
+                {"path": "assets/anim/blink.anim", "created": False, "tracks": []})},
+        ],
+        "checks": {"calls": [{"tool": "get_animation", "args": {"list_properties": "*"}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_unity_controller_import",
+        "kind": "guard",
+        "what_happened": "New text (S94 F36): edit_animator_controller's create.unity imports a Unity .controller with the clips "
+                         "and masks it uses; an agent imports it in one call instead of rebuilding states with ops or importing "
+                         "each clip first, and follows next for the model clip that did not map.",
+        "text_at_issue": "edit_animator_controller create: 'true, or {unity: an absolute Unity .controller}'; next: 'unity.unmapped "
+                         "lists what has no engine equivalent: fix each with edit_animator_controller ops (a model's clip: set_state "
+                         "{clip: \"<model>#<clip>\"} once the model is in the project)'",
+        "source": "S94 F36 (new schema and result text); no failure on record",
+        "prompt": "Import the Unity Animator Controller /home/me/UnityGame/Assets/Anim/Hero.controller as "
+                  "assets/anim/hero.controller, with everything it needs. The Hero model is already in the project at "
+                  "assets/models/hero.fbx.",
+        "mocks": [
+            {"tool": "edit_animator_controller", "args": {"create": "*"}, "result": ok(
+                "assets/anim/hero.controller: imported Assets/Anim/Hero.controller (4 file(s), one project undo step); 1 unmapped "
+                "item(s): see unity.unmapped\nlayers[Base Layer].states[Jump].motion: a clip of the model Assets/Models/Hero.fbx "
+                "(\"Jump\"): import the model into the project, then set the state's clip to \"<model path>#Jump\" with "
+                "edit_animator_controller set_state",
+                {"path": "assets/anim/hero.controller", "created": True,
+                 "files": ["assets/anim/hero.controller", "assets/anim/Walk.anim", "assets/anim/Run.anim", "assets/anim/UpperBody.mask"],
+                 "unity": {"source": "Assets/Anim/Hero.controller", "kind": "controller", "layers": 2, "states": 5,
+                           "unmapped": [{"what": "layers[Base Layer].states[Jump].motion", "reason": "a clip of the model "
+                                         "Assets/Models/Hero.fbx (\"Jump\"): import the model into the project, then set the state's "
+                                         "clip to \"<model path>#Jump\" with edit_animator_controller set_state"}]},
+                 "next": "unity.unmapped lists what has no engine equivalent: fix each with edit_animator_controller ops (a model's "
+                         "clip: set_state {clip: \"<model>#<clip>\"} once the model is in the project)"})},
+            {"tool": "edit_animator_controller", "args": {"ops": "*"}, "result": ok(
+                "assets/anim/hero.controller: 1 change(s), 0 diagnostic(s), 0 warning(s); one project undo step.",
+                {"path": "assets/anim/hero.controller", "changes": ["set_state Jump"], "diagnostics": [], "warnings": []})},
+            {"tool": "get_animator", "result": ok("assets/anim/hero.controller: 6 parameters, 2 layers, 5 states.",
+                                                  {"controller": {"layers": []}})},
+            {"tool": "get_model_info", "result": ok("assets/models/hero.fbx: 1 mesh, 32 bones, clips: Jump, Idle.",
+                                                    {"clips": [{"name": "Jump"}, {"name": "Idle"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animator_controller", "args": {"create": {"unity": "re:Hero\\.controller$"}}},
+                             {"tool": "edit_animator_controller", "args": {"ops": [{"clip": "re:hero\\.fbx#Jump"}]}}],
+                   "must_not_call": ["edit_animation"]},
+        "max_turns": 12,
+    },
+    # ---- S94 F48, F49: layered PSD/PSB import and 2D skinning
+    {
+        "id": "guard_psd_layers_import_mode",
+        "kind": "guard",
+        "what_happened": "New text (S94 F48): set_texture_import_settings takes import_mode: layers, which makes a PSD/PSB's "
+                         "layers sprites and a prefab; an agent asked for the layers as separate sprites sets it instead of "
+                         "exporting PNGs per layer by hand.",
+        "text_at_issue": "set_texture_import_settings: 'import_mode: layers gives a PSD/PSB a frame per layer and a prefab'",
+        "source": "S94 F48 (new parameter); the JasperArcade port decoded PSB layers with its own parser (ledger R45)",
+        "prompt": "assets/art/truck.psb is a layered Photoshop file. Bring its layers into the project as separate sprites, placed as "
+                  "in the document.",
+        "mocks": [
+            {"tool": "list_assets", "result": ok("1 asset: assets/art/truck.psb (texture)", {"assets": [{"path": "assets/art/truck.psb", "type": "texture"}]})},
+            {"tool": "get_asset_info", "result": ok("assets/art/truck.psb: texture 512x256 (PSB).", {"path": "assets/art/truck.psb", "kind": "texture"})},
+            {"tool": "get_texture_import_settings", "result": ok("assets/art/truck.psb: type default, max_size 2048.", {"path": "assets/art/truck.psb"})},
+            {"tool": "set_texture_import_settings", "result": ok(
+                "Updated the import settings of 1 texture(s); their cooks are queued. Undo with scope project.",
+                {"updated": ["assets/art/truck.psb"], "unchanged": 0,
+                 "layers": [{"path": "assets/art/truck.psb", "prefab": "assets/art/truck.psb.prefab",
+                             "sprites": [{"name": "Body", "key": "layer:1"}, {"name": "Wheel", "key": "layer:2"}]}],
+                 "next": "instantiate_prefab the prefab to place the layers; a Sprite's sheet is the document, its frame a layer's name."})},
+            {"tool": "instantiate_prefab", "result": ok("Instantiated assets/art/truck.psb.prefab as \"truck\" [20].", {"root": {"id": 20}})},
+        ],
+        "checks": {"calls": [{"tool": "set_texture_import_settings", "args": {"settings": {"import_mode": "layers"}}}],
+                   "must_not_call": ["create_sprite", "edit_sprite"], "edits_must_not": [r"\.png$"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_sprite_skin_bones",
+        "kind": "guard",
+        "what_happened": "New tool (S94 F49): edit_sprite_skin makes a Sprite's bones, mesh and weights; an agent asked to make "
+                         "a sprite arm bend at the elbow skins it instead of cutting the sprite into two GameObjects.",
+        "text_at_issue": "edit_sprite_skin: '2D skinning of a Sprite's frame (Unity's Sprite Skin): bones create/remove, "
+                         "auto_geometry, auto_weights, set_weights ...'",
+        "source": "S94 F49 (new tool); the JasperArcade port rebuilt its rig as parent/child GameObjects (ledger R45)",
+        "prompt": "The Arm sprite (a 16x64 vertical arm, shoulder at the bottom) should bend smoothly at the elbow halfway up. "
+                  "Set that up so I can animate the bend.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nArm [12] sprite transform", {"entities": [{"id": 12, "path": "Arm"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 12 \"Arm\": transform, sprite (sheet assets/skin/arm.png, frame arm).", {"id": 12})},
+            {"tool": "edit_sprite_skin", "result": ok(
+                "Edited the skin of 'arm' (assets/skin/arm.png): 2 bones, 27 vertices. One undo step (scope timeline).",
+                {"bones": [{"name": "upper_arm", "parent": None, "head": [8, 64], "tail": [8, 32], "vertices": 15, "gameobject": {"id": 30}},
+                           {"name": "forearm", "parent": "upper_arm", "head": [8, 32], "tail": [8, 0], "vertices": 15, "gameobject": {"id": 31}}],
+                 "vertices": 27, "triangles": 32, "weighted": True, "source": "assets/skin/arm.png", "frame": "arm", "changed": True,
+                 "next": "Move or rotate the bone GameObjects (set_properties transform) to pose the Sprite; check with screenshot."})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 31 \"forearm\".", {"entity": {"id": 31}})},
+            {"tool": "screenshot", "result": ok("Game view, 640x360.", {"width": 640, "height": 360})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sprite_skin", "args": {"entity": "re:(?i)^(12|Arm)$"}}],
+                   "must_not_call": ["create_entity", "duplicate_entities", "edit_sprite"]},
+        "max_turns": 10,
+    },
     # -- spatial queries (docs/specs/spatial-queries.md R25, R31) --------------------------------
     {
         "id": "guard_physics_query_verify",
@@ -7332,6 +8286,110 @@ CASES = [
                    "must_not_call": ["write_file", "set_project_settings"]},
         "max_turns": 8,
     },
+    # -- V1 R126, AC12: vertex colors (meshes group). Each fails on the text without the guide section or result. --
+    {
+        "id": "vc_find_tools",
+        "kind": "guard",
+        "what_happened": "Vertex painting is meshes-group work, listed only once the group is enabled: the agent must find it "
+                         "rather than tint the material or make a texture.",
+        "text_at_issue": "none: tool_groups lists edit_mesh_colors under meshes (passed 2/2 without new group text, so none was added)",
+        "source": "docs/specs/V1-vertex-colors.md R120, R126",
+        "prompt": "Use vertex colors to make the top of the Rock moss green. Don't touch its material or textures.",
+        "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(created=True)}],
+        "checks": {"calls": [{"tool": "tool_groups", "args": {"enable": ["meshes"]}}, "edit_mesh_colors"],
+                   "must_not_call": ["update_material", "set_material", "create_material"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "vc_selection_fill_not_stroke",
+        "kind": "bad",
+        "groups_enabled": ["meshes"],
+        "what_happened": "Asked to color the faces the user selected, an agent swept brush strokes over where it guessed they "
+                         "were; the editor's element selection is an op target, filled exactly.",
+        "text_at_issue": "edit_mesh_colors ops' items '{op, target: {kind: ... selection ...}'; jasper://docs/meshes 'Targets and elements'",
+        "source": "docs/specs/V1-vertex-colors.md R23, R50, R126",
+        "prompt": "I've selected some faces of the Rock in the Vertex Paint window. Make exactly those selected faces dark red (#8B0000).",
+        "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(vertices=0, corners=36)},
+                               {"tool": "get_selection", "result": ok("Selected in \"Main\": Rock [50].", {"scene": {"id": 1, "name": "Main"},
+                                                                                                    "entities": [ROCK]})}],
+        "checks": {"calls": [{"tool": "edit_mesh_colors", "args": {"ops": [{"op": "re:^(set|fill)$", "target": {"kind": "selection"}}]}}],
+                   "must_not_call": [{"tool": "edit_mesh_colors", "args": {"ops": [{"op": "stroke"}]}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "vc_check_in_vertex_color_view",
+        "kind": "bad",
+        "groups_enabled": ["meshes"],
+        "what_happened": "After painting a roughness mask, an agent checked a shaded screenshot, where a mask shows only as a faint "
+                         "shine; the Vertex Color draw mode shows the stored values.",
+        "text_at_issue": "edit_mesh_colors result next ('... set_scene_camera {display: {draw_mode: \"vertex_color\"}} ...'); "
+                         "jasper://docs/meshes 'The loop'",
+        "source": "docs/specs/V1-vertex-colors.md R123, R126",
+        "prompt": "The Rock's material reads the red vertex color channel as a wetness (roughness) mask. Paint the bottom half "
+                  "of the Rock wet (red channel 1) and the top dry (0), then check visually that the mask is right.",
+        "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(vertices=1200)}],
+        "checks": {"calls": ["edit_mesh_colors", {"tool": "set_scene_camera", "args": {"display": {"draw_mode": "vertex_color"}}}, "screenshot"],
+                   "order": [["edit_mesh_colors", {"tool": "set_scene_camera", "args": {"display": {"draw_mode": "vertex_color"}}}],
+                             [{"tool": "set_scene_camera", "args": {"display": {"draw_mode": "vertex_color"}}}, "screenshot"]]},
+        "max_turns": 12,
+    },
+    {
+        "id": "vc_hard_edges_need_faces",
+        "kind": "bad",
+        "groups_enabled": ["meshes"],
+        "what_happened": "Asked for flat-colored faces with crisp borders, an agent set the faces' vertices, which blends each color "
+                         "into the neighbouring faces; a faces target writes the face's corners (hard edges).",
+        "text_at_issue": "edit_mesh_colors description ('faces/corners (or element: face) give hard edges'); jasper://docs/meshes "
+                         "'Targets and elements'",
+        "source": "docs/specs/V1-vertex-colors.md R3, R24, R126",
+        "prompt": "On the low-poly Rock, make triangles 0 to 5 solid #FF00FF with crisp, hard borders: no blending into the "
+                  "faces around them.",
+        "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(vertices=0, corners=18)}],
+        "checks": {"calls": [{"tool": "edit_mesh_colors", "args": {"ops": [{"target": {"kind": "faces"}}]}}],
+                   "must_not_call": [{"tool": "edit_mesh_colors", "args": {"ops": [{"target": {"kind": "vertices"}}]}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "vc_more_is_strength_not_repeat",
+        "kind": "guard",
+        "groups_enabled": ["meshes"],
+        "what_happened": "Told a stroke it painted was too faint, an agent must change the strength (or blend add) in one call, not "
+                         "send the same stroke again and again (R126). Agents did so 2/2 without any text, so the tool text says nothing of it.",
+        "text_at_issue": "none in the tool text; jasper://docs/meshes 'Ops' explains strength as reference",
+        "source": "docs/specs/V1-vertex-colors.md R21, R31, R126",
+        "history": [
+            {"user": "Paint some light moss on the top of the Rock with a brush stroke."},
+            {"assistant": "Painting a stroke.", "calls": [{"tool": "edit_mesh_colors", "args": {"entity": 50, "ops": [
+                {"op": "stroke", "points": [[-0.5, 1.0, 0.0], [0.5, 1.0, 0.0]], "radius": 0.4, "value": "#5A7A2A", "strength": 0.3}]},
+                "result": "\"Rock\": 220 vertices and 0 corners changed in 1 target(s) (one undo step)."}]},
+            {"assistant": "Painted a light moss stroke over the top of the Rock (strength 0.3)."},
+        ],
+        "prompt": "The moss is far too faint. Make it much stronger along that same stroke.",
+        "mocks": ROCK_MOCKS + [{"tool": "edit_mesh_colors", "result": mesh_colors_edit(vertices=220)}],
+        "checks": {"calls": ["edit_mesh_colors"], "max_calls": {"edit_mesh_colors": 2},
+                   "any_of": [{"calls": [{"tool": "edit_mesh_colors", "args": {"ops": [{"strength": "re:^(0\\.[6-9]\\d*|1(\\.0+)?)$"}]}}]},
+                              {"calls": [{"tool": "edit_mesh_colors", "args": {"ops": [{"blend": "add"}]}}]},
+                              {"calls": [{"tool": "edit_mesh_colors", "args": {"ops": [{"op": "re:^(stroke|fill)$", "buildup": True}]}}]}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "vc_view_asset_colors",
+        "kind": "guard",
+        "groups_enabled": ["meshes"],
+        "what_happened": "Asked which parts of a model's own vertex colors are dark, agents swapped materials to an unlit one to "
+                         "see them, or guessed from a shaded screenshot; the Scene view's Vertex Color Draw Mode draws them, "
+                         "editor only.",
+        "text_at_issue": "jasper://docs/meshes ('draw_mode: \"vertex_color\" draws each mesh's raw vertex colours unlit'); "
+                         "set_scene_camera's draw_mode error. Passed 2/2 without the docs line (agents guess the name; the real "
+                         "server's error lists it), so it guards the behaviour, not that line",
+        "source": "docs/specs/V1-vertex-colors.md R123",
+        "prompt": "models/rock.glb came with baked vertex colors. In the Scene view, show me those colors on the Rock without "
+                  "lighting, and tell me which side is darkest. Don't change the Rock or its material.",
+        "mocks": ROCK_MOCKS,
+        "checks": {"calls": [{"tool": "set_scene_camera", "args": {"display": {"draw_mode": "vertex_color"}}}],
+                   "must_not_call": ["set_properties", "update_material", "set_material", "create_material", "edit_mesh_colors"]},
+        "max_turns": 12,
+    },
     # ---- S98 F1: .mesh assets
     {
         "id": "guard_mesh_save_as_asset",
@@ -7581,6 +8639,63 @@ CASES = [
         "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"player.always_include": "*"}}}],
                    "max_calls": {"build_project": 3}},
         "max_turns": 12,
+    },
+    {
+        "id": "bad_html_ui_drag_scroll_by_hand",
+        "kind": "bad",
+        "what_happened": "The JasperArcade port re-implemented uGUI's ScrollRect in Lua (ScrollView.lua: pointer tracking, "
+                         "elasticity, deceleration) because the mouse never drag-scrolled an HTML list; S93 adds scroll-drag, "
+                         "scroll-movement and the other scroll physics properties instead.",
+        "text_at_issue": "html-ui.md 'Drag scrolling (uGUI ScrollRect)'",
+        "source": "docs/specs/S93-htmlui-gaps.md R8 (ledger U12)",
+        "files": {"assets/ui/shop.html": "<html>\n<head>\n<title>shop</title>\n<style>\n"
+                                         "  #items { position: absolute; left: 40px; top: 80px; width: 400px; height: 500px; overflow-y: auto; }\n"
+                                         "  .item { height: 80px; }\n</style>\n</head>\n<body>\n"
+                                         "  <div id=\"items\"><div class=\"item\">Sword</div><div class=\"item\">Shield</div></div>\n"
+                                         "</body>\n</html>\n"},
+        "prompt": "In assets/ui/shop.html, PC players must be able to drag the #items list with the mouse like a phone list, and it "
+                  "should bounce back when dragged past its ends.",
+        "mocks": [
+            {"tool": "inspect_ui", "result": ok("shop: #items (div, overflow-y auto, 2 children), no diagnostics.",
+                                               {"elements": [{"ref": "#items"}], "diagnostics": []})},
+        ],
+        "checks": {"file_must": {"assets/ui/shop.html": [r"scroll-drag\s*:\s*pointer", r"scroll-movement\s*:\s*elastic"]},
+                   "edits_must_not": [r"\.lua$"]},
+        "max_turns": 14,
+    },
+    {
+        "id": "bad_data_asset_written_by_hand",
+        "kind": "bad",
+        "what_happened": "S95 REQ-24: a .dataasset is JSON, so an agent asked for one writes the file itself and gets no GUID "
+                         "meta check, no type check of the values and no undo step. edit_data_asset sits in the scripting group, so "
+                         "it has to be found from the task: the group's line names Data Assets, the tool's description says to edit "
+                         "them with it, not by writing the JSON.",
+        "text_at_issue": "McpToolGroups.cpp scripting: '... numeric expressions and Data Assets.'; DataAssetTools.cpp edit_data_asset "
+                         "description: 'Edit them with this tool, not by writing the JSON.'",
+        "source": "docs/specs/S95-lua-runtime-gaps.md REQ-24, AC-21 (new tool; no failure on record)",
+        "files": {"lua/data/ItemData.lua": "---@dataasset\nlocal ItemData = { properties = {\n"
+                                           "    { name = 'displayName', type = 'string', default = 'Item' },\n"
+                                           "    { name = 'price', type = 'int', default = 10 },\n} }\nreturn ItemData\n"},
+        "prompt": "lua/data/ItemData.lua is a data class. Make a Data Asset of it at assets/items/sword.dataasset: a Sword that costs 30.",
+        "mocks": [
+            {"tool": "edit_data_asset", "args": {"action": "list"}, "result": ok(
+                "1 data class(es): ItemData (0 asset(s)).",
+                {"classes": [{"class": "ItemData", "script": "lua/data/ItemData.lua",
+                              "fields": [{"name": "displayName", "type": "string"}, {"name": "price", "type": "int"}], "assets": []}]})},
+            {"tool": "edit_data_asset", "args": {"action": "create"}, "result": ok(
+                "Created assets/items/sword.dataasset (ItemData, 2 field(s)). One undo step.",
+                {"path": "assets/items/sword.dataasset", "guid": "4b1e9c0d2a7f4e31b6c58d0f9e2a7c13", "class": "ItemData",
+                 "values": {"displayName": "Sword", "price": 30}, "problems": [], "written": True,
+                 "next": "Scripts reach it through a property typed \"ItemData\" (set_script_properties: this path), or "
+                         "DataAsset.load(\"items/sword.dataasset\") in Lua."})},
+            {"tool": "edit_data_asset", "args": {"action": "get"}, "result": ok(
+                "assets/items/sword.dataasset: ItemData, 2 field(s), 0 problem(s).",
+                {"path": "assets/items/sword.dataasset", "class": "ItemData", "values": {"displayName": "Sword", "price": 30}, "problems": []})},
+        ],
+        "checks": {"calls": [{"tool": "edit_data_asset", "args": {"action": "create", "class": "ItemData",
+                                                                  "values": {"displayName": "Sword", "price": 30}}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.dataasset$"]},
+        "max_turns": 10,
     },
     {
         "id": "guard_drivable_car_wheel_colliders",

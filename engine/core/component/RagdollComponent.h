@@ -53,8 +53,8 @@ namespace jasperengine{
         Entity pausedAnimator = NULL_ENTITY;
         bool animatorWasEnabled = true;
         // the other bone drivers paused while simulated: entity animations (Model animations,
-        // Animation actions), Pose Animators, Vertex Animators, to resume after
-        enum class Driver : uint8_t { ACTION, POSE, VERTEX };
+        // Animation actions), Pose Animators, Vertex Animators, Animators, to resume after
+        enum class Driver : uint8_t { ACTION, POSE, VERTEX, ANIMATOR };
         std::vector<std::pair<Entity, Driver>> pausedDrivers;
         // impulses (point given) and forces asked for before the simulated state was applied
         struct Push{

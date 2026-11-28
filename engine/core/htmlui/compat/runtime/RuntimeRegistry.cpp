@@ -32,11 +32,13 @@
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/runtime/DecoratorCommon.h"
 
+#include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementInstancer.h>
 #include <RmlUi/Core/Factory.h>
 #include <RmlUi/Core/ImageSource.h>
+#include <RmlUi/Core/Property.h>
 
 #include <memory>
 #include <vector>
@@ -49,6 +51,18 @@ namespace {
     // compat's own images (html-layer's), so SVG files are rasterized at the size of a tile,
     // monochrome currentColor SVGs tinted, and image-rendering chooses the sampling
     class LayerImageSource : public Rml::ImageSourceHandler {
+        // a url of the element's mask-image and not of its background-image: image-color does
+        // not tint a mask (S93 R22 tints the images the element paints)
+        static bool isMaskImage(Rml::Element* element, const Rml::String& url){
+            if (element->GetComputedValues().image_color() == Rml::Colourb(255, 255, 255, 255))
+                return false;
+            const Rml::Property* mask = element->GetProperty(Rml::PropertyId::MaskImage);
+            if (!mask || mask->ToString().find(url) == std::string::npos)
+                return false;
+            const Rml::Property* background = element->GetProperty(Rml::PropertyId::BackgroundImage);
+            return !background || background->ToString().find(url) == std::string::npos;
+        }
+
     public:
         bool GetImage(Rml::Element* element, const Rml::String& url, const Rml::String& /*base_path*/, Rml::Vector2f draw_size,
                       bool repeatX, bool repeatY, Image& out) override{
@@ -73,7 +87,7 @@ namespace {
             out.intrinsic_size = image->intrinsicSize();
             if (draw_size.x > 0.0f && draw_size.y > 0.0f){
                 out.texture = image->texture(element, draw_size, repeatX, repeatY);
-                out.colour = image->colour(element);
+                out.colour = image->colour(element, !isMaskImage(element, url));
                 out.owner = image;
             }
             return true;

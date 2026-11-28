@@ -824,6 +824,14 @@ int Scene::getPhysics2DSubSteps() const{
 #endif
 }
 
+void Scene::setFixedTimestep(float seconds){
+    settings.fixedTimestep = (std::isfinite(seconds) && seconds > 0.0f) ? seconds : 0.0f;
+}
+
+float Scene::getFixedTimestep() const{
+    return settings.fixedTimestep;
+}
+
 const ScenePhysics2DSettings& Scene::getPhysics2DWorldSettings() const{
     return const_cast<Scene*>(this)->getSystem<PhysicsSystem>()->getWorldSettings2D();
 }
@@ -1389,6 +1397,24 @@ void Scene::notifyPickDirty(Entity entity){
 void Scene::destroy(){
     for (auto const& pair : systems){
         pair.second->destroy();
+    }
+}
+
+void Scene::releaseGpu(){
+    for (auto const& pair : systems){
+        pair.second->releaseGpu();
+    }
+}
+
+void Scene::restoreGpu(){
+    if (camera == NULL_ENTITY){
+        camera = createDefaultCamera();
+    }
+
+    for (auto const& pair : systems){
+        if (Engine::isViewLoaded()){
+            pair.second->restoreGpu();
+        }
     }
 }
 
