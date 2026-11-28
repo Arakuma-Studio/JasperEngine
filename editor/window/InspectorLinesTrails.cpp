@@ -12,7 +12,6 @@
 // rows are propertyRow's Curve / Gradient types (S27's Curve and Gradient fields).
 
 #include "InspectorWindow.h"
-#include "component/Transform.h"
 
 #include "Catalog.h"
 #include "Theme.h"

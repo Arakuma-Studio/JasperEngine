@@ -6,7 +6,6 @@
 #include "EditorHost.h"
 #include "Scene.h"
 #include "command/CommandHandle.h"
-#include "component/Transform.h"
 #include "jobs/JobSystem.h"
 #include "physics/JoltShapeBuilder.h"
 #include "util/MeshTriangles.h"
