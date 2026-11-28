@@ -31,10 +31,11 @@
 #include <fstream>
 #include <iterator>
 
+namespace mesh_asset_files_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
-namespace mesh_asset_files_test {
 
     namespace fs = std::filesystem;
 
@@ -74,6 +75,8 @@ namespace mesh_asset_files_test {
     };
 
 }
+
+namespace mesh_asset_files_test {
 
 using namespace mesh_asset_files_test;
 
@@ -305,3 +308,5 @@ TEST_F(MeshAssetSaveTest, AssetStrippingShipsTheMeshesTheScenesShow) {
     EXPECT_EQ(plan.leftOutReason("assets/Meshes/Main Scene/Ball.mesh"), "") << "the build scene shows it";
     EXPECT_EQ(plan.leftOutReason("assets/meshes/stray.mesh"), "unreferenced");
 }
+
+}  // namespace mesh_asset_files_test

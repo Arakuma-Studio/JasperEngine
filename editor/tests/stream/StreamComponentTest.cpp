@@ -90,6 +90,8 @@
 #include <functional>
 #include <string>
 
+namespace StreamComponentTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::test;
@@ -649,3 +651,5 @@ TEST(StreamComponent, OldTerrainResavesIdentical){
     }
     EXPECT_FALSE(node["surfaceLayers"][0]["cliffProjection"]);
 }
+
+}  // namespace StreamComponentTest_cpp

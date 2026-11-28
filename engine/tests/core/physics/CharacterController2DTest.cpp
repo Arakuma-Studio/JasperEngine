@@ -28,6 +28,8 @@
 #include <functional>
 #include <memory>
 
+namespace CharacterController2DTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -363,3 +365,4 @@ TEST_F(CharacterController2DTest, NoWorldMovesFreely){
     EXPECT_FALSE(cc.isGrounded());
 }
 
+}  // namespace CharacterController2DTest_cpp

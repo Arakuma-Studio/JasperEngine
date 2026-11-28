@@ -20,6 +20,8 @@
 #include <fstream>
 #include <set>
 
+namespace BitmapTextTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pixelart;
 
@@ -266,3 +268,5 @@ TEST(BitmapText, Fallback){
     EXPECT_GT(BitmapFontPool::generation(key), generation);
     BitmapFontPool::clear();
 }
+
+}  // namespace BitmapTextTest_cpp

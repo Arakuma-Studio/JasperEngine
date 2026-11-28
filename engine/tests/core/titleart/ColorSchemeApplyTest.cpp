@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+namespace ColorSchemeApplyTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -954,3 +956,5 @@ TEST_F(ColorSchemeApplyTest, Time64Layers) {
     std::printf("[bench] applyColorScheme, 64 styled layers (4 rims, 2 effects each): %.3f ms (%.3f ms per layer); re-applied: %.3f ms\n",
                 best, best / 64.0, bestAgain);
 }
+
+}  // namespace ColorSchemeApplyTest_cpp

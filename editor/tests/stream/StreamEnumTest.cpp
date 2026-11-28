@@ -29,6 +29,8 @@
 #include <set>
 #include <string>
 
+namespace StreamEnumTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -612,3 +614,5 @@ TEST(StreamEnum, TextureAlphaBorderRoundTrips){
     EXPECT_EQ(Stream::textureAlphaBorderToString(TextureAlphaBorder::AUTO), "auto");
     EXPECT_EQ(Stream::stringToTextureAlphaBorder("?"), TextureAlphaBorder::AUTO);
 }
+
+}  // namespace StreamEnumTest_cpp

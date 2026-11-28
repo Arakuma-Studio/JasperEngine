@@ -21,6 +21,8 @@
 #include <thread>
 #include <vector>
 
+namespace DeviceLogPumpTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::platform;
@@ -170,3 +172,5 @@ TEST(DeviceLogPump, SimulatorLinesArriveOnceWithTheirLevelAndCategory) {
     };
     EXPECT_EQ(got, want);
 }
+
+}  // namespace DeviceLogPumpTest_cpp

@@ -25,8 +25,12 @@
 #include <thread>
 #include <vector>
 
+namespace CleanupRecoveryTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::cleanup;
+// the cleanup's own, not pixelart's namesakes: a batch that declares both would be ambiguous
+using jasperengine::editor::pixelart::cleanup::RgbaImage;
 // its own name: another RgbaImage is in sight in some unity units
 using CleanupRecoveryImage = jasperengine::editor::pixelart::cleanup::RgbaImage;
 using jasperengine::pixelart::ColorMetric;
@@ -213,3 +217,5 @@ TEST(CleanupRecovery, MixesTwoColoursWithOrderedDitheringForAShadeBetweenThem) {
     EXPECT_EQ(std::set<int32_t>(a.indices.begin(), a.indices.end()).size(), 1u);
     EXPECT_EQ(std::set<int32_t>(b.indices.begin(), b.indices.end()).size(), 2u);
 }
+
+}  // namespace CleanupRecoveryTest_cpp

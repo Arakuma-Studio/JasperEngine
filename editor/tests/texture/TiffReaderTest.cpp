@@ -27,6 +27,8 @@
 #include <utility>
 #include <vector>
 
+namespace TiffReaderTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace {
@@ -564,3 +566,5 @@ TEST(TextureEditorCodecs, TifAndPsbLoadThroughTextureData) {
         }
     }
 }
+
+}  // namespace TiffReaderTest_cpp

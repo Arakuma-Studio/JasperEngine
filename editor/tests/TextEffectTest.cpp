@@ -30,6 +30,8 @@
 #include <cmath>
 #include <vector>
 
+namespace TextEffectTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -678,3 +680,5 @@ TEST(TextSdfTest, ScaledAndDistanceFieldAtlasesAreReleased){
     EXPECT_NE(plain.ui().getFontId(plain.text()), plainId);
     EXPECT_TRUE(FontPool::contains(plainId));
 }
+
+}  // namespace TextEffectTest_cpp

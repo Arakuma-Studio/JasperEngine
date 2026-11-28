@@ -23,6 +23,8 @@
 #include <string>
 #include "support/PosixCompat.h"
 
+namespace ParticleWorldBudgetSettingTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -88,3 +90,5 @@ TEST(ParticleWorldBudgetSetting, ReachesTheGames){
     ASSERT_TRUE(player::PlayerConfig::fromJson(player::PlayerConfig().toJson(), read, error)) << error;
     EXPECT_EQ(read.particleWorldBudget, 0u);
 }
+
+}  // namespace ParticleWorldBudgetSettingTest_cpp

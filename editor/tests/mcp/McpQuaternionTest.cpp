@@ -13,6 +13,8 @@
 #include <cmath>
 #include <string>
 
+namespace McpQuaternionTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::mcp;
 
@@ -80,3 +82,5 @@ TEST(McpQuaternion, StoredOffUnitWritesBackAsRead){
     written = stored;
     ASSERT_TRUE(McpValues::parseQuaternion(Json{{"quat", read["quat"]}}, written, &why)) << why;
 }
+
+}  // namespace McpQuaternionTest_cpp

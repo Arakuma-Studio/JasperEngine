@@ -18,7 +18,8 @@
 #include <vector>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::mcp;
+
+namespace jasperengine::editor::mcp {
 
 namespace {
 
@@ -61,7 +62,7 @@ namespace {
 
 }
 
-terraincore::TerrainMaterialInputs jasperengine::editor::mcp::terrainMaterialInputs(const TerrainComponent& component, bool postColor) {
+terraincore::TerrainMaterialInputs terrainMaterialInputs(const TerrainComponent& component, bool postColor) {
     terraincore::TerrainMaterialInputs inputs;
     inputs.layerCount = std::min(static_cast<int>(component.surfaceLayers.size()), terraincore::TERRAIN_MAX_LAYERS);
     for (int i = 0; i < inputs.layerCount; i++) {
@@ -83,7 +84,7 @@ terraincore::TerrainMaterialInputs jasperengine::editor::mcp::terrainMaterialInp
     return inputs;
 }
 
-terraincore::TerrainQualityResolved jasperengine::editor::mcp::terrainEffectiveTier(const TerrainComponent& component) {
+terraincore::TerrainQualityResolved terrainEffectiveTier(const TerrainComponent& component) {
     terraincore::TerrainQualityRequest request;
     terraincore::TerrainQuality forced;
     if (terraincore::TerrainQualitySettings::getEditorPreview(forced)) {
@@ -101,7 +102,7 @@ terraincore::TerrainQualityResolved jasperengine::editor::mcp::terrainEffectiveT
     return terraincore::resolveTerrainQuality(request);
 }
 
-Json jasperengine::editor::mcp::terrainMaterialJson(Scene* scene, Entity entity) {
+Json terrainMaterialJson(Scene* scene, Entity entity) {
     TerrainComponent& component = scene->getComponent<TerrainComponent>(entity);
     const terraincore::TerrainQualityResolved resolved = terrainEffectiveTier(component);
     const terraincore::TerrainMaterialInputs inputs = terrainMaterialInputs(component, true);
@@ -152,7 +153,7 @@ Json jasperengine::editor::mcp::terrainMaterialJson(Scene* scene, Entity entity)
                 {"features", features}};
 }
 
-Json jasperengine::editor::mcp::terrainHolesJson(TerrainComponent& component) {
+Json terrainHolesJson(TerrainComponent& component) {
     if (component.holeMap.empty()) return nullptr;
     const terraincore::HoleMapView view = terrainSurfaceView(component).holes;
     const int64_t holes = terraincore::countHoleTexels(view, 0, 0, view.width, view.height);
@@ -165,7 +166,7 @@ Json jasperengine::editor::mcp::terrainHolesJson(TerrainComponent& component) {
                 {"collision_cell", samples > 1 ? component.terrainSize / static_cast<float>(samples - 1) : component.terrainSize}};
 }
 
-void jasperengine::editor::mcp::addTerrainPointMaterial(Scene* scene, Entity entity, float localX, float localZ, bool full, Json& sample) {
+void addTerrainPointMaterial(Scene* scene, Entity entity, float localX, float localZ, bool full, Json& sample) {
     TerrainComponent& component = scene->getComponent<TerrainComponent>(entity);
     const terraincore::SurfaceSample surface = querySurface(component, localX, localZ);
     sample["hole"] = surface.hole;
@@ -230,7 +231,7 @@ void jasperengine::editor::mcp::addTerrainPointMaterial(Scene* scene, Entity ent
     sample["fetches"] = fetches;
 }
 
-Json jasperengine::editor::mcp::terrainCoverageJson(TerrainComponent& component, float minX, float minZ, float maxX, float maxZ) {
+Json terrainCoverageJson(TerrainComponent& component, float minX, float minZ, float maxX, float maxZ) {
     const float half = component.terrainSize * 0.5f;
     Json out = Json::object();
     const terraincore::HoleMapView view = terrainSurfaceView(component).holes;
@@ -266,3 +267,5 @@ Json jasperengine::editor::mcp::terrainCoverageJson(TerrainComponent& component,
     out["layer_count_histogram"] = layerCounts;
     return out;
 }
+
+}  // namespace jasperengine::editor::mcp

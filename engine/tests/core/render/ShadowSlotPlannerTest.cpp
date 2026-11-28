@@ -12,6 +12,8 @@
 
 #include <vector>
 
+namespace ShadowSlotPlannerTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -186,3 +188,5 @@ TEST(ShadowSlotPlanner, MemoryBudgetDropsStaticLayersThenHalves){
     EXPECT_LT(plan.lights[1].resolution[0], 1024u);
     EXPECT_TRUE(plan.reducedResolution);
 }
+
+}  // namespace ShadowSlotPlannerTest_cpp

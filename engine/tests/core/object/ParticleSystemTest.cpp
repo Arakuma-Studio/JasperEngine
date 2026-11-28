@@ -14,6 +14,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ParticleSystemTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -48,3 +50,5 @@ TEST(ParticleSystemTest, OldSystemGameObjectResolvesThroughLegacyFrom){
     const Entity unrelated = scene.createEntity();
     EXPECT_EQ(ParticleSystem(&scene, unrelated).getEntity(), unrelated);
 }
+
+}  // namespace ParticleSystemTest_cpp

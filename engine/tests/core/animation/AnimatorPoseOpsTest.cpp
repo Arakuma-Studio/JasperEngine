@@ -16,6 +16,8 @@
 #include <random>
 #include <vector>
 
+namespace AnimatorPoseOpsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::anim;
 
@@ -237,3 +239,5 @@ TEST(AnimatorPoseOps, ElementOpsMatchTheKernels){
         EXPECT_TRUE(same(poseAdditiveValue(base.channelData()[c], layer.channelData()[c], channelMask[c]), added.channelData()[c])) << "channel " << c;
     }
 }
+
+}  // namespace AnimatorPoseOpsTest_cpp

@@ -15,6 +15,8 @@
 #include <random>
 #include <vector>
 
+namespace TexturePrepareTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -298,3 +300,5 @@ TEST(TexturePrepare, AlphaClip){
     for (size_t i = 3; i < small.faces[0][0].pixels.size(); i += 4)
         EXPECT_TRUE(small.faces[0][0].pixels[i] == 0 || small.faces[0][0].pixels[i] == 255);
 }
+
+}  // namespace TexturePrepareTest_cpp

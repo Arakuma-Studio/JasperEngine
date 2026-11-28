@@ -23,6 +23,8 @@
 #include <set>
 #include <sstream>
 
+namespace PachislopGeneratorMapTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using PachislopGeneratorMapJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
@@ -290,3 +292,5 @@ TEST(PachislopGeneratorMapTest, ConvertsTheRules) {
     EXPECT_EQ(convertPachislopGenerator("patternFill", PachislopGeneratorMapJson::object(), &notes).type, "");
     EXPECT_EQ(notes.size(), 1u);
 }
+
+}  // namespace PachislopGeneratorMapTest_cpp

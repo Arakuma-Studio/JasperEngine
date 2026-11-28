@@ -15,6 +15,8 @@
 #include <cstring>
 #include <set>
 
+namespace VoxelInspectorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::voxeltest;
@@ -315,3 +317,5 @@ TEST_F(VoxelPicking, ClickSelectsOwner) {
     EXPECT_TRUE(filter.accept(chunk));
     EXPECT_FALSE(filter.accept(other)) << "not pickable, not owned by anything pickable";
 }
+
+}  // namespace VoxelInspectorTest_cpp

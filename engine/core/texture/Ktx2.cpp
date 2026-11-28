@@ -11,24 +11,23 @@
 #include <limits>
 
 using namespace jasperengine;
-using namespace jasperengine::ktx2detail;
 
 bool Ktx2MemorySource::read(uint64_t offset, size_t size, std::vector<uint8_t>& out){
-    if (!ktxFits(offset, size, bytes.size()))
+    if (!ktx2detail::ktxFits(offset, size, bytes.size()))
         return false;
     out.assign(bytes.begin() + (size_t)offset, bytes.begin() + (size_t)(offset + size));
     return true;
 }
 
 bool Ktx2PrefixSource::read(uint64_t offset, size_t size, std::vector<uint8_t>& out){
-    if (!ktxFits(offset, size, bytes.size()))
+    if (!ktx2detail::ktxFits(offset, size, bytes.size()))
         return false;
     out.assign(bytes.begin() + (size_t)offset, bytes.begin() + (size_t)(offset + size));
     return true;
 }
 
 bool Ktx2::isKtx2(std::span<const uint8_t> bytes){
-    return bytes.size() >= sizeof(ktxIdentifier) && std::memcmp(bytes.data(), ktxIdentifier, sizeof(ktxIdentifier)) == 0;
+    return bytes.size() >= sizeof(ktx2detail::ktxIdentifier) && std::memcmp(bytes.data(), ktx2detail::ktxIdentifier, sizeof(ktx2detail::ktxIdentifier)) == 0;
 }
 
 bool Ktx2::parseInfo(std::span<const uint8_t> prefix, uint64_t fileSize, Ktx2Info& info, std::string& error, uint64_t* needed){
@@ -49,21 +48,21 @@ bool Ktx2::parseInfo(std::span<const uint8_t> prefix, uint64_t fileSize, Ktx2Inf
         error = "not a KTX2 file";
         return false;
     }
-    info.vkFormat = ktxRead32(p + 12);
-    info.typeSize = ktxRead32(p + 16);
-    info.width = ktxRead32(p + 20);
-    info.height = ktxRead32(p + 24);
-    const uint32_t depth = ktxRead32(p + 28);
-    const uint32_t layers = ktxRead32(p + 32);
-    info.faces = ktxRead32(p + 36);
-    info.levelCount = std::max<uint32_t>(1, ktxRead32(p + 40));
-    info.supercompression = (Ktx2Supercompression)ktxRead32(p + 44);
-    info.dfdOffset = ktxRead32(p + 48);
-    info.dfdLength = ktxRead32(p + 52);
-    info.kvdOffset = ktxRead32(p + 56);
-    info.kvdLength = ktxRead32(p + 60);
-    info.sgdOffset = ktxRead64(p + 64);
-    info.sgdLength = ktxRead64(p + 72);
+    info.vkFormat = ktx2detail::ktxRead32(p + 12);
+    info.typeSize = ktx2detail::ktxRead32(p + 16);
+    info.width = ktx2detail::ktxRead32(p + 20);
+    info.height = ktx2detail::ktxRead32(p + 24);
+    const uint32_t depth = ktx2detail::ktxRead32(p + 28);
+    const uint32_t layers = ktx2detail::ktxRead32(p + 32);
+    info.faces = ktx2detail::ktxRead32(p + 36);
+    info.levelCount = std::max<uint32_t>(1, ktx2detail::ktxRead32(p + 40));
+    info.supercompression = (Ktx2Supercompression)ktx2detail::ktxRead32(p + 44);
+    info.dfdOffset = ktx2detail::ktxRead32(p + 48);
+    info.dfdLength = ktx2detail::ktxRead32(p + 52);
+    info.kvdOffset = ktx2detail::ktxRead32(p + 56);
+    info.kvdLength = ktx2detail::ktxRead32(p + 60);
+    info.sgdOffset = ktx2detail::ktxRead64(p + 64);
+    info.sgdLength = ktx2detail::ktxRead64(p + 72);
 
     if (info.width == 0 || info.height == 0 || info.width > 65536 || info.height > 65536 || depth > 1 || layers > 1){
         error = "unsupported KTX2 dimensions (2D and cube textures only)";
@@ -89,7 +88,7 @@ bool Ktx2::parseInfo(std::span<const uint8_t> prefix, uint64_t fileSize, Ktx2Inf
                                          std::pair{info.sgdOffset, info.sgdLength}}){
         if (length == 0)
             continue;
-        if (offset < indexEnd || !ktxFits(offset, length, fileSize) || offset + length > kMaxMetadataSize){
+        if (offset < indexEnd || !ktx2detail::ktxFits(offset, length, fileSize) || offset + length > kMaxMetadataSize){
             error = "bad KTX2 metadata range";
             return false;
         }
@@ -112,28 +111,28 @@ bool Ktx2::parseInfo(std::span<const uint8_t> prefix, uint64_t fileSize, Ktx2Inf
 
     // the DFD's first (basic) block
     const uint8_t* dfd = p + info.dfdOffset;
-    const uint32_t totalSize = ktxRead32(dfd);
-    const uint32_t vendorType = ktxRead32(dfd + 4);
-    const uint32_t blockSize = ktxRead32(dfd + 8) >> 16;
+    const uint32_t totalSize = ktx2detail::ktxRead32(dfd);
+    const uint32_t vendorType = ktx2detail::ktxRead32(dfd + 4);
+    const uint32_t blockSize = ktx2detail::ktxRead32(dfd + 8) >> 16;
     if (totalSize != info.dfdLength || vendorType != 0 || blockSize < 24 || 4 + (uint64_t)blockSize > info.dfdLength){
         error = "bad KTX2 data format descriptor";
         return false;
     }
-    const uint32_t modelWord = ktxRead32(dfd + 12);
+    const uint32_t modelWord = ktx2detail::ktxRead32(dfd + 12);
     info.dfdColorModel = modelWord & 0xFF;
     const uint32_t transfer = (modelWord >> 16) & 0xFF;
-    info.premultiplied = ((modelWord >> 24) & DF_FLAG_PREMULTIPLIED) != 0;
-    info.srgb = transfer == DF_TRANSFER_SRGB;
+    info.premultiplied = ((modelWord >> 24) & ktx2detail::DF_FLAG_PREMULTIPLIED) != 0;
+    info.srgb = transfer == ktx2detail::DF_TRANSFER_SRGB;
 
-    if (info.vkFormat == 0 && info.dfdColorModel == DF_MODEL_ETC1S){
+    if (info.vkFormat == 0 && info.dfdColorModel == ktx2detail::DF_MODEL_ETC1S){
         info.codec = Ktx2Codec::ETC1S;
         if (info.supercompression != Ktx2Supercompression::BasisLZ || info.sgdLength == 0){
             error = "ETC1S KTX2 without BasisLZ global data";
             return false;
         }
-    }else if (info.vkFormat == 0 && info.dfdColorModel == DF_MODEL_UASTC){
+    }else if (info.vkFormat == 0 && info.dfdColorModel == ktx2detail::DF_MODEL_UASTC){
         info.codec = Ktx2Codec::UASTC;
-    }else if (info.vkFormat == kKtxVkAstc4x4SFloat && info.dfdColorModel == DF_MODEL_UASTC_HDR){
+    }else if (info.vkFormat == ktx2detail::kKtxVkAstc4x4SFloat && info.dfdColorModel == ktx2detail::DF_MODEL_UASTC_HDR){
         info.codec = Ktx2Codec::UASTC_HDR;
     }else{
         bool vkSrgb = false;
@@ -153,10 +152,10 @@ bool Ktx2::parseInfo(std::span<const uint8_t> prefix, uint64_t fileSize, Ktx2Inf
     for (uint32_t level = 0; level < info.levelCount; level++){
         const uint8_t* entry = p + kHeaderSize + level * kLevelIndexEntrySize;
         Ktx2LevelIndex& index = info.levels[level];
-        index.byteOffset = ktxRead64(entry);
-        index.byteLength = ktxRead64(entry + 8);
-        index.uncompressedByteLength = ktxRead64(entry + 16);
-        if (index.byteLength == 0 || index.byteOffset < metadataEnd || !ktxFits(index.byteOffset, index.byteLength, fileSize)){
+        index.byteOffset = ktx2detail::ktxRead64(entry);
+        index.byteLength = ktx2detail::ktxRead64(entry + 8);
+        index.uncompressedByteLength = ktx2detail::ktxRead64(entry + 16);
+        if (index.byteLength == 0 || index.byteOffset < metadataEnd || !ktx2detail::ktxFits(index.byteOffset, index.byteLength, fileSize)){
             error = "bad KTX2 level index (level " + std::to_string(level) + ")";
             return false;
         }
@@ -179,7 +178,7 @@ bool Ktx2::parseInfo(std::span<const uint8_t> prefix, uint64_t fileSize, Ktx2Inf
     }
 
     if (info.kvdLength > 0)
-        ktxParseKeyValues(p + info.kvdOffset, info.kvdLength, info.keyValues);
+        ktx2detail::ktxParseKeyValues(p + info.kvdOffset, info.kvdLength, info.keyValues);
     return true;
 }
 

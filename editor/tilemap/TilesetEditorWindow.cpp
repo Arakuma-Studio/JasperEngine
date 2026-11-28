@@ -34,11 +34,16 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::tilemap;
+
+namespace jasperengine::editor::tilemap {
 
 namespace fs = std::filesystem;
 
+}  // namespace jasperengine::editor::tilemap
+
 namespace jasperengine::editor::tileseteditor {
+
+using namespace jasperengine::editor::tilemap;
 
     // the image notes of a write (writeTilesetFile), one sentence after another
     std::string joinedNotes(const std::vector<std::string>& notes) {
@@ -103,7 +108,8 @@ namespace jasperengine::editor::tileseteditor {
 
 }
 
-using namespace jasperengine::editor::tileseteditor;
+
+namespace jasperengine::editor::tilemap {
 
 TilesetEditorWindow::TilesetEditorWindow(Project* project): project(project) {
 }
@@ -185,7 +191,7 @@ std::filesystem::path TilesetEditorWindow::createFromSource(const fs::path& sour
         return {};
     }
     open(target);
-    if (!imageNotes.empty()) setNotice(joinedNotes(imageNotes), false);
+    if (!imageNotes.empty()) setNotice(tileseteditor::joinedNotes(imageNotes), false);
     return target;
 }
 
@@ -212,7 +218,7 @@ void TilesetEditorWindow::reload() {
     }
     std::vector<TilesetProblem> problems;
     TilesetData parsed;
-    if (!tileset::parse(readFile(file), parsed, problems)) {
+    if (!tileset::parse(tileseteditor::readFile(file), parsed, problems)) {
         loadError = problems.empty() ? std::string("The file does not parse") : problems.front().message;
         return;
     }
@@ -250,7 +256,7 @@ bool TilesetEditorWindow::edit(const std::string& name, const std::function<void
         setNotice(error, true);
         return false;
     }
-    setNotice(imageNotes.empty() ? name : name + ": " + joinedNotes(imageNotes), false);
+    setNotice(imageNotes.empty() ? name : name + ": " + tileseteditor::joinedNotes(imageNotes), false);
     setDocument(next);
     std::error_code timeError;
     fileTime = fs::last_write_time(file, timeError);
@@ -517,7 +523,7 @@ void TilesetEditorWindow::drawSources() {
 
 void TilesetEditorWindow::drawTileGrids() {
     if (!runtime) return;
-    const float zoom = kTilePixelZoom;
+    const float zoom = tileseteditor::kTilePixelZoom;
     const float cell = static_cast<float>(std::max(document.tileWidth, 1)) * zoom;
     const float cellH = static_cast<float>(std::max(document.tileHeight, 1)) * zoom;
     const float gap = 1.0f;
@@ -627,7 +633,7 @@ void TilesetEditorWindow::drawPolygonEditor(TileDef& first) {
     ImGui::SliderInt("Polygon##polygonIndex", &activePolygon, 0, (int)collision.polygons.size() - 1);
 
     TilePolygon& polygon = collision.polygons[(size_t)activePolygon];
-    const float pixelZoom = static_cast<float>(kPainterZoom);
+    const float pixelZoom = static_cast<float>(tileseteditor::kPainterZoom);
     const ImVec2 size(static_cast<float>(info->width) * pixelZoom, static_cast<float>(info->height) * pixelZoom);
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     ImGui::InvisibleButton("##polygonCanvas", size);
@@ -780,7 +786,7 @@ void TilesetEditorWindow::drawPeeringPainter(TileDef& first, const TerrainSetDef
         if (ImGui::RadioButton(label.c_str(), paintValue == (int)t)) paintValue = (int)t;
     }
 
-    const float pixelZoom = static_cast<float>(kPainterZoom);
+    const float pixelZoom = static_cast<float>(tileseteditor::kPainterZoom);
     const ImVec2 tilePixels(static_cast<float>(info->width) * pixelZoom, static_cast<float>(info->height) * pixelZoom);
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     const bool hex = document.shape == TileShape::HexPointy || document.shape == TileShape::HexFlat;
@@ -799,7 +805,7 @@ void TilesetEditorWindow::drawPeeringPainter(TileDef& first, const TerrainSetDef
     const auto regionColor = [&](int value) -> ImU32 {
         if (value == PEERING_ANY) return IM_COL32(0, 0, 0, 0);
         if (value == PEERING_NONE) return IM_COL32(20, 20, 24, 170);
-        if ((size_t)value < set.terrains.size()) return hexColor(set.terrains[(size_t)value].color, 170);
+        if ((size_t)value < set.terrains.size()) return tileseteditor::hexColor(set.terrains[(size_t)value].color, 170);
         return IM_COL32(255, 0, 255, 170);
     };
     int hoveredSlot = -2;   // -1: the centre
@@ -809,7 +815,7 @@ void TilesetEditorWindow::drawPeeringPainter(TileDef& first, const TerrainSetDef
         const float third = tilePixels.x / 3.0f, thirdH = tilePixels.y / 3.0f;
         for (int slot : slots) {
             int col = 0, row = 0;
-            slotCell(slot, col, row);
+            tileseteditor::slotCell(slot, col, row);
             const ImVec2 min(tileOrigin.x + (float)col * third, tileOrigin.y + (float)row * thirdH);
             const ImVec2 max(min.x + third, min.y + thirdH);
             if (mouse.x >= min.x && mouse.x < max.x && mouse.y >= min.y && mouse.y < max.y) hoveredSlot = slot;
@@ -828,7 +834,7 @@ void TilesetEditorWindow::drawPeeringPainter(TileDef& first, const TerrainSetDef
         const float square = Theme::dpi(14.0f);
         for (int slot : slots) {
             float dx = 0.0f, dy = 0.0f;
-            hexSlotDirection(document.shape, slot, dx, dy);
+            tileseteditor::hexSlotDirection(document.shape, slot, dx, dy);
             const ImVec2 point(center.x + dx * (radius + Theme::dpi(10.0f)), center.y - dy * (radius + Theme::dpi(10.0f)));
             const ImVec2 min(point.x - square, point.y - square), max(point.x + square, point.y + square);
             if (mouse.x >= min.x && mouse.x < max.x && mouse.y >= min.y && mouse.y < max.y) hoveredSlot = slot;
@@ -861,9 +867,9 @@ void TilesetEditorWindow::drawPeeringPainter(TileDef& first, const TerrainSetDef
     if (hovered && hoveredSlot != -2) {
         if (hoveredSlot >= 0) {
             ImGui::SetTooltip("%s: %s", tileset::peeringKey(document.shape, hoveredSlot),
-                              peeringLabel(document, setIndex, first.terrain.peering[(size_t)hoveredSlot]).c_str());
+                              tileseteditor::peeringLabel(document, setIndex, first.terrain.peering[(size_t)hoveredSlot]).c_str());
         } else {
-            ImGui::SetTooltip("Centre: %s", first.terrain.center >= 0 ? peeringLabel(document, setIndex, first.terrain.center).c_str() : "none");
+            ImGui::SetTooltip("Centre: %s", first.terrain.center >= 0 ? tileseteditor::peeringLabel(document, setIndex, first.terrain.center).c_str() : "none");
         }
     }
 }
@@ -1062,7 +1068,7 @@ void TilesetEditorWindow::drawTerrainSets() {
             color[2] = (float)b / 255.0f;
             ImGui::Indent();
             if (heldColor("##terrainColor", color, 3, "Terrain Color", ImGui::GetFrameHeight())) {
-                const std::string hex = hexOf(color);
+                const std::string hex = tileseteditor::hexOf(color);
                 edit("Set Terrain Color", [&](TilesetData& data) { data.terrainSets[setIndex].terrains[t].color = hex; });
             }
             ImGui::SameLine();
@@ -1129,7 +1135,7 @@ void TilesetEditorWindow::drawTerrainSets() {
         ImGui::BeginDisabled(terrainName[0] == 0);
         if (ImGui::Button("Add Terrain")) {
             const std::string name = terrainName;
-            const std::string hex = hexOf(terrainColor);
+            const std::string hex = tileseteditor::hexOf(terrainColor);
             const int target = std::clamp(coverageSet, 0, (int)document.terrainSets.size() - 1);
             edit("Add Terrain", [&](TilesetData& data) {
                 TerrainDef terrain;
@@ -1291,3 +1297,5 @@ void TilesetEditorWindow::show() {
     ImGui::End();
     if (!keepOpen) windowOpen = false;
 }
+
+}  // namespace jasperengine::editor::tilemap

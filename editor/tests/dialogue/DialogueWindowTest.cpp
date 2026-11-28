@@ -23,6 +23,8 @@
 #include <fstream>
 #include <iterator>
 
+namespace DialogueWindowTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -204,3 +206,5 @@ TEST_F(DialogueWindowTest, ProblemsStripFixDeclaresVariable) {
     ASSERT_TRUE(history()->undo());
     EXPECT_EQ(project.getDialogueSettings().actionPrefixes.size(), 1u);
 }
+
+}  // namespace DialogueWindowTest_cpp

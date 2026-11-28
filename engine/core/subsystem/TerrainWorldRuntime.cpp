@@ -19,21 +19,20 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::terraincore;
 
 namespace {
 
-    IOPriority ioPriorityOf(TilePriority priority) {
+    IOPriority ioPriorityOf(terraincore::TilePriority priority) {
         switch (priority) {
-            case TilePriority::Critical: return IOPriority::Critical;
-            case TilePriority::High: return IOPriority::High;
-            case TilePriority::Normal: return IOPriority::Normal;
+            case terraincore::TilePriority::Critical: return IOPriority::Critical;
+            case terraincore::TilePriority::High: return IOPriority::High;
+            case terraincore::TilePriority::Normal: return IOPriority::Normal;
         }
         return IOPriority::Normal;
     }
 
     // A decoded tile that is not the one asked for, or of another lattice, is an error (R14)
-    bool tileMatches(const WorldTile& data, TileCoord tile, const WorldLattice& lattice, std::string& error) {
+    bool tileMatches(const terraincore::WorldTile& data, terraincore::TileCoord tile, const terraincore::WorldLattice& lattice, std::string& error) {
         if (data.coord != tile) {
             error = "the file holds tile (" + std::to_string(data.coord.x) + ", " + std::to_string(data.coord.z) + ")";
             return false;
@@ -46,25 +45,25 @@ namespace {
     }
 
     // R17: reads through AssetIOService, decodes in its Background continuation (Tag::Asset), polled
-    class AssetTileIO final : public TileIO {
+    class AssetTileIO final : public terraincore::TileIO {
     public:
-        AssetTileIO(const TerrainWorldSource& source, const WorldLattice& lattice): source(source), lattice(lattice) {}
+        AssetTileIO(const TerrainWorldSource& source, const terraincore::WorldLattice& lattice): source(source), lattice(lattice) {}
 
         ~AssetTileIO() override {
             for (auto& entry : loads) cancelLoad(entry.second);
         }
 
-        uint64_t begin(TileCoord tile, TilePriority priority) override {
+        uint64_t begin(terraincore::TileCoord tile, terraincore::TilePriority priority) override {
             Load load;
             load.path = source.tilePath(tile);
             load.error = std::make_shared<std::string>();
             const std::shared_ptr<std::string> error = load.error;
-            const WorldLattice expected = lattice;
-            const auto decode = [error, tile, expected](std::vector<uint8_t>&& bytes) -> std::shared_ptr<WorldTile> {
-                auto data = std::make_shared<WorldTile>();
-                const TileError result = decodeTile(bytes, terrainWorldDecodeCodec(), *data);
-                if (result != TileError::None) {
-                    *error = std::string("the tile is ") + tileErrorName(result);
+            const terraincore::WorldLattice expected = lattice;
+            const auto decode = [error, tile, expected](std::vector<uint8_t>&& bytes) -> std::shared_ptr<terraincore::WorldTile> {
+                auto data = std::make_shared<terraincore::WorldTile>();
+                const terraincore::TileError result = decodeTile(bytes, terrainWorldDecodeCodec(), *data);
+                if (result != terraincore::TileError::None) {
+                    *error = std::string("the tile is ") + terraincore::tileErrorName(result);
                     return nullptr;
                 }
                 std::string why;
@@ -88,18 +87,18 @@ namespace {
             return handle;
         }
 
-        TileLoadStatus poll(uint64_t handle, std::shared_ptr<WorldTile>& data, std::string& error) override {
+        terraincore::TileLoadStatus poll(uint64_t handle, std::shared_ptr<terraincore::WorldTile>& data, std::string& error) override {
             const auto it = loads.find(handle);
             if (it == loads.end()) {
                 error = "unknown load";
-                return TileLoadStatus::Failed;
+                return terraincore::TileLoadStatus::Failed;
             }
             Load& load = it->second;
-            if (!load.task.isReady()) return TileLoadStatus::Pending;
+            if (!load.task.isReady()) return terraincore::TileLoadStatus::Pending;
             if (load.task.status() == jobs::TaskStatus::Completed) data = load.task.get();
             error = load.error->empty() ? std::string("the file could not be read: ") + load.path : *load.error;
             loads.erase(it);
-            return data ? TileLoadStatus::Done : TileLoadStatus::Failed;
+            return data ? terraincore::TileLoadStatus::Done : terraincore::TileLoadStatus::Failed;
         }
 
         void cancel(uint64_t handle) override {
@@ -114,7 +113,7 @@ namespace {
             std::string path;
             jobs::CancelToken cancel;
             std::shared_ptr<std::string> error;
-            jobs::Task<std::shared_ptr<WorldTile>> task;
+            jobs::Task<std::shared_ptr<terraincore::WorldTile>> task;
         };
 
         void cancelLoad(Load& load) {
@@ -124,29 +123,29 @@ namespace {
         }
 
         const TerrainWorldSource& source;
-        WorldLattice lattice;
+        terraincore::WorldLattice lattice;
         std::map<uint64_t, Load> loads;
         uint64_t next = 0;
     };
 
     // R52: the overview from the tiles' own OVRH and OVRC, over the box of the manifest's tiles
-    std::shared_ptr<WorldOverview> assembleOverview(const TerrainWorldSource& source, const WorldManifest& manifest) {
-        auto overview = std::make_shared<WorldOverview>();
+    std::shared_ptr<terraincore::WorldOverview> assembleOverview(const TerrainWorldSource& source, const terraincore::WorldManifest& manifest) {
+        auto overview = std::make_shared<terraincore::WorldOverview>();
         if (manifest.tiles.empty()) return overview;
-        TileCoord low = manifest.tiles.front().coord, high = low;
-        for (const WorldTileInfo& info : manifest.tiles) {
-            low = TileCoord(std::min(low.x, info.coord.x), std::min(low.z, info.coord.z));
-            high = TileCoord(std::max(high.x, info.coord.x), std::max(high.z, info.coord.z));
+        terraincore::TileCoord low = manifest.tiles.front().coord, high = low;
+        for (const terraincore::WorldTileInfo& info : manifest.tiles) {
+            low = terraincore::TileCoord(std::min(low.x, info.coord.x), std::min(low.z, info.coord.z));
+            high = terraincore::TileCoord(std::max(high.x, info.coord.x), std::max(high.z, info.coord.z));
         }
-        initOverview(*overview, manifest.lattice, low, high, manifest.maps.baseHeight);
-        const uint32_t only[] = {TILE_SECTION_OVERVIEW_HEIGHT, TILE_SECTION_OVERVIEW_COLOUR, TILE_SECTION_EDGE};
-        const TileCodec codec = terrainWorldDecodeCodec();
-        for (const WorldTileInfo& info : manifest.tiles) {
+        terraincore::initOverview(*overview, manifest.lattice, low, high, manifest.maps.baseHeight);
+        const uint32_t only[] = {terraincore::TILE_SECTION_OVERVIEW_HEIGHT, terraincore::TILE_SECTION_OVERVIEW_COLOUR, terraincore::TILE_SECTION_EDGE};
+        const terraincore::TileCodec codec = terrainWorldDecodeCodec();
+        for (const terraincore::WorldTileInfo& info : manifest.tiles) {
             std::vector<uint8_t> bytes;
             std::string error;
             if (!AssetIOService::readFile(source.tilePath(info.coord), 0, 0, bytes, error)) continue;
-            WorldTile data;
-            if (decodeTile(bytes, codec, data, only) != TileError::None) continue;
+            terraincore::WorldTile data;
+            if (decodeTile(bytes, codec, data, only) != terraincore::TileError::None) continue;
             data.coord = info.coord;
             setOverviewPatch(*overview, data);
         }
@@ -161,10 +160,10 @@ namespace {
 
     // T1's sampleSurface over one tile's samples, gutter included: N + 3 texels over (N + 3) h centred
     // on the tile's centre puts texel 1 exactly on the tile's corner (R24)
-    SurfaceSample sampleTile(const WorldTile& data, const WorldLattice& lattice, float maxHeight, float localX, float localZ) {
+    terraincore::SurfaceSample sampleTile(const terraincore::WorldTile& data, const terraincore::WorldLattice& lattice, float maxHeight, float localX, float localZ) {
         const float size = lattice.tileSize();
         const float originX = static_cast<float>(data.coord.x) * size, originZ = static_cast<float>(data.coord.z) * size;
-        SurfaceView view;
+        terraincore::SurfaceView view;
         view.pixels = data.height.bytes.data();
         view.width = data.height.width;
         view.height = data.height.height;
@@ -172,13 +171,13 @@ namespace {
         view.bytesPerChannel = 2;
         view.size = static_cast<float>(data.height.width) * lattice.spacing;
         view.maxHeight = maxHeight;
-        SurfaceSample sample = sampleSurface(view, localX - (originX + size * 0.5f), localZ - (originZ + size * 0.5f));
+        terraincore::SurfaceSample sample = sampleSurface(view, localX - (originX + size * 0.5f), localZ - (originZ + size * 0.5f));
         sample.inside = true;
         sample.present = true;
         sample.exact = true;
         if (!data.holes.empty()) {
-            const HoleMapView holes{data.holes.bytes.data(), data.holes.width, data.holes.height};
-            sample.hole = isHole(holes, (localX - originX) / size, (localZ - originZ) / size);
+            const terraincore::HoleMapView holes{data.holes.bytes.data(), data.holes.width, data.holes.height};
+            sample.hole = terraincore::isHole(holes, (localX - originX) / size, (localZ - originZ) / size);
         }
         return sample;
     }
@@ -187,24 +186,24 @@ namespace {
 
 // ------------------------------------------------------------------ sources
 
-std::string jasperengine::terrainWorldTileName(TileCoord tile) {
+std::string jasperengine::terrainWorldTileName(terraincore::TileCoord tile) {
     return "tiles/" + std::to_string(tile.x) + "_" + std::to_string(tile.z) + ".jtile";
 }
 
-std::string jasperengine::terrainWorldTreeName(TileCoord tile) {
+std::string jasperengine::terrainWorldTreeName(terraincore::TileCoord tile) {
     return "tiles/" + std::to_string(tile.x) + "_" + std::to_string(tile.z) + ".jetrees";
 }
 
 // beside the tile, wherever the source keeps it
-std::string TerrainWorldSource::treePath(TileCoord tile) const {
+std::string TerrainWorldSource::treePath(terraincore::TileCoord tile) const {
     std::string path = tilePath(tile);
     const std::string tileName = terrainWorldTileName(tile);
     if (path.size() >= tileName.size()) path.replace(path.size() - tileName.size(), tileName.size(), terrainWorldTreeName(tile));
     return path;
 }
 
-TileCodec jasperengine::terrainWorldDecodeCodec() {
-    TileCodec codec;
+terraincore::TileCodec jasperengine::terrainWorldDecodeCodec() {
+    terraincore::TileCodec codec;
     codec.decompress = [](std::span<const uint8_t> in, std::span<uint8_t> out) {
         const size_t written = ZSTD_decompress(out.data(), out.size(), in.data(), in.size());
         return !ZSTD_isError(written) && written == out.size();
@@ -212,17 +211,17 @@ TileCodec jasperengine::terrainWorldDecodeCodec() {
     return codec;
 }
 
-WorldPlatformBudget jasperengine::terrainWorldPlatformBudget() {
+terraincore::WorldPlatformBudget jasperengine::terrainWorldPlatformBudget() {
 #if defined(__EMSCRIPTEN__)
 #if defined(__EMSCRIPTEN_PTHREADS__)
-    return worldPlatformBudget(WorldPlatform::Web);
+    return terraincore::worldPlatformBudget(terraincore::WorldPlatform::Web);
 #else
-    return worldPlatformBudget(WorldPlatform::WebSingleThread);
+    return terraincore::worldPlatformBudget(terraincore::WorldPlatform::WebSingleThread);
 #endif
 #elif defined(__ANDROID__) || (defined(__APPLE__) && defined(JASPERENGINE_IOS))
-    return worldPlatformBudget(WorldPlatform::Mobile);
+    return terraincore::worldPlatformBudget(terraincore::WorldPlatform::Mobile);
 #else
-    return worldPlatformBudget(WorldPlatform::Desktop);
+    return terraincore::worldPlatformBudget(terraincore::WorldPlatform::Desktop);
 #endif
 }
 
@@ -235,13 +234,13 @@ const char* jasperengine::terrainWorldPointStateName(TerrainWorldPointState stat
     return "absent";
 }
 
-bool CookedWorldSource::manifest(WorldManifest& out, std::string& error) {
+bool CookedWorldSource::manifest(terraincore::WorldManifest& out, std::string& error) {
     std::vector<uint8_t> bytes;
     if (!AssetIOService::readFile(folder + "/world.bin", 0, 0, bytes, error)) return false;
     return decodeWorldBin(bytes, out, &error);
 }
 
-std::string CookedWorldSource::tilePath(TileCoord tile) const {
+std::string CookedWorldSource::tilePath(terraincore::TileCoord tile) const {
     return folder + "/" + terrainWorldTileName(tile);
 }
 
@@ -272,17 +271,17 @@ bool TerrainWorldRuntime::start(std::string& error) {
         error = why;
         return false;
     }
-    const WorldPlatformBudget budget = terrainWorldPlatformBudget();
+    const terraincore::WorldPlatformBudget budget = terrainWorldPlatformBudget();
     if (worldManifest.lattice.tileQuads > budget.maxTileQuads) {
         error = "tile_quads " + std::to_string(worldManifest.lattice.tileQuads) + " is past this platform's limit of " + std::to_string(budget.maxTileQuads);
         return false;
     }
-    for (const WorldTileInfo& info : worldManifest.tiles) worldOccupancy.setTile(info.coord, true, info.minHeight, info.maxHeight);
+    for (const terraincore::WorldTileInfo& info : worldManifest.tiles) worldOccupancy.setTile(info.coord, true, info.minHeight, info.maxHeight);
 
     io = std::make_unique<AssetTileIO>(*worldSource, worldManifest.lattice);
-    streamer = std::make_unique<TileStreamer>(*io, worldOccupancy);
+    streamer = std::make_unique<terraincore::TileStreamer>(*io, worldOccupancy);
     streamer->setLattice(worldManifest.lattice);
-    StreamBudgets& limits = streamer->budgets();
+    terraincore::StreamBudgets& limits = streamer->budgets();
     limits.poolSize = budget.poolSize;
     limits.gpuCapBytes = budget.gpuCapBytes;
     limits.cpuCapBytes = budget.cpuCapBytes;
@@ -291,9 +290,9 @@ bool TerrainWorldRuntime::start(std::string& error) {
     limits.lodDistance = budget.lodDistance;
     limits.gpu = !Engine::isHeadless();
 
-    TiledStoreOptions options;
+    terraincore::TiledStoreOptions options;
     options.maxBoxTiles = budget.maxBoxTiles;
-    mapStore = std::make_unique<TiledMapStore>(worldManifest.lattice, worldManifest.maps, *this, options);
+    mapStore = std::make_unique<terraincore::TiledMapStore>(worldManifest.lattice, worldManifest.maps, *this, options);
 
     statsCache.poolSize = limits.poolSize;
     startOverviewLoad();
@@ -302,8 +301,8 @@ bool TerrainWorldRuntime::start(std::string& error) {
 
 void TerrainWorldRuntime::applySettings(int poolSize, float lodDistance, float uploadBudgetMiB, int maxNearTiles) {
     if (!streamer) return;
-    const WorldPlatformBudget budget = terrainWorldPlatformBudget();
-    StreamBudgets& limits = streamer->budgets();
+    const terraincore::WorldPlatformBudget budget = terrainWorldPlatformBudget();
+    terraincore::StreamBudgets& limits = streamer->budgets();
     limits.poolSize = poolSize > 0 ? poolSize : budget.poolSize;
     limits.lodDistance = lodDistance > 0.0f ? lodDistance : budget.lodDistance;
     limits.uploadBytesPerFrame = uploadBudgetMiB > 0.0f ? static_cast<uint64_t>(uploadBudgetMiB * 1048576.0f) : budget.uploadBytes;
@@ -318,19 +317,19 @@ void TerrainWorldRuntime::setFrozen(bool frozen) {
 void TerrainWorldRuntime::startOverviewLoad() {
     if (worldManifest.tiles.empty()) {
         // nothing to draw: ready at once, with an empty overview over no box
-        overview = WorldOverview();
+        overview = terraincore::WorldOverview();
         overviewRev++;
         overviewDone = true;
         return;
     }
     const std::string path = worldSource->overviewPath();
-    const WorldManifest manifest = worldManifest;
+    const terraincore::WorldManifest manifest = worldManifest;
     std::shared_ptr<TerrainWorldSource> source = worldSource;
     // D10: Tag::Asset jobs, so the scene's load wait includes the overview
     if (!path.empty()) {
-        const auto decode = [source, manifest](std::vector<uint8_t>&& bytes) -> std::shared_ptr<WorldOverview> {
-            auto loaded = std::make_shared<WorldOverview>();
-            if (decodeOverview(bytes, terrainWorldDecodeCodec(), *loaded) == TileError::None) return loaded;
+        const auto decode = [source, manifest](std::vector<uint8_t>&& bytes) -> std::shared_ptr<terraincore::WorldOverview> {
+            auto loaded = std::make_shared<terraincore::WorldOverview>();
+            if (decodeOverview(bytes, terrainWorldDecodeCodec(), *loaded) == terraincore::TileError::None) return loaded;
             return assembleOverview(*source, manifest);
         };
         AssetIOService::ReadRequest request;
@@ -355,20 +354,20 @@ void TerrainWorldRuntime::startOverviewLoad() {
 void TerrainWorldRuntime::pollOverview() {
     if (!overviewLoading || !overviewTask.isReady()) return;
     overviewLoading = false;
-    std::shared_ptr<WorldOverview> loaded;
+    std::shared_ptr<terraincore::WorldOverview> loaded;
     if (overviewTask.status() == jobs::TaskStatus::Completed) loaded = overviewTask.get();
-    overviewTask = jobs::Task<std::shared_ptr<WorldOverview>>();
+    overviewTask = jobs::Task<std::shared_ptr<terraincore::WorldOverview>>();
     if (!loaded || loaded->empty()) {
         // a missing or unreadable cache: from the tiles, now
         loaded = assembleOverview(*worldSource, worldManifest);
         overviewUnsaved = true;
     }
     // what the file did not know: the tiles edited or made since
-    TileCoord low, high;
+    terraincore::TileCoord low, high;
     if (worldOccupancy.bounds(low, high) && (!loaded->covers(low) || !loaded->covers(high))) {
-        WorldOverview grown;
-        initOverview(grown, worldManifest.lattice, TileCoord(std::min(low.x, loaded->low.x), std::min(low.z, loaded->low.z)),
-                     TileCoord(std::max(high.x, static_cast<int16_t>(loaded->low.x + loaded->tilesX - 1)),
+        terraincore::WorldOverview grown;
+        initOverview(grown, worldManifest.lattice, terraincore::TileCoord(std::min(low.x, loaded->low.x), std::min(low.z, loaded->low.z)),
+                     terraincore::TileCoord(std::max(high.x, static_cast<int16_t>(loaded->low.x + loaded->tilesX - 1)),
                                std::max(high.z, static_cast<int16_t>(loaded->low.z + loaded->tilesZ - 1))),
                      worldManifest.maps.baseHeight);
         for (int j = 0; j < loaded->height(); j++) {
@@ -395,17 +394,17 @@ void TerrainWorldRuntime::refreshOverview(double now) {
     if (!overviewPatchPending || overviewLoading) return;
     if (now < overviewPatchAt) return;
     overviewPatchPending = false;
-    std::map<uint32_t, std::shared_ptr<WorldTile>> settled;
+    std::map<uint32_t, std::shared_ptr<terraincore::WorldTile>> settled;
     settled.swap(overviewPatches);
-    TileCoord low, high;
+    terraincore::TileCoord low, high;
     if (!worldOccupancy.bounds(low, high)) {
-        overview = WorldOverview();
+        overview = terraincore::WorldOverview();
         overviewRev++;
         return;
     }
     if (overview.empty() || !overview.covers(low) || !overview.covers(high)) {
         // R52: a tile past the box: the overview again over the new box
-        WorldOverview grown;
+        terraincore::WorldOverview grown;
         initOverview(grown, worldManifest.lattice, low, high, worldManifest.maps.baseHeight);
         if (!overview.empty()) {
             for (int j = 0; j < overview.height(); j++) {
@@ -430,11 +429,11 @@ void TerrainWorldRuntime::refreshOverview(double now) {
 void TerrainWorldRuntime::rebuildOverview(bool wait) {
     if (overviewLoading) overviewTask.cancel();
     overviewLoading = false;
-    WorldManifest manifest = worldManifest;
+    terraincore::WorldManifest manifest = worldManifest;
     manifest.tiles.clear();
-    for (const TileCoord& tile : worldOccupancy.presentTiles()) {
-        const TileMinMax heights = worldOccupancy.minMax(0, tile.x, tile.z);
-        manifest.tiles.push_back(WorldTileInfo{tile, heights.min, heights.max});
+    for (const terraincore::TileCoord& tile : worldOccupancy.presentTiles()) {
+        const terraincore::TileMinMax heights = worldOccupancy.minMax(0, tile.x, tile.z);
+        manifest.tiles.push_back(terraincore::WorldTileInfo{tile, heights.min, heights.max});
     }
     if (wait || !jobs::hasSystem()) {
         overview = *assembleOverview(*worldSource, manifest);
@@ -455,18 +454,18 @@ void TerrainWorldRuntime::setLayerColours(std::vector<float> colours, int count)
     layerCount = count;
 }
 
-void TerrainWorldRuntime::setHoverTiles(const std::vector<TileCoord>& tiles) {
+void TerrainWorldRuntime::setHoverTiles(const std::vector<terraincore::TileCoord>& tiles) {
     std::lock_guard<std::recursive_mutex> guard(lock);
     if (!streamer) return;
     std::set<uint32_t> now;
-    for (const TileCoord& tile : tiles) {
+    for (const terraincore::TileCoord& tile : tiles) {
         if (tile.addressable() && worldOccupancy.present(tile)) now.insert(tile.key());
     }
     for (uint32_t key : hoverPins) {
         // an edited tile is pinned until it is flushed, hovered or not
-        if (!now.count(key) && !pinned.count(key)) streamer->pin(TileCoord::fromKey(key), false);
+        if (!now.count(key) && !pinned.count(key)) streamer->pin(terraincore::TileCoord::fromKey(key), false);
     }
-    for (uint32_t key : now) streamer->pin(TileCoord::fromKey(key), true);
+    for (uint32_t key : now) streamer->pin(terraincore::TileCoord::fromKey(key), true);
     hoverPins = std::move(now);
     hoverAt = lastNow;
 }
@@ -480,35 +479,35 @@ void TerrainWorldRuntime::recordDrawnNodes(bool on) {
     if (!on) drawn.clear();
 }
 
-std::shared_ptr<TerrainWorldHeightReader> TerrainWorldRuntime::heightReader(TileCoord low, TileCoord high) const {
+std::shared_ptr<TerrainWorldHeightReader> TerrainWorldRuntime::heightReader(terraincore::TileCoord low, terraincore::TileCoord high) const {
     std::lock_guard<std::recursive_mutex> guard(lock);
     auto reader = std::make_shared<TerrainWorldHeightReader>();
     reader->worldLattice = worldManifest.lattice;
     reader->maxHeight = worldManifest.maps.maxHeight;
     reader->baseHeight = worldManifest.maps.baseHeight;
     reader->source = worldSource;
-    for (int z = std::max<int>(low.z, WORLD_TILE_MIN); z <= std::min<int>(high.z, WORLD_TILE_MAX); z++) {
-        for (int x = std::max<int>(low.x, WORLD_TILE_MIN); x <= std::min<int>(high.x, WORLD_TILE_MAX); x++) {
-            const TileCoord tile(x, z);
+    for (int z = std::max<int>(low.z, terraincore::WORLD_TILE_MIN); z <= std::min<int>(high.z, terraincore::WORLD_TILE_MAX); z++) {
+        for (int x = std::max<int>(low.x, terraincore::WORLD_TILE_MIN); x <= std::min<int>(high.x, terraincore::WORLD_TILE_MAX); x++) {
+            const terraincore::TileCoord tile(x, z);
             if (!worldOccupancy.present(tile)) continue;
             reader->present.insert(tile.key());
-            if (std::shared_ptr<const WorldTile> data = resident(tile)) reader->tiles[tile.key()] = data;
+            if (std::shared_ptr<const terraincore::WorldTile> data = resident(tile)) reader->tiles[tile.key()] = data;
         }
     }
     return reader;
 }
 
-std::shared_ptr<const WorldTile> TerrainWorldHeightReader::tile(TileCoord coord) {
+std::shared_ptr<const terraincore::WorldTile> TerrainWorldHeightReader::tile(terraincore::TileCoord coord) {
     if (!present.count(coord.key())) return nullptr;
     const auto it = tiles.find(coord.key());
     if (it != tiles.end()) return it->second;
     // a cold tile, read now: this runs on a job, which may wait (R24)
-    std::shared_ptr<WorldTile> data;
+    std::shared_ptr<terraincore::WorldTile> data;
     std::vector<uint8_t> bytes;
     std::string error;
     if (source && AssetIOService::readFile(source->tilePath(coord), 0, 0, bytes, error)) {
-        data = std::make_shared<WorldTile>();
-        if (decodeTile(bytes, terrainWorldDecodeCodec(), *data) != TileError::None || !tileMatches(*data, coord, worldLattice, error)) data.reset();
+        data = std::make_shared<terraincore::WorldTile>();
+        if (decodeTile(bytes, terrainWorldDecodeCodec(), *data) != terraincore::TileError::None || !tileMatches(*data, coord, worldLattice, error)) data.reset();
         else if (data->height.empty()) data.reset();
     }
     tiles[coord.key()] = data;
@@ -516,33 +515,33 @@ std::shared_ptr<const WorldTile> TerrainWorldHeightReader::tile(TileCoord coord)
 }
 
 void TerrainWorldHeightReader::read(int x0, int z0, int countX, int countZ, std::vector<float>& out) {
-    out.assign(static_cast<size_t>(std::max(0, countX)) * static_cast<size_t>(std::max(0, countZ)), heightOfSample(baseHeight, maxHeight));
+    out.assign(static_cast<size_t>(std::max(0, countX)) * static_cast<size_t>(std::max(0, countZ)), terraincore::heightOfSample(baseHeight, maxHeight));
     const int n = worldLattice.tileQuads;
     for (int cz = 0; cz < countZ; cz++) {
         const int sz = z0 + cz;
-        const int zs[2] = {floorDiv(sz, n), floorDiv(sz, n) - (sz % n == 0 ? 1 : 0)};
+        const int zs[2] = {terraincore::floorDiv(sz, n), terraincore::floorDiv(sz, n) - (sz % n == 0 ? 1 : 0)};
         for (int cx = 0; cx < countX; cx++) {
             const int sx = x0 + cx;
-            const int xs[2] = {floorDiv(sx, n), floorDiv(sx, n) - (sx % n == 0 ? 1 : 0)};
+            const int xs[2] = {terraincore::floorDiv(sx, n), terraincore::floorDiv(sx, n) - (sx % n == 0 ? 1 : 0)};
             // a sample on a border is in the tiles either side: the world's edge has only the one below
             for (int a = 0; a < 4; a++) {
                 const int tx = xs[a % 2], tz = zs[a / 2];
-                const std::shared_ptr<const WorldTile> data = tile(TileCoord(tx, tz));
+                const std::shared_ptr<const terraincore::WorldTile> data = tile(terraincore::TileCoord(tx, tz));
                 if (!data) continue;
                 out[static_cast<size_t>(cz) * static_cast<size_t>(countX) + static_cast<size_t>(cx)] =
-                    heightOfSample(data->sample(sx - tx * n + 1, sz - tz * n + 1), maxHeight);
+                    terraincore::heightOfSample(data->sample(sx - tx * n + 1, sz - tz * n + 1), maxHeight);
                 break;
             }
         }
     }
 }
 
-void TerrainWorldRuntime::rebuildDerived(TileCoord tile, WorldTile& data) {
+void TerrainWorldRuntime::rebuildDerived(terraincore::TileCoord tile, terraincore::WorldTile& data) {
     buildMinMax(data, worldManifest.lattice);
     buildOverviewHeight(data, worldManifest.lattice);
     buildSkirtDepth(data, worldManifest.lattice);
     if (!layerColours.empty()) buildOverviewColour(data, worldManifest.lattice, layerColours, layerCount);
-    const TileMinMax whole = tileNodeMinMax(data, worldManifest.lattice, worldManifest.lattice.tileLevel(), 0, 0);
+    const terraincore::TileMinMax whole = tileNodeMinMax(data, worldManifest.lattice, worldManifest.lattice.tileLevel(), 0, 0);
     worldOccupancy.setTile(tile, true, whole.min, whole.max);
     worldManifest.skirtDepth = std::max(worldManifest.skirtDepth, data.skirtDepth);
 }
@@ -557,21 +556,21 @@ void TerrainWorldRuntime::pump(double now) {
     pollOverview();
 
     // R15, R18: every focus, then every pending area as a demand
-    std::vector<StreamFocus> focuses = autoFocuses;
+    std::vector<terraincore::StreamFocus> focuses = autoFocuses;
     for (const ScriptFocus& focus : scriptFocuses) focuses.push_back(focus.focus);
     streamer->setFocuses(focuses);
     const float size = worldManifest.lattice.tileSize();
     for (const TerrainWorldAreaWait& wait : areaWaits) {
-        for (const TileCoord& tile : missingTiles(wait.x, wait.z, wait.radius, wait.level)) {
-            const bool inside = tileOfLocal(wait.x, size) == tile.x && tileOfLocal(wait.z, size) == tile.z;
-            streamer->demand(tile, inside ? TilePriority::Critical : TilePriority::High);
+        for (const terraincore::TileCoord& tile : missingTiles(wait.x, wait.z, wait.radius, wait.level)) {
+            const bool inside = terraincore::tileOfLocal(wait.x, size) == tile.x && terraincore::tileOfLocal(wait.z, size) == tile.z;
+            streamer->demand(tile, inside ? terraincore::TilePriority::Critical : terraincore::TilePriority::High);
         }
     }
     streamer->update(now);
 
-    for (const TileStreamEvent& event : streamer->takeEvents()) {
+    for (const terraincore::TileStreamEvent& event : streamer->takeEvents()) {
         switch (event.kind) {
-            case TileStreamEvent::Kind::CpuReady: {
+            case terraincore::TileStreamEvent::Kind::CpuReady: {
                 revisions[event.tile.key()]++;
                 // R51: borders against resident neighbours, one warning a tile
                 const int errors = checkSeams(event.tile, false);
@@ -584,16 +583,16 @@ void TerrainWorldRuntime::pump(double now) {
                 }
                 break;
             }
-            case TileStreamEvent::Kind::PageEvicted:
+            case terraincore::TileStreamEvent::Kind::PageEvicted:
                 break;
-            case TileStreamEvent::Kind::Error:
+            case terraincore::TileStreamEvent::Kind::Error:
                 // R14: once a tile; it falls back to the overview (R10)
                 Log::error("Terrain World: tile (%i, %i) could not load: %s", event.tile.x, event.tile.z, event.message.c_str());
                 statsCache.errors.push_back("tile (" + std::to_string(event.tile.x) + ", " + std::to_string(event.tile.z) + "): " + event.message);
                 if (statsCache.errors.size() > 32) statsCache.errors.erase(statsCache.errors.begin());
                 break;
-            case TileStreamEvent::Kind::CpuEvicted:
-            case TileStreamEvent::Kind::Cancelled:
+            case terraincore::TileStreamEvent::Kind::CpuEvicted:
+            case terraincore::TileStreamEvent::Kind::Cancelled:
                 break;
         }
     }
@@ -611,7 +610,7 @@ void TerrainWorldRuntime::settleEdits() {
     std::lock_guard<std::recursive_mutex> guard(lock);
     if (derivedDirty.empty()) return;
     for (uint32_t key : derivedDirty) {
-        const TileCoord tile = TileCoord::fromKey(key);
+        const terraincore::TileCoord tile = terraincore::TileCoord::fromKey(key);
         const auto it = pinned.find(key);
         if (it == pinned.end()) continue;
         rebuildDerived(tile, *it->second);
@@ -625,12 +624,12 @@ void TerrainWorldRuntime::settleEdits() {
     overviewPatchAt = lastNow + (isPlaying ? OVERVIEW_REFRESH_PLAY : OVERVIEW_REFRESH_EDITOR);
 }
 
-void TerrainWorldRuntime::setAutoFocuses(const std::vector<StreamFocus>& focuses) {
+void TerrainWorldRuntime::setAutoFocuses(const std::vector<terraincore::StreamFocus>& focuses) {
     autoFocuses = focuses;
 }
 
 int TerrainWorldRuntime::addFocus(float x, float z, float radiusScale, float velocityX, float velocityZ) {
-    if (focusCount() >= WORLD_MAX_FOCUSES) return 0;
+    if (focusCount() >= terraincore::WORLD_MAX_FOCUSES) return 0;
     ScriptFocus focus;
     focus.id = nextFocusId++;
     focus.focus.id = focus.id;
@@ -662,22 +661,22 @@ bool TerrainWorldRuntime::removeFocus(int id) {
     return scriptFocuses.size() != before;
 }
 
-std::vector<TileCoord> TerrainWorldRuntime::missingTiles(float x, float z, float radius, TerrainWorldReadyLevel level) const {
-    std::vector<TileCoord> missing;
+std::vector<terraincore::TileCoord> TerrainWorldRuntime::missingTiles(float x, float z, float radius, TerrainWorldReadyLevel level) const {
+    std::vector<terraincore::TileCoord> missing;
     const float size = worldManifest.lattice.tileSize();
     const int reach = static_cast<int>(std::ceil(radius / size)) + 1;
-    const int cx = tileOfLocal(x, size), cz = tileOfLocal(z, size);
+    const int cx = terraincore::tileOfLocal(x, size), cz = terraincore::tileOfLocal(z, size);
     for (int tz = cz - reach; tz <= cz + reach; tz++) {
         for (int tx = cx - reach; tx <= cx + reach; tx++) {
-            const TileCoord tile(tx, tz);
+            const terraincore::TileCoord tile(tx, tz);
             if (!tile.addressable() || !worldOccupancy.present(tile)) continue;
             if (boxDistance(x, z, static_cast<float>(tx) * size, static_cast<float>(tz) * size, size) > radius) continue;
-            const TileState state = tileState(tile);
+            const terraincore::TileState state = tileState(tile);
             bool ready = false;
             if (level == TerrainWorldReadyLevel::Render) {
-                ready = state == TileState::Resident || (!streamer->budgets().gpu && state == TileState::CpuReady);
+                ready = state == terraincore::TileState::Resident || (!streamer->budgets().gpu && state == terraincore::TileState::CpuReady);
             } else {
-                const bool cpu = state == TileState::CpuReady || state == TileState::Uploading || state == TileState::Resident;
+                const bool cpu = state == terraincore::TileState::CpuReady || state == terraincore::TileState::Uploading || state == terraincore::TileState::Resident;
                 ready = cpu && (!collision || collision->fineActive(tile));
             }
             if (!ready) missing.push_back(tile);
@@ -690,16 +689,16 @@ bool TerrainWorldRuntime::isAreaLoaded(float x, float z, float radius) const {
     const float size = worldManifest.lattice.tileSize();
     if (!(size > 0.0f)) return true;
     const int reach = static_cast<int>(std::ceil(radius / size)) + 1;
-    const int cx = tileOfLocal(x, size), cz = tileOfLocal(z, size);
+    const int cx = terraincore::tileOfLocal(x, size), cz = terraincore::tileOfLocal(z, size);
     for (int tz = cz - reach; tz <= cz + reach; tz++) {
         for (int tx = cx - reach; tx <= cx + reach; tx++) {
-            const TileCoord tile(tx, tz);
+            const terraincore::TileCoord tile(tx, tz);
             if (!tile.addressable() || !worldOccupancy.present(tile)) continue;
             if (boxDistance(x, z, static_cast<float>(tx) * size, static_cast<float>(tz) * size, size) > radius) continue;
             // a world not streaming yet has none of its present tiles in memory
             if (!streamer) return false;
-            const TileState state = streamer->state(tile);
-            if (state != TileState::CpuReady && state != TileState::Uploading && state != TileState::Resident) return false;
+            const terraincore::TileState state = streamer->state(tile);
+            if (state != terraincore::TileState::CpuReady && state != terraincore::TileState::Uploading && state != terraincore::TileState::Resident) return false;
         }
     }
     return true;
@@ -725,53 +724,53 @@ void TerrainWorldRuntime::dropAreaWait(int id) {
                     areaWaits.end());
 }
 
-TileState TerrainWorldRuntime::tileState(TileCoord tile) const {
-    if (!streamer) return TileState::Absent;
+terraincore::TileState TerrainWorldRuntime::tileState(terraincore::TileCoord tile) const {
+    if (!streamer) return terraincore::TileState::Absent;
     return streamer->state(tile);
 }
 
-std::shared_ptr<const WorldTile> TerrainWorldRuntime::resident(TileCoord tile) const {
+std::shared_ptr<const terraincore::WorldTile> TerrainWorldRuntime::resident(terraincore::TileCoord tile) const {
     std::lock_guard<std::recursive_mutex> guard(lock);
     const auto it = pinned.find(tile.key());
     if (it != pinned.end()) return it->second;
     return streamer ? streamer->data(tile) : nullptr;
 }
 
-std::shared_ptr<WorldTile> TerrainWorldRuntime::decodeFile(TileCoord tile, std::string& error) const {
+std::shared_ptr<terraincore::WorldTile> TerrainWorldRuntime::decodeFile(terraincore::TileCoord tile, std::string& error) const {
     std::vector<uint8_t> bytes;
     if (!AssetIOService::readFile(worldSource->tilePath(tile), 0, 0, bytes, error)) return nullptr;
-    auto data = std::make_shared<WorldTile>();
-    const TileError result = decodeTile(bytes, terrainWorldDecodeCodec(), *data);
-    if (result != TileError::None) {
-        error = std::string("the tile is ") + tileErrorName(result);
+    auto data = std::make_shared<terraincore::WorldTile>();
+    const terraincore::TileError result = decodeTile(bytes, terrainWorldDecodeCodec(), *data);
+    if (result != terraincore::TileError::None) {
+        error = std::string("the tile is ") + terraincore::tileErrorName(result);
         return nullptr;
     }
     if (!tileMatches(*data, tile, worldManifest.lattice, error)) return nullptr;
     return data;
 }
 
-std::shared_ptr<const WorldTile> TerrainWorldRuntime::loadNow(TileCoord tile) {
+std::shared_ptr<const terraincore::WorldTile> TerrainWorldRuntime::loadNow(terraincore::TileCoord tile) {
     std::lock_guard<std::recursive_mutex> guard(lock);
-    if (std::shared_ptr<const WorldTile> data = resident(tile)) return data;
+    if (std::shared_ptr<const terraincore::WorldTile> data = resident(tile)) return data;
     if (!worldOccupancy.present(tile) || !streamer) return nullptr;
     std::string error;
-    std::shared_ptr<WorldTile> data = decodeFile(tile, error);
+    std::shared_ptr<terraincore::WorldTile> data = decodeFile(tile, error);
     if (!data) return nullptr;
     streamer->replace(tile, data);
     return data;
 }
 
-SurfaceSample TerrainWorldRuntime::query(float localX, float localZ, bool mayWait) {
+terraincore::SurfaceSample TerrainWorldRuntime::query(float localX, float localZ, bool mayWait) {
     std::lock_guard<std::recursive_mutex> guard(lock);
     const float size = worldManifest.lattice.tileSize();
-    const TileCoord tile(tileOfLocal(localX, size), tileOfLocal(localZ, size));
-    SurfaceSample sample;
+    const terraincore::TileCoord tile(terraincore::tileOfLocal(localX, size), terraincore::tileOfLocal(localZ, size));
+    terraincore::SurfaceSample sample;
     if (!tile.addressable() || !worldOccupancy.present(tile)) {
         sample.present = false;
         sample.inside = false;
         return sample;
     }
-    std::shared_ptr<const WorldTile> data = resident(tile);
+    std::shared_ptr<const terraincore::WorldTile> data = resident(tile);
     if (!data && mayWait) data = loadNow(tile);
     if (data) return sampleTile(*data, worldManifest.lattice, worldManifest.maps.maxHeight, localX, localZ);
     if (!overview.empty()) return sampleOverview(overview, worldManifest.lattice, worldManifest.maps.maxHeight, localX, localZ);
@@ -783,7 +782,7 @@ SurfaceSample TerrainWorldRuntime::query(float localX, float localZ, bool mayWai
 TerrainWorldPointState TerrainWorldRuntime::pointState(float localX, float localZ) const {
     std::lock_guard<std::recursive_mutex> guard(lock);
     const float size = worldManifest.lattice.tileSize();
-    const TileCoord tile(tileOfLocal(localX, size), tileOfLocal(localZ, size));
+    const terraincore::TileCoord tile(terraincore::tileOfLocal(localX, size), terraincore::tileOfLocal(localZ, size));
     if (!tile.addressable() || !worldOccupancy.present(tile)) return TerrainWorldPointState::Absent;
     return resident(tile) ? TerrainWorldPointState::Full : TerrainWorldPointState::Overview;
 }
@@ -795,7 +794,7 @@ bool TerrainWorldRuntime::raycast(const Vector3& origin, const Vector3& directio
     // R24: a grid walk over the tiles the ray's ground track crosses, nearest first
     float tNow = 0.0f;
     const float dx = direction.x, dz = direction.z;
-    int tx = tileOfLocal(origin.x, size), tz = tileOfLocal(origin.z, size);
+    int tx = terraincore::tileOfLocal(origin.x, size), tz = terraincore::tileOfLocal(origin.z, size);
     const int stepX = dx > 0.0f ? 1 : -1, stepZ = dz > 0.0f ? 1 : -1;
     const float infinite = 1.0e30f;
     auto boundaryT = [&](float o, float d, int cell, int step) {
@@ -805,21 +804,21 @@ bool TerrainWorldRuntime::raycast(const Vector3& origin, const Vector3& directio
     };
     float nextX = boundaryT(origin.x, dx, tx, stepX), nextZ = boundaryT(origin.z, dz, tz, stepZ);
     const float deltaX = dx != 0.0f ? size / std::fabs(dx) : infinite, deltaZ = dz != 0.0f ? size / std::fabs(dz) : infinite;
-    for (int guard = 0; guard < 4 * WORLD_TILES_PER_SIDE && tNow <= maxT; guard++) {
+    for (int guard = 0; guard < 4 * terraincore::WORLD_TILES_PER_SIDE && tNow <= maxT; guard++) {
         const float tEnd = std::min(std::min(nextX, nextZ), maxT);
-        const TileCoord tile(tx, tz);
+        const terraincore::TileCoord tile(tx, tz);
         if (tile.addressable() && worldOccupancy.present(tile) && tEnd >= tNow) {
             // min/max rejection: the segment passes wholly above or below the tile
-            const TileMinMax heights = worldOccupancy.minMax(0, tx, tz);
+            const terraincore::TileMinMax heights = worldOccupancy.minMax(0, tx, tz);
             const float y0 = origin.y + direction.y * tNow, y1 = origin.y + direction.y * tEnd;
             const float low = static_cast<float>(heights.min) / 65535.0f * maxHeight, high = static_cast<float>(heights.max) / 65535.0f * maxHeight;
             if (!(std::min(y0, y1) > high + 0.01f || std::max(y0, y1) < low - 0.01f)) {
                 const float pad = worldManifest.lattice.spacing * 1.0e-3f;
                 const float from = std::max(0.0f, tNow - pad), to = tEnd + pad;
-                std::shared_ptr<const WorldTile> data = resident(tile);
+                std::shared_ptr<const terraincore::WorldTile> data = resident(tile);
                 if (!data && mayWait) data = loadNow(tile);
                 if (data) {
-                    SurfaceView view;
+                    terraincore::SurfaceView view;
                     view.pixels = data->height.bytes.data();
                     view.width = data->height.width;
                     view.height = data->height.height;
@@ -831,13 +830,13 @@ bool TerrainWorldRuntime::raycast(const Vector3& origin, const Vector3& directio
                     const Vector3 start(origin.x + direction.x * from - cx, origin.y + direction.y * from, origin.z + direction.z * from - cz);
                     Vector3 hit;
                     float hitT = 0.0f;
-                    if (raycastSurface(view, start, direction, to - from, false, hit, hitT)) {
+                    if (terraincore::raycastSurface(view, start, direction, to - from, false, hit, hitT)) {
                         const float worldT = from + hitT;
                         const Vector3 at(hit.x + cx, hit.y, hit.z + cz);
                         bool hole = false;
                         if (!data->holes.empty()) {
-                            const HoleMapView holes{data->holes.bytes.data(), data->holes.width, data->holes.height};
-                            hole = isHole(holes, (at.x - static_cast<float>(tx) * size) / size, (at.z - static_cast<float>(tz) * size) / size);
+                            const terraincore::HoleMapView holes{data->holes.bytes.data(), data->holes.width, data->holes.height};
+                            hole = terraincore::isHole(holes, (at.x - static_cast<float>(tx) * size) / size, (at.z - static_cast<float>(tz) * size) / size);
                         }
                         if (!(hole && skipHoles)) {
                             point = at;
@@ -885,26 +884,26 @@ bool TerrainWorldRuntime::raycast(const Vector3& origin, const Vector3& directio
             tz += stepZ;
             nextZ += deltaZ;
         }
-        if (!TileCoord(tx, tz).addressable() && (tx < WORLD_TILE_MIN - 1 || tx > WORLD_TILE_MAX + 1 || tz < WORLD_TILE_MIN - 1 || tz > WORLD_TILE_MAX + 1)) break;
+        if (!terraincore::TileCoord(tx, tz).addressable() && (tx < terraincore::WORLD_TILE_MIN - 1 || tx > terraincore::WORLD_TILE_MAX + 1 || tz < terraincore::WORLD_TILE_MIN - 1 || tz > terraincore::WORLD_TILE_MAX + 1)) break;
     }
     return false;
 }
 
-std::vector<TileCoord> TerrainWorldRuntime::takeDirtyFiles() {
-    std::vector<TileCoord> out;
-    for (uint32_t key : dirtyFiles) out.push_back(TileCoord::fromKey(key));
+std::vector<terraincore::TileCoord> TerrainWorldRuntime::takeDirtyFiles() {
+    std::vector<terraincore::TileCoord> out;
+    for (uint32_t key : dirtyFiles) out.push_back(terraincore::TileCoord::fromKey(key));
     dirtyFiles.clear();
     return out;
 }
 
-std::vector<TileCoord> TerrainWorldRuntime::takeRemovedFiles() {
-    std::vector<TileCoord> out;
-    for (uint32_t key : removedFiles) out.push_back(TileCoord::fromKey(key));
+std::vector<terraincore::TileCoord> TerrainWorldRuntime::takeRemovedFiles() {
+    std::vector<terraincore::TileCoord> out;
+    for (uint32_t key : removedFiles) out.push_back(terraincore::TileCoord::fromKey(key));
     removedFiles.clear();
     return out;
 }
 
-void TerrainWorldRuntime::releaseFlushed(TileCoord tile) {
+void TerrainWorldRuntime::releaseFlushed(terraincore::TileCoord tile) {
     std::lock_guard<std::recursive_mutex> guard(lock);
     const auto it = pinned.find(tile.key());
     if (it == pinned.end() || dirtyFiles.count(tile.key())) return;
@@ -914,7 +913,7 @@ void TerrainWorldRuntime::releaseFlushed(TileCoord tile) {
     pinned.erase(it);
 }
 
-void TerrainWorldRuntime::fileChanged(TileCoord tile, bool exists) {
+void TerrainWorldRuntime::fileChanged(terraincore::TileCoord tile, bool exists) {
     std::lock_guard<std::recursive_mutex> guard(lock);
     if (!streamer) return;
     if (pinned.count(tile.key()) && dirtyFiles.count(tile.key())) return;
@@ -930,12 +929,12 @@ void TerrainWorldRuntime::fileChanged(TileCoord tile, bool exists) {
         return;
     }
     std::string error;
-    std::shared_ptr<WorldTile> data = decodeFile(tile, error);
+    std::shared_ptr<terraincore::WorldTile> data = decodeFile(tile, error);
     if (!data) {
         streamer->invalidate(tile);
         return;
     }
-    const TileMinMax whole = tileNodeMinMax(*data, worldManifest.lattice, worldManifest.lattice.tileLevel(), 0, 0);
+    const terraincore::TileMinMax whole = tileNodeMinMax(*data, worldManifest.lattice, worldManifest.lattice.tileLevel(), 0, 0);
     worldOccupancy.setTile(tile, true, whole.min, whole.max);
     // R11: the skirts reach as deep as the deepest tile's edge, a replaced file's too (an import)
     worldManifest.skirtDepth = std::max(worldManifest.skirtDepth, data->skirtDepth);
@@ -945,7 +944,7 @@ void TerrainWorldRuntime::fileChanged(TileCoord tile, bool exists) {
     else overviewPatchPending = true;
 }
 
-int TerrainWorldRuntime::checkSeams(TileCoord tile, bool repair) {
+int TerrainWorldRuntime::checkSeams(terraincore::TileCoord tile, bool repair) {
     if (!mapStore) return 0;
     // only neighbours in memory: a cold neighbour is checked when it arrives
     if (!resident(tile)) return 0;
@@ -957,12 +956,12 @@ TerrainWorldStats TerrainWorldRuntime::stats() const {
     out.tiles = worldOccupancy.tileCount();
     out.ready = isReady();
     if (!streamer) return out;
-    const TileStreamStats& streaming = streamer->stats();
+    const terraincore::TileStreamStats& streaming = streamer->stats();
     for (int i = 0; i < 8; i++) out.states[i] = streaming.states[i];
     out.gpuBytes = streaming.gpuBytes;
     out.cpuBytes = streaming.cpuBytes;
     for (const auto& [key, data] : pinned) {
-        if (!streamer->data(TileCoord::fromKey(key))) out.cpuBytes += data->cpuBytes();
+        if (!streamer->data(terraincore::TileCoord::fromKey(key))) out.cpuBytes += data->cpuBytes();
     }
     out.gpuCap = streamer->budgets().gpuCapBytes;
     out.cpuCap = streamer->budgets().cpuCapBytes;
@@ -984,42 +983,42 @@ TerrainWorldStats TerrainWorldRuntime::stats() const {
 
 // ------------------------------------------------------------------ TileAccess
 
-bool TerrainWorldRuntime::present(TileCoord tile) const {
+bool TerrainWorldRuntime::present(terraincore::TileCoord tile) const {
     return worldOccupancy.present(tile);
 }
 
-std::shared_ptr<const WorldTile> TerrainWorldRuntime::tile(TileCoord coord) const {
-    if (std::shared_ptr<const WorldTile> data = resident(coord)) return data;
+std::shared_ptr<const terraincore::WorldTile> TerrainWorldRuntime::tile(terraincore::TileCoord coord) const {
+    if (std::shared_ptr<const terraincore::WorldTile> data = resident(coord)) return data;
     // the store edits what is there: a cold tile is read now (an edit is never made over a guess)
     return const_cast<TerrainWorldRuntime*>(this)->loadNow(coord);
 }
 
-std::shared_ptr<WorldTile> TerrainWorldRuntime::writable(TileCoord coord) {
+std::shared_ptr<terraincore::WorldTile> TerrainWorldRuntime::writable(terraincore::TileCoord coord) {
     std::lock_guard<std::recursive_mutex> guard(lock);
     const auto it = pinned.find(coord.key());
     if (it != pinned.end()) return it->second;
     if (!mayWrite(coord, nullptr)) return nullptr;
-    std::shared_ptr<const WorldTile> current = tile(coord);
+    std::shared_ptr<const terraincore::WorldTile> current = tile(coord);
     if (!current) return nullptr;
     // the writer's own copy: a job or the streamer's cache keeps the one it holds
-    auto copy = std::make_shared<WorldTile>(*current);
+    auto copy = std::make_shared<terraincore::WorldTile>(*current);
     pinned[coord.key()] = copy;
     streamer->replace(coord, copy);
     streamer->pin(coord, true);
     return copy;
 }
 
-bool TerrainWorldRuntime::mayWrite(TileCoord coord, std::string* why) const {
+bool TerrainWorldRuntime::mayWrite(terraincore::TileCoord coord, std::string* why) const {
     if (!isPlaying || pinned.count(coord.key())) return true;
     if (static_cast<int>(pinned.size()) < MAX_RUNTIME_EDITED_TILES) return true;
     if (why) *why = "a game may hold at most " + std::to_string(MAX_RUNTIME_EDITED_TILES) + " edited tiles of a Terrain World at once";
     return false;
 }
 
-void TerrainWorldRuntime::add(TileCoord coord, std::shared_ptr<WorldTile> data) {
+void TerrainWorldRuntime::add(terraincore::TileCoord coord, std::shared_ptr<terraincore::WorldTile> data) {
     std::lock_guard<std::recursive_mutex> guard(lock);
     if (!data) return;
-    const TileMinMax whole = tileNodeMinMax(*data, worldManifest.lattice, worldManifest.lattice.tileLevel(), 0, 0);
+    const terraincore::TileMinMax whole = tileNodeMinMax(*data, worldManifest.lattice, worldManifest.lattice.tileLevel(), 0, 0);
     worldOccupancy.setTile(coord, true, whole.min, whole.max);
     pinned[coord.key()] = data;
     streamer->replace(coord, data);
@@ -1030,7 +1029,7 @@ void TerrainWorldRuntime::add(TileCoord coord, std::shared_ptr<WorldTile> data) 
     revisions[coord.key()]++;
 }
 
-void TerrainWorldRuntime::restore(TileCoord coord, std::shared_ptr<WorldTile> data) {
+void TerrainWorldRuntime::restore(terraincore::TileCoord coord, std::shared_ptr<terraincore::WorldTile> data) {
     std::lock_guard<std::recursive_mutex> guard(lock);
     if (!data) return;
     add(coord, std::move(data));
@@ -1038,7 +1037,7 @@ void TerrainWorldRuntime::restore(TileCoord coord, std::shared_ptr<WorldTile> da
     overviewPatchPending = true;
 }
 
-void TerrainWorldRuntime::remove(TileCoord coord) {
+void TerrainWorldRuntime::remove(terraincore::TileCoord coord) {
     std::lock_guard<std::recursive_mutex> guard(lock);
     worldOccupancy.setTile(coord, false);
     pinned.erase(coord.key());
@@ -1051,18 +1050,18 @@ void TerrainWorldRuntime::remove(TileCoord coord) {
     overviewPatchPending = true;
 }
 
-void TerrainWorldRuntime::changed(TileCoord coord) {
+void TerrainWorldRuntime::changed(terraincore::TileCoord coord) {
     std::lock_guard<std::recursive_mutex> guard(lock);
     if (!pinned.count(coord.key())) return;
     dirtyFiles.insert(coord.key());
     derivedDirty.insert(coord.key());
 }
 
-uint32_t TerrainWorldRuntime::tileRevision(TileCoord coord) const {
+uint32_t TerrainWorldRuntime::tileRevision(terraincore::TileCoord coord) const {
     const auto it = revisions.find(coord.key());
     return it == revisions.end() ? 0 : it->second;
 }
 
-bool TerrainWorldRuntime::bounds(TileCoord& low, TileCoord& high) const {
+bool TerrainWorldRuntime::bounds(terraincore::TileCoord& low, terraincore::TileCoord& high) const {
     return worldOccupancy.bounds(low, high);
 }

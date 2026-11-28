@@ -35,7 +35,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::ui;
+
+namespace jasperengine::editor::ui {
 
 namespace {
 
@@ -104,7 +105,7 @@ namespace {
 
 // ---- the field
 
-void ui::drawColorSwatch(ImDrawList* drawList, ImVec2 min, ImVec2 max, const Vector4& shown, bool alphaChecker, bool hdrTag, bool mixed) {
+void drawColorSwatch(ImDrawList* drawList, ImVec2 min, ImVec2 max, const Vector4& shown, bool alphaChecker, bool hdrTag, bool mixed) {
     drawList->AddRectFilled(min, max, imColor(shown, 1.0f));
     if (alphaChecker && shown.w < 1.0f) {
         // the right half over a checker, at its alpha
@@ -133,7 +134,7 @@ void ui::drawColorSwatch(ImDrawList* drawList, ImVec2 min, ImVec2 max, const Vec
     drawList->AddRect(min, max, IM_COL32(0, 0, 0, 200));
 }
 
-EditPhase ui::colorField(const char* id, Vector4& rgba, const ColorFieldOptions& options) {
+EditPhase colorField(const char* id, Vector4& rgba, const ColorFieldOptions& options) {
     ImGui::PushID(id);
     const ImGuiID fieldId = ImGui::GetID("##colorField");
     const float width = options.width > 0.0f ? options.width : std::max(ImGui::GetContentRegionAvail().x, ImGui::GetFrameHeight());
@@ -156,7 +157,7 @@ EditPhase ui::colorField(const char* id, Vector4& rgba, const ColorFieldOptions&
     return phase;
 }
 
-EditPhase ui::colorField(const char* id, Vector3& rgb, ColorFieldOptions options) {
+EditPhase colorField(const char* id, Vector3& rgb, ColorFieldOptions options) {
     options.alpha = false;
     Vector4 value(rgb, 1.0f);
     const EditPhase phase = colorField(id, value, options);
@@ -164,7 +165,7 @@ EditPhase ui::colorField(const char* id, Vector3& rgb, ColorFieldOptions options
     return phase;
 }
 
-void ui::registerViewImage(ImGuiID viewport, ImVec2 min, ImVec2 max, Framebuffer* framebuffer) {
+void registerViewImage(ImGuiID viewport, ImVec2 min, ImVec2 max, Framebuffer* framebuffer) {
     if (!framebuffer) return;
     viewImages().push_back({viewport, min, max, framebuffer});
 }
@@ -1050,3 +1051,5 @@ void ColorPickerWindow::drawLoupe(ImVec2 at, bool inWindow) {
 void ColorPickerWindow::beginEdit(CommandHistory* history, const char* label) {
     FieldEditSession::begin(history, std::string("Change ") + (label && *label ? label : "Color"), &get());
 }
+
+}  // namespace jasperengine::editor::ui

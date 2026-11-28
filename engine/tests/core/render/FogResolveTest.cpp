@@ -24,9 +24,10 @@
 #include <cstdio>
 #include <vector>
 
+namespace fog_resolve_test {
+
 using namespace jasperengine;
 
-namespace fog_resolve_test {
 
     FogProfileData profileWith(FogField field, const FogComponent& values){
         FogProfileData profile;
@@ -68,6 +69,8 @@ namespace fog_resolve_test {
     };
 
 }
+
+namespace fog_resolve_test {
 
 using namespace fog_resolve_test;
 
@@ -568,3 +571,5 @@ TEST(FogResolveBench, SixteenZonesAndABlend){
         EXPECT_LE(ms, 0.02 * testsupport::perfSlack());
     }
 }
+
+}  // namespace fog_resolve_test

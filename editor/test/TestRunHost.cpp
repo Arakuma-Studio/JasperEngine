@@ -32,7 +32,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::gametests;
+
+namespace jasperengine::editor::gametests {
 
 namespace {
 
@@ -308,3 +309,5 @@ bool TestRunHost::pollCapture(gametest::Json& capture) {
     finish();
     return true;
 }
+
+}  // namespace jasperengine::editor::gametests

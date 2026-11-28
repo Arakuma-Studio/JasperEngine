@@ -15,6 +15,8 @@
 #include <algorithm>
 #include <chrono>
 
+namespace DataSafetyBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -100,3 +102,5 @@ TEST(LoadReportOverheadBench, DecodeWithReport) {
         EXPECT_LE(with, without * 1.05 + 1.0);
     }
 }
+
+}  // namespace DataSafetyBenchTest_cpp

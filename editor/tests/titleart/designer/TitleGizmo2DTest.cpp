@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+namespace TitleGizmo2DTest_cpp {
+
 using namespace jasperengine::editor::titledesigner;
 namespace ta = jasperengine::titleart;
 
@@ -427,3 +429,5 @@ TEST(TitleGizmo2DTest, NudgeInDocumentSpace) {
     EXPECT_NEAR(moved.x, 10.0, 1e-9);
     EXPECT_NEAR(moved.y, 0.0, 1e-9);
 }
+
+}  // namespace TitleGizmo2DTest_cpp

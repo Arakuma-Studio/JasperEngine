@@ -27,6 +27,8 @@
 #include <utility>
 #include <vector>
 
+namespace HeightfieldHolesTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -204,3 +206,5 @@ TEST_F(HeightfieldHoles, SamplesOpenMatchJolt){
     EXPECT_FALSE(hitAt(shape, 0.0f, 0.0f)) << "a ball falls in";
     EXPECT_TRUE(hitAt(shape, 12.0f, 0.0f));
 }
+
+}  // namespace HeightfieldHolesTest_cpp

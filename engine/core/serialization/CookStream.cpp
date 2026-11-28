@@ -4,7 +4,8 @@
 #include "CookStream.h"
 
 using namespace jasperengine;
-using namespace jasperengine::cook;
+
+namespace jasperengine::cook {
 
 const std::string Reader::emptyString;
 
@@ -188,3 +189,5 @@ Reader Reader::record() {
 void Reader::skip(size_t count) {
     if (take(count)) position += count;
 }
+
+}  // namespace jasperengine::cook

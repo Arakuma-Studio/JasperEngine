@@ -14,6 +14,8 @@
 
 #include <vector>
 
+namespace ChangeTrackingTest_cpp {
+
 using namespace jasperengine;
 
 using jasperengine::test::disableSubSystems;
@@ -204,3 +206,5 @@ TEST(ChangeTrackingTest, TickColumnRebases){
     array.markChanged(1, far + 5);
     EXPECT_EQ(array.getChangedTickOf(1), far + 5);
 }
+
+}  // namespace ChangeTrackingTest_cpp

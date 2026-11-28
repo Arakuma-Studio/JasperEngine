@@ -16,11 +16,11 @@
 #include <chrono>
 
 using namespace jasperengine;
-using namespace jasperengine::jobs;
-using namespace jasperengine::jobs::detail;
+
+namespace jasperengine::jobs {
 
 JobCounter::JobCounter(JobSystem* system):
-    system(system), queue(createCounterQueue()){
+    system(system), queue(jobs::detail::createCounterQueue()){
 }
 
 JobCounter::~JobCounter(){
@@ -56,12 +56,12 @@ void JobCounter::reset(){
 }
 
 bool JobCounter::helpOne(){
-    Job* job = nullptr;
+    jobs::detail::Job* job = nullptr;
     {
         std::lock_guard<std::mutex> lock(queue->mutex);
         job = queue->head;
         if (job){
-            queue->head = static_cast<Job*>(job->next);
+            queue->head = static_cast<jobs::detail::Job*>(job->next);
             if (!queue->head)
                 queue->tail = nullptr;
             job->next = nullptr;
@@ -70,12 +70,12 @@ bool JobCounter::helpOne(){
     if (!job)
         return false;
     // its visit, still queued in the pool, finds the queue empty and ends
-    schedulerOf(system)->runBareJob(job);
+    jobs::detail::schedulerOf(system)->runBareJob(job);
     return true;
 }
 
 void JobCounter::wait(){
-    const ProfilerHooks* h = hooks();
+    const ProfilerHooks* h = jobs::detail::hooks();
     const bool hooked = h && h->onWaitBegin;
     if (hooked)
         h->onWaitBegin(WaitKind::Counter);
@@ -87,7 +87,7 @@ void JobCounter::wait(){
         if (helpOne())
             continue;
         if (!mayBlock){
-            spinWait();
+            jobs::detail::spinWait();
             continue;
         }
         std::unique_lock<std::mutex> lock(mutex);
@@ -95,14 +95,16 @@ void JobCounter::wait(){
             break;
         waiters++;
         // the backstop re-checks the queue: a job counted here may still be queued
-        timedWait(cv, lock, std::chrono::milliseconds(1));
+        jobs::detail::timedWait(cv, lock, std::chrono::milliseconds(1));
         waiters--;
     }
     // orders the last done()'s critical section before the caller may destroy the counter
     { std::lock_guard<std::mutex> lock(mutex); }
     if (hooked){
-        h = hooks();
+        h = jobs::detail::hooks();
         if (h && h->onWaitEnd)
             h->onWaitEnd();
     }
 }
+
+}  // namespace jasperengine::jobs

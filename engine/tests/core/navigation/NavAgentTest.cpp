@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+namespace NavAgentTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 
@@ -529,3 +531,5 @@ TEST_F(NavAgentTest, LinkAutoUpdateLimits){
     EXPECT_EQ(log.count(D_LOG_WARN, "a cost NavMeshSurface 'Surface' was not baked with"), 1u);
     EXPECT_EQ(log.count(D_LOG_WARN, "left its baked tile"), 1u);
 }
+
+}  // namespace NavAgentTest_cpp

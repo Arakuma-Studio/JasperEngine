@@ -21,7 +21,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vertexcolor;
+
+namespace jasperengine::editor::vertexcolor {
 
 namespace {
 
@@ -129,7 +130,7 @@ namespace {
 
 }
 
-std::shared_ptr<const vc::Image> editor::vertexcolor::loadPaintImage(Project* project, const std::string& assetPath, std::optional<bool> colorData, std::string* error) {
+std::shared_ptr<const vc::Image> loadPaintImage(Project* project, const std::string& assetPath, std::optional<bool> colorData, std::string* error) {
     if (!project || assetPath.empty()) {
         if (error) *error = "Choose a texture.";
         return nullptr;
@@ -145,7 +146,7 @@ std::shared_ptr<const vc::Image> editor::vertexcolor::loadPaintImage(Project* pr
     return image;
 }
 
-const char* editor::vertexcolor::materialSlotName(MaterialSlot slot) {
+const char* materialSlotName(MaterialSlot slot) {
     switch (slot) {
         case MaterialSlot::Albedo: return "Albedo";
         case MaterialSlot::Emissive: return "Emissive";
@@ -155,13 +156,13 @@ const char* editor::vertexcolor::materialSlotName(MaterialSlot slot) {
     return "Albedo";
 }
 
-std::shared_ptr<const vc::Image> editor::vertexcolor::materialImage(Project* project, uint32_t sceneId, const TargetRef& target, MaterialSlot slot, std::string* error,
+std::shared_ptr<const vc::Image> materialImage(Project* project, uint32_t sceneId, const TargetRef& target, MaterialSlot slot, std::string* error,
                                                                     int* texCoord) {
     static const char* const names[] = {"albedo", "emissive", "occlusion", "metallic_roughness"};
     return materialImage(project, sceneId, target, std::string(names[(int)slot]), error, texCoord);
 }
 
-std::shared_ptr<const vc::Image> editor::vertexcolor::materialImage(Project* project, uint32_t sceneId, const TargetRef& target, const std::string& slot,
+std::shared_ptr<const vc::Image> materialImage(Project* project, uint32_t sceneId, const TargetRef& target, const std::string& slot,
                                                                     std::string* error, int* texCoord) {
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
     Scene* scene = sceneProject ? sceneProject->scene : nullptr;
@@ -232,7 +233,7 @@ std::shared_ptr<const vc::Image> editor::vertexcolor::materialImage(Project* pro
     return nullptr;
 }
 
-bool editor::vertexcolor::pickTriangleRange(Scene* scene, Entity meshEntity, uint32_t submesh, uint32_t& first, uint32_t& count) {
+bool pickTriangleRange(Scene* scene, Entity meshEntity, uint32_t submesh, uint32_t& first, uint32_t& count) {
     const MeshComponent* mesh = scene->findComponent<MeshComponent>(meshEntity);
     if (!mesh) return false;
     PickGeometryLayout layout;
@@ -249,3 +250,5 @@ bool editor::vertexcolor::pickTriangleRange(Scene* scene, Entity meshEntity, uin
     count = picking::primitiveTriangles(own.primitive, own.drawCount);
     return true;
 }
+
+}  // namespace jasperengine::editor::vertexcolor

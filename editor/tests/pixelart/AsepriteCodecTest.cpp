@@ -13,6 +13,8 @@
 
 #include <set>
 
+namespace AsepriteCodecTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::aseprite;
 using namespace jasperengine::editor::pixelart::testing;
@@ -946,3 +948,5 @@ TEST(AsepriteCodecTest, Describe) {
     EXPECT_EQ(cels["cels"].size(), doc.cels.size());
     EXPECT_EQ(cels["palette"]["colors"].size(), doc.palette.size());
 }
+
+}  // namespace AsepriteCodecTest_cpp

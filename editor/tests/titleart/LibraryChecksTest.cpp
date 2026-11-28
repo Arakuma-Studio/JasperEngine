@@ -16,6 +16,8 @@
 #include <algorithm>
 #include <cmath>
 
+namespace LibraryChecksTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::titlelibrary;
@@ -302,3 +304,5 @@ TEST(LibraryChecksTest, RegisteringTwiceKeepsOneOfEachInTheStyleGroup) {
     EXPECT_EQ(ids, (std::vector<std::string>{"style_lint", "color_scheme_options_empty", "color_scheme_match", "metal_range"}));
     EXPECT_EQ(TitleArtChecks::find("metal_range")->owner, "S84");
 }
+
+}  // namespace LibraryChecksTest_cpp

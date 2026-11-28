@@ -14,7 +14,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::ui;
+
+namespace jasperengine::editor::ui {
+
 using curveops::Hit;
 using curveops::KeyRef;
 using curveops::Side;
@@ -54,7 +56,7 @@ namespace {
 
 }
 
-const char* ui::wrapModeLabel(CurveWrapMode mode) {
+const char* wrapModeLabel(CurveWrapMode mode) {
     switch (mode) {
         case CurveWrapMode::Clamp: return "Clamp";
         case CurveWrapMode::Loop: return "Loop";
@@ -631,3 +633,5 @@ CurveEditorResult CurveEditor::draw(const char* id, std::vector<CurveBinding>& c
     ImGui::PopID();
     return result;
 }
+
+}  // namespace jasperengine::editor::ui

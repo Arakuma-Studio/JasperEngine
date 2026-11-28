@@ -16,7 +16,8 @@
 #include <mutex>
 
 using namespace jasperengine;
-using namespace jasperengine::dialogue;
+
+namespace jasperengine::dialogue {
 
 namespace {
 
@@ -167,7 +168,7 @@ namespace {
 
 }
 
-std::vector<Port> jasperengine::dialogue::linePorts(const Json& params) {
+std::vector<Port> linePorts(const Json& params) {
     std::vector<Port> ports = {flowPort("in", PortDirection::In, "In"), flowPort("next", PortDirection::Out, "Next")};
     auto options = params.find("options");
     if (options == params.end() || !options->is_array()) return ports;
@@ -183,7 +184,7 @@ std::vector<Port> jasperengine::dialogue::linePorts(const Json& params) {
     return ports;
 }
 
-graph::GraphKindDesc jasperengine::dialogue::makeDialogueKind() {
+graph::GraphKindDesc makeDialogueKind() {
     graph::GraphKindDesc kind;
     kind.id = KIND_ID;
     kind.displayName = "Dialogue";
@@ -219,24 +220,24 @@ graph::GraphKindDesc jasperengine::dialogue::makeDialogueKind() {
     return kind;
 }
 
-void jasperengine::dialogue::registerDialogueKind() {
+void registerDialogueKind() {
     static std::once_flag once;
     std::call_once(once, [] { graph::GraphRegistry::get().registerKind(makeDialogueKind()); });
     // every time: Localization::resetForTesting drops the readers
     Localization::registerReader(FILE_EXTENSION, readDialogueTable);
 }
 
-void jasperengine::dialogue::setLintContext(std::shared_ptr<const LintContext> context) {
+void setLintContext(std::shared_ptr<const LintContext> context) {
     std::lock_guard<std::mutex> lock(contextMutex());
     contextSlot() = std::move(context);
 }
 
-void jasperengine::dialogue::setLintContextProvider(std::function<std::shared_ptr<const LintContext>()> provider) {
+void setLintContextProvider(std::function<std::shared_ptr<const LintContext>()> provider) {
     std::lock_guard<std::mutex> lock(contextMutex());
     contextProvider() = std::move(provider);
 }
 
-std::shared_ptr<const LintContext> jasperengine::dialogue::lintContext() {
+std::shared_ptr<const LintContext> lintContext() {
     std::function<std::shared_ptr<const LintContext>()> provider;
     {
         std::lock_guard<std::mutex> lock(contextMutex());
@@ -326,13 +327,13 @@ namespace {
 
 }
 
-std::vector<std::string> jasperengine::dialogue::messageArguments(const std::string& message) {
+std::vector<std::string> messageArguments(const std::string& message) {
     MessageScan scan{message};
     while (scan.i < message.size()) scan.message();
     return scan.names;
 }
 
-void jasperengine::dialogue::lint(const graph::Graph& graph, std::vector<graph::Issue>& issues) {
+void lint(const graph::Graph& graph, std::vector<graph::Issue>& issues) {
     const std::shared_ptr<const LintContext> context = lintContext();
     auto add = [&](graph::Severity severity, const char* code, const std::string& node, const std::string& message, const std::string& port = {},
                    const std::string& edge = {}, const std::string& suggestion = {}) {
@@ -564,3 +565,5 @@ void jasperengine::dialogue::lint(const graph::Graph& graph, std::vector<graph::
         add(Severity::Warning, "no-exit", members.front(), "these nodes loop with no way out (no end, no unconnected output, no option leading out): " + list);
     }
 }
+
+}  // namespace jasperengine::dialogue

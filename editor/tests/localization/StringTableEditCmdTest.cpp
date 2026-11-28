@@ -18,6 +18,8 @@
 #include <filesystem>
 #include <string>
 
+namespace StringTableEditCmdTest_cpp {
+
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 namespace st = jasperengine::editor::l10n;
@@ -143,3 +145,5 @@ TEST(StringTableEditCmd, ExtractToTableIsOneUndoStepOverBothFiles) {
     std::string partial = htmlBefore;
     EXPECT_FALSE(st::extractText(again, partial, "Opt", key, error));
 }
+
+}  // namespace StringTableEditCmdTest_cpp

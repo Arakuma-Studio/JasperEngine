@@ -16,6 +16,8 @@
 #include <map>
 #include <string>
 
+namespace IccSrgbTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -98,3 +100,5 @@ TEST(IccSrgb, BytesArePinned) {
     EXPECT_EQ(sha256Hex(std::string_view(reinterpret_cast<const char*>(srgbIccProfile().data()), srgbIccProfile().size())),
               "a71db53f79e003e66d463712907a1ddfd9e154c514aa1730f1caaee1bd09afda") << "the generated profile changed: if on purpose, pin the new hash";
 }
+
+}  // namespace IccSrgbTest_cpp

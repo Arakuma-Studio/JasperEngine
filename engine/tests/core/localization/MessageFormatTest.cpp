@@ -13,6 +13,8 @@
 #include <random>
 #include <string>
 
+namespace MessageFormatTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::l10n;
 
@@ -175,3 +177,5 @@ TEST(MessageFormat, BadPatternsPrintSourceText) {
         EXPECT_LE(out.size(), pattern.size() * 8 + 64) << pattern;
     }
 }
+
+}  // namespace MessageFormatTest_cpp

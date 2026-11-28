@@ -28,18 +28,17 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::terraincore;
 
 #ifdef JASPERENGINE_PHYSICS_3D
 
 namespace {
 
-    uint64_t chunkKey(TileCoord tile, int chunkX, int chunkZ) {
+    uint64_t chunkKey(terraincore::TileCoord tile, int chunkX, int chunkZ) {
         return (static_cast<uint64_t>(tile.key()) << 32) | (static_cast<uint64_t>(static_cast<uint16_t>(chunkX)) << 16) |
                static_cast<uint16_t>(chunkZ);
     }
 
-    TileCoord tileOfKey(uint64_t key) { return TileCoord::fromKey(static_cast<uint32_t>(key >> 32)); }
+    terraincore::TileCoord tileOfKey(uint64_t key) { return terraincore::TileCoord::fromKey(static_cast<uint32_t>(key >> 32)); }
     int chunkXOfKey(uint64_t key) { return static_cast<int>((key >> 16) & 0xFFFF); }
     int chunkZOfKey(uint64_t key) { return static_cast<int>(key & 0xFFFF); }
 
@@ -122,7 +121,7 @@ std::vector<TerrainWorldColliderRect> TerrainWorldCollision::colliders() const {
     return out;
 }
 
-bool TerrainWorldCollision::fineActive(TileCoord tile) const {
+bool TerrainWorldCollision::fineActive(terraincore::TileCoord tile) const {
     const auto it = impl->wantedByTile.find(tile.key());
     if (it == impl->wantedByTile.end() || it->second.empty()) return runtime.resident(tile) != nullptr;
     for (uint64_t key : it->second) {
@@ -133,11 +132,11 @@ bool TerrainWorldCollision::fineActive(TileCoord tile) const {
 }
 
 bool TerrainWorldCollision::ensureAt(float localX, float localZ) {
-    const WorldLattice& lattice = runtime.lattice();
+    const terraincore::WorldLattice& lattice = runtime.lattice();
     const float size = lattice.tileSize();
-    const TileCoord tile(tileOfLocal(localX, size), tileOfLocal(localZ, size));
+    const terraincore::TileCoord tile(terraincore::tileOfLocal(localX, size), terraincore::tileOfLocal(localZ, size));
     if (!tile.addressable() || !runtime.occupancy().present(tile)) return false;
-    runtime.tiles().demand(tile, TilePriority::Critical);
+    runtime.tiles().demand(tile, terraincore::TilePriority::Critical);
     if (fineActive(tile) && runtime.resident(tile)) return true;
     if (!impl->coarse.count(tile.key())) {
         std::vector<float> samples;
@@ -168,12 +167,12 @@ void TerrainWorldCollision::pump(float collisionRadius, int chunkQuads) {
     }
     const bool applyOnly = collisionRadius < 0.0f;
     impl->clock = Engine::getRealtimeSinceStartup();
-    const WorldLattice& lattice = runtime.lattice();
+    const terraincore::WorldLattice& lattice = runtime.lattice();
     const float size = lattice.tileSize();
     const float maxHeight = runtime.maxHeight();
 
     if (!applyOnly) {
-        const int quads = std::clamp(isPowerOfTwo(chunkQuads) ? chunkQuads : 64, 32, lattice.tileQuads);
+        const int quads = std::clamp(terraincore::isPowerOfTwo(chunkQuads) ? chunkQuads : 64, 32, lattice.tileQuads);
         impl->quads = quads;
         const int chunksPerTile = lattice.tileQuads / quads;
         const float chunkSize = static_cast<float>(quads) * lattice.spacing;
@@ -184,7 +183,7 @@ void TerrainWorldCollision::pump(float collisionRadius, int chunkQuads) {
         std::set<uint32_t> coarseWanted;
         std::map<uint32_t, std::set<uint64_t>> byTile;
         auto wantChunk = [&](int globalChunkX, int globalChunkZ) {
-            const TileCoord tile(floorDiv(globalChunkX, chunksPerTile), floorDiv(globalChunkZ, chunksPerTile));
+            const terraincore::TileCoord tile(terraincore::floorDiv(globalChunkX, chunksPerTile), terraincore::floorDiv(globalChunkZ, chunksPerTile));
             if (!tile.addressable() || !runtime.occupancy().present(tile)) return;
             const int cx = globalChunkX - tile.x * chunksPerTile, cz = globalChunkZ - tile.z * chunksPerTile;
             const uint64_t key = chunkKey(tile, cx, cz);
@@ -211,16 +210,16 @@ void TerrainWorldCollision::pump(float collisionRadius, int chunkQuads) {
         };
         // a subject over a present tile that is not in memory gets the coarse tile at once (R22)
         auto standOn = [&](float x, float z) {
-            const TileCoord tile(tileOfLocal(x, size), tileOfLocal(z, size));
+            const terraincore::TileCoord tile(terraincore::tileOfLocal(x, size), terraincore::tileOfLocal(z, size));
             if (!tile.addressable() || !runtime.occupancy().present(tile)) return;
             if (!runtime.resident(tile)) {
                 coarseWanted.insert(tile.key());
-                runtime.tiles().demand(tile, TilePriority::Critical);
+                runtime.tiles().demand(tile, terraincore::TilePriority::Critical);
             }
         };
 
         // R21: the focuses, at the collision radius
-        for (const StreamFocus& focus : runtime.tiles().focuses()) {
+        for (const terraincore::StreamFocus& focus : runtime.tiles().focuses()) {
             wantCircle(focus.x, focus.z, collisionRadius * focus.radiusScale);
             standOn(focus.x, focus.z);
         }
@@ -234,7 +233,7 @@ void TerrainWorldCollision::pump(float collisionRadius, int chunkQuads) {
         JPH::BodyInterface& bodies = physics->getBodyInterface3D();
         auto nearestFocus = [&](float x, float z) {
             float best = 1.0e30f;
-            for (const StreamFocus& focus : runtime.tiles().focuses()) best = std::min(best, (focus.x - x) * (focus.x - x) + (focus.z - z) * (focus.z - z));
+            for (const terraincore::StreamFocus& focus : runtime.tiles().focuses()) best = std::min(best, (focus.x - x) * (focus.x - x) + (focus.z - z) * (focus.z - z));
             return best;
         };
         auto rigidbodies = scene->getComponentArray<RigidbodyComponent>();
@@ -288,25 +287,25 @@ void TerrainWorldCollision::pump(float collisionRadius, int chunkQuads) {
         // start the wanted chunks whose tile is in memory; at most MAX_CHUNKS_PER_FRAME a pump
         int started = 0;
         for (uint64_t key : wanted) {
-            const TileCoord tile = tileOfKey(key);
+            const terraincore::TileCoord tile = tileOfKey(key);
             Impl::Chunk& chunk = impl->chunks[key];
             chunk.lastWanted = impl->clock;
             const uint32_t revision = runtime.tileRevision(tile);
             if (chunk.building || (chunk.shape && chunk.revision == revision)) continue;
             if (started >= MAX_CHUNKS_PER_FRAME) continue;
-            std::shared_ptr<const WorldTile> data = runtime.resident(tile);
+            std::shared_ptr<const terraincore::WorldTile> data = runtime.resident(tile);
             if (!data) continue;
-            TileNeighbourhood near;
-            std::shared_ptr<const WorldTile> keep[3][3];
+            terraincore::TileNeighbourhood near;
+            std::shared_ptr<const terraincore::WorldTile> keep[3][3];
             for (int dz = -1; dz <= 1; dz++) {
                 for (int dx = -1; dx <= 1; dx++) {
-                    keep[dz + 1][dx + 1] = runtime.resident(TileCoord(tile.x + dx, tile.z + dz));
+                    keep[dz + 1][dx + 1] = runtime.resident(terraincore::TileCoord(tile.x + dx, tile.z + dz));
                     near.tiles[dz + 1][dx + 1] = keep[dz + 1][dx + 1].get();
                 }
             }
             // samples here, from the tiles as they are now; the shape on a job
             auto samples = std::make_shared<std::vector<float>>();
-            worldChunkSamples(near, lattice, maxHeight, quads, chunkXOfKey(key), chunkZOfKey(key), *samples);
+            terraincore::worldChunkSamples(near, lattice, maxHeight, quads, chunkXOfKey(key), chunkZOfKey(key), *samples);
             const int side = quads + 1;
             const float spacing = lattice.spacing;
             chunk.revision = revision;
@@ -327,7 +326,7 @@ void TerrainWorldCollision::pump(float collisionRadius, int chunkQuads) {
         int coarseBuilt = 0;
         for (uint32_t key : coarseWanted) {
             if (impl->coarse.count(key) || coarseBuilt >= MAX_COARSE_PER_FRAME) continue;
-            const TileCoord tile = TileCoord::fromKey(key);
+            const terraincore::TileCoord tile = terraincore::TileCoord::fromKey(key);
             std::vector<float> samples;
             if (!worldCoarseSamples(runtime.getOverview(), maxHeight, tile, samples)) continue;
             Impl::Coarse entry;
@@ -343,7 +342,7 @@ void TerrainWorldCollision::pump(float collisionRadius, int chunkQuads) {
 
         // a coarse tile goes in the same swap as the fine chunks that replace it
         for (auto it = impl->coarse.begin(); it != impl->coarse.end();) {
-            const TileCoord tile = TileCoord::fromKey(it->first);
+            const terraincore::TileCoord tile = terraincore::TileCoord::fromKey(it->first);
             const bool absent = !runtime.occupancy().present(tile);
             const bool replaced = runtime.resident(tile) && fineActive(tile) && !coarseWanted.count(it->first);
             if (absent || replaced) {
@@ -355,7 +354,7 @@ void TerrainWorldCollision::pump(float collisionRadius, int chunkQuads) {
         }
         // chunks nobody wants any more, of a tile gone from memory, or stale past their linger
         for (auto it = impl->chunks.begin(); it != impl->chunks.end();) {
-            const TileCoord tile = tileOfKey(it->first);
+            const terraincore::TileCoord tile = tileOfKey(it->first);
             const bool gone = !runtime.resident(tile);
             const bool idle = impl->clock - it->second.lastWanted > CHUNK_LINGER_SECONDS;
             if ((gone || idle) && !it->second.building) {
@@ -408,19 +407,19 @@ std::vector<TerrainWorldColliderRect> TerrainWorldCollision::colliders() const {
 TerrainWorldCollision::TerrainWorldCollision(TerrainWorldRuntime& runtime): impl(std::make_unique<Impl>()), runtime(runtime) {}
 TerrainWorldCollision::~TerrainWorldCollision() = default;
 void TerrainWorldCollision::clear() {}
-bool TerrainWorldCollision::fineActive(TileCoord tile) const { return runtime.resident(tile) != nullptr; }
+bool TerrainWorldCollision::fineActive(terraincore::TileCoord tile) const { return runtime.resident(tile) != nullptr; }
 bool TerrainWorldCollision::ensureAt(float, float) { return false; }
 void TerrainWorldCollision::pump(float, int) {}
 
 #endif
 
-bool TerrainWorldCollision::chunkSamplesNow(TerrainWorldRuntime& runtime, TileCoord tile, int chunkQuads, int chunkX, int chunkZ, std::vector<float>& out) {
+bool TerrainWorldCollision::chunkSamplesNow(TerrainWorldRuntime& runtime, terraincore::TileCoord tile, int chunkQuads, int chunkX, int chunkZ, std::vector<float>& out) {
     if (!runtime.started() || !runtime.occupancy().present(tile)) return false;
-    TileNeighbourhood near;
-    std::shared_ptr<const WorldTile> keep[3][3];
+    terraincore::TileNeighbourhood near;
+    std::shared_ptr<const terraincore::WorldTile> keep[3][3];
     for (int dz = -1; dz <= 1; dz++) {
         for (int dx = -1; dx <= 1; dx++) {
-            const TileCoord coord(tile.x + dx, tile.z + dz);
+            const terraincore::TileCoord coord(tile.x + dx, tile.z + dz);
             if (!coord.addressable()) continue;
             keep[dz + 1][dx + 1] = runtime.loadNow(coord);
             near.tiles[dz + 1][dx + 1] = keep[dz + 1][dx + 1].get();

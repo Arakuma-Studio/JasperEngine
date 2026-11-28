@@ -24,6 +24,8 @@
 
 #include <string>
 
+namespace GameConfigTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -309,3 +311,5 @@ TEST(GameConfig, ApplySettingsAppliesTheCraftsmanSettings) {
     EXPECT_TRUE(Physics::getQueriesHitTriggers());
     EXPECT_EQ(savegame::settings().backups, savegame::SaveSettings().backups);
 }
+
+}  // namespace GameConfigTest_cpp

@@ -610,35 +610,34 @@ namespace jasperengine::editor::pixelart::aseprite {
 
     namespace {
 
-        using namespace detail;
 
         struct Planned {
-            ChunkRef ref;
+            jasperengine::editor::pixelart::aseprite::detail::ChunkRef ref;
             uint16_t type = 0;
-            const ChunkRecord* original = nullptr;   // the record whose bytes may be reused
+            const jasperengine::editor::pixelart::aseprite::detail::ChunkRecord* original = nullptr;   // the record whose bytes may be reused
         };
 
         // The refs a provenance frame holds, for "the file had this chunk" questions
         class FrameRefs {
         public:
-            explicit FrameRefs(const FrameRecord* frame) {
+            explicit FrameRefs(const jasperengine::editor::pixelart::aseprite::detail::FrameRecord* frame) {
                 if (!frame) return;
-                for (const ChunkRecord& r : frame->chunks) refs.push_back(r.ref);
+                for (const jasperengine::editor::pixelart::aseprite::detail::ChunkRecord& r : frame->chunks) refs.push_back(r.ref);
             }
-            bool has(const ChunkRef& ref) const { return std::find(refs.begin(), refs.end(), ref) != refs.end(); }
+            bool has(const jasperengine::editor::pixelart::aseprite::detail::ChunkRef& ref) const { return std::find(refs.begin(), refs.end(), ref) != refs.end(); }
             std::vector<uint16_t> paletteTypes() const {
                 std::vector<uint16_t> types;
-                for (const ChunkRef& r : refs) {
-                    if (r.kind == ChunkRef::Kind::Palette && std::find(types.begin(), types.end(), static_cast<uint16_t>(r.b)) == types.end()) {
+                for (const jasperengine::editor::pixelart::aseprite::detail::ChunkRef& r : refs) {
+                    if (r.kind == jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Palette && std::find(types.begin(), types.end(), static_cast<uint16_t>(r.b)) == types.end()) {
                         types.push_back(static_cast<uint16_t>(r.b));
                     }
                 }
                 return types;
             }
-            const std::vector<ChunkRef>& all() const { return refs; }
+            const std::vector<jasperengine::editor::pixelart::aseprite::detail::ChunkRef>& all() const { return refs; }
 
         private:
-            std::vector<ChunkRef> refs;
+            std::vector<jasperengine::editor::pixelart::aseprite::detail::ChunkRef> refs;
         };
 
         class Writer {
@@ -649,8 +648,8 @@ namespace jasperengine::editor::pixelart::aseprite {
                 sliceFrame.assign(doc.slices.size(), 0);
                 if (prov) {
                     for (size_t f = 0; f < prov->frames.size(); f++) {
-                        for (const ChunkRecord& r : prov->frames[f].chunks) {
-                            if (r.ref.kind == ChunkRef::Kind::Slice && r.ref.a >= 0 && r.ref.a < static_cast<int>(doc.slices.size())) {
+                        for (const jasperengine::editor::pixelart::aseprite::detail::ChunkRecord& r : prov->frames[f].chunks) {
+                            if (r.ref.kind == jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Slice && r.ref.a >= 0 && r.ref.a < static_cast<int>(doc.slices.size())) {
                                 sliceFrame[static_cast<size_t>(r.ref.a)] = static_cast<int>(f);
                             }
                         }
@@ -668,21 +667,21 @@ namespace jasperengine::editor::pixelart::aseprite {
             const Document& doc;
             CodecError* error;
             const Provenance* prov;
-            HashCache hashes;
+            jasperengine::editor::pixelart::aseprite::detail::HashCache hashes;
             std::vector<int> sliceFrame;
 
-            const FrameRecord* provFrame(int f) const {
+            const jasperengine::editor::pixelart::aseprite::detail::FrameRecord* provFrame(int f) const {
                 return prov && f >= 0 && f < static_cast<int>(prov->frames.size()) ? &prov->frames[static_cast<size_t>(f)] : nullptr;
             }
-            const ChunkRecord* findRecord(const FrameRecord* fr, const ChunkRef& ref) const {
+            const jasperengine::editor::pixelart::aseprite::detail::ChunkRecord* findRecord(const jasperengine::editor::pixelart::aseprite::detail::FrameRecord* fr, const jasperengine::editor::pixelart::aseprite::detail::ChunkRef& ref) const {
                 if (!fr) return nullptr;
-                for (const ChunkRecord& r : fr->chunks) {
+                for (const jasperengine::editor::pixelart::aseprite::detail::ChunkRecord& r : fr->chunks) {
                     if (r.ref == ref) return &r;
                 }
                 return nullptr;
             }
-            bool fingerprintMatches(const ChunkRecord& rec) {
-                return rec.fingerprint != 0 && fingerprintOf(doc, rec.ref, rec.type, hashes) == rec.fingerprint;
+            bool fingerprintMatches(const jasperengine::editor::pixelart::aseprite::detail::ChunkRecord& rec) {
+                return rec.fingerprint != 0 && jasperengine::editor::pixelart::aseprite::detail::fingerprintOf(doc, rec.ref, rec.type, hashes) == rec.fingerprint;
             }
 
             std::vector<Planned> canonical(int frame);
@@ -701,7 +700,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             size_t total = 0;
             for (const std::vector<Planned>& plan : plans) {
                 for (const Planned& p : plan) {
-                    if (p.ref.kind != ChunkRef::Kind::Cel) continue;
+                    if (p.ref.kind != jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Cel) continue;
                     if (p.original && p.original->type == p.type && fingerprintMatches(*p.original)) continue;
                     const Cel* cel = doc.celRecord(p.ref.a, p.ref.b);
                     if (!cel || cel->linkedFrame >= 0 || cel->tilemap || !cel->image || cel->image->empty()) continue;
@@ -727,8 +726,8 @@ namespace jasperengine::editor::pixelart::aseprite {
                     const Cel& cel = *jobs[i].cel;
                     const bool background = doc.layers.size() > static_cast<size_t>(cel.layer) && doc.layers[static_cast<size_t>(cel.layer)].background();
                     std::vector<uint8_t> raw;
-                    if (!imageFileBytes(*cel.image, doc.mode, doc.paletteAt(cel.frame), background ? -1 : doc.transparentIndex, raw, nullptr)) continue;
-                    deflateBytes(raw, jobs[i].out);
+                    if (!jasperengine::editor::pixelart::aseprite::detail::imageFileBytes(*cel.image, doc.mode, doc.paletteAt(cel.frame), background ? -1 : doc.transparentIndex, raw, nullptr)) continue;
+                    jasperengine::editor::pixelart::aseprite::detail::deflateBytes(raw, jobs[i].out);
                 }
             };
             std::vector<std::thread> pool;
@@ -743,80 +742,80 @@ namespace jasperengine::editor::pixelart::aseprite {
         void Writer::paletteChunks(int frame, const FrameRefs& had, std::vector<Planned>& out) {
             const std::vector<PaletteEntry>& palette = doc.paletteAt(frame);
             const bool needed = !palette.empty() && (frame == 0 || doc.paletteChanges.count(frame) > 0);
-            const FrameRecord* fr = provFrame(frame);
+            const jasperengine::editor::pixelart::aseprite::detail::FrameRecord* fr = provFrame(frame);
             std::vector<uint16_t> types;
             for (uint16_t t : had.paletteTypes()) {
-                const ChunkRef ref{ChunkRef::Kind::Palette, frame, t};
-                const ChunkRecord* rec = findRecord(fr, ref);
+                const jasperengine::editor::pixelart::aseprite::detail::ChunkRef ref{jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Palette, frame, t};
+                const jasperengine::editor::pixelart::aseprite::detail::ChunkRecord* rec = findRecord(fr, ref);
                 if (rec && fingerprintMatches(*rec)) {
                     types.push_back(t);
-                } else if (needed && representable(palette, t)) {
+                } else if (needed && jasperengine::editor::pixelart::aseprite::detail::representable(palette, t)) {
                     types.push_back(t);
                 }
             }
-            if (types.empty() && needed) types.push_back(defaultPaletteType(palette));
-            for (uint16_t t : types) out.push_back({{ChunkRef::Kind::Palette, frame, t}, t, nullptr});
+            if (types.empty() && needed) types.push_back(jasperengine::editor::pixelart::aseprite::detail::defaultPaletteType(palette));
+            for (uint16_t t : types) out.push_back({{jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Palette, frame, t}, t, nullptr});
         }
 
         std::vector<Planned> Writer::canonical(int frame) {
             std::vector<Planned> list;
             const FrameRefs had(provFrame(frame));
             const bool fresh = prov == nullptr;
-            auto add = [&](const ChunkRef& ref) { list.push_back({ref, chunkTypeOf(doc, ref), nullptr}); };
-            auto addUserData = [&](const ChunkRef& ref, const UserData& ud) {
+            auto add = [&](const jasperengine::editor::pixelart::aseprite::detail::ChunkRef& ref) { list.push_back({ref, chunkTypeOf(doc, ref), nullptr}); };
+            auto addUserData = [&](const jasperengine::editor::pixelart::aseprite::detail::ChunkRef& ref, const UserData& ud) {
                 if (!ud.empty() || had.has(ref)) add(ref);
             };
             // opaque chunks go after the object they followed in the file
             auto addOpaque = [&](const ChunkAnchor& a) {
                 for (size_t i = 0; i < doc.opaque.size(); i++) {
-                    if (doc.opaque[i].frame == frame && doc.opaque[i].anchor == a) add({ChunkRef::Kind::Opaque, static_cast<int>(i)});
+                    if (doc.opaque[i].frame == frame && doc.opaque[i].anchor == a) add({jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Opaque, static_cast<int>(i)});
                 }
             };
             addOpaque({ChunkAnchor::Kind::FrameStart});
 
             if (frame == 0) {
-                if (!doc.externalFiles.empty()) add({ChunkRef::Kind::ExternalFiles});
-                if (doc.colorProfile) add({ChunkRef::Kind::ColorProfile});
+                if (!doc.externalFiles.empty()) add({jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::ExternalFiles});
+                if (doc.colorProfile) add({jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::ColorProfile});
                 paletteChunks(0, had, list);
                 addOpaque({ChunkAnchor::Kind::Palette});
-                addUserData(userDataRef(UserDataOwner::Sprite), doc.spriteUserData);
+                addUserData(jasperengine::editor::pixelart::aseprite::detail::userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Sprite), doc.spriteUserData);
                 for (int t = 0; t < static_cast<int>(doc.tilesets.size()); t++) {
                     const Tileset& ts = doc.tilesets[static_cast<size_t>(t)];
-                    add({ChunkRef::Kind::Tileset, t});
+                    add({jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Tileset, t});
                     // tile user data follows the tileset's own, in tile order (positional): a
                     // new document writes them all, as Aseprite does; a read one the ones it had
                     // and up to the last tile that has some
                     int lastTile = -1;
                     for (int i = 0; i < ts.tileCount; i++) {
                         const bool nonEmpty = i < static_cast<int>(ts.tileUserData.size()) && !ts.tileUserData[static_cast<size_t>(i)].empty();
-                        if (fresh || nonEmpty || had.has(userDataRef(UserDataOwner::Tile, t, i))) lastTile = i;
+                        if (fresh || nonEmpty || had.has(userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Tile, t, i))) lastTile = i;
                     }
-                    const ChunkRef tsRef = userDataRef(UserDataOwner::Tileset, t);
+                    const jasperengine::editor::pixelart::aseprite::detail::ChunkRef tsRef = jasperengine::editor::pixelart::aseprite::detail::userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Tileset, t);
                     if (fresh || lastTile >= 0 || !ts.userData.empty() || had.has(tsRef)) {
                         add(tsRef);
-                        for (int i = 0; i <= lastTile; i++) add(userDataRef(UserDataOwner::Tile, t, i));
+                        for (int i = 0; i <= lastTile; i++) add(userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Tile, t, i));
                     }
                     addOpaque({ChunkAnchor::Kind::Tileset, t});
                 }
                 if (!doc.tags.empty()) {
-                    add({ChunkRef::Kind::Tags});
+                    add({jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Tags});
                     int lastTag = -1;
                     for (int i = 0; i < static_cast<int>(doc.tags.size()); i++) {
-                        if (fresh || !doc.tags[static_cast<size_t>(i)].userData.empty() || had.has(userDataRef(UserDataOwner::Tag, i))) lastTag = i;
+                        if (fresh || !doc.tags[static_cast<size_t>(i)].userData.empty() || had.has(userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Tag, i))) lastTag = i;
                     }
-                    for (int i = 0; i <= lastTag; i++) add(userDataRef(UserDataOwner::Tag, i));
+                    for (int i = 0; i <= lastTag; i++) add(userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Tag, i));
                     addOpaque({ChunkAnchor::Kind::Tags});
                 }
                 for (int l = 0; l < static_cast<int>(doc.layers.size()); l++) {
-                    add({ChunkRef::Kind::Layer, l});
-                    addUserData(userDataRef(UserDataOwner::Layer, l), doc.layers[static_cast<size_t>(l)].userData);
+                    add({jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Layer, l});
+                    addUserData(userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Layer, l), doc.layers[static_cast<size_t>(l)].userData);
                     addOpaque({ChunkAnchor::Kind::Layer, l});
                 }
                 // slices the file held in one deprecated chunk stay there while they are unchanged
                 std::vector<bool> covered(doc.slices.size(), false);
-                for (const ChunkRef& r : had.all()) {
-                    if (r.kind != ChunkRef::Kind::OldSlices || r.a < 0 || r.a + r.b > static_cast<int>(doc.slices.size())) continue;
-                    const ChunkRecord* rec = findRecord(provFrame(frame), r);
+                for (const jasperengine::editor::pixelart::aseprite::detail::ChunkRef& r : had.all()) {
+                    if (r.kind != jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::OldSlices || r.a < 0 || r.a + r.b > static_cast<int>(doc.slices.size())) continue;
+                    const jasperengine::editor::pixelart::aseprite::detail::ChunkRecord* rec = findRecord(provFrame(frame), r);
                     if (rec && fingerprintMatches(*rec)) {
                         for (int i = r.a; i < r.a + r.b; i++) covered[static_cast<size_t>(i)] = true;
                         add(r);
@@ -824,8 +823,8 @@ namespace jasperengine::editor::pixelart::aseprite {
                 }
                 for (int s = 0; s < static_cast<int>(doc.slices.size()); s++) {
                     if (covered[static_cast<size_t>(s)] || sliceFrame[static_cast<size_t>(s)] != 0) continue;
-                    add({ChunkRef::Kind::Slice, s});
-                    addUserData(userDataRef(UserDataOwner::Slice, s), doc.slices[static_cast<size_t>(s)].userData);
+                    add({jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Slice, s});
+                    addUserData(userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Slice, s), doc.slices[static_cast<size_t>(s)].userData);
                     addOpaque({ChunkAnchor::Kind::Slice, s});
                 }
             } else {
@@ -834,25 +833,25 @@ namespace jasperengine::editor::pixelart::aseprite {
                 addOpaque({ChunkAnchor::Kind::Palette});
                 for (int s = 0; s < static_cast<int>(doc.slices.size()); s++) {
                     if (sliceFrame[static_cast<size_t>(s)] != frame) continue;
-                    add({ChunkRef::Kind::Slice, s});
-                    addUserData(userDataRef(UserDataOwner::Slice, s), doc.slices[static_cast<size_t>(s)].userData);
+                    add({jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Slice, s});
+                    addUserData(jasperengine::editor::pixelart::aseprite::detail::userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Slice, s), doc.slices[static_cast<size_t>(s)].userData);
                     addOpaque({ChunkAnchor::Kind::Slice, s});
                 }
             }
             for (int m = 0; m < static_cast<int>(doc.masks.size()); m++) {
-                if (doc.masks[static_cast<size_t>(m)].frame == frame) add({ChunkRef::Kind::Mask, m});
+                if (doc.masks[static_cast<size_t>(m)].frame == frame) add({jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Mask, m});
             }
             for (const Cel& cel : doc.cels) {
                 if (cel.frame != frame) continue;
-                add({ChunkRef::Kind::Cel, cel.layer, frame});
-                if (cel.extra) add({ChunkRef::Kind::CelExtra, cel.layer, frame});
-                addUserData(userDataRef(UserDataOwner::Cel, cel.layer, frame), cel.userData);
+                add({jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Cel, cel.layer, frame});
+                if (cel.extra) add({jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::CelExtra, cel.layer, frame});
+                addUserData(jasperengine::editor::pixelart::aseprite::detail::userDataRef(jasperengine::editor::pixelart::aseprite::detail::UserDataOwner::Cel, cel.layer, frame), cel.userData);
                 addOpaque({ChunkAnchor::Kind::Cel, cel.layer, frame});
             }
             // opaque chunks whose anchor is gone, and those that followed something else
             for (size_t i = 0; i < doc.opaque.size(); i++) {
                 if (doc.opaque[i].frame != frame) continue;
-                const ChunkRef ref{ChunkRef::Kind::Opaque, static_cast<int>(i)};
+                const jasperengine::editor::pixelart::aseprite::detail::ChunkRef ref{jasperengine::editor::pixelart::aseprite::detail::ChunkRef::Kind::Opaque, static_cast<int>(i)};
                 bool present = false;
                 for (const Planned& p : list) present = present || p.ref == ref;
                 if (!present) add(ref);
@@ -863,11 +862,11 @@ namespace jasperengine::editor::pixelart::aseprite {
         // The file's chunk order for what still exists, the canonical position (after the chunk
         // the canonical order puts before it) for what is new
         std::vector<Planned> Writer::merge(int frame, std::vector<Planned> wanted) {
-            const FrameRecord* fr = provFrame(frame);
+            const jasperengine::editor::pixelart::aseprite::detail::FrameRecord* fr = provFrame(frame);
             if (!fr) return wanted;
             std::vector<Planned> out;
             std::vector<bool> placed(wanted.size(), false);
-            for (const ChunkRecord& rec : fr->chunks) {
+            for (const jasperengine::editor::pixelart::aseprite::detail::ChunkRecord& rec : fr->chunks) {
                 for (size_t i = 0; i < wanted.size(); i++) {
                     if (wanted[i].ref == rec.ref) {
                         Planned p = wanted[i];
@@ -900,7 +899,7 @@ namespace jasperengine::editor::pixelart::aseprite {
 
         bool Writer::writeHeader(std::vector<uint8_t>& out) {
             out.assign(128, 0);
-            const HeaderSnapshot* snap = prov ? &prov->header : nullptr;
+            const jasperengine::editor::pixelart::aseprite::detail::HeaderSnapshot* snap = prov ? &prov->header : nullptr;
             if (prov && prov->bytes && prov->bytes->size() >= 128) {
                 std::copy(prov->bytes->begin(), prov->bytes->begin() + 128, out.begin());
             }
@@ -943,39 +942,39 @@ namespace jasperengine::editor::pixelart::aseprite {
         bool Writer::run(std::vector<uint8_t>& out) {
             // validation the format needs
             if (doc.width < 1 || doc.height < 1 || doc.width > kMaxCanvasSide || doc.height > kMaxCanvasSide) {
-                setError(error, "the canvas is " + std::to_string(doc.width) + "x" + std::to_string(doc.height) + " (1 to 16384 per side)",
+                jasperengine::editor::pixelart::aseprite::detail::setError(error, "the canvas is " + std::to_string(doc.width) + "x" + std::to_string(doc.height) + " (1 to 16384 per side)",
                          "give the sprite a size between 1 and 16384", "size");
                 return false;
             }
             if (doc.frameCount() < 1 || doc.frameCount() > kMaxFrames) {
-                setError(error, "the sprite has " + std::to_string(doc.frameCount()) + " frames (1 to 65535)", "give it at least one frame", "frames");
+                jasperengine::editor::pixelart::aseprite::detail::setError(error, "the sprite has " + std::to_string(doc.frameCount()) + " frames (1 to 65535)", "give it at least one frame", "frames");
                 return false;
             }
             for (const Cel& cel : doc.cels) {
                 if (cel.layer < 0 || cel.layer >= static_cast<int>(doc.layers.size()) || cel.frame < 0 || cel.frame >= doc.frameCount()) {
-                    setError(error, "a cel is on layer " + std::to_string(cel.layer) + ", frame " + std::to_string(cel.frame) + ", which does not exist",
+                    jasperengine::editor::pixelart::aseprite::detail::setError(error, "a cel is on layer " + std::to_string(cel.layer) + ", frame " + std::to_string(cel.frame) + ", which does not exist",
                              "remove the cel or add the layer/frame first", "cels");
                     return false;
                 }
                 const LayerType type = doc.layers[static_cast<size_t>(cel.layer)].type;
                 if (type != LayerType::Image && type != LayerType::Tilemap) {
-                    setError(error, "a cel is on the group layer '" + doc.layers[static_cast<size_t>(cel.layer)].name + "'",
+                    jasperengine::editor::pixelart::aseprite::detail::setError(error, "a cel is on the group layer '" + doc.layers[static_cast<size_t>(cel.layer)].name + "'",
                              "put the cel on an image or tilemap layer", "cels");
                     return false;
                 }
                 const std::string where = " (layer " + std::to_string(cel.layer) + ", frame " + std::to_string(cel.frame) + ")";
                 if (cel.image && (cel.image->width() > 0xffff || cel.image->height() > 0xffff)) {
-                    setError(error, "a cel is larger than 65535 pixels a side" + where, "crop the cel", "cels");
+                    jasperengine::editor::pixelart::aseprite::detail::setError(error, "a cel is larger than 65535 pixels a side" + where, "crop the cel", "cels");
                     return false;
                 }
                 // the file keeps the position in 16 bits
                 if (cel.x < -32768 || cel.x > 32767 || cel.y < -32768 || cel.y > 32767) {
-                    setError(error, "a cel is at " + std::to_string(cel.x) + ", " + std::to_string(cel.y) + where + " (-32768 to 32767)",
+                    jasperengine::editor::pixelart::aseprite::detail::setError(error, "a cel is at " + std::to_string(cel.x) + ", " + std::to_string(cel.y) + where + " (-32768 to 32767)",
                              "move the cel nearer the canvas", "cels");
                     return false;
                 }
                 if (cel.linkedFrame >= 0 && (cel.linkedFrame >= cel.frame || !doc.celRecord(cel.layer, cel.linkedFrame))) {
-                    setError(error, "a cel links to frame " + std::to_string(cel.linkedFrame) + where + ", which has no earlier cel on its layer",
+                    jasperengine::editor::pixelart::aseprite::detail::setError(error, "a cel links to frame " + std::to_string(cel.linkedFrame) + where + ", which has no earlier cel on its layer",
                              "link to an earlier frame's cel", "cels");
                     return false;
                 }
@@ -984,7 +983,7 @@ namespace jasperengine::editor::pixelart::aseprite {
                     if (tm.columns < 0 || tm.rows < 0 || tm.columns > 0xffff || tm.rows > 0xffff ||
                         tm.tiles.size() != static_cast<size_t>(tm.columns) * static_cast<size_t>(tm.rows) ||
                         (tm.bitsPerTile != 8 && tm.bitsPerTile != 16 && tm.bitsPerTile != 32)) {
-                        setError(error, "a tilemap" + where + " is " + std::to_string(tm.columns) + "x" + std::to_string(tm.rows) + " with " +
+                        jasperengine::editor::pixelart::aseprite::detail::setError(error, "a tilemap" + where + " is " + std::to_string(tm.columns) + "x" + std::to_string(tm.rows) + " with " +
                                  std::to_string(tm.tiles.size()) + " tiles at " + std::to_string(tm.bitsPerTile) + " bits",
                                  "give it columns x rows tiles (each side up to 65535) of 8, 16 or 32 bits", "cels");
                         return false;
@@ -1001,7 +1000,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             std::vector<uint8_t> file;
             writeHeader(file);
             for (int f = 0; f < doc.frameCount(); f++) {
-                const FrameRecord* fr = provFrame(f);
+                const jasperengine::editor::pixelart::aseprite::detail::FrameRecord* fr = provFrame(f);
                 std::vector<Planned>& plan = plans[static_cast<size_t>(f)];
                 const uint16_t duration = doc.frameDurations[static_cast<size_t>(f)];
 
@@ -1018,9 +1017,9 @@ namespace jasperengine::editor::pixelart::aseprite {
                         continue;
                     }
                     untouched = false;
-                    if (!encodeBody(doc, p.ref, p.type, hashes, false, bodies[i], error)) {
+                    if (!jasperengine::editor::pixelart::aseprite::detail::encodeBody(doc, p.ref, p.type, hashes, false, bodies[i], error)) {
                         if (error && error->kind.empty()) {
-                            setError(error, "a chunk could not be encoded", "check the document", "");
+                            jasperengine::editor::pixelart::aseprite::detail::setError(error, "a chunk could not be encoded", "check the document", "");
                         }
                         return false;
                     }
@@ -1030,7 +1029,7 @@ namespace jasperengine::editor::pixelart::aseprite {
                                 prov->bytes->begin() + static_cast<std::ptrdiff_t>(fr->offset + fr->size));
                     continue;
                 }
-                Out frame;
+                jasperengine::editor::pixelart::aseprite::detail::Out frame;
                 frame.u32(0);
                 frame.u16(0xF1FA);
                 frame.u16(static_cast<uint32_t>(std::min<size_t>(plan.size(), 0xFFFF)));
@@ -1044,11 +1043,11 @@ namespace jasperengine::editor::pixelart::aseprite {
                 frame.u32(static_cast<uint32_t>(plan.size()));
                 for (size_t i = 0; i < plan.size(); i++) {
                     if (reuse[i]) {
-                        const ChunkRecord* rec = plan[i].original;
+                        const jasperengine::editor::pixelart::aseprite::detail::ChunkRecord* rec = plan[i].original;
                         frame.raw(std::span<const uint8_t>(prov->bytes->data() + rec->offset, rec->size));
                     } else {
                         if (bodies[i].size() > 0xffffffffull - 6) {
-                            setError(error, "a chunk is larger than 4 GiB", "split the sprite", "");
+                            jasperengine::editor::pixelart::aseprite::detail::setError(error, "a chunk is larger than 4 GiB", "split the sprite", "");
                             return false;
                         }
                         frame.u32(static_cast<uint32_t>(bodies[i].size() + 6));
@@ -1064,7 +1063,7 @@ namespace jasperengine::editor::pixelart::aseprite {
                 file.insert(file.end(), prov->bytes->begin() + static_cast<std::ptrdiff_t>(prov->framesEnd), prov->bytes->end());
             }
             if (file.size() > 0xffffffffull) {
-                setError(error, "the file would be larger than 4 GiB", "split the sprite", "");
+                jasperengine::editor::pixelart::aseprite::detail::setError(error, "the file would be larger than 4 GiB", "split the sprite", "");
                 return false;
             }
             // the size field: kept when it still matches (a file whose field disagreed with its length keeps that)

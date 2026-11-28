@@ -34,6 +34,8 @@
 #include <thread>
 #include <vector>
 
+namespace AnimatorPropertyThreadTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::anim;
 using namespace animatortest;
@@ -625,3 +627,5 @@ TEST_F(AnimatorPropertyThread, WaitingRowsAllocateNothing){
     step(kAnimatorPropertyThreadDt, 600);
     EXPECT_EQ(scope.count(), 0u);
 }
+
+}  // namespace AnimatorPropertyThreadTest_cpp

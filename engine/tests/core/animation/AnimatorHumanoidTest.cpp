@@ -33,6 +33,8 @@
 #include <string>
 #include <vector>
 
+namespace AnimatorHumanoidTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::anim;
 using namespace animatortest;
@@ -424,3 +426,5 @@ TEST_F(AnimatorHumanoid, StateMirrorOnTheModelsOwnClip){
     const Difference d = compare(a, b, legs);
     EXPECT_LT(d.degrees, 0.05) << d.bone;
 }
+
+}  // namespace AnimatorHumanoidTest_cpp

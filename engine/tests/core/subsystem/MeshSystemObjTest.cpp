@@ -19,6 +19,8 @@
 #include <fstream>
 #include <set>
 
+namespace MeshSystemObjTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 namespace fs = std::filesystem;
@@ -50,3 +52,5 @@ TEST(MeshSystemObjTest, MtlWindowsPaths){
     EXPECT_EQ(log.count(D_LOG_WARN, "tex\\b.png"), 1u);
     fs::remove_all(dir);
 }
+
+}  // namespace MeshSystemObjTest_cpp

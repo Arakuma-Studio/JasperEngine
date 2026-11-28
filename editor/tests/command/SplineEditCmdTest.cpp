@@ -27,6 +27,8 @@
 #include <filesystem>
 #include <memory>
 
+namespace SplineEditCmdTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -207,3 +209,5 @@ TEST_F(SplineEditCmdTest, EveryPresetBuildsItsComponents){
         }
     }
 }
+
+}  // namespace SplineEditCmdTest_cpp

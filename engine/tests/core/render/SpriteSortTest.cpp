@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+namespace SpriteSortTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -316,3 +318,5 @@ TEST(SpriteSortQueue, GroupsAndItemsAloneAreOneStrictOrder){
     // priority 0 first: the group (10 m) before Y (8 m), its members by their own layer; X last
     EXPECT_EQ(order, (std::vector<uint32_t>{3, 2, 1, 0}));
 }
+
+}  // namespace SpriteSortTest_cpp

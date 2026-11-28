@@ -12,6 +12,8 @@
 #include <cmath>
 #include <vector>
 
+namespace FoliageCullTest_cpp {
+
 using namespace jasperengine::terraincore;
 
 namespace {
@@ -392,3 +394,5 @@ TEST(FoliageSettings, TierTableMatchesTheSpec) {
     EXPECT_EQ(high.maxDraws, 1200u);
     EXPECT_TRUE(high.impostorBlend);
 }
+
+}  // namespace FoliageCullTest_cpp

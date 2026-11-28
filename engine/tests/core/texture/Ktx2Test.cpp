@@ -18,6 +18,8 @@
 #include <utility>
 #include <vector>
 
+namespace Ktx2Test_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -356,3 +358,5 @@ TEST(Ktx2, WritesUastcFilesTheReaderRecognises){
     EXPECT_EQ(dfd[4 + 24 + 3], 6);
     EXPECT_EQ(dfd[4 + 16], 0);      // bytesPlane0: supercompressed
 }
+
+}  // namespace Ktx2Test_cpp

@@ -21,6 +21,8 @@
 #include <iterator>
 #include <thread>
 
+namespace AsyncModelLoadTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -120,3 +122,5 @@ TEST(AsyncModelLoad, ALoadAGameObjectWaitsForIsNeverCollected){
     EXPECT_EQ(component.loadedFilename, MeshSystem::getModelFilenameKey(file));
     EXPECT_FALSE(buildOpen("waited_model.gltf"));
 }
+
+}  // namespace AsyncModelLoadTest_cpp

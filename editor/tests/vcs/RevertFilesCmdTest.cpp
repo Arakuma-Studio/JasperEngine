@@ -14,6 +14,8 @@
 #include "command/type/RevertFilesCmd.h"
 #include "vcs/VcsEditorOps.h"
 
+namespace RevertFilesCmdTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -156,3 +158,5 @@ TEST_F(RevertFilesTest, NewFilesAndFailuresPushNothing) {
     EXPECT_EQ(project->getProjectCommandHistory()->entries().size(), steps);
     EXPECT_TRUE(fs::exists(dir / "assets/new.png"));
 }
+
+}  // namespace RevertFilesCmdTest_cpp

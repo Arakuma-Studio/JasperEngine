@@ -20,6 +20,8 @@
 #include <utility>
 #include <vector>
 
+namespace AudioMeterTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -851,3 +853,5 @@ TEST(AudioMeter, SilenceAfterSignalIsSilence) {
     const std::vector<float> curve = meter.momentaryCurve();
     EXPECT_EQ(curve.back(), (float)AudioMeter::SILENCE_DB);
 }
+
+}  // namespace AudioMeterTest_cpp

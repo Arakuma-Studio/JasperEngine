@@ -22,6 +22,8 @@
 
 #include <atomic>
 
+namespace PhysicsRayThreadsTest_cpp {
+
 using namespace jasperengine;
 
 TEST(PhysicsRayThreads, RaysFromJobsShareNothingOutsideTheStep){
@@ -54,5 +56,7 @@ TEST(PhysicsRayThreads, RaysFromJobsShareNothingOutsideTheStep){
     }, jobs::ParallelForOptions{.grain = 16});
     EXPECT_EQ(hits.load(), rays);
 }
+
+}  // namespace PhysicsRayThreadsTest_cpp
 
 #endif // JASPERENGINE_PHYSICS_3D

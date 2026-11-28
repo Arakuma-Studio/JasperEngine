@@ -10,10 +10,11 @@
 
 #include <stdexcept>
 
+namespace hlsl_bytecode_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
-namespace hlsl_bytecode_test {
 
     ShaderData hlslData(const std::string& vertexSource) {
         ShaderData data;
@@ -33,6 +34,8 @@ namespace hlsl_bytecode_test {
     }
 
 }
+
+namespace hlsl_bytecode_test {
 
 using namespace hlsl_bytecode_test;
 
@@ -61,3 +64,5 @@ TEST(HlslBytecode, OtherHostsKeepTheSource) {
     }
 }
 #endif
+
+}  // namespace hlsl_bytecode_test

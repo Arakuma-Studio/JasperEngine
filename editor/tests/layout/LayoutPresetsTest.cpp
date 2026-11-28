@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+namespace LayoutPresetsTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace {
@@ -123,3 +125,5 @@ TEST(LayoutPresets, NamesAndSlugs) {
     EXPECT_EQ(LayoutPresets::slug("  Animation: wide (2) "), "animation-wide-2");
     EXPECT_EQ(LayoutPresets::slug("***"), "layout");
 }
+
+}  // namespace LayoutPresetsTest_cpp

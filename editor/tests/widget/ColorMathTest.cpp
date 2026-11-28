@@ -10,6 +10,8 @@
 #include <cmath>
 #include <cstring>
 
+namespace ColorMathTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -104,3 +106,5 @@ TEST(ColorMath, ModelEdits) {
     hdr.setIntensity(40.0f);
     EXPECT_FLOAT_EQ(hdr.intensity(), colormath::kMaxIntensity);
 }
+
+}  // namespace ColorMathTest_cpp

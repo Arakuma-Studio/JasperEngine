@@ -14,6 +14,8 @@
 #include <cmath>
 #include <memory>
 
+namespace TitleAnimPlayerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleanim;
 
@@ -400,3 +402,5 @@ TEST(TitleAnimDataIOTest, LenientDropsWithJsonPath){
     // unknown members are kept and written back
     EXPECT_EQ(encodeMarker(set.animations[0].markers[0]).value("x", 0), 1);
 }
+
+}  // namespace TitleAnimPlayerTest_cpp

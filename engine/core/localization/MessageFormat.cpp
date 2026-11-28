@@ -9,7 +9,8 @@
 #include <cstdlib>
 
 using namespace jasperengine;
-using namespace jasperengine::l10n;
+
+namespace jasperengine::l10n {
 
 namespace {
 
@@ -390,3 +391,5 @@ size_t MessageFormat::column(std::string_view pattern, size_t offset) {
     }
     return column;
 }
+
+}  // namespace jasperengine::l10n

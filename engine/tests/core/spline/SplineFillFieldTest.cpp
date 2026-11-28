@@ -20,6 +20,8 @@
 #include <functional>
 #include <vector>
 
+namespace SplineFillFieldTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 using namespace jasperengine::spline::geometrytest;
@@ -893,3 +895,5 @@ TEST(SplineFillFieldTests, AThreeHundredMetreRiverOnA1025GridFillsWithinItsBudge
         EXPECT_LE(ms, 25.0 * testsupport::perfSlack());
     }
 }
+
+}  // namespace SplineFillFieldTest_cpp

@@ -26,6 +26,8 @@
 
 #include <vector>
 
+namespace VoxelPhysicsTest_cpp {
+
 using namespace jasperengine;
 using namespace voxeltest;
 
@@ -519,3 +521,5 @@ TEST_F(VoxelPhysicsSlow, TunnellingRedControlNoRescue) {
     const TunnelResult result = throwBodies("mem://tunnelred", false);
     EXPECT_GT(result.lost, 0);
 }
+
+}  // namespace VoxelPhysicsTest_cpp

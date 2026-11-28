@@ -37,10 +37,11 @@
 #include <string>
 #include <vector>
 
+namespace lit_light_records_gpu_test {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
-namespace lit_light_records_gpu_test {
 
     // glcore against its own goldens: exact; another backend: the cross-backend bound
     CompareOptions litRecordsOptions(){
@@ -91,6 +92,8 @@ namespace lit_light_records_gpu_test {
     };
 
 }
+
+namespace lit_light_records_gpu_test {
 
 using namespace lit_light_records_gpu_test;
 
@@ -267,3 +270,5 @@ TEST_F(LitLightRecordsGpu, LightStepsBandThe2DLightsOfTheRecords){
     EXPECT_GT(brighter, (size_t)(width * height) / 100) << "the steps did not reach the records' 2D light";
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace lit_light_records_gpu_test

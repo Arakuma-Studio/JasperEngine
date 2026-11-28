@@ -35,7 +35,6 @@ namespace jasperengine{
 }
 
 using namespace jasperengine;
-using namespace jasperengine::htmlui::compat;
 
 namespace {
 
@@ -53,8 +52,8 @@ namespace {
     }
 
     // a diagnostic of one of the injected sheets (their sources are "injected:<name>" or their files)
-    bool isInjectedDiagnostic(const Diagnostic& diagnostic, const std::vector<InjectedStyleSheet>& sheets){
-        for (const InjectedStyleSheet& sheet : sheets){
+    bool isInjectedDiagnostic(const htmlui::compat::Diagnostic& diagnostic, const std::vector<htmlui::compat::InjectedStyleSheet>& sheets){
+        for (const htmlui::compat::InjectedStyleSheet& sheet : sheets){
             if (diagnostic.file == (sheet.path.empty() ? "injected:" + sheet.name : sheet.path))
                 return true;
         }
@@ -118,11 +117,11 @@ bool UIDocumentSystem::getStyleSheet(Entity entity, uint64_t id, bool* enabled, 
 
 void UIDocumentSystem::applyStyleSheets(Entity entity){
     Rml::ElementDocument* document = getDocument(entity);
-    std::shared_ptr<const CompatDocument> compiled = DocumentLoader::compiledOf(document);
+    std::shared_ptr<const htmlui::compat::CompatDocument> compiled = htmlui::compat::DocumentLoader::compiledOf(document);
     if (!compiled)
         return;   // not loaded yet (compatDocumentLoaded applies them), or an .rml document
 
-    CompatOptions options = compiled->options;
+    htmlui::compat::CompatOptions options = compiled->options;
     options.injectedSheets.clear();
     if (styleSheetState){
         auto it = styleSheetState->sheets.find(entity);
@@ -136,17 +135,17 @@ void UIDocumentSystem::applyStyleSheets(Entity entity){
     if (options.injectedSheets == compiled->options.injectedSheets)
         return;
 
-    std::shared_ptr<const CompatDocument> fresh = DocumentLoader::restyleWith(document, compiled, options);
+    std::shared_ptr<const htmlui::compat::CompatDocument> fresh = htmlui::compat::DocumentLoader::restyleWith(document, compiled, options);
     if (fresh == compiled)
         return;   // the document's own file does not compile any more: it keeps its sheets
     // the injected sheets' own problems reach the Console as the document's did at its load
-    std::vector<Diagnostic> own;
-    for (const Diagnostic& diagnostic : fresh->diagnostics){
+    std::vector<htmlui::compat::Diagnostic> own;
+    for (const htmlui::compat::Diagnostic& diagnostic : fresh->diagnostics){
         if (isInjectedDiagnostic(diagnostic, options.injectedSheets))
             own.push_back(diagnostic);
     }
     if (!own.empty())
-        logDiagnostics(fresh->sourcePath, own, options.verboseDiagnostics);
+        htmlui::compat::logDiagnostics(fresh->sourcePath, own, options.verboseDiagnostics);
 }
 
 void UIDocumentSystem::styleSheetsComponentRemoved(Entity entity){

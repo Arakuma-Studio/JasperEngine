@@ -7,6 +7,8 @@
 
 #include <limits>
 
+namespace Vector4Test_cpp {
+
 using namespace jasperengine;
 
 TEST(Vector4, ConstantsAndConstructors){
@@ -63,3 +65,5 @@ TEST(Vector4, MoveTowardsAndLerp){
     EXPECT_EQ(from.lerp(to, 2.0f), to);
     EXPECT_EQ(from.lerpUnclamped(to, -1.0f), Vector4(-2, -2, -2, -2));
 }
+
+}  // namespace Vector4Test_cpp

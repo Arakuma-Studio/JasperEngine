@@ -43,6 +43,8 @@
 #include <memory>
 #include <string>
 
+namespace PlayerModelLayoutTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -450,3 +452,5 @@ TEST_F(PlayerModelLayoutTest, TheLayoutSwitchCarriesWeightsOnlyForTheTargetsThey
     EXPECT_FLOAT_EQ(rebuilt->morphWeights[1], 0.5f) << "the target past the count: the file's default";
     ASSERT_TRUE(history(sceneId)->undo());
 }
+
+}  // namespace PlayerModelLayoutTest_cpp

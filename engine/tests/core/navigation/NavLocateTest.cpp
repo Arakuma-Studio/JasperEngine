@@ -8,6 +8,8 @@
 
 #include <cmath>
 
+namespace NavLocateTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 
@@ -66,3 +68,5 @@ TEST_F(NavLocateTest, CoverageOfPlane){
     EXPECT_EQ(nav->getCoverage(other).islandCount, 0);
     EXPECT_TRUE(nav->getIslands(other).empty());
 }
+
+}  // namespace NavLocateTest_cpp

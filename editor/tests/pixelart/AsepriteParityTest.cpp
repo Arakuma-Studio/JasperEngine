@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace AsepriteParityTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::aseprite;
 using namespace jasperengine::editor::pixelart::testing;
@@ -175,3 +177,5 @@ TEST(AsepriteParityTest, DescribeEqualsAsepritesData) {
     }
     EXPECT_GE(files, 50);
 }
+
+}  // namespace AsepriteParityTest_cpp

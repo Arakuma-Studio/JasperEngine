@@ -23,6 +23,8 @@
 #include <sstream>
 #include <thread>
 
+namespace TerrainWorldImportJobTest_cpp {
+
 using namespace terrainprojecttest;
 using namespace jasperengine::terraincore;
 
@@ -207,3 +209,5 @@ TEST_F(TerrainWorldImportJobTest, EditDuringTheJobRefusesTheSwap) {
     EXPECT_EQ(history()->position(), steps);
     EXPECT_EQ(importFolderFiles(folder), edited);
 }
+
+}  // namespace TerrainWorldImportJobTest_cpp

@@ -15,7 +15,8 @@
 #include <string>
 
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::mcp;
+
+namespace jasperengine::editor::mcp {
 
 namespace {
 
@@ -314,3 +315,5 @@ void McpActivityWindow::drawCalls() {
     }
     ImGui::EndTable();
 }
+
+}  // namespace jasperengine::editor::mcp

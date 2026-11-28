@@ -27,6 +27,8 @@ namespace jasperengine {
 
 }
 
+namespace EngineFrameGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -80,3 +82,5 @@ TEST(EngineFrameGpu, ViewRestoreClampsDelta){
     ASSERT_GE(delta, 0.0);
     EXPECT_LE(delta, updateTime + 1e-9);
 }
+
+}  // namespace EngineFrameGpuTest_cpp

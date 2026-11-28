@@ -15,6 +15,8 @@
 
 #include <gtest/gtest.h>
 
+namespace Light2DStepsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -173,3 +175,5 @@ TEST(Light2DAmbient, LitVariantsAndANeutralAmbientAreUnchanged){
     both.ambient2D = true;
     EXPECT_EQ(propertiesOf(both, spriteInputs()), propertiesOf(lights2D, spriteInputs()));
 }
+
+}  // namespace Light2DStepsTest_cpp

@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PlayerConfigCrashTest_cpp {
+
 using namespace jasperengine::player;
 
 TEST(PlayerConfigCrash, JournalRoundTrips) {
@@ -37,3 +39,5 @@ TEST(PlayerConfigCrash, OlderGameJsonGetsTheDefaultJournal) {
     EXPECT_EQ(back.crashJournalBytes, 32 << 10);
     EXPECT_TRUE(back.crashJournalEngineEvents);
 }
+
+}  // namespace PlayerConfigCrashTest_cpp

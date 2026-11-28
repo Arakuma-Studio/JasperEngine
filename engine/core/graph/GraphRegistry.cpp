@@ -7,7 +7,7 @@
 #include <cctype>
 #include <cstdio>
 
-using namespace jasperengine::graph;
+namespace jasperengine::graph {
 
 GraphRegistry& GraphRegistry::get(){
     static GraphRegistry* registry = new GraphRegistry();
@@ -92,7 +92,7 @@ namespace {
 
 }
 
-Json jasperengine::graph::toJson(const NodeTypeDesc& type){
+Json toJson(const NodeTypeDesc& type){
     Json out = {{"id", type.id}, {"category", type.category}, {"display_name", type.displayName}};
     Json ports = Json::array();
     for (const Port& port : type.ports) ports.push_back(portJson(port));
@@ -110,7 +110,7 @@ Json jasperengine::graph::toJson(const NodeTypeDesc& type){
     return out;
 }
 
-Json jasperengine::graph::toJson(const GraphKindDesc& kind){
+Json toJson(const GraphKindDesc& kind){
     Json out = {{"id", kind.id}, {"display_name", kind.displayName}, {"file_extension", kind.fileExtension},
                 {"kind_version", kind.kindVersion}, {"acyclic", kind.acyclic}, {"node_types", kind.nodeTypes.size()}};
     if (kind.strictParams) out["strict_params"] = true;
@@ -123,3 +123,5 @@ Json jasperengine::graph::toJson(const GraphKindDesc& kind){
     out["port_types"] = std::move(portTypes);
     return out;
 }
+
+}  // namespace jasperengine::graph

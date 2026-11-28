@@ -19,6 +19,8 @@
 
 #include <memory>
 
+namespace NavigationOverlayTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -252,3 +254,5 @@ TEST(NavigationOverlay, IslandsGreyFromStart){
     EXPECT_EQ(overlay.getStartIsland(world.surface), -1);
     EXPECT_EQ(overlay.getTriangleCount(), drawn.triangleAreas.size());
 }
+
+}  // namespace NavigationOverlayTest_cpp

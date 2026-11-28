@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+namespace TextEffectGradientTest_cpp {
+
 using namespace jasperengine;
 
 TEST(TextEffectGradient, EmptyAndSingleStopHaveConstantColors){
@@ -49,3 +51,5 @@ TEST(TextEffectGradient, SortedSamplingAllocatesNothing){
     }
     EXPECT_EQ(last, gradient.back().color);
 }
+
+}  // namespace TextEffectGradientTest_cpp

@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PoseIKContinuityTest_cpp {
+
 using namespace posetest;
 using H = HumanBone;
 
@@ -145,3 +147,5 @@ TEST(PoseIKContinuity, TargetSweptAcrossTheBendNormal){
         }
     }
 }
+
+}  // namespace PoseIKContinuityTest_cpp

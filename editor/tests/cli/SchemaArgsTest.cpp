@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+namespace SchemaArgsTest_cpp {
+
 using namespace jasperengine::editor::cli;
 namespace schema = jasperengine::editor::mcp::schema;
 
@@ -310,3 +312,5 @@ TEST(SchemaValidate, EveryRegisteredToolSchema) {
         }
     }
 }
+
+}  // namespace SchemaArgsTest_cpp

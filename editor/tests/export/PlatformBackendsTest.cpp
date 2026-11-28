@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+namespace PlatformBackendsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -35,3 +37,5 @@ TEST(PlatformBackends, HostDesktopBackendsAreTheHostPlatformsPreset) {
     const std::set<ShaderBackend> preset = sourceExportBackends(hostBuildPlatform());
     for (ShaderBackend backend : host) EXPECT_TRUE(preset.count(backend)) << static_cast<int>(backend);
 }
+
+}  // namespace PlatformBackendsTest_cpp

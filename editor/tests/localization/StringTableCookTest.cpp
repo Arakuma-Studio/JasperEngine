@@ -22,6 +22,8 @@
 #include <filesystem>
 #include <string>
 
+namespace StringTableCookTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -178,3 +180,5 @@ TEST(StringTableCook, CheckStringsReportsTablesAndKeys) {
     EXPECT_EQ(codes(check, "L10N-BAD-MESSAGE").size(), 1u);
     for (const ProjectChecks::Finding& f : check.findings) EXPECT_EQ(f.tool, "strings");
 }
+
+}  // namespace StringTableCookTest_cpp

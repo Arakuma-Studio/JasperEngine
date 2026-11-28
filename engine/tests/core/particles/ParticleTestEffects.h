@@ -74,7 +74,7 @@ namespace particletest {
         d.seed = 99;
         d.scalingMode = ScalingMode::Shape;
         d.simulationSpeed = 1.5f;
-        d.cullingMode = CullingMode::AlwaysSimulate;
+        d.cullingMode = particles::CullingMode::AlwaysSimulate;
         d.boundsMode = BoundsMode::Authored;
         d.boundsCenter = Vector3(1.0f, 2.0f, 3.0f);
         d.boundsSize = Vector3(4.0f, 5.0f, 6.0f);
@@ -345,7 +345,7 @@ namespace particletest {
         glow.name = "glowScale";
         glow.value = Vector4(2.0f, 0.0f, 0.0f, 0.0f);
         d.renderer.shaderProperties = {glow};
-        ShaderTexture noiseTex;
+        particles::ShaderTexture noiseTex;
         noiseTex.name = "u_erosionTexture";
         noiseTex.path = "textures/noise.png";
         d.renderer.shaderTextures = {noiseTex};

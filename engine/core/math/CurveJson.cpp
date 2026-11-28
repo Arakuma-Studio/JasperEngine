@@ -11,7 +11,8 @@
 #include <cstdlib>
 
 using namespace jasperengine;
-using namespace jasperengine::curvejson;
+
+namespace jasperengine::curvejson {
 
 namespace {
 
@@ -177,7 +178,7 @@ namespace {
 
 }
 
-double curvejson::jsonFloat(float value){
+double jsonFloat(float value){
     if (!std::isfinite(value))
         return 0.0;
     char text[32];
@@ -190,14 +191,14 @@ double curvejson::jsonFloat(float value){
     return (double)value;
 }
 
-const char* curvejson::tangentModeName(CurveTangentMode mode){
+const char* tangentModeName(CurveTangentMode mode){
     for (const ModeName& m : kTangentModes){
         if (m.mode == mode) return m.name;
     }
     return "free";
 }
 
-bool curvejson::tangentModeFromName(const std::string& name, CurveTangentMode& mode){
+bool tangentModeFromName(const std::string& name, CurveTangentMode& mode){
     for (const ModeName& m : kTangentModes){
         if (name == m.name){
             mode = m.mode;
@@ -207,14 +208,14 @@ bool curvejson::tangentModeFromName(const std::string& name, CurveTangentMode& m
     return false;
 }
 
-const char* curvejson::wrapModeName(CurveWrapMode mode){
+const char* wrapModeName(CurveWrapMode mode){
     for (const WrapName& w : kWrapModes){
         if (w.mode == mode) return w.name;
     }
     return "clamp";
 }
 
-bool curvejson::wrapModeFromName(const std::string& name, CurveWrapMode& mode){
+bool wrapModeFromName(const std::string& name, CurveWrapMode& mode){
     for (const WrapName& w : kWrapModes){
         if (name == w.name){
             mode = w.mode;
@@ -224,7 +225,7 @@ bool curvejson::wrapModeFromName(const std::string& name, CurveWrapMode& mode){
     return false;
 }
 
-std::string curvejson::modeToken(uint8_t mode){
+std::string modeToken(uint8_t mode){
     if (mode == 0)
         return std::string();
     CurveKey key;
@@ -237,7 +238,7 @@ std::string curvejson::modeToken(uint8_t mode){
     return token;
 }
 
-bool curvejson::modeFromToken(const std::string& token, uint8_t& mode){
+bool modeFromToken(const std::string& token, uint8_t& mode){
     CurveKey key;
     CurveTangentMode single;
     if (tangentModeFromName(token, single)){
@@ -273,7 +274,7 @@ bool curvejson::modeFromToken(const std::string& token, uint8_t& mode){
     return true;
 }
 
-Json curvejson::curveToJson(const Curve& curve){
+Json curveToJson(const Curve& curve){
     Json keys = Json::array();
     for (const CurveKey& k : curve.keys){
         Json key = Json::array({jf(k.time), jf(k.value), jtangent(k.inTangent), jtangent(k.outTangent)});
@@ -292,7 +293,7 @@ Json curvejson::curveToJson(const Curve& curve){
     return j;
 }
 
-bool curvejson::curveFromJson(const Json& j, Curve& curve, std::vector<Issue>& issues){
+bool curveFromJson(const Json& j, Curve& curve, std::vector<Issue>& issues){
     curve = Curve();
     // upstream's (lines and trails) number: a constant curve
     if (j.is_number()){
@@ -343,7 +344,7 @@ bool curvejson::curveFromJson(const Json& j, Curve& curve, std::vector<Issue>& i
     return ok;
 }
 
-bool curvejson::isUpstreamCurve(const Json& j){
+bool isUpstreamCurve(const Json& j){
     if (j.is_number())
         return true;
     const Json* keys = &j;
@@ -366,7 +367,7 @@ bool curvejson::isUpstreamCurve(const Json& j){
     return false;
 }
 
-Json curvejson::gradientToJson(const Gradient& g){
+Json gradientToJson(const Gradient& g){
     Json j = Json::object();
     Json colors = Json::array();
     for (const GradientColorKey& k : g.colorKeys){
@@ -487,11 +488,11 @@ namespace {
 
 }
 
-bool curvejson::isUpstreamGradient(const Json& j){
+bool isUpstreamGradient(const Json& j){
     return j.is_string() || j.is_array() || (j.is_object() && (j.contains("colors") || j.contains("alphas")));
 }
 
-bool curvejson::gradientFromJson(const Json& j, Gradient& g, std::vector<Issue>& issues){
+bool gradientFromJson(const Json& j, Gradient& g, std::vector<Issue>& issues){
     if (isUpstreamGradient(j))
         return upstreamGradientFromJson(j, g, issues);
     if (!j.is_object()){
@@ -536,3 +537,5 @@ bool curvejson::gradientFromJson(const Json& j, Gradient& g, std::vector<Issue>&
     }
     return ok;
 }
+
+}  // namespace jasperengine::curvejson

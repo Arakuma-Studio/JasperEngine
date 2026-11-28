@@ -41,6 +41,8 @@
 #include <string>
 #include <vector>
 
+namespace SceneIntegrityTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -528,3 +530,5 @@ TEST_F(SceneIntegrityTest, ADestroyedProjectFreesItsScenes) {
     std::sort(host.deleted.begin(), host.deleted.end());
     EXPECT_EQ(host.deleted, loaded) << "each loaded scene's Scene and SceneRender go with the Project";
 }
+
+}  // namespace SceneIntegrityTest_cpp

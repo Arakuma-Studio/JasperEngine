@@ -19,6 +19,8 @@
 #include <utility>
 #include <vector>
 
+namespace PixelParticlesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::particles;
 
@@ -80,3 +82,5 @@ TEST(PixelParticles, ForgetDropsTheScenesEmitters){
     PixelParticles::forget(&scene);
     EXPECT_EQ(PixelParticles::emitterOf(&scene, kEmbers), NULL_ENTITY);
 }
+
+}  // namespace PixelParticlesTest_cpp

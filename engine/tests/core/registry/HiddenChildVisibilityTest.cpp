@@ -17,6 +17,8 @@
 
 #include <vector>
 
+namespace HiddenChildVisibilityTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -143,3 +145,5 @@ TEST(HiddenChildVisibilityTest, SetVisibleStillCascades) {
     EXPECT_TRUE(visible(scene, f.child)) << "showing a hidden parent shows its children (the documented cascade)";
     EXPECT_TRUE(visible(scene, f.grandchild));
 }
+
+}  // namespace HiddenChildVisibilityTest_cpp

@@ -6,6 +6,8 @@
 
 #include "SpriteDrawTestSupport.h"
 
+namespace GridCodecTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
 using jasperengine::editor::pixelart::s47test::json;
@@ -137,3 +139,5 @@ TEST(GridCodec, UsedListsOnlyTheRegionsIndices) {
     EXPECT_EQ(grid.colors.size(), 1u);
     EXPECT_TRUE(grid.colors.contains("3"));
 }
+
+}  // namespace GridCodecTest_cpp

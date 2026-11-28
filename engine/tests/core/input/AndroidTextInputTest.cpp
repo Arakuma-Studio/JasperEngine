@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+namespace AndroidTextInputTest_cpp {
+
 using namespace jasperengine::android;
 
 namespace {
@@ -178,3 +180,5 @@ TEST(AndroidTextInput, EditorInfoCacheIsPerActivity) {
     ImeEditorInfoCache recreated;
     EXPECT_TRUE(recreated.changes(text)) << "a recreated activity never got the field's EditorInfo";
 }
+
+}  // namespace AndroidTextInputTest_cpp

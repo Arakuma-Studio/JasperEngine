@@ -27,6 +27,8 @@
 #include <cstdio>
 #include <filesystem>
 
+namespace ProceduralEvaluatorGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::procmat;
 using namespace jasperengine::editor::procmat::test;
@@ -460,3 +462,5 @@ TEST(ProceduralEvaluatorGpu, AValueEditInsideAnIterationStartsItOver) {
     ASSERT_TRUE(result.ok) << result.error;
     EXPECT_NEAR(result.outputs[0].rgba[0], 102, 1) << "two iterations of + 0.2 from the start, not on top of the last result";
 }
+
+}  // namespace ProceduralEvaluatorGpuTest_cpp

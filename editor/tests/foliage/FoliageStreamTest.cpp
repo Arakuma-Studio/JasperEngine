@@ -17,6 +17,8 @@
 #include <filesystem>
 #include <string>
 
+namespace FoliageStreamTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -136,3 +138,5 @@ TEST(TerrainSettingsStream, PlaceInstancedKeepsItsMeaning) {
     EXPECT_TRUE(settings.placeInstanced);
     EXPECT_FALSE(settings.placeAsTree);
 }
+
+}  // namespace FoliageStreamTest_cpp

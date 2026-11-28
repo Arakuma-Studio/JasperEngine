@@ -25,7 +25,6 @@
 #include <vector>
 
 using namespace jasperengine;
-using namespace jasperengine::camera;
 
 namespace{
 
@@ -414,41 +413,41 @@ bool CameraControlSystem::updateLateFollowers(){
 
 // ---------------------------------------------------------------- shakers
 
-ShakerRuntime& CameraControlSystem::ensureRuntime(CameraShakerComponent& shaker){
+camera::ShakerRuntime& CameraControlSystem::ensureRuntime(CameraShakerComponent& shaker){
     if (!shaker.runtime){
-        shaker.runtime = std::make_shared<ShakerRuntime>();
+        shaker.runtime = std::make_shared<camera::ShakerRuntime>();
     }
     return *shaker.runtime;
 }
 
-uint64_t CameraControlSystem::play(Entity entity, CameraShakerComponent& shaker, const ShakePreset& preset,
+uint64_t CameraControlSystem::play(Entity entity, CameraShakerComponent& shaker, const camera::ShakePreset& preset,
                                    const std::string& name, const ShakeOptions& options, float scale){
     if (!(scale > 0.0f)) return 0;
-    ShakerRuntime& runtime = ensureRuntime(shaker);
+    camera::ShakerRuntime& runtime = ensureRuntime(shaker);
 
-    ShakePreset clean = preset;
-    sanitizeShakePreset(clean);
-    ShakeInstance instance(clean, options.hasSeed ? options.seed : randomShakeSeed());
+    camera::ShakePreset clean = preset;
+    camera::sanitizeShakePreset(clean);
+    camera::ShakeInstance instance(clean, options.hasSeed ? options.seed : camera::randomShakeSeed());
     instance.setFadeTimes(options.fadeIn, options.fadeOut);
     instance.strengthScale = sanitizeScale(options.strength) * scale;
     instance.roughnessScale = sanitizeScale(options.roughness) * scale;
 
     // the cap: the oldest one-shot goes (else the oldest), with a warning once
-    if (runtime.instances.size() >= MAX_SHAKE_INSTANCES){
-        auto victim = std::find_if(runtime.instances.begin(), runtime.instances.end(), [](const ShakerInstanceEntry& entry){
-            return entry.instance.getPreset().type != ShakeType::Sustained;
+    if (runtime.instances.size() >= camera::MAX_SHAKE_INSTANCES){
+        auto victim = std::find_if(runtime.instances.begin(), runtime.instances.end(), [](const camera::ShakerInstanceEntry& entry){
+            return entry.instance.getPreset().type != camera::ShakeType::Sustained;
         });
         if (victim == runtime.instances.end()) victim = runtime.instances.begin();
         runtime.instances.erase(victim);
         if (!runtime.warnedCap){
             runtime.warnedCap = true;
             Log::warn("Camera Shaker on '%s': more than %zu shakes at once, the oldest goes", scene->getEntityName(entity).c_str(),
-                      MAX_SHAKE_INSTANCES);
+                      camera::MAX_SHAKE_INSTANCES);
         }
     }
 
-    ShakerInstanceEntry entry;
-    entry.id = ShakerRuntime::nextInstanceId();
+    camera::ShakerInstanceEntry entry;
+    entry.id = camera::ShakerRuntime::nextInstanceId();
     entry.presetName = name;
     entry.instance = instance;
     entry.unscaled = options.unscaled;
@@ -458,7 +457,7 @@ uint64_t CameraControlSystem::play(Entity entity, CameraShakerComponent& shaker,
 
 void CameraControlSystem::stopAll(CameraShakerComponent& shaker, float fade){
     if (!shaker.runtime) return;
-    for (ShakerInstanceEntry& entry : shaker.runtime->instances){
+    for (camera::ShakerInstanceEntry& entry : shaker.runtime->instances){
         entry.instance.stop(fade);
     }
 }
@@ -484,7 +483,7 @@ float CameraControlSystem::distanceScale(Entity entity, const CameraShakerCompon
     return std::max(0.0f, 1.0f - d.length() / radius);
 }
 
-void CameraControlSystem::restoreTransformBase(Entity entity, ShakerRuntime& runtime){
+void CameraControlSystem::restoreTransformBase(Entity entity, camera::ShakerRuntime& runtime){
     if (!runtime.transformActive) return;
     runtime.transformActive = false;
     runtime.baseRestored = false;
@@ -504,7 +503,7 @@ void CameraControlSystem::restoreTransformBase(Entity entity, ShakerRuntime& run
     transform->needUpdate = true;
 }
 
-void CameraControlSystem::applyTransformOffset(Entity entity, ShakerRuntime& runtime, const Vector3& position, const Vector3& rotation){
+void CameraControlSystem::applyTransformOffset(Entity entity, camera::ShakerRuntime& runtime, const Vector3& position, const Vector3& rotation){
     Transform* transform = scene->findComponent<Transform>(entity);
     if (!transform) return;
     RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
@@ -548,7 +547,7 @@ void CameraControlSystem::applyTransformOffset(Entity entity, ShakerRuntime& run
         transform->position = runtime.basePosition + position;
         runtime.writtenPosition = transform->position;
     }
-    transform->rotation = runtime.baseRotation * shakeEulerToQuaternion(rotation);
+    transform->rotation = runtime.baseRotation * camera::shakeEulerToQuaternion(rotation);
     runtime.writtenRotation = transform->rotation;
     transform->needUpdate = true;
 
@@ -557,8 +556,8 @@ void CameraControlSystem::applyTransformOffset(Entity entity, ShakerRuntime& run
     runtime.applied = true;
 }
 
-void CameraControlSystem::applyOffset(Entity entity, const CameraShakerComponent& shaker, ShakerRuntime& runtime,
-                                      const ShakeOffset& raw){
+void CameraControlSystem::applyOffset(Entity entity, const CameraShakerComponent& shaker, camera::ShakerRuntime& runtime,
+                                      const camera::ShakeOffset& raw){
     CameraComponent* camera = scene->findComponent<CameraComponent>(entity);
     Vector3 position = raw.position;
     Vector3 rotation = raw.rotation;
@@ -622,7 +621,7 @@ void CameraControlSystem::applyOffset(Entity entity, const CameraShakerComponent
     }
     camera->hasViewOffset = true;
     camera->viewOffsetPosition = position;
-    camera->viewOffsetRotation = shakeEulerToQuaternion(rotation);
+    camera->viewOffsetRotation = camera::shakeEulerToQuaternion(rotation);
     // a 2D view rolls about its centre, a 3D one about the eye
     if (is2D(entity, shaker) && isOrthographic(*camera)){
         camera->viewOffsetPivot = Vector3((camera->leftClip + camera->rightClip) * 0.5f, (camera->bottomClip + camera->topClip) * 0.5f, 0.0f);
@@ -653,7 +652,7 @@ float CameraControlSystem::pixelWorldSize(Entity entity, const CameraComponent* 
     return 1.0f / (float)std::max(1, Engine::getPixelsPerUnit());
 }
 
-void CameraControlSystem::clearOffset(Entity entity, ShakerRuntime& runtime){
+void CameraControlSystem::clearOffset(Entity entity, camera::ShakerRuntime& runtime){
     if (CameraComponent* camera = scene->findComponent<CameraComponent>(entity)){
         if (camera->hasViewOffset){
             camera->hasViewOffset = false;
@@ -666,11 +665,11 @@ void CameraControlSystem::clearOffset(Entity entity, ShakerRuntime& runtime){
     runtime.applied = false;
 }
 
-void CameraControlSystem::stepShaker(Entity entity, const CameraShakerComponent& shaker, ShakerRuntime& runtime,
+void CameraControlSystem::stepShaker(Entity entity, const CameraShakerComponent& shaker, camera::ShakerRuntime& runtime,
                                      float scaledDt, float unscaledDt){
     // a hit-stop freezes the scaled shakes of this shaker, unless it is Hit Stop Exempt (S48)
     scaledDt = (float)pixelart::HitStop::deltaFor(scene, entity, scaledDt);
-    ShakeOffset raw;
+    camera::ShakeOffset raw;
     bool anyUnscaled = shaker.unscaledTime;
     for (auto it = runtime.instances.begin(); it != runtime.instances.end();){
         const bool unscaled = it->unscaled < 0 ? shaker.unscaledTime : it->unscaled > 0;
@@ -720,13 +719,13 @@ void CameraControlSystem::updateShakers(float scaledDt, float unscaledDt){
             continue;
         }
 
-        ShakerRuntime& runtime = ensureRuntime(shaker);
+        camera::ShakerRuntime& runtime = ensureRuntime(shaker);
         if (!runtime.wasActive){
             runtime.wasActive = true;
             // Unity's OnEnable: the start preset plays on each enable, unless the one it started
             // still plays (it held while disabled): a disable and an enable never pile it up
             if (!shaker.startPreset.empty() && !runtime.findInstance(runtime.startInstanceId)){
-                ShakePreset preset;
+                camera::ShakePreset preset;
                 if (CameraShake::resolveSource(ShakeSource(shaker.startPreset), preset)){
                     runtime.startInstanceId = play(entity, shaker, preset, shaker.startPreset, ShakeOptions());
                 }
@@ -806,7 +805,7 @@ void CameraControlSystem::preUpdate(){
     for (size_t i = 0; i < shakers->size(); i++){
         CameraShakerComponent& shaker = shakers->getComponentFromIndex(i);
         if (!shaker.runtime || !shaker.runtime->transformActive) continue;
-        ShakerRuntime& runtime = *shaker.runtime;
+        camera::ShakerRuntime& runtime = *shaker.runtime;
         const Entity entity = shakers->getEntity(i);
         Transform* transform = scene->findComponent<Transform>(entity);
         if (!transform) continue;
@@ -837,19 +836,19 @@ bool CameraControlSystem::beginPreview(Entity entity){
     const CameraShakerComponent* shaker = scene->findComponent<CameraShakerComponent>(entity);
     previewSettings = shaker ? *shaker : CameraShakerComponent();
     previewSettings.runtime.reset();
-    if (!previewRuntime) previewRuntime = std::make_shared<ShakerRuntime>();
+    if (!previewRuntime) previewRuntime = std::make_shared<camera::ShakerRuntime>();
     return true;
 }
 
-bool CameraControlSystem::previewShake(Entity entity, const ShakePreset& preset, const std::string& name){
+bool CameraControlSystem::previewShake(Entity entity, const camera::ShakePreset& preset, const std::string& name){
     if (!beginPreview(entity)) return false;
-    ShakePreset clean = preset;
-    sanitizeShakePreset(clean);
-    ShakerInstanceEntry entry;
-    entry.id = ShakerRuntime::nextInstanceId();
+    camera::ShakePreset clean = preset;
+    camera::sanitizeShakePreset(clean);
+    camera::ShakerInstanceEntry entry;
+    entry.id = camera::ShakerRuntime::nextInstanceId();
     entry.presetName = name;
-    entry.instance = ShakeInstance(clean, randomShakeSeed());
-    if (previewRuntime->instances.size() >= MAX_SHAKE_INSTANCES){
+    entry.instance = camera::ShakeInstance(clean, camera::randomShakeSeed());
+    if (previewRuntime->instances.size() >= camera::MAX_SHAKE_INSTANCES){
         previewRuntime->instances.erase(previewRuntime->instances.begin());
     }
     previewRuntime->instances.push_back(std::move(entry));
@@ -864,7 +863,7 @@ bool CameraControlSystem::previewAddTrauma(Entity entity, float amount){
 
 void CameraControlSystem::previewStop(float fade){
     if (!previewRuntime) return;
-    for (ShakerInstanceEntry& entry : previewRuntime->instances) entry.instance.stop(fade);
+    for (camera::ShakerInstanceEntry& entry : previewRuntime->instances) entry.instance.stop(fade);
     previewRuntime->trauma.trauma = 0.0f;
 }
 
@@ -884,7 +883,7 @@ Entity CameraControlSystem::getPreviewEntity() const{
     return previewEntity;
 }
 
-const ShakerRuntime* CameraControlSystem::getPreviewRuntime() const{
+const camera::ShakerRuntime* CameraControlSystem::getPreviewRuntime() const{
     return previewRuntime.get();
 }
 
@@ -902,7 +901,7 @@ void CameraControlSystem::updatePreview(float dt){
         previewSettings.runtime.reset();
     }
     // every preview shake runs on the editor's clock (edit mode has no time scale)
-    for (ShakerInstanceEntry& entry : previewRuntime->instances) entry.unscaled = 1;
+    for (camera::ShakerInstanceEntry& entry : previewRuntime->instances) entry.unscaled = 1;
     previewSettings.unscaledTime = true;
     stepShaker(previewEntity, previewSettings, *previewRuntime, dt, dt);
 }

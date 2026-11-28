@@ -7,6 +7,8 @@
 
 #include "command/type/VoxelEditCmd.h"
 
+namespace VoxelEditCmdTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::voxeltest;
@@ -109,3 +111,5 @@ TEST_F(VoxelEditCmdTest, NoDeltaNoStep) {
     EXPECT_TRUE(history->entries().empty());
     EXPECT_FALSE(sceneProject->isModified);
 }
+
+}  // namespace VoxelEditCmdTest_cpp

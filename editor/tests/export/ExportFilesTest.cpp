@@ -13,6 +13,8 @@
 
 #include <system_error>
 
+namespace ExportFilesTest_cpp {
+
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
 namespace fs = std::filesystem;
@@ -205,3 +207,5 @@ TEST(ExportFiles, ExportFolderFinderFindsFilesOfEarlierExports) {
     EXPECT_FALSE(finder.contains(dir / "art/tree.png"));
     EXPECT_FALSE(finder.contains(dir.path().parent_path() / "elsewhere.png"));
 }
+
+}  // namespace ExportFilesTest_cpp

@@ -13,6 +13,8 @@
 #include <fstream>
 #include "support/PosixCompat.h"
 
+namespace GameViewResolutionTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -113,3 +115,5 @@ TEST(GameViewResolution, WorkspaceKeepsTheCustomOnes) {
     EXPECT_TRUE(workspace.getCustomResolutions().empty());
     fs::remove_all(project);
 }
+
+}  // namespace GameViewResolutionTest_cpp

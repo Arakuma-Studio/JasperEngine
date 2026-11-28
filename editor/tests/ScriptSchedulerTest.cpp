@@ -39,6 +39,8 @@
 #include "log/Logger.h"
 #include "support/EditorTestSupport.h"
 
+namespace ScriptSchedulerTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -82,7 +84,9 @@ namespace {
             Scheduler::game().clear();
             LuaBinding::clearLoadedProjectModules();
             scene = std::make_unique<Scene>();
-            ASSERT_EQ(run("TestLog = {}; BaseFrame = Engine.frameCount\n"
+            // (the engine's Log table comes back in TearDown: the engine Lua state outlives the test,
+            // and LogListenerTest's scripts call Log.warn)
+            ASSERT_EQ(run("TestLog = {}; BaseFrame = Engine.frameCount; EngineLog = Log\n"
                           "function F() return Time.frameCount - BaseFrame end\n"
                           "function Log(s) TestLog[#TestLog + 1] = tostring(s) end"), "");
         }
@@ -100,7 +104,7 @@ namespace {
             Engine::setFixedDeltatime(0.0);
             Engine::setTimeScale(1.0f);
             Engine::setUpdateTime(1.0f / 60.0f);
-            run("TestLog = nil; Kept = nil; collectgarbage('collect')");
+            run("TestLog = nil; Kept = nil; if EngineLog then Log = EngineLog end; EngineLog = nil; collectgarbage('collect')");
             ::jasperengine::Logger::flush();   // nothing is delivered to the capture after it goes
             jasperengine::SystemTestAccess::swap(swapped);
             ScriptDataTest::TearDown();
@@ -1571,3 +1575,5 @@ TEST_F(CoroutineTest, WaitForAGlobalTimerAndOwnedTimersEndWithTheScript) {
     EXPECT_EQ(log(), "");
     EXPECT_EQ(luaTimersPending(), 0u);
 }
+
+}  // namespace ScriptSchedulerTest_cpp

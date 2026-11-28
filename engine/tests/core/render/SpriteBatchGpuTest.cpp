@@ -49,6 +49,8 @@
 #include <string>
 #include <vector>
 
+namespace SpriteBatchGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -968,3 +970,5 @@ TEST_F(SpriteBatchGpu, FlipXBatchedMatchesUnbatched){
     expectSameImage(0, 2);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace SpriteBatchGpuTest_cpp

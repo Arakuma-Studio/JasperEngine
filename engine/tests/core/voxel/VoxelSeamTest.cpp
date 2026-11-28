@@ -11,6 +11,8 @@
 #include <map>
 #include <tuple>
 
+namespace VoxelSeamTest_cpp {
+
 using namespace voxeltest;
 
 namespace {
@@ -173,3 +175,5 @@ TEST(VoxelSeam, AuditCatchesACrack) {
     raw.erase(raw.begin() + 1);
     EXPECT_FALSE(auditWatertight(raw).watertight);
 }
+
+}  // namespace VoxelSeamTest_cpp

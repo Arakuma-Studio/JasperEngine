@@ -20,32 +20,31 @@
 #include <utility>
 
 using namespace jasperengine;
-using namespace jasperengine::terraincore;
 
 namespace {
 
     // T1 R49: below this many tiles a stroke's commit packs them on the main thread
     constexpr size_t PARALLEL_DELTA_TILES = 32;
 
-    TexelRect deltaTileRect(int x, int y, const TexelRect& bounds) {
-        return intersect(TexelRect{x, y, OverlayMapStore::TILE_SIZE, OverlayMapStore::TILE_SIZE}, bounds);
+    terraincore::TexelRect deltaTileRect(int x, int y, const terraincore::TexelRect& bounds) {
+        return terraincore::intersect(terraincore::TexelRect{x, y, terraincore::OverlayMapStore::TILE_SIZE, terraincore::OverlayMapStore::TILE_SIZE}, bounds);
     }
 
 }
 
-editor::TerrainMapDeltaCmd::TerrainMapDeltaCmd(Project* project, uint32_t sceneId, Entity entity, Entity nameEntity, const OverlayMapStore& overlay,
-                                               bool alreadyApplied, std::string verb, const std::vector<MapId>& skipMaps)
+editor::TerrainMapDeltaCmd::TerrainMapDeltaCmd(Project* project, uint32_t sceneId, Entity entity, Entity nameEntity, const terraincore::OverlayMapStore& overlay,
+                                               bool alreadyApplied, std::string verb, const std::vector<terraincore::MapId>& skipMaps)
     : project(project), sceneId(sceneId), entity(entity), nameEntity(nameEntity), verb(std::move(verb)), applied(alreadyApplied) {
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
     TerrainComponent* terrain = sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<TerrainComponent>(entity) : nullptr;
 
     // each tile's XOR, packed on the workers; the steps are put together in the overlay's order, so
     // the stored bytes do not depend on the thread count
-    std::vector<OverlayMapStore::TileView> views = overlay.tileViews();
-    std::erase_if(views, [&](const OverlayMapStore::TileView& view) { return std::find(skipMaps.begin(), skipMaps.end(), view.map) != skipMaps.end(); });
+    std::vector<terraincore::OverlayMapStore::TileView> views = overlay.tileViews();
+    std::erase_if(views, [&](const terraincore::OverlayMapStore::TileView& view) { return std::find(skipMaps.begin(), skipMaps.end(), view.map) != skipMaps.end(); });
     std::vector<std::vector<uint8_t>> packed(views.size());
     auto pack = [&](size_t index) {
-        const OverlayMapStore::TileView& view = views[index];
+        const terraincore::OverlayMapStore::TileView& view = views[index];
         thread_local std::vector<uint8_t> xored;
         xored.resize(view.before.size());
         bool changed = false;
@@ -64,11 +63,11 @@ editor::TerrainMapDeltaCmd::TerrainMapDeltaCmd(Project* project, uint32_t sceneI
     for (size_t index = 0; index < views.size(); index++) {
         // an empty pack is an unchanged tile: a changed one packs to at least one byte
         if (packed[index].empty()) continue;
-        const MapId map = views[index].map;
+        const terraincore::MapId map = views[index].map;
         if (maps.empty() || maps.back().map != map) {
             MapDelta delta;
             delta.map = map;
-            const MapFormat format = overlay.format(map);
+            const terraincore::MapFormat format = overlay.format(map);
             delta.bounds = format.bounds;
             delta.channels = format.channels;
             if (Texture* texture = terrain ? terrainMapTexture(*terrain, map) : nullptr) {
@@ -90,11 +89,11 @@ editor::TerrainMapDeltaCmd::TerrainMapDeltaCmd(Project* project, uint32_t sceneI
     }
 }
 
-void editor::TerrainMapDeltaCmd::addUndoHook(std::shared_ptr<TerrainStoreUndoHook> hook) {
+void editor::TerrainMapDeltaCmd::addUndoHook(std::shared_ptr<terraincore::TerrainStoreUndoHook> hook) {
     if (hook) undoHooks.push_back(std::move(hook));
 }
 
-void editor::TerrainMapDeltaCmd::addLargeEdit(std::shared_ptr<TerrainLargeEdit> edit) {
+void editor::TerrainMapDeltaCmd::addLargeEdit(std::shared_ptr<terraincore::TerrainLargeEdit> edit) {
     if (edit) largeEdits.push_back(std::move(edit));
 }
 
@@ -146,7 +145,7 @@ void editor::TerrainMapDeltaCmd::applyXor(bool makesTiles) {
         const int stride = terrain->world ? bytesPerTexel(store.format(delta.map))
                                           : delta.channels * TextureData::getBytesPerChannel(delta.colorFormat);
         for (const Tile& tile : delta.tiles) {
-            const TexelRect rect = deltaTileRect(tile.x, tile.y, delta.bounds);
+            const terraincore::TexelRect rect = deltaTileRect(tile.x, tile.y, delta.bounds);
             const size_t bytes = static_cast<size_t>(rect.area()) * stride;
             xored.resize(bytes);
             current.resize(bytes);
@@ -212,8 +211,8 @@ std::vector<editor::Command::Touched> editor::TerrainMapDeltaCmd::touchedPaths(b
 std::string editor::TerrainMapDeltaCmd::describe() const {
     std::string action = verb;
     if (action.empty()) {
-        const MapKind kind = maps.empty() ? MapKind::Height : maps.front().map.kind;
-        action = kind == MapKind::Blend ? "Paint Terrain" : (kind == MapKind::Density ? "Paint Details" : "Sculpt Terrain");
+        const terraincore::MapKind kind = maps.empty() ? terraincore::MapKind::Height : maps.front().map.kind;
+        action = kind == terraincore::MapKind::Blend ? "Paint Terrain" : (kind == terraincore::MapKind::Density ? "Paint Details" : "Sculpt Terrain");
     }
     return action + " (" + CommandNames::entity(project, sceneId, nameEntity) + ")";
 }

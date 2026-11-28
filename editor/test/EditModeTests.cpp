@@ -24,7 +24,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::gametests;
+
+namespace jasperengine::editor::gametests {
+
 using gametest::Json;
 namespace fs = std::filesystem;
 
@@ -166,7 +168,7 @@ namespace {
 
 }
 
-std::vector<gametest::CaseResult> gametests::runEditModeCases(const std::shared_ptr<mcp::McpCall>& parent, Project* project, const fs::path& root,
+std::vector<gametest::CaseResult> runEditModeCases(const std::shared_ptr<mcp::McpCall>& parent, Project* project, const fs::path& root,
                                                               const gametest::Settings& settings, const gametest::Target& target,
                                                               const std::vector<gametest::CaseSpec>& cases) {
     std::vector<gametest::CaseResult> results;
@@ -234,3 +236,5 @@ std::vector<gametest::CaseResult> gametests::runEditModeCases(const std::shared_
     }
     return results;
 }
+
+}  // namespace jasperengine::editor::gametests

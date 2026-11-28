@@ -11,7 +11,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::mcp;
+
+namespace jasperengine::editor::mcp {
 
 namespace {
 
@@ -48,7 +49,7 @@ namespace {
 
 }
 
-Json jasperengine::editor::mcp::dialogJson(const EditorDialogInfo& info) {
+Json dialogJson(const EditorDialogInfo& info) {
     Json dialog = {{"kind", info.kind}, {"title", info.title}, {"message", info.message}, {"choices", info.choices}};
     if (!info.disabledChoices.empty()) dialog["disabled_choices"] = info.disabledChoices;
     if (!info.fields.empty()) {
@@ -66,7 +67,7 @@ Json jasperengine::editor::mcp::dialogJson(const EditorDialogInfo& info) {
     return dialog;
 }
 
-std::string jasperengine::editor::mcp::dialogBlockMessage(const EditorDialogInfo& info) {
+std::string dialogBlockMessage(const EditorDialogInfo& info) {
     std::string text = "The editor is showing the dialog \"" + info.title + "\"";
     if (!info.message.empty()) text += " (" + info.message + ")";
     if (!info.choices.empty() || !info.disabledChoices.empty() || !info.fields.empty()) {
@@ -85,7 +86,7 @@ std::string jasperengine::editor::mcp::dialogBlockMessage(const EditorDialogInfo
     return text + ".";
 }
 
-bool jasperengine::editor::mcp::answerFilePicker(const Json& args, std::string& error) {
+bool answerFilePicker(const Json& args, std::string& error) {
     const std::string choice = args.value("choice", "");
     if (choice == "cancel") return EditorFilePicker::cancel(error);
     if (!choice.empty() && choice != "ok") {
@@ -118,7 +119,7 @@ bool jasperengine::editor::mcp::answerFilePicker(const Json& args, std::string& 
     return EditorFilePicker::answer(paths, error);
 }
 
-void jasperengine::editor::mcp::reportDialogAnswer(const CallPtr& call, const std::string& title, const std::string& choice) {
+void reportDialogAnswer(const CallPtr& call, const std::string& title, const std::string& choice) {
     App& app = call->ctx().app();
     std::string problem = EditorModal::takeAnswerError();
     Json data = {{"answered", {{"title", title}, {"choice", choice}}}};
@@ -145,7 +146,7 @@ void jasperengine::editor::mcp::reportDialogAnswer(const CallPtr& call, const st
     call->ok(text, data);
 }
 
-void jasperengine::editor::mcp::respondDialogTool(const CallPtr& call) {
+void respondDialogTool(const CallPtr& call) {
     const Json& args = call->args();
     App& app = call->ctx().app();
     const std::string choice = args.value("choice", "");
@@ -188,3 +189,5 @@ void jasperengine::editor::mcp::respondDialogTool(const CallPtr& call) {
         call->afterFrames(2, report);
     });
 }
+
+}  // namespace jasperengine::editor::mcp

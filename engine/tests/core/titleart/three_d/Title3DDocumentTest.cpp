@@ -16,6 +16,8 @@
 #include "titleart/three_d/TitleMeshFile.h"
 #include "titleart/three_d/TitleTierFeatures.h"
 
+namespace Title3DDocumentTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::three_d;
@@ -281,3 +283,5 @@ TEST(TitleRigTest, TiltsAndMaterialsNeverRebuildGeometry) {
     mesher.build(title3DDocumentRequestOf(title3DDocumentDocOf(deeper), assets));
     EXPECT_EQ(mesher.meshBuilds(), 2u);
 }
+
+}  // namespace Title3DDocumentTest_cpp

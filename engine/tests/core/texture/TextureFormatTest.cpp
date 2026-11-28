@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+namespace TextureFormatTest_cpp {
+
 using namespace jasperengine;
 
 TEST(TextureFormat, LevelBytesRoundBlocksUp){
@@ -71,3 +73,5 @@ TEST(TextureFormat, InfoMatchesTheFormats){
     EXPECT_EQ(gpuFormatInfo(GpuTextureFormat::EAC_RG11).channels, 2);
     EXPECT_FALSE(gpuFormatInfo(GpuTextureFormat::R16).compressed);
 }
+
+}  // namespace TextureFormatTest_cpp

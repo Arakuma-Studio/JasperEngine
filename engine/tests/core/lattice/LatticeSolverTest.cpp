@@ -7,6 +7,8 @@
 
 #include "LatticeTestCommon.h"
 
+namespace LatticeSolverTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -796,3 +798,5 @@ TEST(LatticeSolver, FoldedCellDetection){
     jiggling.dynamicOffsets[size_t(lattice::pointIndex(3, 3, 1, 1, 1))] = Vector3(-0.6f, 0, 0);
     EXPECT_EQ(lattice::findFoldedCells(jiggling), expected);
 }
+
+}  // namespace LatticeSolverTest_cpp

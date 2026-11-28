@@ -55,6 +55,8 @@
 #include <map>
 #include <memory>
 
+namespace TitleArtEffectsGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::test;
@@ -731,3 +733,5 @@ TEST_F(TitleArtParityGpu, PatternFillPresets) {
         expectParity((std::string("generator/patternFill-") + name).c_str(), toRgba8(out));
     }
 }
+
+}  // namespace TitleArtEffectsGpuTest_cpp

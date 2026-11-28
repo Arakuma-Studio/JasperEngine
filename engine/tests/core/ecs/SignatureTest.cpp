@@ -16,6 +16,8 @@
 #include <utility>
 #include <vector>
 
+namespace SignatureTest_cpp {
+
 using namespace jasperengine;
 
 TEST(SignatureTest, HighAndLowBits){
@@ -142,3 +144,5 @@ TEST(SignatureTest, TwoHundredFiftySeventhTypeFailsCleanly){
     // the ids did not wrap: the first type keeps bit 0
     EXPECT_EQ(manager.getComponentId<SignatureMarker<0>>(), (ComponentId)0);
 }
+
+}  // namespace SignatureTest_cpp

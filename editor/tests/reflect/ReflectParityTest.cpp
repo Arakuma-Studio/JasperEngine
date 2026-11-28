@@ -68,12 +68,13 @@
 #include <sstream>
 #include <string>
 
+namespace reflect_parity_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
 // (a named namespace, tests included: a unity build merges the test sources)
-namespace reflect_parity_test {
 
     constexpr int kSamples = 500;
     // the samples a golden file keeps in full (the rest, in its digest only)

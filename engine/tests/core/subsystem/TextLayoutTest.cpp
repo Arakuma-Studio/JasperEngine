@@ -26,6 +26,8 @@
 #include <string>
 #include <vector>
 
+namespace subsystem_TextLayoutTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -201,3 +203,5 @@ TEST(TextLayoutTest, EmSizeMatchesCss){
     // two scales, two atlases
     EXPECT_NE(emText.stbtext, pixel.component().stbtext);
 }
+
+}  // namespace subsystem_TextLayoutTest_cpp

@@ -8,6 +8,8 @@
 #include "Project.h"
 #include "command/CommandHandle.h"
 
+namespace VersionControlMetadataTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -222,3 +224,5 @@ TEST(VersionControlMetadata, OlderEditorsFileKeepsOnlyTheUsersLines) {
     EXPECT_EQ(vcsMetadataOccurrences(attributes, "*.blend binary"), 1u) << attributes;
     EXPECT_GT(attributes.find("*.blend binary"), attributes.find("End of the JasperEngine Editor's lines")) << attributes;
 }
+
+}  // namespace VersionControlMetadataTest_cpp

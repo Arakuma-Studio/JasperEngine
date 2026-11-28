@@ -16,6 +16,8 @@
 #include <chrono>
 #include <cstdio>
 
+namespace SearchSlowTest_cpp {
+
 using namespace jasperengine::editor;
 using jasperengine::editor::test::FakeAssetIndex;
 
@@ -133,3 +135,5 @@ TEST(SearchEngineSlow, TwentyThousandEntries) {
     std::printf("[ bench ] asset: scope over 20000 assets: %.2f ms (snapshot included)\n", millisecondsSince(start));
     EXPECT_FALSE(assets.empty());
 }
+
+}  // namespace SearchSlowTest_cpp

@@ -8,6 +8,8 @@
 #include <set>
 #include <string>
 
+namespace UniqueTokenTest_cpp {
+
 using namespace jasperengine;
 
 TEST(UniqueToken, GetNeverRepeats){
@@ -16,3 +18,5 @@ TEST(UniqueToken, GetNeverRepeats){
         tokens.insert(UniqueToken::get());
     EXPECT_EQ(tokens.size(), 1000u);
 }
+
+}  // namespace UniqueTokenTest_cpp

@@ -18,11 +18,12 @@
 #include <filesystem>
 #include <memory>
 
+namespace sound_drop_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
-namespace sound_drop_test {
 
     class SoundDropTest : public ::testing::Test {
     protected:
@@ -68,6 +69,8 @@ namespace sound_drop_test {
 
 }
 
+namespace sound_drop_test {
+
 using namespace sound_drop_test;
 
 TEST_F(SoundDropTest, ATwoDDropIsAGameObjectAtBlendZero){
@@ -97,3 +100,5 @@ TEST_F(SoundDropTest, AThreeDDropIsAtBlendOneWhereItLands){
     EXPECT_EQ(transform->position, Vector3(1, 2, 3));
     EXPECT_FLOAT_EQ(scene->scene->getComponent<AudioSourceComponent>(entity).spatialBlend, 1.0f);
 }
+
+}  // namespace sound_drop_test

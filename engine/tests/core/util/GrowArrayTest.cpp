@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+namespace GrowArrayTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -136,3 +138,5 @@ TEST(StableArray, ResizeFreesThePastElements) {
     array.clear();
     EXPECT_EQ(array.stored(), 0u);
 }
+
+}  // namespace GrowArrayTest_cpp

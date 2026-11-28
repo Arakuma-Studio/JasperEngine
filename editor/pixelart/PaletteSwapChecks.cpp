@@ -96,12 +96,11 @@ namespace {
 }
 }
 
-using namespace jasperengine::editor::pixelart::paletteswapchecks;
 
 namespace jasperengine::editor::pixelart {
 
 bool paletteSwapEnabled(const Material& material, const std::string& shader) {
-    const std::string reference = effectiveShader(material, shader);
+    const std::string reference = jasperengine::editor::pixelart::paletteswapchecks::effectiveShader(material, shader);
     std::shared_ptr<const ShaderManifest> manifest = reference.empty() ? nullptr : ShaderManifests::get(reference);
     if (!manifest || !manifest->present || manifest->palettes.empty()) return false;
     const std::vector<std::string> enabled = manifest->resolveFeatures(material.shaderFeatures);
@@ -122,7 +121,7 @@ PaletteSwapTextureCheck checkPaletteSwapTexture(Project& project, const Material
     const Texture& texture = material.baseColorTexture;
     if (texture.getPath().empty() || texture.isFramebuffer()) return check;
     check = checkLosslessTexture(project, texture.getPath(), width, height);
-    if (filteredSampler(texture)) check.reasons.push_back("is filtered (set its Filter to Nearest)");
+    if (jasperengine::editor::pixelart::paletteswapchecks::filteredSampler(texture)) check.reasons.push_back("is filtered (set its Filter to Nearest)");
     return check;
 }
 
@@ -137,28 +136,28 @@ PaletteSwapTextureCheck checkLosslessTexture(Project& project, const std::string
     check.width = width;
     check.height = height;
 
-    const TextureImportSettings settings = importSettingsOf(project, check.texture);
+    const TextureImportSettings settings = jasperengine::editor::pixelart::paletteswapchecks::importSettingsOf(project, check.texture);
     const TextureProjectSettings projectSettings = textureProjectSettingsOf(project);
-    const std::vector<TextureFamily> families = shownFamilies(project);
+    const std::vector<TextureFamily> families = jasperengine::editor::pixelart::paletteswapchecks::shownFamilies(project);
     std::vector<TextureFamily> compressed, mipmapped, resized;
     int smallestMax = 0;
     bool strategyResize = false;
     for (TextureFamily family : families) {
         const ResolvedTextureSettings resolved = settings.resolve(family, projectSettings);
-        if (compressedFor(resolved)) compressed.push_back(family);
+        if (jasperengine::editor::pixelart::paletteswapchecks::compressedFor(resolved)) compressed.push_back(family);
         if (resolved.mipmaps) mipmapped.push_back(family);
         const int side = std::max(width, height);
         if (side > 0 && resolved.maxSize < side) {
             resized.push_back(family);
             smallestMax = smallestMax == 0 ? resolved.maxSize : std::min(smallestMax, resolved.maxSize);
         }
-        if (resolved.strategy == TextureSizeStrategy::Resize && width > 0 && (!powerOfTwo(width) || !powerOfTwo(height)))
+        if (resolved.strategy == TextureSizeStrategy::Resize && width > 0 && (!jasperengine::editor::pixelart::paletteswapchecks::powerOfTwo(width) || !jasperengine::editor::pixelart::paletteswapchecks::powerOfTwo(height)))
             strategyResize = true;
     }
-    if (!compressed.empty()) check.reasons.push_back("is compressed" + familyList(compressed, families.size()));
-    if (!mipmapped.empty()) check.reasons.push_back("has mipmaps" + familyList(mipmapped, families.size()));
+    if (!compressed.empty()) check.reasons.push_back("is compressed" + jasperengine::editor::pixelart::paletteswapchecks::familyList(compressed, families.size()));
+    if (!mipmapped.empty()) check.reasons.push_back("has mipmaps" + jasperengine::editor::pixelart::paletteswapchecks::familyList(mipmapped, families.size()));
     if (!resized.empty())
-        check.reasons.push_back("is resized to Max Size " + std::to_string(smallestMax) + familyList(resized, families.size()) +
+        check.reasons.push_back("is resized to Max Size " + std::to_string(smallestMax) + jasperengine::editor::pixelart::paletteswapchecks::familyList(resized, families.size()) +
                                 " (the image is " + std::to_string(width) + "x" + std::to_string(height) + ")");
     if (strategyResize) {
         check.projectResize = true;
@@ -176,7 +175,7 @@ bool planPaletteSwapTextureFix(Project& project, const Material& material, const
     if (check.texture.empty()) return false;
     fix.texture = check.texture;
 
-    TextureImportSettings settings = importSettingsOf(project, check.texture);
+    TextureImportSettings settings = jasperengine::editor::pixelart::paletteswapchecks::importSettingsOf(project, check.texture);
     const TextureImportSettings before = settings;
     const int side = std::max(check.width, check.height);
     settings.quality = TextureCookQuality::None;
@@ -184,15 +183,15 @@ bool planPaletteSwapTextureFix(Project& project, const Material& material, const
     if (side > 0 && settings.maxSize.value_or(0) < side) {
         const TextureProjectSettings projectSettings = textureProjectSettingsOf(project);
         bool small = false;
-        for (TextureFamily family : shownFamilies(project))
+        for (TextureFamily family : jasperengine::editor::pixelart::paletteswapchecks::shownFamilies(project))
             small = small || settings.resolve(family, projectSettings).maxSize < side;
-        if (small) settings.maxSize = maxSizeKeeping(side);
+        if (small) settings.maxSize = jasperengine::editor::pixelart::paletteswapchecks::maxSizeKeeping(side);
     }
     for (TexturePlatformSettings& platform : settings.platforms) {
         if (!platform.override) continue;
-        if (platform.format && !losslessFormat(*platform.format)) platform.format.reset();
+        if (platform.format && !jasperengine::editor::pixelart::paletteswapchecks::losslessFormat(*platform.format)) platform.format.reset();
         if (platform.quality && *platform.quality != TextureCookQuality::None) platform.quality = TextureCookQuality::None;
-        if (platform.maxSize && side > 0 && *platform.maxSize < side) platform.maxSize = maxSizeKeeping(side);
+        if (platform.maxSize && side > 0 && *platform.maxSize < side) platform.maxSize = jasperengine::editor::pixelart::paletteswapchecks::maxSizeKeeping(side);
         platform.rdo.reset();
     }
     if (!(settings == before)) {
@@ -201,7 +200,7 @@ bool planPaletteSwapTextureFix(Project& project, const Material& material, const
     }
 
     fix.sampler = material.baseColorTexture;
-    if (filteredSampler(fix.sampler)) {
+    if (jasperengine::editor::pixelart::paletteswapchecks::filteredSampler(fix.sampler)) {
         fix.sampler.setMinFilter(TextureFilter::NEAREST);
         fix.sampler.setMagFilter(TextureFilter::NEAREST);
         fix.samplerChanged = true;
@@ -218,7 +217,7 @@ int64_t paletteSwapOffPaletteColours(Project& project, const Material& material)
     const std::string texture = material.baseColorTexture.getPath();
     if (!binding || binding->source.empty() || texture.empty()) return -1;
     jasperengine::pixelart::Palette source;
-    if (!readPaletteFile(project.getAssetsPath() / FileUtils::pathFromUtf8(binding->source.path), source)) return -1;
+    if (!jasperengine::editor::pixelart::paletteswapchecks::readPaletteFile(project.getAssetsPath() / FileUtils::pathFromUtf8(binding->source.path), source)) return -1;
     std::optional<RgbaImage> image = loadRgbaImage(project.getAssetsPath() / FileUtils::pathFromUtf8(texture));
     if (!image) return -1;
     return paletteSwapOffPaletteColours(*image, source);

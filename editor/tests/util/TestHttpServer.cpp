@@ -21,7 +21,7 @@
 #include <cstring>
 #include <sstream>
 
-using namespace jaspertest;
+namespace jaspertest {
 
 namespace {
 
@@ -491,3 +491,5 @@ void TestHttpServer::serve(int socket){
     }
     ::close(socket);
 }
+
+}  // namespace jaspertest

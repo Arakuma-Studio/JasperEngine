@@ -20,6 +20,8 @@
 #include "titleart/fx/FxCost.h"
 #include "titleart/render/TitleArtRenderer.h"
 
+namespace TitleFxRuntimeChecksTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using TitleFxRuntimeChecksJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
@@ -190,3 +192,5 @@ TEST(TitleFxRuntimeChecks, HdrOn8BitReportsLightAboveFourAsInfo) {
     EXPECT_EQ(within.message.find("info:"), std::string::npos) << within.message;
     EXPECT_DOUBLE_EQ(within.measured["over_4_fraction"].get<double>(), 0.0);
 }
+
+}  // namespace TitleFxRuntimeChecksTest_cpp

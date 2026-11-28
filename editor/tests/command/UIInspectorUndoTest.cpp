@@ -27,13 +27,14 @@
 #include <functional>
 #include <memory>
 
+namespace ui_inspector_undo_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
 // (a named namespace, tests included: a unity build merges the test sources)
-namespace ui_inspector_undo_test {
 
     constexpr Entity GAME = 1001;   // a plain GameObject of the fixture's Main Scene
 

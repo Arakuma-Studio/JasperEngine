@@ -14,6 +14,8 @@
 #include <limits>
 #include <memory>
 
+namespace SpriteTagPlaybackTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -86,3 +88,5 @@ TEST(SpriteTagPlayback, HugeOrBrokenStepsTakeOnePass) {
     MeshSystem::stepSpriteTag(broken, 0.016);
     EXPECT_EQ(broken.frame, 2);
 }
+
+}  // namespace SpriteTagPlaybackTest_cpp

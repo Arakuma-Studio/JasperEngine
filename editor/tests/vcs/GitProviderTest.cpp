@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <set>
 
+namespace GitProviderTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::test;
 
@@ -454,3 +456,5 @@ TEST(GitProvider, CopiesAreNewFilesDiffedAgainstTheirSource) {
     EXPECT_FALSE(renamed->newFile());
     EXPECT_EQ(revertRefusal(snapshot, {"r2.txt"}, false), "");
 }
+
+}  // namespace GitProviderTest_cpp

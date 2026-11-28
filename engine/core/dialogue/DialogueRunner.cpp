@@ -15,7 +15,8 @@
 #include <map>
 
 using namespace jasperengine;
-using namespace jasperengine::dialogue;
+
+namespace jasperengine::dialogue {
 
 namespace {
 
@@ -74,7 +75,7 @@ namespace {
 
 }
 
-const char* jasperengine::dialogue::stateName(RunnerState state) {
+const char* stateName(RunnerState state) {
     switch (state) {
         case RunnerState::Line: return "line";
         case RunnerState::Waiting: return "waiting";
@@ -83,7 +84,7 @@ const char* jasperengine::dialogue::stateName(RunnerState state) {
     }
 }
 
-std::string jasperengine::dialogue::describeCall(std::string_view name, std::span<const Value> args) {
+std::string describeCall(std::string_view name, std::span<const Value> args) {
     std::string out(name);
     out += "(";
     for (size_t i = 0; i < args.size(); i++) {
@@ -648,3 +649,5 @@ void Runner::programReloaded(const std::shared_ptr<const Program>& reloaded) {
     continuation = after.empty() ? -1 : program->findNode(after);
     if (state == RunnerState::Line) refreshLine();
 }
+
+}  // namespace jasperengine::dialogue

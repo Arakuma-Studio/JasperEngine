@@ -32,6 +32,8 @@
 #include <string>
 #include <vector>
 
+namespace SplineFenceLayoutTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 using jasperengine::spline::fencegolden::FenceCrestGolden;
@@ -3785,3 +3787,5 @@ TEST(SplineFenceLayoutTests, PiecePosesOrientRunAxisAlongForward)
         at++;
     }
 }
+
+}  // namespace SplineFenceLayoutTest_cpp

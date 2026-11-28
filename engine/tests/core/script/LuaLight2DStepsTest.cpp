@@ -14,6 +14,8 @@
 
 #include <string>
 
+namespace LuaLight2DStepsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -50,3 +52,5 @@ TEST(LuaLight2DSteps, SceneProperty){
         "assert(stepsScene.ambientLight2DWithoutLights == false)\n"), "");
     EXPECT_FALSE(scene.isAmbientLight2DWithoutLights());
 }
+
+}  // namespace LuaLight2DStepsTest_cpp

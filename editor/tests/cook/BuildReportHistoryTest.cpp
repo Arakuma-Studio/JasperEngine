@@ -13,6 +13,8 @@
 #include <filesystem>
 #include <string>
 
+namespace BuildReportHistoryTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -65,3 +67,5 @@ TEST(BuildReportHistoryTest, RecordsAndPrunes) {
     EXPECT_TRUE(BuildReportHistory::record(blocked.path(), report, report.toText(), warning));
     EXPECT_NE(warning.find("could not be written"), std::string::npos) << warning;
 }
+
+}  // namespace BuildReportHistoryTest_cpp

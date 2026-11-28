@@ -28,6 +28,8 @@
 #include <string>
 #include <vector>
 
+namespace BuildProfileTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -694,3 +696,5 @@ TEST(BuildProfileCompile, GameConfigHasTheSceneListAndTheProfilesSettings) {
     EXPECT_NE(game.lightMode, LightMode::TILED);
     editor::test::closeProject(project);
 }
+
+}  // namespace BuildProfileTest_cpp

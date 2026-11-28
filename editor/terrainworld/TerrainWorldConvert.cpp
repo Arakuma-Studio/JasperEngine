@@ -38,7 +38,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::terraincore;
 
 namespace fs = std::filesystem;
 
@@ -59,25 +58,25 @@ namespace {
         ConvertMap holes;
         std::vector<ConvertMap> blend;
         std::vector<ConvertMap> density;    // per foliage layer; empty where a layer has none
-        std::shared_ptr<const TreeStore> trees;
+        std::shared_ptr<const terraincore::TreeStore> trees;
         std::vector<float> colours;
         int layerCount = 0;
     };
 
     struct ConvertOutput {
-        std::vector<std::shared_ptr<WorldTile>> tiles;
+        std::vector<std::shared_ptr<terraincore::WorldTile>> tiles;
         std::map<uint32_t, std::vector<uint8_t>> trees;
         bool cancelled = false;
     };
 
-    bool readConvertMap(TerrainComponentStore& store, MapId id, ConvertMap& out) {
-        const MapFormat format = store.format(id);
+    bool readConvertMap(TerrainComponentStore& store, terraincore::MapId id, ConvertMap& out) {
+        const terraincore::MapFormat format = store.format(id);
         if (!format.exists || format.bounds.empty()) return false;
         out.width = format.bounds.w;
         out.height = format.bounds.h;
         out.channels = format.channels;
         out.bytesPerChannel = format.bitsPerChannel >= 16 ? 2 : 1;
-        out.bytes.resize(static_cast<size_t>(format.bounds.area()) * bytesPerTexel(format));
+        out.bytes.resize(static_cast<size_t>(format.bounds.area()) * terraincore::bytesPerTexel(format));
         if (!store.readBytes(id, format.bounds, out.bytes)) {
             out.bytes.clear();
             return false;
@@ -87,8 +86,8 @@ namespace {
 
     // A filtered sample of a map at a terrain-local position, its texels at (i + 0.5) / W as T1 reads them
     void bilinearTexel(const ConvertMap& map, float size, float localX, float localZ, uint8_t* out) {
-        const float x = std::clamp(surfaceTexelCoord(localX, size, map.width), 0.0f, static_cast<float>(map.width - 1));
-        const float z = std::clamp(surfaceTexelCoord(localZ, size, map.height), 0.0f, static_cast<float>(map.height - 1));
+        const float x = std::clamp(terraincore::surfaceTexelCoord(localX, size, map.width), 0.0f, static_cast<float>(map.width - 1));
+        const float z = std::clamp(terraincore::surfaceTexelCoord(localZ, size, map.height), 0.0f, static_cast<float>(map.height - 1));
         const int x0 = static_cast<int>(std::floor(x)), z0 = static_cast<int>(std::floor(z));
         const int x1 = std::min(x0 + 1, map.width - 1), z1 = std::min(z0 + 1, map.height - 1);
         const float fx = x - static_cast<float>(x0), fz = z - static_cast<float>(z0);
@@ -107,15 +106,15 @@ namespace {
         return map.texel(x, z)[map.bytesPerChannel - 1];
     }
 
-    WorldLattice latticeOf(const TerrainWorldSettings& settings) {
-        WorldLattice lattice;
+    terraincore::WorldLattice latticeOf(const TerrainWorldSettings& settings) {
+        terraincore::WorldLattice lattice;
         lattice.tileQuads = settings.tileQuads;
         lattice.spacing = settings.spacing;
         return lattice;
     }
 
-    WorldMaps mapsOf(const ConvertSource& source) {
-        WorldMaps maps;
+    terraincore::WorldMaps mapsOf(const ConvertSource& source) {
+        terraincore::WorldMaps maps;
         maps.maxHeight = source.maxHeight;
         maps.blendMaps = static_cast<int>(source.blend.size());
         maps.hasHoles = !source.holes.empty();
@@ -126,11 +125,11 @@ namespace {
     // The job: every tile of the plan from the copies. Heights are T1's sampleSurface of the source's map,
     // the query sampleTerrainSurface answers, at each lattice sample, gutters included.
     void buildConvertedTiles(const ConvertSource& source, const TerrainWorldSettings& settings, const std::atomic<bool>& cancel, ConvertOutput& out) {
-        const WorldLattice lattice = latticeOf(settings);
+        const terraincore::WorldLattice lattice = latticeOf(settings);
         const int n = lattice.tileQuads;
         const float h = lattice.spacing;
         const float tileSize = lattice.tileSize();
-        SurfaceView view;
+        terraincore::SurfaceView view;
         view.pixels = source.height.bytes.data();
         view.width = source.height.width;
         view.height = source.height.height;
@@ -139,22 +138,22 @@ namespace {
         view.size = source.size;
         view.maxHeight = source.maxHeight;
 
-        MemoryTileAccess access;
-        std::vector<TileCoord> coords;
+        terraincore::MemoryTileAccess access;
+        std::vector<terraincore::TileCoord> coords;
         for (int z = settings.originZ; z < settings.originZ + settings.gridLength; z++) {
             for (int x = settings.originX; x < settings.originX + settings.gridWidth; x++) {
                 if (cancel.load()) {
                     out.cancelled = true;
                     return;
                 }
-                const TileCoord coord(x, z);
-                auto tile = std::make_shared<WorldTile>();
-                initTile(*tile, lattice, coord, 0);
+                const terraincore::TileCoord coord(x, z);
+                auto tile = std::make_shared<terraincore::WorldTile>();
+                terraincore::initTile(*tile, lattice, coord, 0);
                 for (int j = 0; j < n + 3; j++) {
                     for (int i = 0; i < n + 3; i++) {
                         const float localX = static_cast<float>(x * n + i - 1) * h;
                         const float localZ = static_cast<float>(z * n + j - 1) * h;
-                        const float height = sampleSurface(view, localX, localZ).height;
+                        const float height = terraincore::sampleSurface(view, localX, localZ).height;
                         const float normalized = source.maxHeight > 0.0f ? std::clamp(height / source.maxHeight, 0.0f, 1.0f) : 0.0f;
                         tile->setSample(i, j, static_cast<uint16_t>(std::lround(normalized * 65535.0f)));
                     }
@@ -164,7 +163,7 @@ namespace {
                 tile->blend.resize(source.blend.size());
                 for (size_t m = 0; m < source.blend.size(); m++) {
                     const int quads = lattice.blendQuadCount();
-                    TileMap& map = tile->blend[m];
+                    terraincore::TileMap& map = tile->blend[m];
                     map.allocate(lattice.blendSide(), 4, 8, 0);
                     uint8_t texel[4] = {0, 0, 0, 0};
                     for (int j = 0; j < map.height; j++) {
@@ -176,7 +175,7 @@ namespace {
                     }
                 }
                 // holes and density: areas, read at each texel's centre
-                const auto area = [&](const ConvertMap& from, TileMap& map, int side) {
+                const auto area = [&](const ConvertMap& from, terraincore::TileMap& map, int side) {
                     map.allocate(side, 1, 8, 0);
                     for (int j = 0; j < side; j++) {
                         for (int i = 0; i < side; i++) {
@@ -196,31 +195,31 @@ namespace {
         }
 
         // R3: a gutter where no tile is repeats the border, as the world keeps it
-        TiledMapStore store(lattice, mapsOf(source), access);
-        for (const TileCoord& coord : coords) store.syncGutters(coord);
-        for (const TileCoord& coord : coords) {
-            std::shared_ptr<WorldTile> tile = access.writable(coord);
+        terraincore::TiledMapStore store(lattice, mapsOf(source), access);
+        for (const terraincore::TileCoord& coord : coords) store.syncGutters(coord);
+        for (const terraincore::TileCoord& coord : coords) {
+            std::shared_ptr<terraincore::WorldTile> tile = access.writable(coord);
             buildDerived(*tile, lattice, source.colours, source.layerCount);
             out.tiles.push_back(std::move(tile));
         }
 
         // R27: each tree to the tile under it, in that tile's square
         if (source.trees) {
-            std::map<uint32_t, std::vector<TreeRecord>> byTile;
-            for (const TreeRecord& record : source.trees->records()) {
+            std::map<uint32_t, std::vector<terraincore::TreeRecord>> byTile;
+            for (const terraincore::TreeRecord& record : source.trees->records()) {
                 const float localX = foliageTreeLocalX(record, source.size), localZ = foliageTreeLocalZ(record, source.size);
-                const TileCoord coord(tileOfLocal(localX, tileSize), tileOfLocal(localZ, tileSize));
+                const terraincore::TileCoord coord(terraincore::tileOfLocal(localX, tileSize), terraincore::tileOfLocal(localZ, tileSize));
                 if (coord.x < settings.originX || coord.x >= settings.originX + settings.gridWidth || coord.z < settings.originZ ||
                     coord.z >= settings.originZ + settings.gridLength) {
                     continue;
                 }
-                TreeRecord moved = record;
+                terraincore::TreeRecord moved = record;
                 moved.u = (localX - static_cast<float>(coord.x) * tileSize) / tileSize;
                 moved.v = (localZ - static_cast<float>(coord.z) * tileSize) / tileSize;
                 byTile[coord.key()].push_back(moved);
             }
             for (auto& [key, records] : byTile) {
-                TreeStore store;
+                terraincore::TreeStore store;
                 store.apply({}, records, {}, nullptr);
                 TreeDataFile::encode(store, out.trees[key]);
             }
@@ -232,23 +231,23 @@ namespace {
         out.size = terrain.terrainSize;
         out.maxHeight = terrain.maxHeight;
         TerrainComponentStore store(scene, source, terrain);
-        if (!readConvertMap(store, MapId{MapKind::Height, 0}, out.height)) {
+        if (!readConvertMap(store, terraincore::MapId{terraincore::MapKind::Height, 0}, out.height)) {
             error = "the Terrain's Height Map is not loaded: open its scene and let it load, then convert again";
             return false;
         }
-        readConvertMap(store, MapId{MapKind::Hole, 0}, out.holes);
+        readConvertMap(store, terraincore::MapId{terraincore::MapKind::Hole, 0}, out.holes);
         for (int m = 0; m < static_cast<int>(terrain.blendMaps.size()) && m < 3; m++) {
             ConvertMap map;
-            if (!readConvertMap(store, MapId{MapKind::Blend, m}, map)) break;
+            if (!readConvertMap(store, terraincore::MapId{terraincore::MapKind::Blend, m}, map)) break;
             out.blend.push_back(std::move(map));
         }
         bool anyDensity = false;
         out.density.resize(terrain.foliageLayers.size());
-        for (int l = 0; l < static_cast<int>(terrain.foliageLayers.size()); l++) anyDensity = readConvertMap(store, MapId{MapKind::Density, l}, out.density[l]) || anyDensity;
+        for (int l = 0; l < static_cast<int>(terrain.foliageLayers.size()); l++) anyDensity = readConvertMap(store, terraincore::MapId{terraincore::MapKind::Density, l}, out.density[l]) || anyDensity;
         if (!anyDensity) out.density.clear();
         if (FoliageSystem* foliage = scene->findSystem<FoliageSystem>().get()) {
-            if (std::shared_ptr<const TreeStore> trees = static_cast<const FoliageSystem*>(foliage)->getTreeStore(source)) {
-                out.trees = std::make_shared<TreeStore>(*trees);
+            if (std::shared_ptr<const terraincore::TreeStore> trees = static_cast<const FoliageSystem*>(foliage)->getTreeStore(source)) {
+                out.trees = std::make_shared<terraincore::TreeStore>(*trees);
             } else if (!terrain.treeData.empty()) {
                 error = "the Terrain's trees are still loading: convert again when they are drawn";
                 return false;
@@ -270,7 +269,7 @@ namespace {
             result.error = "the Terrain was removed while it converted; nothing was changed";
             return result;
         }
-        WorldManifest manifest;
+        terraincore::WorldManifest manifest;
         manifest.lattice = latticeOf(plan.world);
         manifest.maps = mapsOf(data);
         const fs::path folder = project->resolveAssetPath(FileUtils::pathFromUtf8(plan.world.assetPath));
@@ -366,7 +365,7 @@ bool jasperengine::editor::planTerrainConversion(Scene* scene, Entity source, co
         return false;
     }
     TerrainComponentStore store(scene, source, *terrain);
-    const MapFormat height = store.format(MapId{MapKind::Height, 0});
+    const terraincore::MapFormat height = store.format(terraincore::MapId{terraincore::MapKind::Height, 0});
     if (!height.exists || height.bounds.empty()) {
         error = "the Terrain's Height Map is not loaded: open its scene and let it load, then convert again";
         return false;

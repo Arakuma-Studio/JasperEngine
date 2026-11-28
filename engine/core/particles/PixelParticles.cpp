@@ -14,7 +14,8 @@
 #include <utility>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
+
+namespace jasperengine::particles {
 
 namespace {
 
@@ -100,3 +101,5 @@ bool PixelParticles::emitAt(Scene* scene, const std::string& effect, const std::
     }
     return true;
 }
+
+}  // namespace jasperengine::particles

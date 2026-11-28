@@ -12,6 +12,8 @@
 
 #include <fstream>
 
+namespace FontPixelReportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pixelart;
 
@@ -82,3 +84,5 @@ TEST(FontPixelReport, TextSizeMultiplesAndVectorFallbacks){
     EXPECT_EQ(vector.font.kind, FontKind::VECTOR);
     BitmapFontPool::clear();
 }
+
+}  // namespace FontPixelReportTest_cpp

@@ -7,7 +7,9 @@
 #include <sstream>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::unity;
+
+namespace jasperengine::editor::unity {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -121,3 +123,5 @@ const BuiltinAsset* jasperengine::editor::unity::Project::builtin(const Ref& ref
     }
     return nullptr;
 }
+
+}  // namespace jasperengine::editor::unity

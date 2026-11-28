@@ -26,12 +26,18 @@
 #include <string>
 #include <vector>
 
+namespace StochasticTilingTest_cpp {
+
 using namespace jasperengine;
 using editor::Stream;
+
+}  // namespace StochasticTilingTest_cpp
 
 namespace jasperengine {
     void PrintTo(const ShaderKey& key, std::ostream* os);
 }
+
+namespace StochasticTilingTest_cpp {
 
 namespace {
 
@@ -525,3 +531,5 @@ TEST(StochasticTilingBuildKeys, ReflectionProbeDerivesTheLitVariant) {
     }
     EXPECT_TRUE(foundProbeVariant);
 }
+
+}  // namespace StochasticTilingTest_cpp

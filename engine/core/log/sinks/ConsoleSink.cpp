@@ -8,7 +8,6 @@
 using namespace jasperengine;
 
 namespace je_console_sink {}
-using namespace je_console_sink;
 
 namespace je_console_sink {
 
@@ -40,7 +39,7 @@ void ConsoleSink::write(const LogRecord& record) {
         flush();
     }
     pendingToError = toError;
-    pending += style == Style::Game ? logConsolePrefix(record.level) : editorPrefix(record);
+    pending += style == Style::Game ? logConsolePrefix(record.level) : je_console_sink::editorPrefix(record);
     if (logShowsCategory(*record.category)) {
         pending += '[';
         pending += record.category->name;

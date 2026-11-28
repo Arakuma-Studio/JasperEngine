@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+namespace VatIOTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::vat;
 
@@ -716,3 +718,5 @@ TEST(VatIO, BoundsExtend){
     EXPECT_EQ(bounds.max, Vector3(10, 10, 10));
     EXPECT_EQ(bounds.min, Vector3(-1, -2, 0));
 }
+
+}  // namespace VatIOTest_cpp

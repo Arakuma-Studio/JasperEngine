@@ -25,12 +25,13 @@
 #include <string>
 #include <vector>
 
+namespace android_icons_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
 
-namespace android_icons_test {
 
     const fs::path androidIconsRepo = JASPER_TEST_REPO_DIR;
 
@@ -90,6 +91,8 @@ namespace android_icons_test {
     }
 
 }
+
+namespace android_icons_test {
 
 using namespace android_icons_test;
 
@@ -175,3 +178,5 @@ TEST(AndroidIcons, AdaptiveLayersAtEveryDensity) {
     ASSERT_TRUE(platform::writeAndroidLauncherIcons(settings, dir.path(), dir / "res", "ic_launcher", icons, error)) << error;
     EXPECT_FALSE(fs::exists(dir / "res" / "mipmap-anydpi-v26" / "ic_launcher.xml"));
 }
+
+}  // namespace android_icons_test

@@ -20,7 +20,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::l10n;
+
+namespace jasperengine::editor::l10n {
+
 namespace mf = jasperengine::l10n;
 // the documents' JSON by its own name: a unity batch can hold another Json (gametest::Json)
 namespace l10ndoc = jasperengine::editor::l10n;
@@ -108,7 +110,7 @@ TableEntry* StringTableDoc::find(const std::string& key) {
     return nullptr;
 }
 
-bool editor::l10n::parseStringTable(const std::string& text, StringTableDoc& out, ParseError* error) {
+bool parseStringTable(const std::string& text, StringTableDoc& out, ParseError* error) {
     out = StringTableDoc();
     l10ndoc::Json root;
     if (!readHeader(text, STRINGTABLE_FORMAT, root, error)) return false;
@@ -136,7 +138,7 @@ bool editor::l10n::parseStringTable(const std::string& text, StringTableDoc& out
     return true;
 }
 
-std::string editor::l10n::saveStringTable(const StringTableDoc& doc) {
+std::string saveStringTable(const StringTableDoc& doc) {
     l10ndoc::Json root;
     root["format"] = STRINGTABLE_FORMAT;
     root["version"] = STRINGTABLE_VERSION;
@@ -158,7 +160,7 @@ std::string editor::l10n::saveStringTable(const StringTableDoc& doc) {
     return dump(root);
 }
 
-bool editor::l10n::parseTranslation(const std::string& text, TranslationDoc& out, ParseError* error) {
+bool parseTranslation(const std::string& text, TranslationDoc& out, ParseError* error) {
     out = TranslationDoc();
     l10ndoc::Json root;
     if (!readHeader(text, TRANSLATION_FORMAT, root, error)) return false;
@@ -191,7 +193,7 @@ bool editor::l10n::parseTranslation(const std::string& text, TranslationDoc& out
     return true;
 }
 
-std::string editor::l10n::saveTranslation(const TranslationDoc& doc) {
+std::string saveTranslation(const TranslationDoc& doc) {
     l10ndoc::Json root;
     root["format"] = TRANSLATION_FORMAT;
     root["version"] = STRINGTABLE_VERSION;
@@ -216,18 +218,18 @@ std::string editor::l10n::saveTranslation(const TranslationDoc& doc) {
     return dump(root);
 }
 
-bool editor::l10n::isValidNamespace(const std::string& ns) {
+bool isValidNamespace(const std::string& ns) {
     if (ns.empty() || ns.size() > 48) return false;
     return std::all_of(ns.begin(), ns.end(), [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'; });
 }
 
-bool editor::l10n::isValidKey(const std::string& key) {
+bool isValidKey(const std::string& key) {
     if (key.empty() || key.size() > 64) return false;
     return std::all_of(key.begin(), key.end(),
                        [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-'; });
 }
 
-std::string editor::l10n::namespaceFromStem(const std::string& stem) {
+std::string namespaceFromStem(const std::string& stem) {
     std::string out;
     for (char c : stem) {
         const char l = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -239,11 +241,11 @@ std::string editor::l10n::namespaceFromStem(const std::string& stem) {
     return out.empty() ? std::string("strings") : out;
 }
 
-std::string editor::l10n::sourceHash(const std::string& text) {
+std::string sourceHash(const std::string& text) {
     return titleart::translationSourceHash(text);
 }
 
-std::string editor::l10n::pluralSkeleton(const std::string& language, const std::string& argument) {
+std::string pluralSkeleton(const std::string& language, const std::string& argument) {
     std::string out = "{" + argument + ", plural,";
     std::string categories = mf::PluralRules::categories(language);
     size_t start = 0;
@@ -299,11 +301,11 @@ size_t StringTableSet::stale(const std::string& language) const {
     return count;
 }
 
-fs::path editor::l10n::translationPathFor(const fs::path& owner, const std::string& language) {
+fs::path translationPathFor(const fs::path& owner, const std::string& language) {
     return owner.parent_path() / (owner.stem().string() + "." + language + TRANSLATION_EXTENSION);
 }
 
-std::map<std::string, fs::path> editor::l10n::translationSiblings(const fs::path& owner) {
+std::map<std::string, fs::path> translationSiblings(const fs::path& owner) {
     std::map<std::string, fs::path> out;
     std::error_code ec;
     const std::string prefix = owner.stem().string() + ".";
@@ -319,7 +321,7 @@ std::map<std::string, fs::path> editor::l10n::translationSiblings(const fs::path
     return out;
 }
 
-bool editor::l10n::loadSet(const fs::path& projectPath, const fs::path& owner, StringTableSet& out, std::string& error) {
+bool loadSet(const fs::path& projectPath, const fs::path& owner, StringTableSet& out, std::string& error) {
     out = StringTableSet();
     out.owner = owner;
     out.ownerRelative = relativeTo(projectPath, owner);
@@ -361,7 +363,7 @@ bool editor::l10n::loadSet(const fs::path& projectPath, const fs::path& owner, S
     return true;
 }
 
-std::vector<fs::path> editor::l10n::findTables(const fs::path& projectPath) {
+std::vector<fs::path> findTables(const fs::path& projectPath) {
     std::vector<fs::path> out;
     std::error_code ec;
     const fs::path assets = projectPath / "assets";
@@ -378,7 +380,7 @@ std::vector<fs::path> editor::l10n::findTables(const fs::path& projectPath) {
     return out;
 }
 
-std::vector<fs::path> editor::l10n::findOwners(const fs::path& projectPath) {
+std::vector<fs::path> findOwners(const fs::path& projectPath) {
     std::vector<fs::path> out = findTables(projectPath);
     std::error_code ec;
     const fs::path assets = projectPath / "assets";
@@ -395,7 +397,7 @@ std::vector<fs::path> editor::l10n::findOwners(const fs::path& projectPath) {
     return out;
 }
 
-std::string editor::l10n::namespaceOwner(const fs::path& projectPath, const std::string& ns, const fs::path& except) {
+std::string namespaceOwner(const fs::path& projectPath, const std::string& ns, const fs::path& except) {
     for (const fs::path& owner : findOwners(projectPath)) {
         if (!except.empty() && owner == except) continue;
         if (owner.extension() == dialogue::FILE_EXTENSION) {
@@ -424,7 +426,7 @@ std::string editor::l10n::namespaceOwner(const fs::path& projectPath, const std:
     return {};
 }
 
-bool editor::l10n::createTable(const fs::path& projectPath, const fs::path& owner, const std::string& nsIn, const std::string& sourceLanguage,
+bool createTable(const fs::path& projectPath, const fs::path& owner, const std::string& nsIn, const std::string& sourceLanguage,
                        StringTableSet& out, std::string& error) {
     const std::string ns = nsIn.empty() ? namespaceFromStem(owner.stem().string()) : nsIn;
     if (!isValidNamespace(ns)) {
@@ -451,7 +453,7 @@ bool editor::l10n::createTable(const fs::path& projectPath, const fs::path& owne
     return true;
 }
 
-bool editor::l10n::applyOps(StringTableSet& set, const l10ndoc::Json& ops, std::string& error, std::vector<std::string>* notes) {
+bool applyOps(StringTableSet& set, const l10ndoc::Json& ops, std::string& error, std::vector<std::string>* notes) {
     if (!ops.is_array()) {
         error = "ops is a list of {op, ...}";
         return false;
@@ -609,7 +611,7 @@ namespace {
 
 }
 
-std::vector<KeyReference> editor::l10n::findReferences(const fs::path& projectPath, const std::string& key) {
+std::vector<KeyReference> findReferences(const fs::path& projectPath, const std::string& key) {
     std::vector<KeyReference> out;
     eachReferencingFile(projectPath, [&](const fs::path& path, const std::string& kind) {
         scanFile(projectPath, path, kind, [&](const std::string& found, int line) {
@@ -619,7 +621,7 @@ std::vector<KeyReference> editor::l10n::findReferences(const fs::path& projectPa
     return out;
 }
 
-std::map<std::string, KeyReference> editor::l10n::referencedKeys(const fs::path& projectPath, bool scriptCalls) {
+std::map<std::string, KeyReference> referencedKeys(const fs::path& projectPath, bool scriptCalls) {
     std::map<std::string, KeyReference> out;
     eachReferencingFile(projectPath, [&](const fs::path& path, const std::string& kind) {
         // quoted strings in Lua are not all keys: only those the key-taking calls are given
@@ -630,3 +632,5 @@ std::map<std::string, KeyReference> editor::l10n::referencedKeys(const fs::path&
     });
     return out;
 }
+
+}  // namespace jasperengine::editor::l10n

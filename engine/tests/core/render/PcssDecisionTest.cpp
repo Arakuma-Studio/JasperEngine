@@ -25,6 +25,8 @@ namespace pcss {
 
 }
 
+namespace PcssDecisionTest_cpp {
+
 using namespace pcss;
 
 TEST(PcssDecision, SlopedReceiverIsNotItsOwnBlocker){
@@ -76,3 +78,5 @@ TEST(PcssDecision, TapsGrowWithTheKernelWithinBounds){
         previous = taps;
     }
 }
+
+}  // namespace PcssDecisionTest_cpp

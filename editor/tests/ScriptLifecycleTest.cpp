@@ -17,6 +17,8 @@
 #include <algorithm>
 #include <cstring>
 
+namespace ScriptLifecycleTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::scripttest;
 
@@ -1206,3 +1208,5 @@ TEST_F(ScriptLifecycleTest, TopLevelClassFieldsPerInstance) {
     EXPECT_EQ(takeLog(), "A(Clone):5,5,true,true") << "a copy made after A changed its fields starts from the file's values";
     EXPECT_EQ(lua("return GameObject(testScene, " + std::to_string(a) + "):getScript('Limits').LIMIT"), "6");
 }
+
+}  // namespace ScriptLifecycleTest_cpp

@@ -21,6 +21,8 @@
 #include <utility>
 #include <vector>
 
+namespace LimiterFilterTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -385,3 +387,5 @@ TEST(LoudnessTapRing, PassesFramesInOrderAndDropsWhatDoesNotFit) {
     EXPECT_EQ(out[2], 6.0f);
     EXPECT_EQ(out[3], 6.0f);
 }
+
+}  // namespace LimiterFilterTest_cpp

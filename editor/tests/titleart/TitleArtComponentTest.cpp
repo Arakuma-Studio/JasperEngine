@@ -34,6 +34,8 @@
 #include <fstream>
 #include "support/PosixCompat.h"
 
+namespace TitleArtComponentTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -365,3 +367,5 @@ TEST(TitleArtComponent, ScriptSentencesSayTheFix) {
     ASSERT_TRUE(TitleArtSystem::getParameter(scene, entity, "text", value, error));
     EXPECT_EQ(value.text, "JACKPOT") << "R5: the document's value again";
 }
+
+}  // namespace TitleArtComponentTest_cpp

@@ -33,6 +33,8 @@
 #include "support/PosixCompat.h"
 #include "support/EditorTestSupport.h"
 
+namespace CameraShakeEditorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -348,3 +350,5 @@ TEST_F(CameraShakeEditor, EditModePreviewLeavesTheSceneUnmodified){
     EXPECT_FALSE(scene->getComponent<CameraComponent>(camera).hasViewOffset) << "stopping clears the view offset";
     EXPECT_FALSE(system->isPreviewing());
 }
+
+}  // namespace CameraShakeEditorTest_cpp

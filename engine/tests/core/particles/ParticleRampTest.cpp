@@ -16,6 +16,8 @@
 #include <cmath>
 #include <vector>
 
+namespace ParticleRampTest_cpp {
+
 using namespace particletest;
 using jasperengine::pixelart::Rgba8;
 
@@ -120,3 +122,5 @@ TEST(ParticleRamp, PackedColourIsTheStepsBytes){
         EXPECT_EQ((int)pack.pixel[0].rampStep, std::min(7, (int)std::floor(age * 8.0f)));
     }
 }
+
+}  // namespace ParticleRampTest_cpp

@@ -66,6 +66,8 @@
 #include <string>
 #include <vector>
 
+namespace VatEndToEndTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::vat;
@@ -598,3 +600,5 @@ TEST(VatEndToEnd, ImportsTheHoudiniBundle) {
     }
     fs::remove_all(root);
 }
+
+}  // namespace VatEndToEndTest_cpp

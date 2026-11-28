@@ -14,6 +14,8 @@
 #include "titleart/localisation/TitleLanguageEditing.h"
 #include "titleart/localisation/TitleLanguageOps.h"
 
+namespace TitleLanguageEditingTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using TitleLanguageEditingJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
@@ -72,3 +74,5 @@ TEST(TitleLanguageEditing, ApplyToSource) {
     EXPECT_DOUBLE_EQ(layer["size"].get<double>(), 50.0) << "the source takes the German size";
     EXPECT_FALSE(layer["translations"]["de"].contains("size_scale")) << "and the override is gone";
 }
+
+}  // namespace TitleLanguageEditingTest_cpp

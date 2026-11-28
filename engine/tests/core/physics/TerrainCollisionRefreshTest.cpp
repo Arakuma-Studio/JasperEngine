@@ -34,6 +34,8 @@
 #include <string>
 #include <vector>
 
+namespace TerrainCollisionRefreshTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -336,3 +338,5 @@ TEST_F(TerrainCollisionRefresh, NoEditNoWork){
     EXPECT_FALSE(scene->getComponent<TerrainComponent>(terrainEntity).editState) << "an unedited terrain has no edit state";
     EXPECT_EQ(scene->getComponent<RigidbodyComponent>(terrainEntity).colliders[0].shape.GetPtr(), built);
 }
+
+}  // namespace TerrainCollisionRefreshTest_cpp

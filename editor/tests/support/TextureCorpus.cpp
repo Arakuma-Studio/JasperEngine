@@ -12,7 +12,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::test;
+
+namespace jasperengine::editor::test {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -55,12 +57,12 @@ namespace {
 
 }
 
-const std::vector<std::string>& jasperengine::editor::test::corpusNames(){
+const std::vector<std::string>& corpusNames(){
     static const std::vector<std::string> names = {"photo", "albedo", "ui", "foliage", "normal", "mask", "gradient", "sky"};
     return names;
 }
 
-CorpusImage jasperengine::editor::test::corpusImage(const std::string& name, int width, int height){
+CorpusImage corpusImage(const std::string& name, int width, int height){
     CorpusImage image;
     image.name = name;
     image.width = width;
@@ -176,7 +178,7 @@ CorpusImage jasperengine::editor::test::corpusImage(const std::string& name, int
     return image;
 }
 
-fs::path jasperengine::editor::test::writeCorpusImage(const CorpusImage& image, const fs::path& dir){
+fs::path writeCorpusImage(const CorpusImage& image, const fs::path& dir){
     std::error_code ec;
     fs::create_directories(dir, ec);
     if (image.hdr){
@@ -206,3 +208,5 @@ ScratchDir::~ScratchDir(){
     std::error_code ec;
     fs::remove_all(path, ec);
 }
+
+}  // namespace jasperengine::editor::test

@@ -25,6 +25,8 @@
 #include <climits>
 #include <cstdio>
 
+namespace UIMultiPointerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::scripttest;
 
@@ -780,3 +782,5 @@ TEST(InputSchemeEditorTest, OldScenesUnchanged) {
     EXPECT_EQ(editor::Stream::decodeOnScreenButtonComponent(editor::Stream::encodeOnScreenButtonComponent(button)).visibility,
               OnScreenVisibility::TOUCH_SCHEME);
 }
+
+}  // namespace UIMultiPointerTest_cpp

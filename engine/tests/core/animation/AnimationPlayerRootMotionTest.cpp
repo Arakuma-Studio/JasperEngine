@@ -16,6 +16,8 @@
 
 #include <cmath>
 
+namespace AnimationPlayerRootMotionTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::anim;
 using namespace animatortest;
@@ -115,3 +117,5 @@ TEST_F(AnimationPlayerRootMotionTest, BakeIntoPoseKeepsTheMotionInThePose){
     EXPECT_NEAR(position(hips).z, 0.5f, 1e-3f);
     EXPECT_LT(position(root).length(), 1e-5f);
 }
+
+}  // namespace AnimationPlayerRootMotionTest_cpp

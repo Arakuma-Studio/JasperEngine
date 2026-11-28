@@ -22,7 +22,6 @@
 #include <unordered_set>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::prefabinternal;
 
 editor::Prefab* editor::Project::getPrefab(const std::filesystem::path& filepath){
     if (filepath.empty()){

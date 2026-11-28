@@ -25,11 +25,12 @@
 #include <memory>
 #include <string>
 
+namespace inspector_simulation_culling_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
-namespace inspector_simulation_culling_test {
 
     namespace fs = std::filesystem;
 

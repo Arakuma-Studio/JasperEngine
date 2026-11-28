@@ -15,6 +15,8 @@
 #include <tuple>
 #include <vector>
 
+namespace SpriteImportFramesTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
 
@@ -211,3 +213,5 @@ TEST(SpriteImportFrames, HeaderIsCheckedBeforeDecoding) {
     EXPECT_EQ(problem.kind, "bad_op_field");
     EXPECT_NE(problem.message.find("300"), std::string::npos) << problem.message;
 }
+
+}  // namespace SpriteImportFramesTest_cpp

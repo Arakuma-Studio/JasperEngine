@@ -7,6 +7,8 @@
 
 #include <cmath>
 
+namespace ColorTest_cpp {
+
 using namespace jasperengine;
 
 TEST(Color, GammaIsTwoPointTwo){
@@ -38,3 +40,5 @@ TEST(Color, AlphaIsLinearInBothDirections){
     EXPECT_FLOAT_EQ(Color::linearTosRGB(0.5f, 0.5f, 0.5f, 0.3f).w, 0.3f);
     EXPECT_FLOAT_EQ(Color::sRGBToLinear(Vector4(0.5f, 0.5f, 0.5f, 0.7f)).w, 0.7f);
 }
+
+}  // namespace ColorTest_cpp

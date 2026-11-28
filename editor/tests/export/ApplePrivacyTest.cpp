@@ -14,11 +14,12 @@
 #include <fstream>
 #include <iterator>
 
+namespace apple_privacy_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
 
-namespace apple_privacy_test {
 
     std::string readFile(const fs::path& path) {
         std::ifstream in(path, std::ios::binary);
@@ -40,6 +41,8 @@ namespace apple_privacy_test {
     }
 
 }
+
+namespace apple_privacy_test {
 
 using namespace apple_privacy_test;
 
@@ -182,3 +185,5 @@ TEST(ApplePrivacy, ToXmlIsDeterministic) {
     EXPECT_LT(xml.find("NSPrivacyAccessedAPICategoryDiskSpace"), xml.find("NSPrivacyAccessedAPICategoryUserDefaults"));
     EXPECT_EQ(xml.back(), '\n');
 }
+
+}  // namespace apple_privacy_test

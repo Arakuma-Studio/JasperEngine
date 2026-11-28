@@ -15,7 +15,8 @@
 #include <cstdlib>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
+
+namespace jasperengine::particles {
 
 namespace {
 
@@ -302,3 +303,5 @@ void ParticlePixel::rasterize(const PixelShapeSpec& spec, const PixelLayout& l, 
         }
     }
 }
+
+}  // namespace jasperengine::particles

@@ -33,6 +33,8 @@
 #include <map>
 #include <string>
 
+namespace RagdollTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::physics3dtest;
 
@@ -430,3 +432,5 @@ TEST(Ragdoll, ApplyRefusesAReplacementWhileRemovalsAreDeferred) {
     EXPECT_TRUE(RagdollBuilder::apply(&c.world.scene, c.root, again, &error));
     EXPECT_EQ(c.world.component(c.bones["Hips"]).type, BodyType::DYNAMIC);
 }
+
+}  // namespace RagdollTest_cpp

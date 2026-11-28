@@ -17,6 +17,8 @@
 #include <random>
 #include <vector>
 
+namespace AtmosphereMathTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -354,3 +356,5 @@ TEST(AtmosphereMath, FogOpacityFollowsEachFogType){
     EXPECT_FLOAT_EQ(AtmosphereMath::fogOpacity(fog, origin, forward, 10.0f), 0.0f);
     EXPECT_NEAR(AtmosphereMath::fogOpacity(fog, origin, forward, 50.0f), 1.0f - std::exp(-0.3f), 1e-5f);
 }
+
+}  // namespace AtmosphereMathTest_cpp

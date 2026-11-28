@@ -15,6 +15,8 @@
 #include <set>
 #include <string>
 
+namespace GraphTest_cpp {
+
 using namespace jasperengine::graph;
 
 namespace {
@@ -596,3 +598,5 @@ TEST_F(GraphTest, KindForFileMatchesAnyRegisteredExtension) {
     GraphRegistry::get().unregisterKind("dotted");
     EXPECT_EQ(idOf("a.proc.mat"), "");
 }
+
+}  // namespace GraphTest_cpp

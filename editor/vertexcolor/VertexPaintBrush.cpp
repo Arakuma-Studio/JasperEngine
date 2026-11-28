@@ -12,7 +12,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::vertexcolor;
+
+namespace jasperengine::editor::vertexcolor {
 
 namespace {
 
@@ -82,7 +83,7 @@ namespace {
 
 }
 
-const char* editor::vertexcolor::paintToolName(PaintTool tool) {
+const char* paintToolName(PaintTool tool) {
     switch (tool) {
         case PaintTool::Select: return "Select";
         case PaintTool::Paint: return "Paint";
@@ -94,7 +95,7 @@ const char* editor::vertexcolor::paintToolName(PaintTool tool) {
     return "Paint";
 }
 
-const char* editor::vertexcolor::paintToolCommand(PaintTool tool) {
+const char* paintToolCommand(PaintTool tool) {
     switch (tool) {
         case PaintTool::Select: return "vertexPaint.tool.select";
         case PaintTool::Paint: return "vertexPaint.tool.paint";
@@ -106,12 +107,12 @@ const char* editor::vertexcolor::paintToolCommand(PaintTool tool) {
     return "vertexPaint.tool.paint";
 }
 
-vc::StrokeMode editor::vertexcolor::effectiveStrokeMode(PaintTool tool, bool ctrl) {
+vc::StrokeMode effectiveStrokeMode(PaintTool tool, bool ctrl) {
     if (tool == PaintTool::Smooth) return ctrl ? vc::StrokeMode::Sharpen : vc::StrokeMode::Smooth;
     return ctrl ? vc::StrokeMode::Erase : vc::StrokeMode::Paint;
 }
 
-std::string editor::vertexcolor::strokeUndoName(vc::StrokeMode mode) {
+std::string strokeUndoName(vc::StrokeMode mode) {
     switch (mode) {
         case vc::StrokeMode::Paint: return "Paint Vertex Colors";
         case vc::StrokeMode::Erase: return "Erase Vertex Colors";
@@ -121,7 +122,7 @@ std::string editor::vertexcolor::strokeUndoName(vc::StrokeMode mode) {
     return "Paint Vertex Colors";
 }
 
-const char* editor::vertexcolor::elementKindName(vc::ElementKind kind, bool plural) {
+const char* elementKindName(vc::ElementKind kind, bool plural) {
     switch (kind) {
         case vc::ElementKind::Vertex: return plural ? "vertices" : "vertex";
         case vc::ElementKind::Face: return plural ? "faces" : "face";
@@ -130,21 +131,21 @@ const char* editor::vertexcolor::elementKindName(vc::ElementKind kind, bool plur
     return plural ? "faces" : "face";
 }
 
-std::string editor::vertexcolor::applyUndoName(vc::ElementKind kind, size_t count) {
+std::string applyUndoName(vc::ElementKind kind, size_t count) {
     std::string noun = elementKindName(kind, count != 1);
     noun[0] = (char)std::toupper((unsigned char)noun[0]);
     return "Apply Color to " + std::to_string(count) + " " + noun;
 }
 
-std::string editor::vertexcolor::selectionCountText(vc::ElementKind kind, size_t count) {
+std::string selectionCountText(vc::ElementKind kind, size_t count) {
     return std::to_string(count) + " " + elementKindName(kind, count != 1) + " selected";
 }
 
-Vector4 editor::vertexcolor::strokeValue(const VertexPaintSettings& settings, bool secondary) {
+Vector4 strokeValue(const VertexPaintSettings& settings, bool secondary) {
     return secondary ? settings.secondary : settings.primary;
 }
 
-std::vector<vc::Filter> editor::vertexcolor::maskFilters(const VertexPaintSettings& settings) {
+std::vector<vc::Filter> maskFilters(const VertexPaintSettings& settings) {
     std::vector<vc::Filter> filters;
     const PaintMasks& masks = settings.masks;
     auto add = [&](vc::FilterKind kind, float min, float max, int channel) {
@@ -163,7 +164,7 @@ std::vector<vc::Filter> editor::vertexcolor::maskFilters(const VertexPaintSettin
     return filters;
 }
 
-vc::Filter editor::vertexcolor::facingFilter(const Vector3& towardEye) {
+vc::Filter facingFilter(const Vector3& towardEye) {
     vc::Filter filter;
     filter.kind = vc::FilterKind::Facing;
     filter.direction = towardEye;
@@ -172,7 +173,7 @@ vc::Filter editor::vertexcolor::facingFilter(const Vector3& towardEye) {
     return filter;
 }
 
-vc::Op editor::vertexcolor::strokeOp(const VertexPaintSettings& settings, vc::StrokeMode mode, bool secondary, std::span<const vc::StrokePoint> points) {
+vc::Op strokeOp(const VertexPaintSettings& settings, vc::StrokeMode mode, bool secondary, std::span<const vc::StrokePoint> points) {
     vc::Op op;
     op.type = vc::OpType::Stroke;
     op.mode = mode;
@@ -197,7 +198,7 @@ vc::Op editor::vertexcolor::strokeOp(const VertexPaintSettings& settings, vc::St
     return op;
 }
 
-vc::Op editor::vertexcolor::applyOp(const VertexPaintSettings& settings, const vc::Target& target, bool secondary) {
+vc::Op applyOp(const VertexPaintSettings& settings, const vc::Target& target, bool secondary) {
     vc::Op op;
     const bool exact = settings.blend == vc::Blend::Replace && settings.strength >= 1.0f;
     op.type = exact ? vc::OpType::Set : vc::OpType::Fill;
@@ -209,14 +210,14 @@ vc::Op editor::vertexcolor::applyOp(const VertexPaintSettings& settings, const v
     return op;
 }
 
-vc::Op editor::vertexcolor::fillOp(const VertexPaintSettings& settings, const vc::Target& target, bool secondary) {
+vc::Op fillOp(const VertexPaintSettings& settings, const vc::Target& target, bool secondary) {
     vc::Op op = applyOp(settings, target, secondary);
     op.type = vc::OpType::Fill;
     op.filters = maskFilters(settings);
     return op;
 }
 
-vc::Op editor::vertexcolor::gradientOp(const VertexPaintSettings& settings, const vc::Target& target, const Vector3& from, const Vector3& to) {
+vc::Op gradientOp(const VertexPaintSettings& settings, const vc::Target& target, const Vector3& from, const Vector3& to) {
     vc::Op op;
     op.type = vc::OpType::Gradient;
     op.target = target;
@@ -240,7 +241,7 @@ vc::Op editor::vertexcolor::gradientOp(const VertexPaintSettings& settings, cons
     return op;
 }
 
-vc::Op editor::vertexcolor::recolorOp(const Vector4& from, const Vector4& to) {
+vc::Op recolorOp(const Vector4& from, const Vector4& to) {
     vc::Op op;
     op.type = vc::OpType::ReplaceColor;
     op.target.kind = vc::TargetKind::Color;
@@ -255,21 +256,21 @@ vc::Op editor::vertexcolor::recolorOp(const Vector4& from, const Vector4& to) {
     return op;
 }
 
-float editor::vertexcolor::pressureOf(float reading) {
+float pressureOf(float reading) {
     if (!(reading >= 0.0f)) return 1.0f;
     return std::min(reading, 1.0f);
 }
 
-void editor::vertexcolor::adjustSize(VertexPaintSettings& settings, float factor) {
+void adjustSize(VertexPaintSettings& settings, float factor) {
     settings.radius = std::clamp(settings.radius * factor, BRUSH_MIN_RADIUS, BRUSH_MAX_RADIUS);
 }
 
-void editor::vertexcolor::adjustStrength(VertexPaintSettings& settings, float factor) {
+void adjustStrength(VertexPaintSettings& settings, float factor) {
     // a strength of 0 multiplies to 0 forever: a floor lets Stronger bring it back
     settings.strength = std::clamp(std::max(settings.strength, 0.01f) * factor, 0.0f, 1.0f);
 }
 
-void editor::vertexcolor::applyRightDrag(VertexPaintSettings& settings, bool ctrl, bool shift, float dx, float dy) {
+void applyRightDrag(VertexPaintSettings& settings, bool ctrl, bool shift, float dx, float dy) {
     if (ctrl) {
         // up grows: 1% per pixel, as a multiplier, so small and big brushes feel the same
         adjustSize(settings, std::pow(1.01f, -dy));
@@ -283,16 +284,16 @@ void editor::vertexcolor::applyRightDrag(VertexPaintSettings& settings, bool ctr
     }
 }
 
-void editor::vertexcolor::toggleChannel(VertexPaintSettings& settings, int channel) {
+void toggleChannel(VertexPaintSettings& settings, int channel) {
     if (channel < 0 || channel > 3) return;
     settings.channels = (vc::ChannelMask)(settings.channels ^ (1u << channel));
 }
 
-void editor::vertexcolor::swapColors(VertexPaintSettings& settings) {
+void swapColors(VertexPaintSettings& settings) {
     std::swap(settings.primary, settings.secondary);
 }
 
-bool editor::vertexcolor::isLowDensity(const vc::MeshView& mesh, const Matrix4& model, float radius) {
+bool isLowDensity(const vc::MeshView& mesh, const Matrix4& model, float radius) {
     if (mesh.triangleCount() == 0 || radius <= 0.0f) return false;
     // world area: each face's area under the model's scale (its cross product, transformed)
     double area = 0.0;
@@ -306,11 +307,11 @@ bool editor::vertexcolor::isLowDensity(const vc::MeshView& mesh, const Matrix4& 
     return area > 0.0 && perRadius2 < 1.0;
 }
 
-std::string editor::vertexcolor::lowDensityText(const std::string& name, uint32_t logicalVertices) {
+std::string lowDensityText(const std::string& name, uint32_t logicalVertices) {
     return name + ": " + std::to_string(logicalVertices) + (logicalVertices == 1 ? " vertex" : " vertices") + " \xE2\x80\x94 paint will look blocky";
 }
 
-Vector4 editor::vertexcolor::cursorTint(const VertexPaintSettings& settings, vc::StrokeMode mode, bool secondary, float alpha) {
+Vector4 cursorTint(const VertexPaintSettings& settings, vc::StrokeMode mode, bool secondary, float alpha) {
     Vector4 value = strokeValue(settings, secondary);
     switch (mode) {
         case vc::StrokeMode::Erase: value = Vector4(0.2f, 0.2f, 0.2f, 1.0f); break;
@@ -335,7 +336,7 @@ Vector4 editor::vertexcolor::cursorTint(const VertexPaintSettings& settings, vc:
                    vc::linearToSrgb(std::clamp(value.z, 0.0f, 1.0f)), std::clamp(alpha, 0.0f, 1.0f));
 }
 
-void editor::vertexcolor::buildCursor(const Vector3& center, const Vector3& normal, float radius, float hardness, float strength, const Vector4& tint,
+void buildCursor(const Vector3& center, const Vector3& normal, float radius, float hardness, float strength, const Vector4& tint,
                               const std::function<Vector3(const Vector3&, const Vector3&)>& drape, PaintCursorLines& out) {
     out.points.clear();
     out.colors.clear();
@@ -375,7 +376,7 @@ void editor::vertexcolor::buildCursor(const Vector3& center, const Vector3& norm
     out.colors.push_back(Vector4(tint.x, tint.y, tint.z, tint.w * 0.6f));
 }
 
-editor::vertexcolor::MeshHit editor::vertexcolor::raycastMesh(const vc::MeshView& mesh, const Matrix4& model, const Vector3& origin, const Vector3& direction, bool twoSided) {
+editor::vertexcolor::MeshHit raycastMesh(const vc::MeshView& mesh, const Matrix4& model, const Vector3& origin, const Vector3& direction, bool twoSided) {
     MeshHit best;
     const Matrix4 inverse = model.inverse();
     const Vector3 localOrigin = inverse * origin;
@@ -419,7 +420,7 @@ editor::vertexcolor::MeshHit editor::vertexcolor::raycastMesh(const vc::MeshView
     return best;
 }
 
-Vector3 editor::vertexcolor::surfacePoint(const vc::MeshView& mesh, const Matrix4& model, uint32_t triangle, const Vector3& barycentric) {
+Vector3 surfacePoint(const vc::MeshView& mesh, const Matrix4& model, uint32_t triangle, const Vector3& barycentric) {
     if ((size_t)triangle * 3 + 2 >= mesh.indices.size()) return model * Vector3();
     const Vector3 local = mesh.positions[mesh.indices[triangle * 3 + 0]] * barycentric.x +
                           mesh.positions[mesh.indices[triangle * 3 + 1]] * barycentric.y +
@@ -427,7 +428,7 @@ Vector3 editor::vertexcolor::surfacePoint(const vc::MeshView& mesh, const Matrix
     return model * local;
 }
 
-uint32_t editor::vertexcolor::elementAtHit(const vc::MeshView& mesh, vc::ElementKind kind, uint32_t triangle, const Vector3& barycentric) {
+uint32_t elementAtHit(const vc::MeshView& mesh, vc::ElementKind kind, uint32_t triangle, const Vector3& barycentric) {
     int k = 0;
     if (barycentric.y > barycentric[(unsigned)k]) k = 1;
     if (barycentric.z > barycentric[(unsigned)k]) k = 2;
@@ -439,7 +440,7 @@ uint32_t editor::vertexcolor::elementAtHit(const vc::MeshView& mesh, vc::Element
     return triangle;
 }
 
-vc::Selection editor::vertexcolor::selectInRect(const vc::MeshView& mesh, const Matrix4& model, vc::ElementKind kind, const Vector2& a, const Vector2& b,
+vc::Selection selectInRect(const vc::MeshView& mesh, const Matrix4& model, vc::ElementKind kind, const Vector2& a, const Vector2& b,
                                         const ProjectFn& project, const VisibleFn& visible) {
     const float minX = std::min(a.x, b.x), maxX = std::max(a.x, b.x);
     const float minY = std::min(a.y, b.y), maxY = std::max(a.y, b.y);
@@ -447,7 +448,7 @@ vc::Selection editor::vertexcolor::selectInRect(const vc::MeshView& mesh, const 
                         [&](const Vector2& p) { return p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY; });
 }
 
-vc::Selection editor::vertexcolor::selectInLasso(const vc::MeshView& mesh, const Matrix4& model, vc::ElementKind kind, const std::vector<Vector2>& lasso,
+vc::Selection selectInLasso(const vc::MeshView& mesh, const Matrix4& model, vc::ElementKind kind, const std::vector<Vector2>& lasso,
                                          const ProjectFn& project, const VisibleFn& visible) {
     if (lasso.size() < 3) {
         vc::Selection none;
@@ -457,7 +458,7 @@ vc::Selection editor::vertexcolor::selectInLasso(const vc::MeshView& mesh, const
     return selectRegion(mesh, model, kind, project, visible, [&](const Vector2& p) { return pointInPolygon(lasso, p); });
 }
 
-bool editor::vertexcolor::pointInPolygon(const std::vector<Vector2>& polygon, const Vector2& point) {
+bool pointInPolygon(const std::vector<Vector2>& polygon, const Vector2& point) {
     bool inside = false;
     for (size_t i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
         const Vector2& a = polygon[i];
@@ -467,7 +468,7 @@ bool editor::vertexcolor::pointInPolygon(const std::vector<Vector2>& polygon, co
     return inside;
 }
 
-vc::Selection editor::vertexcolor::combineSelection(const vc::Selection& current, const vc::Selection& picked, bool add, bool remove) {
+vc::Selection combineSelection(const vc::Selection& current, const vc::Selection& picked, bool add, bool remove) {
     if (remove) {
         if (current.kind != picked.kind) return current;
         return vc::subtract(current, picked);
@@ -476,7 +477,7 @@ vc::Selection editor::vertexcolor::combineSelection(const vc::Selection& current
     return picked;
 }
 
-std::string editor::vertexcolor::paintLegend(const CommandCatalog& catalog, PaintTool tool) {
+std::string paintLegend(const CommandCatalog& catalog, PaintTool tool) {
     auto key = [&](const char* id) {
         const std::string text = catalog.bindingsText(id);
         return text.empty() ? std::string("-") : text;
@@ -497,3 +498,5 @@ std::string editor::vertexcolor::paintLegend(const CommandCatalog& catalog, Pain
     }
     return {};
 }
+
+}  // namespace jasperengine::editor::vertexcolor

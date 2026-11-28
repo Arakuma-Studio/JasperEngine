@@ -24,8 +24,12 @@
 #include <string>
 #include <vector>
 
+namespace CleanupPaletteTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::cleanup;
+// the cleanup's own, not pixelart's namesakes: a batch that declares both would be ambiguous
+using jasperengine::editor::pixelart::cleanup::RgbaImage;
 // its own name: another RgbaImage is in sight in some unity units
 using CleanupPaletteImage = jasperengine::editor::pixelart::cleanup::RgbaImage;
 using jasperengine::pixelart::ColorMetric;
@@ -528,3 +532,5 @@ TEST(CleanupPipeline, ACachedRunEqualsAColdRunAndFollowsTheNewPicture) {
     // another picture must not read the cached mask, grid or samples
     EXPECT_EQ(runRecipe(second, recipe, &cache)->art, runRecipe(second, recipe)->art);
 }
+
+}  // namespace CleanupPaletteTest_cpp

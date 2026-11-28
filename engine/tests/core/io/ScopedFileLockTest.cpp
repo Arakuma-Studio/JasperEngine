@@ -14,6 +14,8 @@
     #include <unistd.h>
 #endif
 
+namespace ScopedFileLockTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using jasperengine::test::TestTempDir;
@@ -101,3 +103,5 @@ TEST(ScopedFileLock, CrossProcess){
     EXPECT_TRUE(after.isLocked()) << after.failureReason();
 }
 #endif
+
+}  // namespace ScopedFileLockTest_cpp

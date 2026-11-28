@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace RunControlTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::player;
 
@@ -337,3 +339,5 @@ TEST_F(RunControlFixture, FailedCommandLogsAnError) {
     EXPECT_TRUE(refusal);
     console::reset();
 }
+
+}  // namespace RunControlTest_cpp

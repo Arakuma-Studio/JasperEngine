@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+namespace AnimationClipContractTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -170,3 +172,5 @@ TEST(AnimationClipContract, Controller){
 TEST(AnimationClipContract, ClipUsersWithoutProject){
     EXPECT_TRUE(findClipUsers(nullptr, "anim/walk.anim").empty());
 }
+
+}  // namespace AnimationClipContractTest_cpp

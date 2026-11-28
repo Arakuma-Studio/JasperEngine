@@ -36,6 +36,8 @@
 #include <string>
 #include <vector>
 
+namespace TextureLateBindGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -342,3 +344,5 @@ INSTANTIATE_TEST_SUITE_P(Slots, TextureLateBindGpu, ::testing::Values(
     LateCase{"Normal", Slot::Normal, {255, 128, 90, 255}},
     LateCase{"SheenMap", Slot::SheenMap, {0, 0, 0, 255}}),
     [](const ::testing::TestParamInfo<LateCase>& info){ return std::string(info.param.name); });
+
+}  // namespace TextureLateBindGpuTest_cpp

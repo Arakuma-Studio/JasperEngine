@@ -83,81 +83,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 endif()
 
-# Unity build: these tests keep file-local fixtures and helpers (TempDir, Marker, makeScene, ...)
-# named as in another test source (docs/specs/S33-build-speed.md M8)
 jasperengine_skip_unity_build(
-    REASON "file-local fixtures or helpers named as in another test source"
-    SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorBlendTreeTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/navigation/NavBakeFoliageTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/navigation/TerrainWorldNavTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/physics/TerrainCollisionRefreshTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/render/FoliageGpuTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/render/TerrainHolesGpuTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/render/VoxelRenderGpuTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/script/LuaTerrainMaterialsTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/shader/VoxelShaderTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageCullTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageLuaTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliagePhysicsTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageRulesTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageScatterTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageSystemCoreTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TreeStoreTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainBatchTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainEditTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainFilterTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainGoldenTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainHolesConsumersTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainHolesTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainOpsDepsTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainOpsKernelsTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainOpsTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainPlacementTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainStoreTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainSurfaceTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorHumanoidTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorPropertyThreadTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorRetargetTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorStateMachineTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorSystemTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/animation/ClipIOTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/animation/ClipMemoryTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/animation/ProfilerAnimationTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/animation/HumanoidModelTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/animation/KeyframeSamplingTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/animation/SubClipPoolTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/ecs/SignatureTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/input/InputFrameLoopGpuTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/io/JPakTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleBudgetTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleCollisionTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleDeterminismTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleEffectCodecTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleRenderTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleSeekTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleSubEmittersTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleUpstreamBehaviourTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleUpstreamModulesTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/physics/CharacterController2DTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/physics/CharacterControllerBenchTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/physics/CharacterControllerTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/physics/PhysicsQueries2DTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/physics/PhysicsQueries3DTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/physics/PhysicsQueriesBenchTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/pose/HumanoidMapIOTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/pose/PoseFileTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/pose/PoseIOTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/pose/PoseMetricsTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/render/ObjectRenderShaderGpuTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/render/ParticlesGpuTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/render/RenderGpuTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/render/SpriteSheetRenderGpuTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/render/WaterFeaturesGpuTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/spline/SplineCornerTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/support/AllocationCounter.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/util/FunctionSubscribeReentrancyTest.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/util/PostColorLutTest.cpp)
+    REASON "replaces the global operator new and delete: in a batch GCC inlines them into their callers and reports a mismatched new and free"
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/support/AllocationCounter.cpp)
 jasperengine_skip_unity_build(
     REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/platform/X11VisibilityTest.cpp)

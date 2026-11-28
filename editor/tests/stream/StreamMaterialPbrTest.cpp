@@ -18,6 +18,8 @@
 #include <string>
 #include <thread>
 
+namespace StreamMaterialPbrTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -219,3 +221,5 @@ TEST(StreamMaterialPbr, VertexColorSectionRoundTrips){
     EXPECT_EQ(unknown.pbr->vertexColor.r, VertexColorTarget::NONE);
     EXPECT_EQ(unknown.pbr->vertexColor.g, VertexColorTarget::METALLIC);
 }
+
+}  // namespace StreamMaterialPbrTest_cpp

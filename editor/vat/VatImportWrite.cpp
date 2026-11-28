@@ -18,7 +18,6 @@
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
-using namespace jasperengine::vat;
 
 namespace jasperengine::editor::vat{
 
@@ -47,10 +46,10 @@ namespace{
         return out.empty() ? std::string("Imported") : out;
     }
 
-    bool readVat(const fs::path& file, VatData& out){
+    bool readVat(const fs::path& file, jasperengine::vat::VatData& out){
         std::string text;
         if (!clipui::readWholeFile(file, text)) return false;
-        VatParseResult parsed = parseVat(text);
+        jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(text);
         if (!parsed.ok()) return false;
         out = *parsed.data;
         return true;
@@ -62,10 +61,10 @@ namespace{
     }
 
     // an import of the same export (kind and path): the existing-file rule's "same source"
-    bool sameImport(const VatData& old, const VatImportResult& result){
+    bool sameImport(const jasperengine::vat::VatData& old, const VatImportResult& result){
         if (old.recipe.sources.size() != 1 || result.data.recipe.sources.size() != 1) return false;
-        const VatRecipeSource& a = old.recipe.sources[0];
-        const VatRecipeSource& b = result.data.recipe.sources[0];
+        const jasperengine::vat::VatRecipeSource& a = old.recipe.sources[0];
+        const jasperengine::vat::VatRecipeSource& b = result.data.recipe.sources[0];
         return a.kind == b.kind && a.path == b.path;
     }
 
@@ -77,12 +76,12 @@ std::string defaultImportOutput(Project* project, const VatImportDetection& dete
         const fs::path folder = FileUtils::pathFromUtf8(detection.folder).lexically_normal();
         if (!detection.folder.empty() && project->isInsideAssetsPath(folder)){
             const std::string relative = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(folder));
-            return relative + "/" + stem + VAT_EXTENSION;
+            return relative + "/" + stem + jasperengine::vat::VAT_EXTENSION;
         }
         const std::string assets = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(project->getAssetsPath()));
-        return (assets.empty() ? std::string() : assets + "/") + stem + VAT_EXTENSION;
+        return (assets.empty() ? std::string() : assets + "/") + stem + jasperengine::vat::VAT_EXTENSION;
     }
-    return "assets/" + stem + VAT_EXTENSION;
+    return "assets/" + stem + jasperengine::vat::VAT_EXTENSION;
 }
 
 bool plannedImportOutput(Project* project, const VatImportResult& result, const VatImportDetection& detection,
@@ -95,7 +94,7 @@ bool plannedImportOutput(Project* project, const VatImportResult& result, const 
     if (!options.output.empty()){
         const fs::path absolute = absoluteOf(project, options.output);
         vatPath = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(absolute));
-        if (!endsWith(lower(vatPath), VAT_EXTENSION) || !project->isInsideAssetsPath(absolute)){
+        if (!endsWith(lower(vatPath), jasperengine::vat::VAT_EXTENSION) || !project->isInsideAssetsPath(absolute)){
             error = "'" + vatPath + "' is not a .vat path inside the assets folder";
             return false;
         }
@@ -109,9 +108,9 @@ bool plannedImportOutput(Project* project, const VatImportResult& result, const 
         return true;
     }
     const std::string base = defaultImportOutput(project, detection);
-    const std::string stemPath = base.substr(0, base.size() - std::char_traits<char>::length(VAT_EXTENSION));
+    const std::string stemPath = base.substr(0, base.size() - std::char_traits<char>::length(jasperengine::vat::VAT_EXTENSION));
     for (int n = 1;; n++){
-        const std::string relative = n > 1 ? stemPath + " " + std::to_string(n) + VAT_EXTENSION : base;
+        const std::string relative = n > 1 ? stemPath + " " + std::to_string(n) + jasperengine::vat::VAT_EXTENSION : base;
         const fs::path absolute = absoluteOf(project, relative);
         const bool vatThere = fileExists(absolute);
         const bool meshThere = fileExists(FileUtils::pathFromUtf8(meshPathFor(FileUtils::pathToUtf8(absolute))));
@@ -119,7 +118,7 @@ bool plannedImportOutput(Project* project, const VatImportResult& result, const 
             vatPath = relative;
             return true;
         }
-        VatData old;
+        jasperengine::vat::VatData old;
         if (vatThere && readVat(absolute, old) && sameImport(old, result)){
             vatPath = relative;
             rewrite = true;
@@ -156,27 +155,27 @@ bool writeVatImport(Project* project, VatImportResult& result, const VatImportDe
     if (!plannedImportOutput(project, result, detection, options, relative, rewrite, error)) return false;
     const fs::path absolute = absoluteOf(project, relative);
 
-    VatData& data = result.data;
-    VatData old;
+    jasperengine::vat::VatData& data = result.data;
+    jasperengine::vat::VatData old;
     const bool hasOld = rewrite && readVat(absolute, old);
     data.guid = hasOld && !old.guid.empty() ? old.guid : AssetDatabase::generateGuid();
     if (hasOld && sameImport(old, result)){
         // the hand edits a re-import keeps (spec 4.5)
         std::vector<std::string> names;
         std::vector<float> lengths;
-        for (const VatClip& clip : data.clips){
+        for (const jasperengine::vat::VatClip& clip : data.clips){
             names.push_back(clip.name);
             lengths.push_back(clip.length());
         }
         const std::vector<int> match = matchClips(old.clips, names, lengths);
         std::set<std::string> used;
         for (size_t i = 0; i < data.clips.size(); i++){
-            VatClip& clip = data.clips[i];
+            jasperengine::vat::VatClip& clip = data.clips[i];
             if (match[i] < 0 || (size_t)match[i] >= old.clips.size()){
                 used.insert(clip.name);
                 continue;
             }
-            const VatClip& previous = old.clips[(size_t)match[i]];
+            const jasperengine::vat::VatClip& previous = old.clips[(size_t)match[i]];
             if (!used.count(previous.name)) clip.name = previous.name;
             clip.events = previous.events;
             clip.speed = previous.speed;

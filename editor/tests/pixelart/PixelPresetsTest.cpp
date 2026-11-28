@@ -19,6 +19,8 @@
 #include <memory>
 #include <vector>
 
+namespace PixelPresetsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::particles;
 using namespace jasperengine::editor::pixelart;
@@ -238,3 +240,5 @@ TEST(PixelPresets, FireLeavesSmokeAtAThirdOfItsDeaths){
     const double share = (double)smokes / (double)deaths;
     EXPECT_NEAR(share, 0.35, 0.03) << smokes << " smokes of " << deaths << " deaths";
 }
+
+}  // namespace PixelPresetsTest_cpp

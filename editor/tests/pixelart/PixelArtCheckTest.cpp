@@ -14,6 +14,8 @@
 
 #include <cmath>
 
+namespace PixelArtCheckTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::pixelart;
@@ -697,3 +699,5 @@ TEST(PixelArtCheck, RenderScale){
         caps += change.field.rfind("quality.device_tiers.", 0) == 0 ? 1 : 0;
     EXPECT_EQ(caps, 6u);
 }
+
+}  // namespace PixelArtCheckTest_cpp

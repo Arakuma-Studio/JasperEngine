@@ -22,6 +22,8 @@
 #include <thread>
 #include <vector>
 
+namespace ArenaTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::memory;
 
@@ -382,3 +384,5 @@ TEST(ScratchScopeTests, EachThreadHasItsOwnArena){
         thread.join();
     EXPECT_EQ(ok.load(), 4);
 }
+
+}  // namespace ArenaTest_cpp

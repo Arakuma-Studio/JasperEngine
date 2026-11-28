@@ -29,6 +29,8 @@
 #include <memory>
 #include <vector>
 
+namespace DrawPerfMixedGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -169,3 +171,5 @@ TEST_F(DrawPerfMixedGpu, MatchesWithoutSkippingRepeatedState){
     EXPECT_LT(stats.pipelinesApplied, appliedStats.pipelinesApplied);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace DrawPerfMixedGpuTest_cpp

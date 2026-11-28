@@ -19,6 +19,8 @@
 #include <cstddef>
 #include <vector>
 
+namespace BC7TransparentEndpointRepairTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace
@@ -197,3 +199,5 @@ TEST(BC7TransparentEndpointRepair, PaddingOfAPartialEdgeBlockIsNotSampled)
     std::copy(payload.begin() + 16, payload.end(), right.begin());
     EXPECT_EQ(right, encoded);
 }
+
+}  // namespace BC7TransparentEndpointRepairTest_cpp

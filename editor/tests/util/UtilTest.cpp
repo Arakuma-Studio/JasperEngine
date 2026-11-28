@@ -7,6 +7,8 @@
 
 #include "util/Util.h"
 
+namespace UtilTest_cpp {
+
 using namespace jasperengine::editor;
 
 // S94 F50: .exr, .tif, .tiff and .psb are images, next to the formats stb_image reads
@@ -17,3 +19,5 @@ TEST(UtilTest, ImageExtensions) {
     for (const char* path : {"a.ktx2", "a.txt", "a.tif.meta", "tif", "a.psbx", ""})
         EXPECT_FALSE(Util::isImageFile(path)) << path;
 }
+
+}  // namespace UtilTest_cpp

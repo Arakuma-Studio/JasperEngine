@@ -17,7 +17,8 @@
 #include <unordered_set>
 
 using namespace jasperengine;
-using namespace jasperengine::pixelart;
+
+namespace jasperengine::pixelart {
 
 namespace{
 
@@ -320,3 +321,5 @@ void HitStop::reset(){
     s.frame = frame;
     sceneFlags().clear();
 }
+
+}  // namespace jasperengine::pixelart

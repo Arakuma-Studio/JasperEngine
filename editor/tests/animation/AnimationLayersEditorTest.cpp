@@ -50,6 +50,8 @@
 #include <string>
 #include <vector>
 
+namespace AnimationLayersEditorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::editor::mcp::Json;
@@ -710,3 +712,5 @@ TEST(AnimationLayersEditor, ControllersFollowClipsAndMasksMovedOutsideTheEditor)
     EXPECT_EQ(parsed.data.layers[1].mask.guid, maskGuid) << "the GUIDs stay";
     EXPECT_EQ(document->controller().layers[1].mask.path, "relink/moved/arm.mask") << "the open document reloaded";
 }
+
+}  // namespace AnimationLayersEditorTest_cpp

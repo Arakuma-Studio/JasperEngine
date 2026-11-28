@@ -12,6 +12,8 @@
 #include <atomic>
 #include <memory>
 
+namespace VertexColorOpsTest_cpp {
+
 using namespace jasperengine;
 
 // (a named namespace, tests included: a unity build merges the test sources)
@@ -1179,3 +1181,5 @@ TEST(VertexColorOps, EveryOpMatchesItsGoldenHash) {
 }
 
 } // namespace vertex_color_ops_test
+
+}  // namespace VertexColorOpsTest_cpp

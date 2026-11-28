@@ -17,6 +17,8 @@
 #include <set>
 #include <string>
 
+namespace DebugReflectTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -145,3 +147,5 @@ TEST(DebugReflect, EachRowIsOneUndoStep){
     project.getProjectCommandHistory()->redo();
     EXPECT_EQ(project.getDebugSettings().allowLua, DebugSettings::AllowLua::AllBuilds);
 }
+
+}  // namespace DebugReflectTest_cpp

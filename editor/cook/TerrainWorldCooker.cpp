@@ -17,21 +17,20 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::terraincore;
 
 namespace fs = std::filesystem;
 
 namespace {
 
-    std::shared_ptr<WorldTile> loadCookTile(const fs::path& folder, TileCoord tile) {
+    std::shared_ptr<terraincore::WorldTile> loadCookTile(const fs::path& folder, terraincore::TileCoord tile) {
         std::ifstream file(folder / terrainWorldTileName(tile), std::ios::binary);
         if (!file) return nullptr;
         std::ostringstream text;
         text << file.rdbuf();
         const std::string bytes = text.str();
-        auto data = std::make_shared<WorldTile>();
+        auto data = std::make_shared<terraincore::WorldTile>();
         if (decodeTile(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()), terrainWorldDecodeCodec(), *data) !=
-            TileError::None) {
+            terraincore::TileError::None) {
             return nullptr;
         }
         return data;
@@ -53,9 +52,9 @@ namespace {
 bool TerrainWorldCooker::cook(const fs::path& source, const fs::path& destination, bool web, TerrainWorldCookReport& report, std::string& error) {
     // a report says what this cook did, not the sum of the cooks it was given to
     report = TerrainWorldCookReport();
-    WorldManifest manifest;
+    terraincore::WorldManifest manifest;
     if (!readWorldManifest(source, manifest, error)) return false;
-    const WorldLattice& lattice = manifest.lattice;
+    const terraincore::WorldLattice& lattice = manifest.lattice;
     if (web && lattice.tileQuads > WEB_MAX_TILE_QUADS) {
         error = "a Terrain World on the web takes tile_quads up to " + std::to_string(WEB_MAX_TILE_QUADS) + "; " + source.filename().string() +
                 " has " + std::to_string(lattice.tileQuads);
@@ -63,27 +62,27 @@ bool TerrainWorldCooker::cook(const fs::path& source, const fs::path& destinatio
     }
 
     std::map<uint32_t, bool> present;
-    for (const WorldTileInfo& info : manifest.tiles) present[info.coord.key()] = true;
+    for (const terraincore::WorldTileInfo& info : manifest.tiles) present[info.coord.key()] = true;
     const int n = lattice.tileQuads;
 
-    TileEncodeOptions options;
+    terraincore::TileEncodeOptions options;
     options.level = 19;
     options.keepUnknown = false;
-    const TileCodec codec = terrainWorldEditorCodec();
-    TileCoord low, high;
+    const terraincore::TileCodec codec = terrainWorldEditorCodec();
+    terraincore::TileCoord low, high;
     bool any = false;
-    std::vector<std::shared_ptr<WorldTile>> overviewPatches;
-    for (WorldTileInfo& info : manifest.tiles) {
-        const TileCoord tile = info.coord;
+    std::vector<std::shared_ptr<terraincore::WorldTile>> overviewPatches;
+    for (terraincore::WorldTileInfo& info : manifest.tiles) {
+        const terraincore::TileCoord tile = info.coord;
         // the tile and its eight neighbours: every holder of each texel of its page
-        std::shared_ptr<WorldTile> near[3][3];
+        std::shared_ptr<terraincore::WorldTile> near[3][3];
         for (int dz = -1; dz <= 1; dz++) {
             for (int dx = -1; dx <= 1; dx++) {
-                const TileCoord other(tile.x + dx, tile.z + dz);
+                const terraincore::TileCoord other(tile.x + dx, tile.z + dz);
                 if (other.addressable() && present.count(other.key())) near[dz + 1][dx + 1] = loadCookTile(source, other);
             }
         }
-        std::shared_ptr<WorldTile> data = near[1][1];
+        std::shared_ptr<terraincore::WorldTile> data = near[1][1];
         if (!data) {
             error = "tile (" + std::to_string(tile.x) + ", " + std::to_string(tile.z) + ") of " + source.filename().string() + " could not be read";
             return false;
@@ -98,7 +97,7 @@ bool TerrainWorldCooker::cook(const fs::path& source, const fs::path& destinatio
                 uint16_t winner = own;
                 for (int dx = -1; dx <= 1 && !found; dx++) {
                     for (int dz = -1; dz <= 1 && !found; dz++) {
-                        const std::shared_ptr<WorldTile>& other = near[dz + 1][dx + 1];
+                        const std::shared_ptr<terraincore::WorldTile>& other = near[dz + 1][dx + 1];
                         if (!other) continue;
                         const int ox = tile.x + dx, oz = tile.z + dz;
                         const int lx = sx - ox * n, lz = sz - oz * n;
@@ -121,7 +120,7 @@ bool TerrainWorldCooker::cook(const fs::path& source, const fs::path& destinatio
         buildMinMax(*data, lattice);
         buildOverviewHeight(*data, lattice);
         buildSkirtDepth(*data, lattice);
-        const TileMinMax whole = tileNodeMinMax(*data, lattice, lattice.tileLevel(), 0, 0);
+        const terraincore::TileMinMax whole = tileNodeMinMax(*data, lattice, lattice.tileLevel(), 0, 0);
         info.minHeight = whole.min;
         info.maxHeight = whole.max;
         manifest.skirtDepth = std::max(manifest.skirtDepth, data->skirtDepth);
@@ -146,14 +145,14 @@ bool TerrainWorldCooker::cook(const fs::path& source, const fs::path& destinatio
             report.compressedBytes += treeBytes.size();
         }
 
-        auto patch = std::make_shared<WorldTile>();
+        auto patch = std::make_shared<terraincore::WorldTile>();
         patch->coord = tile;
         patch->overviewHeight = data->overviewHeight;
         patch->overviewColour = data->overviewColour;
         patch->skirtDepth = data->skirtDepth;
         overviewPatches.push_back(std::move(patch));
-        low = any ? TileCoord(std::min(low.x, tile.x), std::min(low.z, tile.z)) : tile;
-        high = any ? TileCoord(std::max(high.x, tile.x), std::max(high.z, tile.z)) : tile;
+        low = any ? terraincore::TileCoord(std::min(low.x, tile.x), std::min(low.z, tile.z)) : tile;
+        high = any ? terraincore::TileCoord(std::max(high.x, tile.x), std::max(high.z, tile.z)) : tile;
         any = true;
     }
     if (web && report.compressedBytes > WEB_MAX_BYTES) {
@@ -166,19 +165,19 @@ bool TerrainWorldCooker::cook(const fs::path& source, const fs::path& destinatio
                                   " MiB of tiles: the web keeps the whole pack in memory (R38)");
     }
 
-    WorldOverview overview;
+    terraincore::WorldOverview overview;
     if (any) {
-        if (web && std::max(high.x - low.x + 1, high.z - low.z + 1) * lattice.overviewStride + 1 > WORLD_OVERVIEW_MAX_MOBILE) {
-            error = "a Terrain World on the web spans at most " + std::to_string((WORLD_OVERVIEW_MAX_MOBILE - 1) / lattice.overviewStride) + " tiles a side";
+        if (web && std::max(high.x - low.x + 1, high.z - low.z + 1) * lattice.overviewStride + 1 > terraincore::WORLD_OVERVIEW_MAX_MOBILE) {
+            error = "a Terrain World on the web spans at most " + std::to_string((terraincore::WORLD_OVERVIEW_MAX_MOBILE - 1) / lattice.overviewStride) + " tiles a side";
             return false;
         }
-        initOverview(overview, lattice, low, high, manifest.maps.baseHeight);
-        for (const auto& patch : overviewPatches) setOverviewPatch(overview, *patch);
+        terraincore::initOverview(overview, lattice, low, high, manifest.maps.baseHeight);
+        for (const auto& patch : overviewPatches) terraincore::setOverviewPatch(overview, *patch);
         std::vector<uint8_t> bytes;
-        if (!encodeOverview(overview, lattice, codec, 19, bytes, &error)) return false;
+        if (!terraincore::encodeOverview(overview, lattice, codec, 19, bytes, &error)) return false;
         if (!writeCooked(destination / "overview.jtile", bytes, error)) return false;
     }
     std::vector<uint8_t> worldBin;
-    encodeWorldBin(manifest, worldBin);
+    terraincore::encodeWorldBin(manifest, worldBin);
     return writeCooked(destination / "world.bin", worldBin, error);
 }

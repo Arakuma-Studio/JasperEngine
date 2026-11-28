@@ -18,6 +18,8 @@
 #include <sstream>
 #include "support/PosixCompat.h"
 
+namespace TitleSheetExportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using TitleSheetExportJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
@@ -247,3 +249,5 @@ TEST(TitleSheetFrameTimes, AtMost1024Frames) {
     EXPECT_NE(error.find("at most 1024"), std::string::npos) << error;
     EXPECT_FALSE(titleAnimFrameTimes(info, 30.0, TitleSheetExportJson(), times, error)) << "3,000 frames by default";
 }
+
+}  // namespace TitleSheetExportTest_cpp

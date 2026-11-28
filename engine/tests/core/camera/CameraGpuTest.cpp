@@ -18,6 +18,8 @@
 
 #include <gtest/gtest.h>
 
+namespace CameraGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -84,3 +86,5 @@ TEST_F(CameraGpu, PixelPerfectWinsOverOrthographicSize){
     EXPECT_FLOAT_EQ(c.topClip, top);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace CameraGpuTest_cpp

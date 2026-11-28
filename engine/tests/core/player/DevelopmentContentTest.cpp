@@ -15,10 +15,11 @@
 #include <string>
 #include <vector>
 
+namespace development_content_test {
+
 using namespace jasperengine;
 using namespace jasperengine::player;
 
-namespace development_content_test {
 
     const std::string kFolder = "/data/user/0/com.example.game/files/je-dev-content";
     const std::string kPlayer = "android-universal-gles3-development";
@@ -68,6 +69,8 @@ namespace development_content_test {
     }
 
 }
+
+namespace development_content_test {
 
 using namespace development_content_test;
 
@@ -145,3 +148,5 @@ TEST(DevelopmentContent, ManifestPatchFieldsRoundTripAndDefault) {
     EXPECT_EQ(back.patch, 0);
     EXPECT_EQ(back.patchedAt, "");
 }
+
+}  // namespace development_content_test

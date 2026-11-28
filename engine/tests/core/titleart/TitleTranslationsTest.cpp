@@ -13,6 +13,8 @@
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleTranslations.h"
 
+namespace TitleTranslationsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -147,3 +149,5 @@ TEST(TitleTranslationsTest, WhichLanguagesDiffer) {
     EXPECT_EQ(translationSourceHash("").size(), 8u);
     EXPECT_EQ(translationSourceHash(""), "811c9dc5") << "FNV-1a 32 offset basis";
 }
+
+}  // namespace TitleTranslationsTest_cpp

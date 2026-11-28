@@ -15,8 +15,8 @@
 #include <mutex>
 
 using namespace jasperengine;
-using namespace jasperengine::jobs;
-using namespace jasperengine::jobs::detail;
+
+namespace jasperengine::jobs {
 
 namespace{
 
@@ -31,8 +31,8 @@ namespace{
     };
 
     constexpr size_t blockBytes(size_t slabClass){
-        return slabClass == (size_t)SlabClass::Link ? kLinkSlabBytes
-            : slabClass == (size_t)SlabClass::Job ? kJobSlabBytes : kTaskSlabBytes;
+        return slabClass == (size_t)jobs::detail::SlabClass::Link ? jobs::detail::kLinkSlabBytes
+            : slabClass == (size_t)jobs::detail::SlabClass::Job ? jobs::detail::kJobSlabBytes : jobs::detail::kTaskSlabBytes;
     }
 
     struct Depot {
@@ -207,6 +207,8 @@ void jobs::detail::releaseHeapEnvelope(void* block) noexcept{
     heapEnvelopeBytes().subtract(*reinterpret_cast<size_t*>(memory));
     ::operator delete(memory, std::align_val_t(kChunkAlignment));
 }
+
+}  // namespace jasperengine::jobs
 
 namespace jasperengine { namespace jobs { namespace detail {
     uint64_t heapEnvelopesAllocated(){

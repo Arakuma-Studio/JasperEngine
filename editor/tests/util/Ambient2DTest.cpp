@@ -9,6 +9,8 @@
 #include "Scene.h"
 #include "util/Ambient2D.h"
 
+namespace Ambient2DTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -34,3 +36,5 @@ TEST(Ambient2D, BrightnessIsIntensityTimesTheLargestLinearChannel) {
     scene.setAmbientLight2D(3.0f, Vector3(0.5f, 0.5f, 0.5f));
     EXPECT_FALSE(isAmbientLight2DBright(scene)) << "grey at 3";
 }
+
+}  // namespace Ambient2DTest_cpp

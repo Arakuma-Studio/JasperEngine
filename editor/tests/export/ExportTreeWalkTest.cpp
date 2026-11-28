@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+namespace ExportTreeWalkTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
@@ -41,3 +43,5 @@ TEST(ExportTreeWalk, ASubfolderItCannotListFailsTheWalk) {
     ASSERT_FALSE(visited.empty());
     EXPECT_EQ(visited.back(), "a") << "nothing is visited after the folder it could not list";
 }
+
+}  // namespace ExportTreeWalkTest_cpp

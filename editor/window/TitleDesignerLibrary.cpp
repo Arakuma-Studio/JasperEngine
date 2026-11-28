@@ -28,7 +28,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::titledesigner;
 namespace ta = jasperengine::titleart;
 
 namespace {
@@ -38,36 +37,36 @@ namespace {
         return it != object.end() && it->is_string() ? it->get<std::string>() : std::string();
     }
 
-    bool itemMatches(const LibraryItem& item, const std::string& foldedQuery) {
+    bool itemMatches(const titledesigner::LibraryItem& item, const std::string& foldedQuery) {
         if (foldedQuery.empty()) return true;
-        if (foldForSearch(item.name).find(foldedQuery) != std::string::npos) return true;
-        if (foldForSearch(item.family).find(foldedQuery) != std::string::npos) return true;
+        if (titledesigner::foldForSearch(item.name).find(foldedQuery) != std::string::npos) return true;
+        if (titledesigner::foldForSearch(item.family).find(foldedQuery) != std::string::npos) return true;
         for (const std::string& t : item.terms) {
-            if (foldForSearch(t).find(foldedQuery) != std::string::npos) return true;
+            if (titledesigner::foldForSearch(t).find(foldedQuery) != std::string::npos) return true;
         }
         return false;
     }
 
 }
 
-LibraryApplyOptions TitleDesignerWindow::libraryOptions(LibraryTab tab) const {
-    LibraryApplyOptions options;
-    const DocumentView* v = viewOrNull();
+titledesigner::LibraryApplyOptions TitleDesignerWindow::libraryOptions(titledesigner::LibraryTab tab) const {
+    titledesigner::LibraryApplyOptions options;
+    const titledesigner::DocumentView* v = viewOrNull();
     options.applyFont = v && v->applyFont;
     options.keepColorScheme = !v || v->keepColorScheme;
     const std::vector<std::string> layers = doc.selectedLayers();
-    if (tab == LibraryTab::ColorSchemes) {
+    if (tab == titledesigner::LibraryTab::ColorSchemes) {
         // Whole Title when the selection is empty or a group, Selected Layers otherwise (R45)
         bool groupOnly = !layers.empty();
         for (const std::string& id : layers) {
-            const ta::Json* layer = layerById(doc.committed(), id);
+            const ta::Json* layer = titledesigner::layerById(doc.committed(), id);
             groupOnly = groupOnly && layer && ta::layerTypeOf(*layer) == ta::LayerType::Group;
         }
         const std::string scope = v ? v->colorSchemeScope : std::string();
         options.wholeTitle = scope == "whole" || (scope.empty() && (layers.empty() || groupOnly));
     }
     if (!options.wholeTitle) options.layers = layers;
-    if (options.layers.empty() && tab == LibraryTab::Looks) {
+    if (options.layers.empty() && tab == titledesigner::LibraryTab::Looks) {
         // nothing selected: the topmost text layer; with none, the Look adds a text (R41)
         std::string top;
         ta::forEachLayer(doc.committed().root, [&](const ta::Json& l, const ta::Json*, int) {
@@ -82,7 +81,7 @@ LibraryApplyOptions TitleDesignerWindow::libraryOptions(LibraryTab tab) const {
 std::string TitleDesignerWindow::libraryTargetKey() const {
     JE_PROFILE_SCOPE("TD libraryTargetKey");
     // the target layer's content key: moving it or editing another layer invalidates no tile (R46)
-    const LibraryApplyOptions options = libraryOptions(LibraryTab::Looks);
+    const titledesigner::LibraryApplyOptions options = libraryOptions(titledesigner::LibraryTab::Looks);
     if (options.layers.empty()) return "sample";
     // (the committed document: a hover preview is not a new target)
     const std::pair<const void*, uint64_t> key{doc.document().get(), doc.changeCount()};
@@ -94,20 +93,20 @@ std::string TitleDesignerWindow::libraryTargetKey() const {
     auto it = committedHashes.layers.find(options.layers.back());
     if (it == committedHashes.layers.end()) return "sample";
     // the layer's text after a '|': S84 picks the baked first paint of its script (S84 R33)
-    const ta::Json* layer = layerById(doc.committed(), options.layers.back());
+    const ta::Json* layer = titledesigner::layerById(doc.committed(), options.layers.back());
     return std::to_string(it->second.content) + "|" + (layer ? layer->value("text", std::string()) : std::string());
 }
 
-bool TitleDesignerWindow::applyLibraryItem(LibraryTab tab, const LibraryItem& item, bool preview) {
-    TitleLibraryProvider* library = this->library();
+bool TitleDesignerWindow::applyLibraryItem(titledesigner::LibraryTab tab, const titledesigner::LibraryItem& item, bool preview) {
+    titledesigner::TitleLibraryProvider* library = this->library();
     if (!library || !doc.editable()) return false;
     if (!item.disabledReason.empty()) {
         reportError(item.disabledReason);
         return false;
     }
-    const LibraryApplyOptions options = libraryOptions(tab);
-    PreviewItem p;
-    p.kind = tab == LibraryTab::Looks ? PreviewItem::Kind::Look : tab == LibraryTab::ColorSchemes ? PreviewItem::Kind::ColorScheme : PreviewItem::Kind::Template;
+    const titledesigner::LibraryApplyOptions options = libraryOptions(tab);
+    titledesigner::PreviewItem p;
+    p.kind = tab == titledesigner::LibraryTab::Looks ? titledesigner::PreviewItem::Kind::Look : tab == titledesigner::LibraryTab::ColorSchemes ? titledesigner::PreviewItem::Kind::ColorScheme : titledesigner::PreviewItem::Kind::Template;
     p.id = item.id;
     p.label = item.name;
     // the same S84 function, the same arguments, the same document (R44)
@@ -116,7 +115,7 @@ bool TitleDesignerWindow::applyLibraryItem(LibraryTab tab, const LibraryItem& it
     std::string error;
     if (preview) return doc.setPreview(p, &error);
     // templates on a document with content first ask (R43)
-    if (tab == LibraryTab::Templates && !contentEmpty() && pendingTemplate != item.id) {
+    if (tab == titledesigner::LibraryTab::Templates && !contentEmpty() && pendingTemplate != item.id) {
         pendingTemplate = item.id;
         return false;
     }
@@ -136,7 +135,7 @@ bool TitleDesignerWindow::applyLibraryItem(LibraryTab tab, const LibraryItem& it
         toasts.push_back(p.stepName + " " + note);
         toastUntil = now() + 6.0;
     }
-    if (tab == LibraryTab::Templates) {
+    if (tab == titledesigner::LibraryTab::Templates) {
         // the layer of the template's `title` placeholder, so the first Look click restyles it (R5)
         std::string title = library->titleLayer(doc.committed());
         if (title.empty()) {
@@ -145,18 +144,18 @@ bool TitleDesignerWindow::applyLibraryItem(LibraryTab tab, const LibraryItem& it
                 return true;
             });
         }
-        if (!title.empty()) doc.selectOne({NodeKind::Layer, title, {}, {}});
+        if (!title.empty()) doc.selectOne({titledesigner::NodeKind::Layer, title, {}, {}});
     } else if (!options.layers.empty()) {
-        std::vector<NodeRef> kept;
+        std::vector<titledesigner::NodeRef> kept;
         for (const std::string& id : options.layers) {
-            if (layerById(doc.committed(), id)) kept.push_back({NodeKind::Layer, id, {}, {}});
+            if (titledesigner::layerById(doc.committed(), id)) kept.push_back({titledesigner::NodeKind::Layer, id, {}, {}});
         }
         doc.select(kept);
     } else {
         // a Look with nothing to apply to added a text: select it
         for (const std::string& id : doc.newIds("layer")) {
-            if (layerById(doc.committed(), id)) {
-                doc.selectOne({NodeKind::Layer, id, {}, {}});
+            if (titledesigner::layerById(doc.committed(), id)) {
+                doc.selectOne({titledesigner::NodeKind::Layer, id, {}, {}});
                 break;
             }
         }
@@ -164,16 +163,16 @@ bool TitleDesignerWindow::applyLibraryItem(LibraryTab tab, const LibraryItem& it
     return true;
 }
 
-TitleLibraryProvider* TitleDesignerWindow::library() const {
-    return libraryProvider();
+titledesigner::TitleLibraryProvider* TitleDesignerWindow::library() const {
+    return titledesigner::libraryProvider();
 }
 
-LibraryTile TitleDesignerWindow::libraryTile(LibraryTab tab, const LibraryItem& item, float width, float height, bool visible) {
+titledesigner::LibraryTile TitleDesignerWindow::libraryTile(titledesigner::LibraryTab tab, const titledesigner::LibraryItem& item, float width, float height, bool visible) {
     JE_PROFILE_SCOPE("TD libraryTile");
-    LibraryTile out;
-    TitleLibraryProvider* library = this->library();
+    titledesigner::LibraryTile out;
+    titledesigner::TitleLibraryProvider* library = this->library();
     if (!libraryTiles || !library || !geometry || !doc.isOpen()) return out;
-    const LibraryApplyOptions options = libraryOptions(tab);
+    const titledesigner::LibraryApplyOptions options = libraryOptions(tab);
     std::string targets = options.wholeTitle ? std::string("*") : std::string();
     for (const std::string& id : options.layers) targets += id + ",";
     const std::string slot = std::string(libraryTabName(tab)) + ":" + item.id;
@@ -196,9 +195,9 @@ LibraryTile TitleDesignerWindow::libraryTile(LibraryTab tab, const LibraryItem& 
                     return true;
                 });
             }
-            const ta::Json* target = layer.empty() ? nullptr : layerById(applied.doc, layer);
+            const ta::Json* target = layer.empty() ? nullptr : titledesigner::layerById(applied.doc, layer);
             if (target) {
-                TitleRect bounds = geometry->contentBounds(*target, applied.doc);
+                titledesigner::TitleRect bounds = geometry->contentBounds(*target, applied.doc);
                 // the Look's reach: rims, glow and shadow around the letters
                 const double pad = std::max(40.0, bounds.height * 0.35);
                 bounds = {bounds.x - pad, bounds.y - pad, bounds.width + 2.0 * pad, bounds.height + 2.0 * pad};
@@ -229,21 +228,21 @@ LibraryTile TitleDesignerWindow::libraryTile(LibraryTab tab, const LibraryItem& 
 
 void TitleDesignerWindow::drawLibrary(float width, float height) {
     JE_PROFILE_SCOPE("TD drawLibrary");
-    TitleLibraryProvider* library = this->library();
+    titledesigner::TitleLibraryProvider* library = this->library();
     if (!library || !doc.isOpen() || newerVersion()) return;
-    DocumentView& v = view();
-    LibraryTab tab = LibraryTab::Looks;
-    libraryTabFromName(v.libraryTab, tab);
+    titledesigner::DocumentView& v = view();
+    titledesigner::LibraryTab tab = titledesigner::LibraryTab::Looks;
+    titledesigner::libraryTabFromName(v.libraryTab, tab);
     ImGui::BeginChild("##library", ImVec2(width, height), true, ImGuiWindowFlags_NoScrollbar);
     regionFocus(RegionLibrary);
     // the header names what a click does (R40)
-    const LibraryApplyOptions options = libraryOptions(tab);
+    const titledesigner::LibraryApplyOptions options = libraryOptions(tab);
     std::string applies;
-    if (tab == LibraryTab::Templates) applies = "Replaces the whole title";
+    if (tab == titledesigner::LibraryTab::Templates) applies = "Replaces the whole title";
     else if (options.wholeTitle) applies = "Applies to the whole title";
     else if (options.layers.empty()) applies = "Adds a text in this look";
     else if (options.layers.size() == 1) {
-        const ta::Json* layer = layerById(doc.shown(), options.layers[0]);
+        const ta::Json* layer = titledesigner::layerById(doc.shown(), options.layers[0]);
         const ta::LayerType type = layer ? ta::layerTypeOf(*layer) : ta::LayerType::Unknown;
         const std::string name = layer ? (type == ta::LayerType::Text ? str(*layer, "text") : str(*layer, "name")) : std::string();
         applies = "Applies to \"" + name + "\" (" + ta::layerTypeLabel(type) + ")";
@@ -265,11 +264,11 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip(collapsed ? "Show the Library" : "Hide the Library");
     libraryShown = !collapsed;
     ImGui::SameLine();
-    for (LibraryTab t : {LibraryTab::Looks, LibraryTab::ColorSchemes, LibraryTab::Templates}) {
-        const char* label = t == LibraryTab::Looks ? "Looks" : t == LibraryTab::ColorSchemes ? "Color Schemes" : "Templates";
-        if (t != LibraryTab::Looks) ImGui::SameLine(0, 10.0f * ImGui::GetFontSize() / 16.0f);
+    for (titledesigner::LibraryTab t : {titledesigner::LibraryTab::Looks, titledesigner::LibraryTab::ColorSchemes, titledesigner::LibraryTab::Templates}) {
+        const char* label = t == titledesigner::LibraryTab::Looks ? "Looks" : t == titledesigner::LibraryTab::ColorSchemes ? "Color Schemes" : "Templates";
+        if (t != titledesigner::LibraryTab::Looks) ImGui::SameLine(0, 10.0f * ImGui::GetFontSize() / 16.0f);
         if (ImGui::Selectable(label, tab == t, 0, ImVec2(ImGui::CalcTextSize(label).x, 0))) {
-            v.libraryTab = libraryTabName(t);
+            v.libraryTab = titledesigner::libraryTabName(t);
             tab = t;
         }
     }
@@ -304,7 +303,7 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
         if (ImGui::RadioButton(size == std::string("s") ? "S" : size == std::string("m") ? "M" : "L", v.tileSize == size)) v.tileSize = size;
         ImGui::SameLine();
     }
-    if (tab == LibraryTab::Looks) {
+    if (tab == titledesigner::LibraryTab::Looks) {
         wrap(checkWidth("Apply Font"));
         ImGui::Checkbox("Apply Font", &v.applyFont);
         ImGui::SameLine();
@@ -312,7 +311,7 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
         ImGui::Checkbox("Keep Color Scheme", &v.keepColorScheme);
         ImGui::SameLine();
     }
-    if (tab == LibraryTab::ColorSchemes) {
+    if (tab == titledesigner::LibraryTab::ColorSchemes) {
         const bool whole = options.wholeTitle;
         wrap(checkWidth("Selected Layers"));
         if (ImGui::RadioButton("Selected Layers", !whole)) v.colorSchemeScope = "selected";
@@ -321,41 +320,41 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
         if (ImGui::RadioButton("Whole Title", whole)) v.colorSchemeScope = "whole";
         ImGui::SameLine();
     }
-    std::vector<LibraryItem> items = library->items(tab);
+    std::vector<titledesigner::LibraryItem> items = library->items(tab);
     // family chips with match counts
-    const std::string folded = foldForSearch(v.libraryQuery);
-    std::vector<LibraryItem> filtered;
-    for (const LibraryItem& item : items) {
+    const std::string folded = titledesigner::foldForSearch(v.libraryQuery);
+    std::vector<titledesigner::LibraryItem> filtered;
+    for (const titledesigner::LibraryItem& item : items) {
         if (!itemMatches(item, folded)) continue;
         if (v.libraryDimension != "all" && !item.dimension.empty() && item.dimension != v.libraryDimension) continue;
         filtered.push_back(item);
     }
-    if (tab == LibraryTab::Looks) wrap(ImGui::CalcTextSize(ICON_FA_DICE " Random Look").x + ImGui::GetStyle().FramePadding.x * 2.0f);
-    if (tab == LibraryTab::Looks && ImGui::Button(ICON_FA_DICE " Random Look") && !filtered.empty() && doc.editable()) {
+    if (tab == titledesigner::LibraryTab::Looks) wrap(ImGui::CalcTextSize(ICON_FA_DICE " Random Look").x + ImGui::GetStyle().FramePadding.x * 2.0f);
+    if (tab == titledesigner::LibraryTab::Looks && ImGui::Button(ICON_FA_DICE " Random Look") && !filtered.empty() && doc.editable()) {
         static std::mt19937 random(std::random_device{}());
-        const LibraryItem& pick = filtered[random() % filtered.size()];
+        const titledesigner::LibraryItem& pick = filtered[random() % filtered.size()];
         applyLibraryItem(tab, pick, false);
     }
     ImGui::SameLine();
     if (library->savesItems() && ImGui::Button(ICON_FA_ELLIPSIS "###libmenu")) ImGui::OpenPopup("##libmenu");
     if (ImGui::BeginPopup("##libmenu")) {
         if (ImGui::MenuItem("Save As Look...")) {
-            saveAsTab = LibraryTab::Looks;
+            saveAsTab = titledesigner::LibraryTab::Looks;
             saveAsOpen = true;
         }
         if (ImGui::MenuItem("Save As Color Scheme...")) {
-            saveAsTab = LibraryTab::ColorSchemes;
+            saveAsTab = titledesigner::LibraryTab::ColorSchemes;
             saveAsOpen = true;
         }
         if (ImGui::MenuItem("Save As Template...")) {
-            saveAsTab = LibraryTab::Templates;
+            saveAsTab = titledesigner::LibraryTab::Templates;
             saveAsOpen = true;
         }
         ImGui::EndPopup();
     }
     if (saveAsOpen && library->drawSaveAs(saveAsTab, doc)) saveAsOpen = false;
     std::map<std::string, int> familyCounts;
-    for (const LibraryItem& item : filtered) familyCounts[item.family]++;
+    for (const titledesigner::LibraryItem& item : filtered) familyCounts[item.family]++;
     const std::string allChip = "All (" + std::to_string(filtered.size()) + ")";
     wrap(ImGui::CalcTextSize(allChip.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f);
     if (ImGui::SmallButton((allChip + "###famall").c_str())) v.libraryFamily.clear();
@@ -370,13 +369,13 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
         if (on) ImGui::PopStyleColor();
     }
     if (!v.libraryFamily.empty()) {
-        filtered.erase(std::remove_if(filtered.begin(), filtered.end(), [&](const LibraryItem& i) { return i.family != v.libraryFamily; }), filtered.end());
+        filtered.erase(std::remove_if(filtered.begin(), filtered.end(), [&](const titledesigner::LibraryItem& i) { return i.family != v.libraryFamily; }), filtered.end());
     }
     // Favorites and Recent first when no filter is on (R40)
     if (folded.empty() && v.libraryFamily.empty()) {
-        std::vector<LibraryItem> first, rest;
+        std::vector<titledesigner::LibraryItem> first, rest;
         const std::vector<std::string> recents = library->recents(tab);
-        for (const LibraryItem& item : filtered) {
+        for (const titledesigner::LibraryItem& item : filtered) {
             const bool pinned = library->isFavorite(tab, item.id) || std::find(recents.begin(), recents.end(), item.id) != recents.end();
             (pinned ? first : rest).push_back(item);
         }
@@ -396,9 +395,9 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
     const ImVec2 tileSize(tile.x * scale, tile.y * scale);
     ImGui::BeginChild("##tiles", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
     if (items.empty()) {
-        ImGui::TextDisabled(tab == LibraryTab::Templates ? "No Templates in this project yet" : "Nothing here yet");
+        ImGui::TextDisabled(tab == titledesigner::LibraryTab::Templates ? "No Templates in this project yet" : "Nothing here yet");
     } else if (filtered.empty()) {
-        const char* noun = tab == LibraryTab::Looks ? "Looks" : tab == LibraryTab::ColorSchemes ? "Color Schemes" : "Templates";
+        const char* noun = tab == titledesigner::LibraryTab::Looks ? "Looks" : tab == titledesigner::LibraryTab::ColorSchemes ? "Color Schemes" : "Templates";
         ImGui::TextDisabled("No %s match \"%s\"", noun, v.libraryQuery.c_str());
         ImGui::SameLine();
         if (ImGui::SmallButton("Clear")) {
@@ -411,7 +410,7 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
     const bool mouseMoved = mouse.x != libraryHoverMouse.x || mouse.y != libraryHoverMouse.y;
     std::string hoveredNow;
     for (size_t i = 0; i < filtered.size(); i++) {
-        const LibraryItem& item = filtered[i];
+        const titledesigner::LibraryItem& item = filtered[i];
         if (i) ImGui::SameLine();
         ImGui::PushID(item.id.c_str());
         const ImVec2 p = ImGui::GetCursorScreenPos();
@@ -424,7 +423,7 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
         const bool highlighted = (int)i == libraryHighlight;
         dl->AddRectFilled(p, ImVec2(p.x + tileSize.x, p.y + tileSize.y), IM_COL32(44, 44, 50, 255), 4.0f);
         if (keyStable && (visibleTile || nextScreen)) {
-            const LibraryTile t = library->tile(tab, item, targetKey, tileSize.x, tileSize.y, visibleTile);
+            const titledesigner::LibraryTile t = library->tile(tab, item, targetKey, tileSize.x, tileSize.y, visibleTile);
             if (t.texture) {
                 const float fit = std::min(tileSize.x / std::max(1.0f, t.width), tileSize.y / std::max(1.0f, t.height));
                 const ImVec2 size(t.width * fit, t.height * fit);
@@ -486,9 +485,9 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
         EditorModal::message("Replace the whole title? Undo brings it back.");
         ImGui::TextUnformatted("Replace the whole title? Undo brings it back.");
         if (EditorModal::button("Replace", "yes")) {
-            for (const LibraryItem& item : items) {
+            for (const titledesigner::LibraryItem& item : items) {
                 if (item.id == pendingTemplate) {
-                    applyLibraryItem(LibraryTab::Templates, item, false);
+                    applyLibraryItem(titledesigner::LibraryTab::Templates, item, false);
                     break;
                 }
             }
@@ -537,8 +536,8 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
         libraryHoverMoved = false;
         libraryHoverMouse = mouse;
         if (hoveredNow.empty() && !arrowed && doc.preview() &&
-            (doc.preview()->kind == PreviewItem::Kind::Look || doc.preview()->kind == PreviewItem::Kind::ColorScheme ||
-             doc.preview()->kind == PreviewItem::Kind::Template)) {
+            (doc.preview()->kind == titledesigner::PreviewItem::Kind::Look || doc.preview()->kind == titledesigner::PreviewItem::Kind::ColorScheme ||
+             doc.preview()->kind == titledesigner::PreviewItem::Kind::Template)) {
             doc.clearPreview();
         }
     } else if (!hoveredNow.empty() && mouseMoved) {
@@ -547,7 +546,7 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
         libraryHoverMouse = mouse;
     }
     if (!libraryHover.empty() && libraryHoverMoved && now() - libraryHoverSince >= 0.15) {
-        for (const LibraryItem& item : filtered) {
+        for (const titledesigner::LibraryItem& item : filtered) {
             if (item.id == libraryHover && (!doc.preview() || doc.preview()->id != item.id)) applyLibraryItem(tab, item, true);
         }
     }

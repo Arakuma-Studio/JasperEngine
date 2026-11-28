@@ -14,6 +14,8 @@
 #include <filesystem>
 #include <string>
 
+namespace StringTableDocumentTest_cpp {
+
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 namespace st = jasperengine::editor::l10n;
@@ -133,3 +135,5 @@ TEST(StringTableDocument, NamespaceClashWithTitleArtIsAnError) {
     EXPECT_NE(error.find("assets/titles/logo.titleart"), std::string::npos) << error;
     EXPECT_TRUE(st::createTable(dir.path(), dir.path() / "assets" / "l10n" / "logo.stringtable", "logo_ui", "en", set, error)) << error;
 }
+
+}  // namespace StringTableDocumentTest_cpp

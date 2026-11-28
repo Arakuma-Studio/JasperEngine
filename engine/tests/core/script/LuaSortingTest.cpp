@@ -20,6 +20,8 @@
 
 #include <string>
 
+namespace LuaSortingTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -127,3 +129,5 @@ TEST(LuaSorting, RawGroupComponentGetterReturnsUserdata){
         "assert(getmetatable(component) ~= nil)\n"), "");
     lua_pushnil(L); lua_setglobal(L, "sortScene");
 }
+
+}  // namespace LuaSortingTest_cpp

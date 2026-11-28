@@ -13,6 +13,8 @@
 
 #include <map>
 
+namespace VoxelChangeSetTest_cpp {
+
 using namespace voxeltest;
 
 namespace {
@@ -412,3 +414,5 @@ TEST(VoxelSoakSlow, RedControlMissingPadding) {
     }
     EXPECT_TRUE(!audited || !rebuilds);
 }
+
+}  // namespace VoxelChangeSetTest_cpp

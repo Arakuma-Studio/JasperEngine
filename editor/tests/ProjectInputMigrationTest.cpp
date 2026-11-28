@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+namespace ProjectInputMigrationTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -141,3 +143,5 @@ TEST_F(ProjectInputMigrationTest, TheGameReadsTheEditedActions) {
     Input::endFrame();
     Input::reset();
 }
+
+}  // namespace ProjectInputMigrationTest_cpp

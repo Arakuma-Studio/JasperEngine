@@ -14,10 +14,13 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::pixelart;
+
+namespace jasperengine::editor::pixelart {
 
 namespace fs = std::filesystem;
 namespace pxc = jasperengine::pixelart;
+
+}  // namespace jasperengine::editor::pixelart
 
 // file-local, in a namespace of its own: a unity build merges this directory's sources
 namespace jasperengine::editor::pixelart::paletteassets {
@@ -42,9 +45,10 @@ namespace {
 }
 }
 
-using namespace jasperengine::editor::pixelart::paletteassets;
 
-std::vector<ProjectPalette> jasperengine::editor::pixelart::listProjectPalettes(const Project& project) {
+namespace jasperengine::editor::pixelart {
+
+std::vector<ProjectPalette> listProjectPalettes(const Project& project) {
     std::vector<ProjectPalette> palettes;
     const fs::path assets = project.getAssetsPath();
     std::error_code error;
@@ -59,35 +63,35 @@ std::vector<ProjectPalette> jasperengine::editor::pixelart::listProjectPalettes(
         }
         if (!it->is_regular_file(error) || file.extension() != ".palette") continue;
         ProjectPalette entry;
-        if (!readPalette(file, entry.palette)) continue;
-        entry.path = relativeTo(file, project.getProjectPath());
-        entry.assetPath = relativeTo(file, assets);
+        if (!jasperengine::editor::pixelart::paletteassets::readPalette(file, entry.palette)) continue;
+        entry.path = jasperengine::editor::pixelart::paletteassets::relativeTo(file, project.getProjectPath());
+        entry.assetPath = jasperengine::editor::pixelart::paletteassets::relativeTo(file, assets);
         palettes.push_back(std::move(entry));
     }
     std::sort(palettes.begin(), palettes.end(), [](const ProjectPalette& a, const ProjectPalette& b) { return a.path < b.path; });
     return palettes;
 }
 
-std::string jasperengine::editor::pixelart::findBuiltinCopy(const Project& project, const std::string& id) {
+std::string findBuiltinCopy(const Project& project, const std::string& id) {
     for (const ProjectPalette& entry : listProjectPalettes(project)) {
         if (entry.palette.source.kind == "builtin" && entry.palette.source.id == id) return entry.path;
     }
     return {};
 }
 
-std::string jasperengine::editor::pixelart::builtinCopyPath(const Project& project, const std::string& id) {
+std::string builtinCopyPath(const Project& project, const std::string& id) {
     const fs::path folder = project.getAssetsPath() / "Palettes";
     fs::path file = folder / (id + ".palette");
     std::error_code error;
     for (int n = 2; fs::exists(file, error); n++) file = folder / (id + " " + std::to_string(n) + ".palette");
-    return relativeTo(file, project.getProjectPath());
+    return jasperengine::editor::pixelart::paletteassets::relativeTo(file, project.getProjectPath());
 }
 
-std::string jasperengine::editor::pixelart::defaultPalettePath(const Project& project) {
+std::string defaultPalettePath(const Project& project) {
     return FileUtils::pathToGenericUtf8(project.getDefaultPalette());
 }
 
-ResolvedPalette jasperengine::editor::pixelart::resolvePaletteName(const Project& project, const std::string& given, bool allowBareBuiltin) {
+ResolvedPalette resolvePaletteName(const Project& project, const std::string& given, bool allowBareBuiltin) {
     ResolvedPalette result;
     std::string name = given;
     if (name.empty()) {
@@ -102,7 +106,7 @@ ResolvedPalette jasperengine::editor::pixelart::resolvePaletteName(const Project
     // a built-in: through the project's copy of it
     std::string id;
     if (name.rfind("builtin:", 0) == 0) id = name.substr(8);
-    else if (allowBareBuiltin && !isPalettePath(name) && findBuiltinPalette(name)) id = name;
+    else if (allowBareBuiltin && !jasperengine::editor::pixelart::paletteassets::isPalettePath(name) && findBuiltinPalette(name)) id = name;
     if (!id.empty()) {
         // "builtin:fire#ramp:fire" names the copy's ramp: the caller splits it first
         const BuiltinPalette* builtin = findBuiltinPalette(id);
@@ -119,12 +123,12 @@ ResolvedPalette jasperengine::editor::pixelart::resolvePaletteName(const Project
             result.needsCopy = true;
             result.copyText = std::string(builtinPaletteText(id));
             result.palette = builtin->palette;
-        } else if (!readPalette(project.getProjectPath() / result.path, result.palette)) {
+        } else if (!jasperengine::editor::pixelart::paletteassets::readPalette(project.getProjectPath() / result.path, result.palette)) {
             result.error = {"parse_error", "palette", "the project's copy of builtin:" + id + " (" + result.path + ") cannot be read",
                             "fix or delete " + result.path + " (a new copy is made on the next use)"};
             return result;
         }
-        result.assetPath = relativeTo(project.getProjectPath() / result.path, project.getAssetsPath());
+        result.assetPath = jasperengine::editor::pixelart::paletteassets::relativeTo(project.getProjectPath() / result.path, project.getAssetsPath());
         result.ok = true;
         return result;
     }
@@ -138,12 +142,14 @@ ResolvedPalette jasperengine::editor::pixelart::resolvePaletteName(const Project
                         "give a .palette path (list them with edit_palette and no arguments) or builtin:<id>"};
         return result;
     }
-    if (!readPalette(file, result.palette)) {
+    if (!jasperengine::editor::pixelart::paletteassets::readPalette(file, result.palette)) {
         result.error = {"parse_error", "palette", "'" + name + "' is not a readable palette", "read it with edit_palette to see its errors"};
         return result;
     }
-    result.path = relativeTo(file, project.getProjectPath());
-    result.assetPath = relativeTo(file, project.getAssetsPath());
+    result.path = jasperengine::editor::pixelart::paletteassets::relativeTo(file, project.getProjectPath());
+    result.assetPath = jasperengine::editor::pixelart::paletteassets::relativeTo(file, project.getAssetsPath());
     result.ok = true;
     return result;
 }
+
+}  // namespace jasperengine::editor::pixelart

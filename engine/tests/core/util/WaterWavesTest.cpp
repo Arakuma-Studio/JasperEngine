@@ -14,6 +14,8 @@
 #include <cmath>
 #include <cstdint>
 
+namespace WaterWavesTest_cpp {
+
 using namespace jasperengine;
 
 #ifndef WATER_WAVES_GLSL_SHA256
@@ -188,3 +190,5 @@ TEST(WaterWavesTest, SurfaceAtFollowsTheSines){
     EXPECT_EQ(waterSurfaceAt(params, Vector2(2.0f, 3.0f), 4.0f).height, 0.0f);
     EXPECT_EQ(params.getBand(), 0.0f);
 }
+
+}  // namespace WaterWavesTest_cpp

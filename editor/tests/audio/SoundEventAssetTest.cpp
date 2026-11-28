@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace SoundEventAssetTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -129,3 +131,5 @@ TEST(SoundEventAsset, TheTypeVocabularyIsTheEditors) {
     for (const SoundTypes::SoundType& type : SoundTypes::all()) editorTypes.push_back(type.name);
     EXPECT_EQ(SoundEventIO::soundTypes(), editorTypes);
 }
+
+}  // namespace SoundEventAssetTest_cpp

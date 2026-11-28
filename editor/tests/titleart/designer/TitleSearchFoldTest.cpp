@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+namespace TitleSearchFoldTest_cpp {
+
 using jasperengine::editor::titledesigner::foldForSearch;
 
 TEST(TitleSearchFoldTest, FullWidthAsciiBecomesAscii) {
@@ -58,3 +60,5 @@ TEST(TitleSearchFoldTest, SpacesAndPunctuationCollapse) {
     EXPECT_EQ(foldForSearch("\t\n"), "");
     EXPECT_EQ(foldForSearch(""), "");
 }
+
+}  // namespace TitleSearchFoldTest_cpp

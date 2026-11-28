@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+namespace TextureLabelsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -44,3 +46,5 @@ TEST(TextureLabels, NoPathShowsTheIdAndNothingShowsNotSet) {
     texture.setId("generated:noise");
     EXPECT_EQ(textureSlotLabel(texture).text, "generated:noise");
 }
+
+}  // namespace TextureLabelsTest_cpp

@@ -27,6 +27,8 @@
 #include <memory>
 #include <vector>
 
+namespace CharacterControllerTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -506,3 +508,5 @@ TEST_F(CharacterControllerTest, RootMotionVelocityConsumedInFixedSteps){
     physics->setRootMotion(walker, Vector3(INFINITY, 0.0f, 0.0f), 0.0f);
     EXPECT_EQ(log.count(D_LOG_WARN, "not finite"), 1u);
 }
+
+}  // namespace CharacterControllerTest_cpp

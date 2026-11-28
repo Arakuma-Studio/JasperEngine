@@ -17,6 +17,8 @@
 #include <cmath>
 #include <regex>
 
+namespace SvgWriterTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using SvgWriterJson = titleart::Json;   // its own name: editor::Json (McpJson.h) may be in sight in a unity unit
@@ -234,3 +236,5 @@ TEST(SvgWriter, LeftOutStrictAndEmbedded) {
     EXPECT_NE(r.text.find("<image x=\"10\" y=\"20\" width=\"30\" height=\"40\" preserveAspectRatio=\"none\" href=\"data:image/png;base64,iVBORw==\"/>"),
               std::string::npos);
 }
+
+}  // namespace SvgWriterTest_cpp
