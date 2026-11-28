@@ -14,9 +14,12 @@
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
+#include <chrono>
+#include <filesystem>
 #include <map>
 #include <set>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace AssetDatabaseTest_cpp {
@@ -434,6 +437,91 @@ TEST_F(AssetDatabaseTest, RefreshPutsBackAGuidAnotherToolDropped){
     ASSERT_EQ(changes.size(), 1u);
     EXPECT_EQ(changes[0].type, AssetDatabaseChange::Type::Modified);
     EXPECT_EQ(AssetDatabase::readGuid(project.file("a.prefab")), assetDatabaseGuidA);
+}
+
+// A folder deleted file by file, a meta before its file (a file manager, rm -rf), with the editor's
+// walks between the steps: the meta is not written again in between, so the folder can go
+TEST_F(AssetDatabaseTest, AFolderDeletedFileByFileMetaFirstLeavesNothingBehind){
+    project.write("extra/icon.png", "png");
+    project.write("extra/notes.prefab", prefab(assetDatabaseGuidB));
+    open();
+    ASSERT_TRUE(project.exists("extra/icon.png.meta"));
+    const std::string icon = database.getGuid("extra/icon.png");
+    ASSERT_FALSE(icon.empty());
+
+    std::filesystem::remove(project.file("extra/icon.png.meta"));
+    database.refresh();
+    EXPECT_FALSE(project.exists("extra/icon.png.meta")) << "written again while its folder was being deleted";
+    std::filesystem::remove(project.file("extra/icon.png"));
+    database.refresh();
+    std::filesystem::remove(project.file("extra/notes.prefab"));
+    database.refresh();
+    std::error_code ec;
+    EXPECT_TRUE(std::filesystem::remove(project.path() / "extra", ec)) << ec.message() << ": the folder is not empty";
+    EXPECT_FALSE(database.contains(icon));
+    EXPECT_FALSE(database.isMetaRestoreDue());
+}
+
+// A meta deleted alone comes back with its GUID: from the next refresh due after the one that
+// found it gone, and not while other files of its folder change (a delete going on there)
+TEST_F(AssetDatabaseTest, AMetaDeletedAloneIsWrittenAgainOnceItsFolderIsQuiet){
+    struct NoDelay {
+        NoDelay(){ AssetDatabase::setMetaRestoreDelayForTesting(std::chrono::milliseconds(0)); }
+        ~NoDelay(){ AssetDatabase::setMetaRestoreDelayForTesting(std::chrono::seconds(1)); }
+    } noDelay;
+    project.write("extra/icon.png", "png");
+    project.write("extra/a.prefab", prefab(assetDatabaseGuidA));
+    open();
+    const std::string icon = database.getGuid("extra/icon.png");
+    ASSERT_FALSE(icon.empty());
+
+    std::filesystem::remove(project.file("extra/icon.png.meta"));
+    EXPECT_TRUE(database.refresh().empty());
+    EXPECT_FALSE(project.exists("extra/icon.png.meta")) << "written by the refresh that found it gone";
+    EXPECT_EQ(database.getGuid("extra/icon.png"), icon) << "still the same asset meanwhile";
+    EXPECT_TRUE(database.isMetaRestoreDue());
+
+    std::filesystem::remove(project.file("extra/a.prefab"));
+    EXPECT_EQ(count(database.refresh(), AssetDatabaseChange::Type::Removed), 1u);
+    EXPECT_FALSE(project.exists("extra/icon.png.meta")) << "written while another file of its folder went";
+
+    const std::vector<AssetDatabaseChange> changes = database.refresh();
+    ASSERT_EQ(changes.size(), 1u);
+    EXPECT_EQ(changes[0].type, AssetDatabaseChange::Type::Modified);
+    ASSERT_TRUE(project.exists("extra/icon.png.meta"));
+    EXPECT_EQ(AssetDatabase::readGuid(project.file("extra/icon.png.meta")), icon);
+    EXPECT_FALSE(database.isMetaRestoreDue());
+    EXPECT_TRUE(database.refresh().empty());
+}
+
+// A file written again without its meta (a tool replacing the file and its meta) gets the meta
+// back from the refresh that sees it, its GUID kept: only an unchanged file waits for a delete
+TEST_F(AssetDatabaseTest, AFileWrittenAgainWithoutItsMetaGetsItAtOnce){
+    project.write("sfx/tone.wav", "riff");
+    open();
+    const std::string tone = database.getGuid("sfx/tone.wav");
+    std::filesystem::remove(project.file("sfx/tone.wav.meta"));
+    project.write("sfx/tone.wav", "riff, written again");
+    const std::vector<AssetDatabaseChange> changes = database.refresh();
+    ASSERT_EQ(changes.size(), 1u);
+    EXPECT_EQ(changes[0].type, AssetDatabaseChange::Type::Modified);
+    ASSERT_TRUE(project.exists("sfx/tone.wav.meta"));
+    EXPECT_EQ(AssetDatabase::readGuid(project.file("sfx/tone.wav.meta")), tone);
+    EXPECT_FALSE(database.isMetaRestoreDue());
+}
+
+// Closed before it was due: written then, or the next open would give the file a new GUID
+TEST_F(AssetDatabaseTest, CloseWritesADeletedMetaStillWaiting){
+    project.write("icon.png", "png");
+    open();
+    const std::string icon = database.getGuid("icon.png");
+    std::filesystem::remove(project.file("icon.png.meta"));
+    database.refresh();
+    ASSERT_FALSE(project.exists("icon.png.meta"));
+    database.close();
+    EXPECT_TRUE(project.exists("icon.png.meta"));
+    open();
+    EXPECT_EQ(database.getGuid("icon.png"), icon);
 }
 
 TEST_F(AssetDatabaseTest, RefreshGivesACopyANewGuid){

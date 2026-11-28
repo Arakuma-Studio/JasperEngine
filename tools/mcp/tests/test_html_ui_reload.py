@@ -226,12 +226,7 @@ async def test_tracked_extensions(ed: Editor):
         disk_write(ed, rel, content + (b"\n" if isinstance(content, bytes) else "\n"))
         ext = ext_of(await status(ed))
         ed.check(ext is not None and ext["changed"] == [rel], f"a modified {Path(rel).suffix}: {ext}")
-    # the folder leaves the project in one rename, as a delete to the trash does: deleted file by file, a
-    # pause between the svg's meta and the svg lets the editor write the meta again (its source is still
-    # there, ~40 ms), and rmtree then finds the folder not empty
-    removed = ed.scratch.root / "removed-extra"
-    (ed.project / "assets/ui/pick/extra").rename(removed)
-    shutil.rmtree(removed)
+    shutil.rmtree(ed.project / "assets/ui/pick/extra")
     ext = ext_of(await status(ed))
     ed.check(ext is not None and sorted(ext.get("removed", [])) == sorted(files), f"removed: {ext}")
 

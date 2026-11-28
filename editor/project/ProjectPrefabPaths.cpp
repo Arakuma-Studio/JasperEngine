@@ -198,8 +198,9 @@ void editor::Project::refreshAssetDatabase(bool force) {
         } else {
             found = assetDatabase.refresh(scan);
         }
-    } else if (assetScanRequested) {
-        // the file watcher saw a change (applyFileChanges): one walk for every batch since
+    } else if (assetScanRequested || assetDatabase.isMetaRestoreDue()) {
+        // the file watcher saw a change (applyFileChanges): one walk for every batch since. Or a
+        // deleted meta is due to be written again (no event comes for that)
         assetScanRequested = false;
         const AssetDatabase* database = &assetDatabase;
         jobs::SubmitOptions options;
