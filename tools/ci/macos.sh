@@ -18,7 +18,11 @@
 #   tools/ci/macos.sh compile-smoke <project-dir> [backend]  a Compile build of the project, as Build with
 #                                            Method Compile makes it (tools/ci/compile-smoke.sh)
 #   tools/ci/macos.sh package <version>      dist/JasperEngine-<version>-macos-universal.zip (the signed .app,
-#                                            ditto) and .dmg (the .app and an Applications link)
+#                                            ditto) and .dmg (the .app and an Applications link). With every
+#                                            variable of DEVELOPER_ID_VARS set: the .app Developer ID signed
+#                                            (hardened runtime, editor/resources/macos/JasperEngine.entitlements),
+#                                            the .app and the .dmg notarized and stapled; with none, ad-hoc
+#   tools/ci/macos.sh signing-cleanup        deletes package's temporary keychain and API key (after a cancel)
 #   tools/ci/macos.sh check-cli [zip]        tools/ci/check-call-cli.py on the editor of instdir/, or of that
 #                                            zip unpacked
 #
@@ -59,6 +63,127 @@ sign_app() {
 verify_app() {
     codesign --verify --verbose=2 "$1"
     codesign --verify --strict --verbose=2 "$1" || echo "::warning::codesign --verify --strict rejects $1"
+}
+
+# Developer ID signing (package): the .p12 and its password, the team, and the App Store Connect API
+# key notarytool signs in with; all set (the release workflows' secrets) or none (forks, PRs: ad-hoc)
+DEVELOPER_ID_VARS=(MACOS_SIGN_P12_BASE64 MACOS_SIGN_P12_PASSWORD MACOS_SIGN_TEAM_ID APPLE_API_KEY_P8_BASE64 APPLE_API_KEY_ID APPLE_API_ISSUER_ID)
+SIGN_DIR="${RUNNER_TEMP:-$ROOT/build/macos}/developer-id"
+KEYCHAIN="$SIGN_DIR/signing.keychain-db"
+API_KEY=""
+ENTITLEMENTS="$ROOT/editor/resources/macos/JasperEngine.entitlements"
+IDENTITY=""
+
+developer_id_set() {
+    local name present=() missing=()
+    for name in "${DEVELOPER_ID_VARS[@]}"; do
+        if [[ -n "${!name:-}" ]]; then present+=("$name"); else missing+=("$name"); fi
+    done
+    [[ ${#present[@]} -gt 0 ]] || return 1
+    [[ ${#missing[@]} == 0 ]] || { echo "Developer ID signing needs every one of ${DEVELOPER_ID_VARS[*]}; not set: ${missing[*]}" >&2; exit 1; }
+}
+
+decode_base64() {
+    "$PY" -I -c 'import base64, os, sys; sys.stdout.buffer.write(base64.b64decode(os.environ[sys.argv[1]]))' "$1"
+}
+
+# A keychain of this job's own (random password, ours first in the user's search list so codesign
+# finds the chain), the .p12 imported with codesign allowed to use its key without a prompt
+signing_begin() {
+    signing_cleanup
+    mkdir -p "$SIGN_DIR"
+    chmod 700 "$SIGN_DIR"
+    local password p12="$SIGN_DIR/developer-id.p12" keychain
+    password="$(uuidgen)"
+    security create-keychain -p "$password" "$KEYCHAIN"
+    security set-keychain-settings -lut 21600 "$KEYCHAIN"
+    security unlock-keychain -p "$password" "$KEYCHAIN"
+    decode_base64 MACOS_SIGN_P12_BASE64 > "$p12"
+    security import "$p12" -k "$KEYCHAIN" -f pkcs12 -P "$MACOS_SIGN_P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+    rm -f "$p12"
+    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$KEYCHAIN" > /dev/null
+    security list-keychains -d user | sed -e 's/^[[:space:]]*"//' -e 's/"$//' > "$SIGN_DIR/search-list"
+    local search=("$KEYCHAIN")
+    while IFS= read -r keychain; do [[ -z "$keychain" ]] || search+=("$keychain"); done < "$SIGN_DIR/search-list"
+    security list-keychains -d user -s "${search[@]}"
+    # the identity by its SHA-1, of the configured team (a .p12 can hold more than one)
+    IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" \
+        | awk -v team="($MACOS_SIGN_TEAM_ID)\"" '/"Developer ID Application: / && index($0, team) { print $2; exit }')"
+    [[ -n "$IDENTITY" ]] || { echo "the .p12 holds no valid Developer ID Application identity of the team MACOS_SIGN_TEAM_ID" >&2; exit 1; }
+    # (the file name notarytool's own key lookup expects)
+    API_KEY="$SIGN_DIR/AuthKey_$APPLE_API_KEY_ID.p8"
+    decode_base64 APPLE_API_KEY_P8_BASE64 > "$API_KEY"
+    chmod 600 "$API_KEY"
+    echo "signing with the Developer ID Application identity $IDENTITY"
+}
+
+signing_cleanup() {
+    if [[ -f "$SIGN_DIR/search-list" ]]; then
+        local keychain search=()
+        while IFS= read -r keychain; do [[ -z "$keychain" ]] || search+=("$keychain"); done < "$SIGN_DIR/search-list"
+        security list-keychains -d user -s ${search[@]+"${search[@]}"} || true
+    fi
+    if [[ -f "$KEYCHAIN" ]]; then security delete-keychain "$KEYCHAIN" || true; fi
+    rm -rf "$SIGN_DIR"
+}
+
+# Every Mach-O file and nested bundle of the .app but its main executable, the deepest first: a
+# bundle's signature seals what it holds, so the inside is signed before it
+nested_code() {
+    local app="$1" main path magic
+    main="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+    while IFS= read -r -d '' path; do
+        if [[ -d "$path" ]]; then
+            printf '%s\n' "$path"
+            continue
+        fi
+        [[ "$path" != "$main" ]] || continue
+        magic="$(head -c 4 "$path" | od -An -tx1 | tr -d ' \n')"
+        case "$magic" in
+            cffaedfe|cefaedfe|feedfacf|feedface|cafebabe|bebafeca) printf '%s\n' "$path" ;;
+        esac
+    done < <(find "$app/Contents" \( -type d \( -name '*.framework' -o -name '*.app' -o -name '*.bundle' -o -name '*.xpc' -o -name '*.appex' \) \) -print0 \
+                 -o -type f -print0) \
+        | awk -F/ '{ print NF "\t" $0 }' | sort -t $'\t' -k1,1nr -k2 | cut -f2-
+}
+
+sign_developer_id() {
+    local app="$1" code
+    while IFS= read -r code; do
+        echo "codesign $code"
+        codesign --force --options runtime --timestamp --keychain "$KEYCHAIN" --sign "$IDENTITY" "$code"
+    done < <(nested_code "$app")
+    codesign --force --options runtime --timestamp --keychain "$KEYCHAIN" --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$app"
+    codesign --verify --deep --strict --verbose=2 "$app"
+    codesign --display --entitlements - --verbose=2 "$app" 2>&1
+}
+
+# notarytool's verdict on the file (its log printed when it is not Accepted), then the ticket stapled
+# to what Gatekeeper checks offline
+notarize() {
+    local file="$1" staple="$2" result="$SIGN_DIR/notary.json" id status
+    local auth=(--key "$API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID")
+    echo "notarizing $file"
+    xcrun notarytool submit "$file" "${auth[@]}" --wait --timeout 2h --output-format json > "$result" || true
+    cat "$result"
+    echo
+    id="$("$PY" -I -c 'import json, sys; print(json.load(open(sys.argv[1])).get("id", ""))' "$result" 2>/dev/null || true)"
+    status="$("$PY" -I -c 'import json, sys; print(json.load(open(sys.argv[1])).get("status", ""))' "$result" 2>/dev/null || true)"
+    if [[ "$status" != Accepted ]]; then
+        echo "::error::notarization of $(basename "$file") ended ${status:-without a verdict}"
+        [[ -z "$id" ]] || xcrun notarytool log "$id" "${auth[@]}" || true
+        exit 1
+    fi
+    xcrun stapler staple "$staple"
+    xcrun stapler validate "$staple"
+}
+
+# Gatekeeper's own verdict, which must name the notarization
+gatekeeper_accepts() {
+    local verdict
+    verdict="$(spctl --assess -vvv "$@" 2>&1)" || { echo "$verdict"; echo "::error::Gatekeeper rejects ${*: -1}"; exit 1; }
+    echo "$verdict"
+    grep -q 'source=Notarized Developer ID' <<< "$verdict" || { echo "::error::${*: -1} is not accepted as notarized Developer ID code"; exit 1; }
 }
 
 step_editor() {
@@ -153,6 +278,18 @@ step_package() {
     archs="$(lipo -archs "$EDITOR_BIN")"
     [[ " $archs " == *" x86_64 "* && " $archs " == *" arm64 "* ]] || { echo "the editor holds $archs, not both slices: build it with ARCHS=universal" >&2; exit 1; }
     verify_app "$APP"
+    local developer_id=0
+    if developer_id_set; then
+        developer_id=1
+        trap signing_cleanup EXIT
+        signing_begin
+        sign_developer_id "$APP"
+        # the .app's own ticket first, so the zip and the dmg both carry a stapled .app
+        ditto -c -k --sequesterRsrc --keepParent "$APP" "$SIGN_DIR/JasperEngine.zip"
+        notarize "$SIGN_DIR/JasperEngine.zip" "$APP"
+    else
+        echo "ad-hoc signed: Developer ID secrets not set"
+    fi
     local base="dist/JasperEngine-$version-macos-universal"
     mkdir -p dist
     rm -f "$base.zip" "$base.dmg"
@@ -164,6 +301,18 @@ step_package() {
     ln -s /Applications "$stage/Applications"
     hdiutil create -volname JasperEngine -srcfolder "$stage" -ov -format UDZO "$base.dmg"
     rm -rf "$stage"
+    if [[ $developer_id == 1 ]]; then
+        codesign --force --timestamp --keychain "$KEYCHAIN" --sign "$IDENTITY" "$base.dmg"
+        notarize "$base.dmg" "$base.dmg"
+        codesign --verify --deep --strict --verbose=2 "$APP"
+        gatekeeper_accepts --type execute "$APP"
+        gatekeeper_accepts --type open --context context:primary-signature "$base.dmg"
+        # the zip's .app as a user unpacks it
+        ditto -x -k "$base.zip" "$SIGN_DIR/unpacked"
+        gatekeeper_accepts --type execute "$SIGN_DIR/unpacked/JasperEngine.app"
+        signing_cleanup
+        trap - EXIT
+    fi
     ls -la dist
 }
 
@@ -196,6 +345,7 @@ case "$STEP" in
         export CI_LOG_COMMAND
         tools/ci/compile-smoke.sh "$EDITOR_BIN" macos "$@" ;;
     package) [[ $# == 1 ]] || usage; ci_logged macos-package step_package "$1" ;;
+    signing-cleanup) [[ $# == 0 ]] || usage; signing_cleanup ;;
     check-cli) [[ $# -le 1 ]] || usage; ci_logged macos-check-cli step_check_cli "${1:-}" ;;
     *) usage ;;
 esac

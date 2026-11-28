@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The hardened runtime's exceptions the Developer ID signed editor needs (tools/ci/macos.sh
+	     package, docs/testing.md "The nightly and releases"). Only this one: the editor loads the
+	     project's C++ scripts and C++ editor scripts, which the user's own toolchain links and
+	     signs ad-hoc, with dlopen (editor/Conector.cpp, editor/util/EditorScripts.cpp), and library
+	     validation refuses a library not signed by the editor's team. No JIT (Lua 5.4's interpreter,
+	     no MAP_JIT), so no allow-jit or allow-unsigned-executable-memory; no DYLD_ variable is read,
+	     so no allow-dyld-environment-variables -->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>

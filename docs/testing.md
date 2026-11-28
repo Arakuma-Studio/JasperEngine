@@ -1504,7 +1504,17 @@ it; the next run's `changes` reads it.
   (`tools/ci/check-release-tag.sh`) and builds it.
 - Both build through `build-release.yml`: every player variant of `engine/player/variants.json`, then
   the editors embedding their hashes, launch checks, `SHA256SUMS`, and a draft release that is
-  published once every asset is attached. Everything is unsigned.
+  published once every asset is attached.
+- **Signing**: `tools/ci/macos.sh package` signs the macOS editor's `.app` (in the zip and the dmg)
+  with Developer ID and the hardened runtime, notarizes and staples the `.app` and the dmg, and
+  checks both with `spctl`, when the repository secrets `MACOS_SIGN_P12_BASE64`,
+  `MACOS_SIGN_P12_PASSWORD`, `MACOS_SIGN_TEAM_ID`, `APPLE_API_KEY_P8_BASE64`, `APPLE_API_KEY_ID` and
+  `APPLE_API_ISSUER_ID` are set (only `nightly.yml` and `release.yml` pass them on). With none set it
+  signs ad-hoc and logs `ad-hoc signed: Developer ID secrets not set`; with only some set it fails.
+  The one entitlement (`editor/resources/macos/JasperEngine.entitlements`) lets the editor load the
+  C++ scripts that a user's toolchain signs ad-hoc. The player archives stay ad-hoc signed, because an
+  export re-signs the player's bundle (`editor/platform/MacBundle.cpp`: the user's identity, else
+  ad-hoc) and Xcode signs an iOS game. The Windows and Linux editors are unsigned.
 - **A nightly's dry run**: `gh workflow run nightly.yml --ref <branch> -f dry_run=true` builds only the
   release of the branch's head and stops at a complete draft of its own, `nightly-YYYYMMDD-dry-run-<run id>`
   (its assets keep the version's names): no suite, no pruning, no issue, and no wait for another run of
