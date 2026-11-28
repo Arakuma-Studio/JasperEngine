@@ -47,8 +47,16 @@ void SokolCmdQueue::start(){
 	}
 
 	m_cleanups.reserve(INITIAL_NUMBER_OF_CLEANUPS);
-	
-	m_render_semaphore.release();
+
+	// as at the first start, also after a view restore: the last shutdown's flush gave back the
+	// permit it took (wait_for_flush) and left the queue flushing. A second render permit let a
+	// thread commit again before a frame ran its last batch, and commit_commands dropped that
+	// batch: GPU objects it made stayed allocated and never made (a loading thread's shaders,
+	// then waited for by every scene that draws with them)
+	m_flushing = false;
+	m_commited = false;
+	m_update_semaphore.reset(0);
+	m_render_semaphore.reset(1);
 }
 
 void SokolCmdQueue::finish(){

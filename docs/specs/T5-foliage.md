@@ -979,3 +979,9 @@ Recorded by the implementation, each with what it does instead and why.
     `far_density`, `density_scale`), so the tool, `set_properties` and the load clamp hold them. The colours
     (`healthy_color`, `dry_color`) are vectors, which that table of floats does not hold: they go through
     `set_properties` as any colour does.
+17. **AC4's frame budget is reported, not asserted.** `GATE=foliage` prints the p99 frame's foliage work
+    with its 4 ms budget every run, and a p99 over it is a warning line, not a failure; the gate's
+    required lines are the hash, every cell complete and that measurement line. CI's browser renders in
+    software (SwiftShader) and a loaded host preempts the page, so a hard check measured the runner, not
+    the engine; wall-clock budgets are reported, never asserted (AGENTS.md), as core-utilities' AC17
+    gate did in #163.

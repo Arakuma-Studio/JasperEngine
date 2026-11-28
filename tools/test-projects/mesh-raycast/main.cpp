@@ -4,15 +4,16 @@
 // S26's test project (docs/specs/S26-scene-view.md R28, AC17): MeshRaycast's latency in a build
 // without pthreads, WebAssembly on the scalar path. 1,000 spheres of about 1,000 triangles each
 // (one shared BVH) in a 200-unit cloud; once they are placed, 10,000 rays from outside the cloud
-// toward random points in it, each timed; the p99 must stay at or under 4 ms. Checked in a browser
-// (BUILD_TYPE=Release WEB_PROJECT=mesh-raycast tools/build.sh web, GATE=mesh-raycast tools/build.sh web-gate) by the
-// line "[gate] mesh raycast p99 within 4 ms" (an error line otherwise, which fails the gate).
+// toward random points in it, each timed; the p99 is printed with its 4 ms budget. Checked in a
+// browser (BUILD_TYPE=Release WEB_PROJECT=mesh-raycast tools/build.sh web, GATE=mesh-raycast
+// tools/build.sh web-gate): rays that hit nothing are an error, a p99 over the budget a warning.
 //
 // spatial-queries AC15 in the same build: the spheres get static colliders and 1,000 more bodies
 // make 2,000; then 10,000 Lua Physics.overlapSphereNonAlloc and 10,000 MeshRaycast.overlapSphere
-// calls (r 5), timed in batches of 100 (a browser's clock is too coarse for one call), each p99 at
-// or under 0.04 ms: "[gate] physics overlap p99 within 0.04 ms", "[gate] mesh overlap p99 within
-// 0.04 ms".
+// calls (r 5), timed in batches of 100 (a browser's clock is too coarse for one call), each p99
+// printed with its 0.04 ms budget; queries that find nothing are an error, a p99 over the budget a
+// warning. The budgets are release device figures and CI's browser renders in software: wall-clock
+// budgets are reported, never asserted (AGENTS.md).
 
 #include "JasperEngine.h"
 #include "picking/MeshBvh.h"
@@ -60,11 +61,12 @@ namespace {
     }
 
     void gateQuery(const char* name, double p99){
-        Log::print("[gate] %s overlap p99 %.4f ms per call over %d calls", name, p99, QUERIES);
+        Log::print("[gate] %s overlap p99 %.4f ms per call over %d calls, web budget %g ms", name, p99, QUERIES, QUERY_BUDGET_MS);
         if (p99 <= QUERY_BUDGET_MS){
-            Log::print("[gate] %s overlap p99 within 0.04 ms", name);
+            Log::print("[gate] %s overlap p99 within %g ms", name, QUERY_BUDGET_MS);
         }else{
-            Log::error("[gate] %s overlap p99 %.4f ms over the 0.04 ms budget", name, p99);
+            Log::warn("[gate] %s overlap p99 %.4f ms over the %g ms web budget (a device figure: this browser may render in software)",
+                      name, p99, QUERY_BUDGET_MS);
         }
     }
 
@@ -145,13 +147,15 @@ JASPERENGINE_INIT void init(){
         std::sort(times.begin(), times.end());
         const double p99 = times[(size_t)(times.size() * 0.99)];
         const double p50 = times[times.size() / 2];
-        Log::print("[gate] mesh raycast p50 %.3f ms p99 %.3f ms over %d rays (%d hits)", p50, p99, RAYS, hits);
+        Log::print("[gate] mesh raycast p50 %.3f ms p99 %.3f ms over %d rays (%d hits), web budget %g ms", p50, p99, RAYS, hits,
+                   BUDGET_MS);
         if (hits == 0){
             Log::error("[gate] mesh raycast: no ray hit a sphere");
         }else if (p99 <= BUDGET_MS){
-            Log::print("[gate] mesh raycast p99 within 4 ms");
+            Log::print("[gate] mesh raycast p99 within %g ms", BUDGET_MS);
         }else{
-            Log::error("[gate] mesh raycast p99 %.3f ms over the 4 ms budget", p99);
+            Log::warn("[gate] mesh raycast p99 %.3f ms over the %g ms web budget (a device figure: this browser may render in software)",
+                      p99, BUDGET_MS);
         }
 
         // spatial queries: Lua's non-allocating overlap on the 2,000 bodies, and the drawn bounds

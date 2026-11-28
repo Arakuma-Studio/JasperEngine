@@ -34,6 +34,13 @@ namespace jasperengine {
 			m_count--;
 		}
 
+		// exactly `count` permits from now on, whatever releases and acquires left
+		void reset(uint32_t count) {
+			std::scoped_lock<std::mutex> lock(m_mutex);
+			m_count = count;
+			m_cv.notify_all();
+		}
+
 	private:
 		uint32_t m_count = 0;
 		std::mutex m_mutex;
