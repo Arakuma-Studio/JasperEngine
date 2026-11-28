@@ -274,11 +274,8 @@ TEST(FbxImport, ReimportsWhenTheFbxOrATextureChanges) {
     EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets), FbxImporter::State::UpToDate);
 
     // An FBX edit changes its source id, so scenes saved with the old parts are told apart
+    // (the same size, a few milliseconds after the first write: on Windows often in the same tick)
     writeText(project.fbx, replaced(readText(project.fbx), "0.8,0.2,0.2", "0.2,0.8,0.2"));
-    // dated as a person's later edit is: the same size, and this test runs in a few milliseconds, inside
-    // one tick of the clock that stamps a write (15.6 ms on Windows), so the edit could keep the first
-    // write's time, and the hash cached by size and time would stand (Namespace's Windows runners)
-    fs::last_write_time(project.fbx, fs::last_write_time(project.fbx) + std::chrono::seconds(2));
     EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets), FbxImporter::State::Stale);
     EXPECT_NE(FbxImporter::getSourceId(project.fbx), firstSource);
     tinygltf::Model old;
@@ -302,6 +299,37 @@ TEST(FbxImport, ReimportsWhenTheFbxOrATextureChanges) {
     ASSERT_TRUE(forced.success) << forced.error;
     EXPECT_NE(std::find_if(forced.warnings.begin(), forced.warnings.end(),
         [](const std::string& w) { return w.find("checker.png") != std::string::npos; }), forced.warnings.end());
+}
+
+// A same-size write inside the tick of the clock that dated the first one (15.6 ms on Windows)
+// leaves the size and the time as they were: the hash read just after the first write is not kept
+TEST(FbxImport, ASameSizeEditInTheSameClockTickChangesTheSourceId) {
+    FbxProject project("tick");
+    const fs::file_time_type written = fs::last_write_time(project.fbx);
+    const std::string first = FbxImporter::getSourceId(project.fbx);
+    ASSERT_FALSE(first.empty());
+
+    writeText(project.fbx, replaced(readText(project.fbx), "0.8,0.2,0.2", "0.2,0.8,0.2"));
+    fs::last_write_time(project.fbx, written);
+    EXPECT_NE(FbxImporter::getSourceId(project.fbx), first) << "the hash cached by size and time stood for other contents";
+}
+
+// What was read from a file last written well before stays cached until its size or time changes:
+// a big FBX is not read again on every check
+TEST(FbxImport, AnOldFilesHashIsReadOnceUntilItsStampChanges) {
+    FbxProject project("settled");
+    const fs::file_time_type old = fs::file_time_type::clock::now() - std::chrono::hours(1);
+    fs::last_write_time(project.fbx, old);
+    const std::string first = FbxImporter::getSourceId(project.fbx);
+    ASSERT_FALSE(first.empty());
+
+    // other contents under the same stamp: only a read of the file could see them
+    writeText(project.fbx, replaced(readText(project.fbx), "0.8,0.2,0.2", "0.2,0.8,0.2"));
+    fs::last_write_time(project.fbx, old);
+    EXPECT_EQ(FbxImporter::getSourceId(project.fbx), first) << "the hash of a file unchanged for an hour was read again";
+
+    fs::last_write_time(project.fbx, old + std::chrono::seconds(1));
+    EXPECT_NE(FbxImporter::getSourceId(project.fbx), first);
 }
 
 TEST(FbxImport, ConcurrentImportsNeverShowAHalfWrittenFile) {
