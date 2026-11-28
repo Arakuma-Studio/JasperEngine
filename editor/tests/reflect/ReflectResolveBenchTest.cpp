@@ -25,6 +25,8 @@
 #include <vector>
 
 
+namespace ReflectResolveBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -80,3 +82,5 @@ namespace reflect_resolve_bench_test {
     }
 
 }
+
+}  // namespace ReflectResolveBenchTest_cpp

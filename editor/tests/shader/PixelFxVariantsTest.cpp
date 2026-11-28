@@ -16,6 +16,8 @@
 #include <algorithm>
 #include <string>
 
+namespace PixelFxVariantsTest_cpp {
+
 using namespace jasperengine;
 
 TEST(TransitionVariants, CompileForEveryBackend) {
@@ -46,3 +48,5 @@ TEST(GlitchCollector, ScriptsSettingPostProcessingShipTheGlitchBit) {
     on.glitchIntensity = 0.0f;
     EXPECT_EQ(editor::ShaderVariantCollector::plausibleUberFeatures(on, false, {}).count(UBER_GLITCH), 1u);
 }
+
+}  // namespace PixelFxVariantsTest_cpp

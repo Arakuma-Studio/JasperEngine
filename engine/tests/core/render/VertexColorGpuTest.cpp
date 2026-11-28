@@ -49,6 +49,8 @@
 #include <string>
 #include <vector>
 
+namespace VertexColorGpuTest_cpp {
+
 using namespace jasperengine;
 
 // (a named namespace, tests included: a unity build merges the test sources)
@@ -343,3 +345,5 @@ TEST_F(VertexColorGpu, VertexBlendFiveLayers){
 }
 
 } // namespace vertex_color_gpu_test
+
+}  // namespace VertexColorGpuTest_cpp

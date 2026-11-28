@@ -73,6 +73,10 @@
 
 namespace AnimationWindowClipTest_cpp {
 
+using namespace jasperengine;
+using namespace jasperengine::editor;
+using namespace animwindowdriver;
+using Json = nlohmann::json;
 namespace fs = std::filesystem;
 
 namespace {

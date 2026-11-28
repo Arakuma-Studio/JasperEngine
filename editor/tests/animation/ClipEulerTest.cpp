@@ -13,6 +13,8 @@
 
 #include <cmath>
 
+namespace ClipEulerTest_cpp {
+
 using namespace jasperengine;
 
 TEST(ClipEuler, MatchesEditAnimationsEulerRotations){
@@ -37,3 +39,5 @@ TEST(ClipEuler, MatchesEditAnimationsEulerRotations){
     }
     Engine::setUseDegrees(degrees);
 }
+
+}  // namespace ClipEulerTest_cpp

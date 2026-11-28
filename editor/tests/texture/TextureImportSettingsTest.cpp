@@ -7,6 +7,8 @@
 
 #include "texture/TextureImportSettings.h"
 
+namespace TextureImportSettingsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -190,3 +192,5 @@ TEST(TextureImportSettings, ProjectSettingsWriteOnlyWhatDiffers){
     EXPECT_EQ(decoded.defaultMaxSize[(size_t)TextureFamily::Web], 2048);
     EXPECT_EQ(decoded.defaultQuality[(size_t)TextureFamily::Web], TextureCookQuality::Normal);
 }
+
+}  // namespace TextureImportSettingsTest_cpp

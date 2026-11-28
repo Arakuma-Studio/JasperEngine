@@ -7,6 +7,8 @@
 
 #include <algorithm>
 
+namespace QaChecksTest_cpp {
+
 using namespace jasperengine::editor;
 
 TEST(QaChecks, RowHasExactlyTheSharedKeys){
@@ -89,3 +91,5 @@ TEST(QaChecks, RowLineSaysStatusMeasureLimitAndFix){
     row["fix_hint"] = "Raise Max Particles.";
     EXPECT_EQ(qa::rowLine(row), "FAIL capacity_hit: 200. Max Particles 400. Raise Max Particles.");
 }
+
+}  // namespace QaChecksTest_cpp

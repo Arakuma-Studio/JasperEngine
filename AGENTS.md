@@ -205,9 +205,10 @@ Writing tests (the rest is in `docs/testing.md`; read it before adding one):
   that only names one forward-declares it (`engine/core/ecs/ComponentFwd.h`). `engine/core/Scene.h` and `editor/Project.h` do not
   bring them; `tools/check_fanout.py` holds the limits (`docs/testing.md`, "Build speed").
 - Comments say why, not what.
-- Unity builds merge sources: a test source keeps its code in `namespace <FileStem>_cpp {}`, no
-  source has a file-scope `using namespace` but `jasperengine` and `jasperengine::editor`, and a new
-  `namespace {}` helper of an engine or editor source must not reuse another source's file-scope name.
+- Unity builds merge sources: a test source keeps all its code, directives included, in
+  `namespace <FileStem>_cpp {}` (`tools/unity_wrap.py`); an engine or editor source has no file-scope
+  `using namespace` but `jasperengine` and `jasperengine::editor`, a header none but `jasperengine`; a
+  new `namespace {}` helper of an engine or editor source must not reuse another source's file-scope name.
 
 ## Worktrees
 

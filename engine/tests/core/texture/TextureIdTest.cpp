@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+namespace TextureIdTest_cpp {
+
 using namespace jasperengine;
 
 TEST(TextureId, EmptyPathWithAlphaBorderHasNoId) {
@@ -28,3 +30,5 @@ TEST(TextureId, PathWithAlphaBorderKeepsItsSuffix) {
     EXPECT_EQ(texture.getId(), "sprites/ship.png|alphaborder");
     EXPECT_EQ(texture.getPath(0), "sprites/ship.png");
 }
+
+}  // namespace TextureIdTest_cpp

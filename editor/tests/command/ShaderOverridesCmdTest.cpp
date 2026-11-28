@@ -11,6 +11,8 @@
 #include "command/type/ShaderOverridesCmd.h"
 #include "pool/ShaderPool.h"
 
+namespace ShaderOverridesCmdTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -37,3 +39,5 @@ TEST(ShaderOverridesCmd, ExecuteAndUndo){
     // a project without a folder (a test's): nothing written, nothing touched
     EXPECT_TRUE(command.touchedPaths(false).empty());
 }
+
+}  // namespace ShaderOverridesCmdTest_cpp

@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+namespace VoxelShaderBackendsTest_cpp {
+
 using namespace jasperengine;
 
 TEST(VoxelShader, CrossCompilesForEveryBackend) {
@@ -32,3 +34,5 @@ TEST(VoxelShader, CrossCompilesForEveryBackend) {
         }
     }
 }
+
+}  // namespace VoxelShaderBackendsTest_cpp

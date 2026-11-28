@@ -61,6 +61,8 @@
 #include <string>
 #include <vector>
 
+namespace VertexColorRenderGpuTest_cpp {
+
 using namespace jasperengine;
 
 // (a named namespace, tests included: a unity build merges the test sources)
@@ -590,3 +592,5 @@ TEST_F(VertexColorRenderGpu, RuntimePaintFadesBackToAuthored){
 }
 
 } // namespace vertex_color_render_gpu_test
+
+}  // namespace VertexColorRenderGpuTest_cpp

@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ParticlePixelShaderTest_cpp {
+
 using namespace jasperengine;
 
 TEST(ParticlePixelShader, VariantBitsArePinned){
@@ -25,3 +27,5 @@ TEST(ParticlePixelShader, VariantBitsArePinned){
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::PARTICLES, 13, true), "Ana");
     EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::PARTICLES), 14);
 }
+
+}  // namespace ParticlePixelShaderTest_cpp

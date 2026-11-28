@@ -20,6 +20,7 @@
 #     build's link), macro calls (TEST, TEST_F, ...) and named namespaces may stand; inside a
 #     namespace other files open too (jasperengine, jasperengine::test) no anonymous namespace or
 #     `static`.
+#   - a header's global `using namespace` (but jasperengine): every includer and its batch gets it;
 #   - two headers with the same include guard: the source that includes both (a batch, sooner or
 #     later) silently loses the second.
 # Exit 0 when nothing is flagged, 1 otherwise.
@@ -347,12 +348,20 @@ def scan_file(relative, text, owners):
         head = re.sub(r"\s+", " ", item.head)
         if item.kind == "stmt":
             m = re.match(r"^using\s+namespace\s+([\w:]+)$", head)
+            if m and relative.endswith(HEADERS) and not named_prefixes(item.path) and m.group(1).lstrip(":") != "jasperengine":
+                problems.append("%s:%d: `using namespace %s` at a header's global scope reaches every source that includes "
+                                "it and every later source of their unity batches: put it inside the header's namespace"
+                                % (relative, line, m.group(1).lstrip(":")))
+                continue
             if m and relative.endswith(SOURCES):
                 nominated = m.group(1).lstrip(":")
                 enclosing = named_prefixes(item.path)
                 if contained(item.path):
                     continue
-                if not enclosing and nominated in ALLOWED_AT_GLOBAL:
+                # (a test source has no global directive at all: one that never names editor:: names would
+                # see the editor's LogEntry beside the engine's after a neighbour's `using namespace
+                # jasperengine::editor`)
+                if not enclosing and nominated in ALLOWED_AT_GLOBAL and not is_test:
                     continue
                 if enclosing and (nominated in enclosing or any(nominated == e.split("::", 1)[-1] for e in enclosing)):
                     continue
@@ -404,12 +413,15 @@ def check(root):
     texts = {}
     owners = {}
     guards = {}
+    header_texts = {}
     for relative, path in files_of(root):
         with open(path, encoding="utf-8", errors="replace") as handle:
             text = handle.read()
         if relative.endswith(SOURCES):
             texts[relative] = text
         else:
+            if "using namespace" in text:
+                header_texts[relative] = text
             guard = GUARD.search(text[:20000])
             if guard:
                 guards.setdefault(guard.group(1), []).append(relative)
@@ -424,7 +436,7 @@ def check(root):
             for relative in headers[1:]:
                 problems.append("%s:1: include guard %s is %s's too: a source that includes both loses one of them; "
                                 "name the guard after this file" % (relative, guard, headers[0]))
-    for relative, text in texts.items():
+    for relative, text in list(texts.items()) + list(header_texts.items()):
         if relative.startswith(NOT_UNITY):
             continue
         if "using" in text or relative.startswith(TEST_TREES):
@@ -446,6 +458,7 @@ def self_test():
         "engine/tests/core/TwiceTest.cpp": "namespace twice {\nusing namespace jasperengine::pose;\n}\n",
         "engine/tests/core/TwiceAgainTest.cpp": "namespace twice {\nvoid g();\n}\n",
         "editor/a/Util.h": "#ifndef UTIL_H\n#define UTIL_H\n#endif\n",
+        "engine/tests/core/Driver.h": "#pragma once\nusing namespace jasperengine::editor::ui;\nnamespace driver {}\n",
         "editor/b/Util.h": "#ifndef UTIL_H\n#define UTIL_H\n#endif\n",
     }
     root = tempfile.mkdtemp(prefix="check-unity-scope-")
@@ -459,7 +472,7 @@ def self_test():
         # namespace, block scope, macros at global scope, comments and strings, the HTML UI tests
         clean = {
             "engine/tests/core/CleanTest.cpp":
-                "#include <gtest/gtest.h>\nusing namespace jasperengine;\nnamespace CleanTest_cpp {\n"
+                "#include <gtest/gtest.h>\nnamespace CleanTest_cpp {\nusing namespace jasperengine;\n"
                 "using namespace jasperengine::titleart;\nnamespace {\nint helper() { return 1; }\n}\n"
                 "static const int K = 2;\nTEST(Clean, Works) { EXPECT_EQ(helper(), 1); }\n}  // namespace CleanTest_cpp\n"
                 "TEST(Clean, AtGlobal) {}\nnamespace jasperengine {\nstruct SystemTestAccess { int x; };\n}\n",

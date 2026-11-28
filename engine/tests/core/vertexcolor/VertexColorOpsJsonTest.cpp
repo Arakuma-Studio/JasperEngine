@@ -8,6 +8,8 @@
 
 #include "vertexcolor/VertexColorOpsJson.h"
 
+namespace VertexColorOpsJsonTest_cpp {
+
 using namespace jasperengine;
 
 // (a named namespace, tests included: a unity build merges the test sources)
@@ -353,3 +355,5 @@ TEST(VertexColorOpsJson, ValuesAndChannelsHaveOneSpelling) {
 }
 
 } // namespace vertex_color_ops_json_test
+
+}  // namespace VertexColorOpsJsonTest_cpp

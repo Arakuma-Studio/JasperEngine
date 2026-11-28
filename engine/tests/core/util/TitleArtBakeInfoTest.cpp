@@ -10,6 +10,8 @@
 
 #include <string>
 
+namespace TitleArtBakeInfoTest_cpp {
+
 using namespace jasperengine;
 
 TEST(TitleArtBakeInfo, ReadsWhatTheBakeWrites) {
@@ -69,3 +71,5 @@ TEST(TitleArtBakeInfo, IsLenientAndRefusesWhatIsNotASidecar) {
     EXPECT_EQ(info.anchors.size(), TITLE_ART_MAX_ANCHORS);
     EXPECT_GE(info.anchors.front().strength, info.anchors.back().strength);
 }
+
+}  // namespace TitleArtBakeInfoTest_cpp

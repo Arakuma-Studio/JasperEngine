@@ -17,6 +17,8 @@
 
 #include <string>
 
+namespace TerrainDetailRulesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -105,3 +107,5 @@ TEST(TerrainDetailRules, FoliageFieldsAreInTheTable){
     EXPECT_EQ(loaded.windBend, 1.0f);
     EXPECT_EQ(loaded.farDensity, 0.0f);
 }
+
+}  // namespace TerrainDetailRulesTest_cpp

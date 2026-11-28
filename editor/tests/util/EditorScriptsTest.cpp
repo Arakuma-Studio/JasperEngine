@@ -16,6 +16,8 @@
 
 #include <fstream>
 
+namespace EditorScriptsTest_cpp {
+
 using namespace jasperengine::editor;
 
 TEST(EditorScripts, ParsesLuaAnnotations) {
@@ -185,3 +187,5 @@ TEST(EditorScripts, CppProjectCompilesWithTheEngineLibrarysMacros) {
     EXPECT_NE(line.find("JPH_SHARED_LIBRARY"), std::string::npos) << line;
     EXPECT_NE(line.find("JPH_OBJECT_LAYER_BITS="), std::string::npos) << line;
 }
+
+}  // namespace EditorScriptsTest_cpp

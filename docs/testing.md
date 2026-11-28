@@ -1039,8 +1039,9 @@ the next source:
   live in the namespace they test nest it: `namespace jasperengine::editor::unity::UnityYamlTest_cpp`.
   Only named namespaces (definitions of what a header declares, `*TestAccess` friends) and macro
   calls stand outside it.
-- In any source, a `using namespace` at namespace scope names only `jasperengine` or
-  `jasperengine::editor` at global scope, or sits inside a namespace no other file opens. A source
+- In an engine or editor source, a `using namespace` at namespace scope names only `jasperengine` or
+  `jasperengine::editor` at global scope, or sits inside a namespace no other file opens; a test source
+  has none outside its own namespace, a header none at global scope but `jasperengine`. A source
   that implements a namespace puts its code in `namespace jasperengine::x { ... }`; one that uses
   another namespace's names qualifies them (`terraincore::TileCoord`).
 - A global alias (`using Json = ...`) gets a name of the file's own, and a macro is `#undef`ined at

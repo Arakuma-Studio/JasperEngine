@@ -10,6 +10,8 @@
 
 #include <cmath>
 
+namespace SceneViewMathTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -138,3 +140,5 @@ TEST(SceneViewMath, CameraSettingsClamp) {
     EXPECT_LE(settings.speed, settings.speedMax);
     EXPECT_LT(settings.nearClip, settings.farClip);
 }
+
+}  // namespace SceneViewMathTest_cpp

@@ -14,6 +14,8 @@
 #include <thread>
 #include <vector>
 
+namespace SignalTest_cpp {
+
 using namespace jasperengine;
 
 TEST(SignalTest, SubscribeInvokeUnsubscribe) {
@@ -221,3 +223,5 @@ TEST(ThreadSafeSignalTest, SubscribeAndInvokeFromThreads) {
     signal.invoke(0);
     EXPECT_EQ(calls, 1);
 }
+
+}  // namespace SignalTest_cpp

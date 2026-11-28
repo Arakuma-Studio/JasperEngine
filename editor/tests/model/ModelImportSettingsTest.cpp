@@ -8,6 +8,8 @@
 
 #include "model/ModelImportSettings.h"
 
+namespace ModelImportSettingsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -232,3 +234,5 @@ TEST(ModelImportSettings, PreserveHierarchyForNewModelsMissingKeyIsOff){
     decodeModelProjectSettings(encoded, decoded);
     EXPECT_TRUE(decoded.preserveHierarchyForNewModels);
 }
+
+}  // namespace ModelImportSettingsTest_cpp

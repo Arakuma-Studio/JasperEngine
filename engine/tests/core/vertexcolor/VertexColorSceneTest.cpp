@@ -21,6 +21,8 @@
 
 #include <gtest/gtest.h>
 
+namespace VertexColorSceneTest_cpp {
+
 using namespace jasperengine;
 
 // (a named namespace, tests included: a unity build merges the test sources)
@@ -220,3 +222,5 @@ TEST(VertexColorScene, FingerprintsAndChangeMarks) {
 }
 
 } // namespace vertex_color_scene_test
+
+}  // namespace VertexColorSceneTest_cpp

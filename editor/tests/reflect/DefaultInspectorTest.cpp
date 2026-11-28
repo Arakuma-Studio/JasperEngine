@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+namespace DefaultInspectorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -63,3 +65,5 @@ namespace default_inspector_test {
     }
 
 }
+
+}  // namespace DefaultInspectorTest_cpp
