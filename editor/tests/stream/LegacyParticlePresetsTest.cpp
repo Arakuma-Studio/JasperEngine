@@ -9,7 +9,8 @@
 // recorded from it with srand(1)): the visible particles at frames 30, 60 and 120, and their mean
 // colour and alpha. The old model drew from rand() and S20 from its own streams, so the
 // particles themselves are not the same ones: their number and their colours (functions of
-// their ages) are.
+// their ages) are. Today's presets, though converted the same way, do not write depth as the old
+// points did: their blended billboards are drawn as Unity draws particles.
 
 #include "Stream.h"
 #include "profiler/Profiler.h"
@@ -17,6 +18,7 @@
 #include "Scene.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/Transform.h"
+#include "mcp/tools/ParticleShared.h"
 #include "memory/Arena.h"
 #include "object/ParticleSystem.h"
 #include "particles/ParticleRender.h"
@@ -165,6 +167,23 @@ TEST(LegacyParticlePresets, PresetsPlayAsTheOldModelDid){
             EXPECT_NEAR(got[k].a / n, want.a / m, 0.12) << "mean alpha";
         }
     }
+}
+
+// A preset's particles blend: writing depth, the transparent corners of each billboard drawn first
+// hid the particles behind it (hard-edged squares cut out of the smoke, with or without a soft
+// texture). A migrated version 1 system keeps the old points' depth write: it draws as it did.
+TEST(LegacyParticlePresets, PresetsDoNotWriteDepth){
+    for (const std::string& name : mcp::particlePresetNames()){
+        for (const bool is2D : {false, true}){
+            particles::ParticleEffectDocument effect;
+            std::string error;
+            ASSERT_TRUE(mcp::particlePresetEffect(mcp::Json::object(), name, is2D, effect, error)) << name << ": " << error;
+            EXPECT_FALSE(effect.renderer.depthWrite) << name << (is2D ? " (2D)" : "");
+            EXPECT_EQ(effect.renderer.blend, particles::ParticleBlend::Alpha) << name;
+        }
+    }
+    const YAML::Node presets = YAML::LoadFile((legacyParticlePresetsFixtureDir() / "presets.yaml").string());
+    EXPECT_TRUE(legacyParticlePresetsMigrated(presets["smoke"], false).inlineEffect.renderer.depthWrite) << "an old scene's smoke draws as it did";
 }
 
 }  // namespace LegacyParticlePresetsTest_cpp
