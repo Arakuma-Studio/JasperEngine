@@ -655,6 +655,19 @@ What the implementation does differently from the text above, and why.
   R25-R30 plus 10 % for the timing server E; that allowance is written only in
   `tools/perf/bench-thresholds.json` (its `_comment` and the thresholds), not in this spec's
   requirements.
+- **AC20's slice budget is reported, not asserted.** `GATE=navigation` prints the longest bake slice
+  with the web bake budget + 2 ms every run (and `android-expect.txt` requires that line), and a slice
+  over it is a warning line, not a failure; the required lines stay the navmesh hashes (byte-identical
+  bakes), the grid path, the agent's arrival and the carving cut and restore. CI's browser renders in
+  software (SwiftShader) and a loaded host preempts the page, so a hard check measured the runner, not
+  the engine; wall-clock budgets are reported, never asserted (AGENTS.md), as core-utilities' AC17 gate
+  did in #163; je-bench-nav still gates R25-R30 on the timing server.
+- **The navigation test project builds again, and AC20's city hash moved.** No CI lane builds it, and it
+  had stopped compiling when Physics 2D's colliders became a vector with any number of points
+  (`colliders.resize(1)`, `points`); the gate now pins the city navmesh at `29cc665e619ddc8e` (topdown
+  unchanged), the hash both the single-threaded and the pthreads Release builds log on the Linux PC. The
+  bake changes since the old pin was taken (2026-11-04) were not bisected: what AC20 holds is that both
+  builds agree.
 
 ## Progress (implementation notes, keep updated)
 
