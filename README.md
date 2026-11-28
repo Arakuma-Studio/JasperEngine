@@ -17,7 +17,8 @@
   <a href="#features">Features</a> ·
   <a href="#getting-started">Getting started</a> ·
   <a href="#documentation">Documentation</a> ·
-  <a href="#contributing">Contributing</a>
+  <a href="#contributing">Contributing</a> ·
+  <a href="README.es.md">Español</a>
 </p>
 
 <p align="center">
