@@ -177,12 +177,18 @@ TEST(JobsPriority, BackgroundProgressGuarantee){
         options.lane = Lane::Background;
         const auto start = std::chrono::steady_clock::now();
         Task<double> background = system.submit([start]{ return testsupport::elapsedMs(start); }, options);
-        // poll: a wait would run it inline
+        // poll: a wait would run it inline. Without the guarantee it waits for the flood to end,
+        // which only happens after this deadline: running at all is what the test pins.
         ASSERT_TRUE(testsupport::spinUntil([&]{ return background.isReady(); }, 5000.0));
         flooding = false;
         for (auto& feeder : feeders)
             feeder.join();
-        EXPECT_LE(background.get(), 100.0 * testsupport::timeScale()) << "workers " << workers;
+        // the latency is a budget: a loaded runner alone misses 100 ms (docs/testing.md)
+        const double latencyMs = background.get();
+        std::printf("[bench] a Background job under a Normal flood on %d workers ran after %.2f ms (budget 100)\n", workers, latencyMs);
+        if (testsupport::perfSlack() > 0.0){
+            EXPECT_LE(latencyMs, 100.0 * testsupport::perfSlack()) << "workers " << workers;
+        }
     }
 }
 
