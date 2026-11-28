@@ -145,8 +145,9 @@ Run the generator and commit its output:
 - A failed step prints its failures, its log (`build/check-changed/`) and a `fix:` command that reruns it.
 - `tools/check-changed --red-control`, on a clean tree, reverts the change outside the tests in place, reruns the
   selected tests, restores the tree, and exits 1 when none failed: that is the red run.
-- **CI owns the full suite.** Don't run the full unit, MCP or smoke suites locally unless asked. For a
-  big change, `gh workflow run ci.yml --ref <branch> -f full=true` runs every lane on your branch.
+- **CI owns the full suite.** CI runs it by itself: the advisory run after each merge to `main`, and the
+  nightly. Never dispatch it by hand (`-f full=true`, `-f advisory=true`): one run takes more runner
+  capacity than the whole quota. Don't run the full unit, MCP or smoke suites locally unless asked.
 - **A PR is done when `Check` is green on its latest commit** and its body meets Evidence.
 - During rollout `Check` ignores the lanes in the CI workflow's `ADVISORY_LANES`; fix what your change
   broke there.

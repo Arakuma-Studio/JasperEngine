@@ -473,8 +473,8 @@ also holds `journal.txt` with it (`native-crash-journal` checks the same on the 
   source that got a header through a module's code, which breaks Compile builds and the smaller players.
 - **CI owns the full suite** (below, "CI"): a PR runs the lanes its diff needs, the merge queue
   every lane that can block the merge, the advisory run a push to `main` dispatches the advisory test
-  lanes the queue left out, the nightly the whole MCP CI suite;
-  `gh workflow run ci.yml --ref <branch> -f full=true` runs everything on a branch. check-changed is
+  lanes the queue left out, the nightly the whole MCP CI suite. Nobody dispatches the full or advisory
+  run by hand (`full=true`, `advisory=true`): one takes more runner capacity than the quota. check-changed is
   a selection and says so in every summary. The MCP files outside the CI suite (`MCP_SUITE=all`)
   run only where someone runs them.
 - **check-changed runs the area lints** by the paths they read (`AREA_LINTS`): `tools/check_raw_writes.py` and
@@ -1414,7 +1414,7 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   and macOS lanes): its working set lacks what it had not reached. A lane that
   gives its entry up has its prefix in the `caches` job's second list, so its last entry goes at
   once instead of holding the budget for 7 days.
-- **Full run on any branch**: `gh workflow run ci.yml --ref <branch> -f full=true`.
+- **Full run**: the nightly runs the whole suite on `main`; never dispatch `full=true` by hand.
 
 ### Plan inputs
 
