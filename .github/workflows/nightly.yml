@@ -14,8 +14,8 @@ name: Nightly
 # Every other cache is only restored. A failure opens (or comments on) the issue labelled "nightly".
 # Where each job runs: `runners` routes the long ones as ci.yml's (NAMESPACE_RUNNERS: Namespace's machines,
 # else GitHub's; .github/actions/runners, tools/ci/plan_lanes.py WORKFLOW_JOBS); the rest stay on GitHub's.
-# dry_run (a dispatch, any branch): only the release of the branch's head, left a complete draft (delete
-# it: gh release delete <version> --yes); no suite, no pruning, no issue.
+# dry_run (a dispatch, any branch): only the release of the branch's head, left a complete draft of its
+# own, <version>-dry-run-<run id> (delete it: gh release delete <that tag> --yes); no suite, no pruning, no issue.
 on:
   schedule:
     - cron: '17 3 * * *'
